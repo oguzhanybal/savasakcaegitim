@@ -6,6 +6,178 @@ function paraFormat(n) {
   return new Intl.NumberFormat('tr-TR', { style: 'currency', currency: 'TRY' }).format(n || 0)
 }
 
+function OdemeEkleForm({ ogrenciId, onEklendi }) {
+  const [tutar, setTutar] = useState('')
+  const [kalem, setKalem] = useState('Okul')
+  const [gonderiliyor, setGonderiliyor] = useState(false)
+
+  async function ekle(e) {
+    e.preventDefault()
+    if (!tutar || Number(tutar) <= 0) return
+    setGonderiliyor(true)
+    const { error } = await supabase.from('odemeler').insert({
+      ogrenci_id: ogrenciId,
+      tutar: Number(tutar),
+      kalem,
+      tarih: new Date().toISOString(),
+    })
+    setGonderiliyor(false)
+    if (!error) {
+      setTutar('')
+      onEklendi()
+    } else {
+      alert('Hata: ' + error.message)
+    }
+  }
+
+  return (
+    <form onSubmit={ekle} className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5 mb-6 flex flex-wrap gap-3 items-end">
+      <div className="flex-1 min-w-[140px]">
+        <label className="block text-sm font-medium text-gray-700 mb-1">Kalem</label>
+        <select
+          value={kalem}
+          onChange={(e) => setKalem(e.target.value)}
+          className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue bg-white"
+        >
+          <option>Okul</option>
+          <option>Kurs</option>
+          <option>Kitap</option>
+          <option>Bire Bir</option>
+          <option>Yemek</option>
+          <option>Kantin</option>
+        </select>
+      </div>
+      <div className="flex-1 min-w-[140px]">
+        <label className="block text-sm font-medium text-gray-700 mb-1">Tutar (₺)</label>
+        <input
+          type="number"
+          min="0"
+          step="0.01"
+          value={tutar}
+          onChange={(e) => setTutar(e.target.value)}
+          className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue"
+          placeholder="0.00"
+        />
+      </div>
+      <button
+        type="submit"
+        disabled={gonderiliyor}
+        className="bg-orange text-white font-semibold px-5 py-2 rounded-lg hover:opacity-90 transition-opacity disabled:opacity-50"
+      >
+        {gonderiliyor ? 'Ekleniyor...' : 'Ödeme Ekle'}
+      </button>
+    </form>
+  )
+}
+
+function SozlesmeEkleForm({ ogrenciId, onEklendi }) {
+  const [kalem, setKalem] = useState('Okul')
+  const [toplamTutar, setToplamTutar] = useState('')
+  const [taksitSayisi, setTaksitSayisi] = useState('1')
+  const [ilkTaksitTarihi, setIlkTaksitTarihi] = useState('')
+  const [gonderiliyor, setGonderiliyor] = useState(false)
+  const [acik, setAcik] = useState(false)
+
+  async function ekle(e) {
+    e.preventDefault()
+    if (!toplamTutar || Number(toplamTutar) <= 0) return
+    setGonderiliyor(true)
+    const { error } = await supabase.from('sozlesmeler').insert({
+      ogrenci_id: ogrenciId,
+      kalem,
+      toplam_tutar: Number(toplamTutar),
+      taksit_sayisi: Number(taksitSayisi) || 1,
+      ilk_taksit_tarihi: ilkTaksitTarihi || null,
+    })
+    setGonderiliyor(false)
+    if (!error) {
+      setToplamTutar('')
+      setTaksitSayisi('1')
+      setIlkTaksitTarihi('')
+      setAcik(false)
+      onEklendi()
+    } else {
+      alert('Hata: ' + error.message)
+    }
+  }
+
+  if (!acik) {
+    return (
+      <button
+        onClick={() => setAcik(true)}
+        className="mb-6 text-navy font-semibold text-sm underline hover:no-underline"
+      >
+        + Yeni sözleşme ekle
+      </button>
+    )
+  }
+
+  return (
+    <form onSubmit={ekle} className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5 mb-6">
+      <div className="flex flex-wrap gap-3 items-end">
+        <div className="flex-1 min-w-[120px]">
+          <label className="block text-sm font-medium text-gray-700 mb-1">Kalem</label>
+          <select
+            value={kalem}
+            onChange={(e) => setKalem(e.target.value)}
+            className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue bg-white"
+          >
+            <option>Okul</option>
+            <option>Kurs</option>
+            <option>Kitap</option>
+          </select>
+        </div>
+        <div className="flex-1 min-w-[140px]">
+          <label className="block text-sm font-medium text-gray-700 mb-1">Toplam Tutar (₺)</label>
+          <input
+            type="number"
+            min="0"
+            step="0.01"
+            value={toplamTutar}
+            onChange={(e) => setToplamTutar(e.target.value)}
+            className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue"
+          />
+        </div>
+        <div className="flex-1 min-w-[110px]">
+          <label className="block text-sm font-medium text-gray-700 mb-1">Taksit Sayısı</label>
+          <input
+            type="number"
+            min="1"
+            value={taksitSayisi}
+            onChange={(e) => setTaksitSayisi(e.target.value)}
+            className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue"
+          />
+        </div>
+        <div className="flex-1 min-w-[150px]">
+          <label className="block text-sm font-medium text-gray-700 mb-1">İlk Taksit Tarihi</label>
+          <input
+            type="date"
+            value={ilkTaksitTarihi}
+            onChange={(e) => setIlkTaksitTarihi(e.target.value)}
+            className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue"
+          />
+        </div>
+      </div>
+      <div className="flex gap-2 mt-3">
+        <button
+          type="submit"
+          disabled={gonderiliyor}
+          className="bg-navy text-white font-semibold px-5 py-2 rounded-lg hover:bg-blue transition-colors disabled:opacity-50"
+        >
+          {gonderiliyor ? 'Ekleniyor...' : 'Sözleşme Ekle'}
+        </button>
+        <button
+          type="button"
+          onClick={() => setAcik(false)}
+          className="text-gray-500 font-medium px-4 py-2 hover:text-gray-700"
+        >
+          Vazgeç
+        </button>
+      </div>
+    </form>
+  )
+}
+
 export default function Muhasebe() {
   const { profile } = useAuth()
   const isYonetici = profile?.rol === 'yonetici'
@@ -24,7 +196,7 @@ export default function Muhasebe() {
     })
   }, [])
 
-  useEffect(() => {
+  function veriyiYenile() {
     if (!seciliId) return
     setLoading(true)
     Promise.all([
@@ -35,6 +207,11 @@ export default function Muhasebe() {
       setOdemeler(o.data || [])
       setLoading(false)
     })
+  }
+
+  useEffect(() => {
+    veriyiYenile()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [seciliId])
 
   const seciliOgrenci = ogrenciler.find((o) => o.id === seciliId)
@@ -68,6 +245,13 @@ export default function Muhasebe() {
 
       {seciliOgrenci && (
         <>
+          {isYonetici && (
+            <>
+              <OdemeEkleForm ogrenciId={seciliId} onEklendi={veriyiYenile} />
+              <SozlesmeEkleForm ogrenciId={seciliId} onEklendi={veriyiYenile} />
+            </>
+          )}
+
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
             <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
               <p className="text-sm text-gray-500 font-medium">Toplam Sözleşme</p>
