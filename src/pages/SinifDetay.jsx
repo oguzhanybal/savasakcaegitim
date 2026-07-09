@@ -38,7 +38,9 @@ export default function SinifDetay() {
   }, [sinifId])
 
   const kayitliIdler = new Set(kayitliOgrenciler.map((o) => o.id))
-  const eklenebilirOgrenciler = tumOgrenciler.filter((o) => !kayitliIdler.has(o.id))
+  const eklenebilirOgrenciler = tumOgrenciler.filter(
+    (o) => !kayitliIdler.has(o.id) && (o.durum || 'aktif') === 'aktif'
+  )
 
   async function ogrenciEkle(e) {
     e.preventDefault()
