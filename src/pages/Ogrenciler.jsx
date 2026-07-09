@@ -7,6 +7,7 @@ export default function Ogrenciler() {
   const [yeniAd, setYeniAd] = useState('')
   const [yeniTelefon, setYeniTelefon] = useState('')
   const [ekleniyor, setEkleniyor] = useState(false)
+  const [filtre, setFiltre] = useState('aktif') // aktif | pasif | tumu
 
   async function yukle() {
     setLoading(true)
@@ -33,6 +34,20 @@ export default function Ogrenciler() {
       alert('Hata: ' + error.message)
     }
   }
+
+  async function durumDegistir(ogrenciId, yeniDurum) {
+    const { error } = await supabase.from('ogrenciler').update({ durum: yeniDurum }).eq('id', ogrenciId)
+    if (!error) yukle()
+    else alert('Hata: ' + error.message)
+  }
+
+  const gosterilecekler = ogrenciler.filter((o) => {
+    if (filtre === 'tumu') return true
+    return (o.durum || 'aktif') === filtre
+  })
+
+  const aktifSayisi = ogrenciler.filter((o) => (o.durum || 'aktif') === 'aktif').length
+  const pasifSayisi = ogrenciler.filter((o) => o.durum === 'pasif').length
 
   return (
     <div>
@@ -66,30 +81,90 @@ export default function Ogrenciler() {
         </button>
       </form>
 
+      <div className="flex gap-2 mb-4">
+        <button
+          onClick={() => setFiltre('aktif')}
+          className={`px-4 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+            filtre === 'aktif' ? 'bg-navy text-white' : 'bg-white text-gray-600 border border-gray-200'
+          }`}
+        >
+          Aktif ({aktifSayisi})
+        </button>
+        <button
+          onClick={() => setFiltre('pasif')}
+          className={`px-4 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+            filtre === 'pasif' ? 'bg-navy text-white' : 'bg-white text-gray-600 border border-gray-200'
+          }`}
+        >
+          Pasif ({pasifSayisi})
+        </button>
+        <button
+          onClick={() => setFiltre('tumu')}
+          className={`px-4 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+            filtre === 'tumu' ? 'bg-navy text-white' : 'bg-white text-gray-600 border border-gray-200'
+          }`}
+        >
+          Tümü ({ogrenciler.length})
+        </button>
+      </div>
+
       <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
         <table className="w-full text-sm">
           <thead>
             <tr className="bg-navy text-white text-left">
               <th className="px-4 py-3 font-semibold">Ad Soyad</th>
               <th className="px-4 py-3 font-semibold">Telefon</th>
+              <th className="px-4 py-3 font-semibold">Durum</th>
+              <th className="px-4 py-3 font-semibold"></th>
             </tr>
           </thead>
           <tbody>
             {loading && (
-              <tr><td colSpan={2} className="px-4 py-6 text-center text-gray-400">Yükleniyor...</td></tr>
+              <tr><td colSpan={4} className="px-4 py-6 text-center text-gray-400">Yükleniyor...</td></tr>
             )}
-            {!loading && ogrenciler.length === 0 && (
-              <tr><td colSpan={2} className="px-4 py-6 text-center text-gray-400">Henüz öğrenci eklenmedi.</td></tr>
+            {!loading && gosterilecekler.length === 0 && (
+              <tr><td colSpan={4} className="px-4 py-6 text-center text-gray-400">Bu filtrede öğrenci bulunamadı.</td></tr>
             )}
-            {ogrenciler.map((o, i) => (
-              <tr key={o.id} className={i % 2 ? 'bg-gray-50' : ''}>
-                <td className="px-4 py-3 font-medium text-gray-800">{o.ad_soyad}</td>
-                <td className="px-4 py-3 text-gray-500">{o.telefon || '—'}</td>
-              </tr>
-            ))}
+            {gosterilecekler.map((o, i) => {
+              const durum = o.durum || 'aktif'
+              return (
+                <tr key={o.id} className={i % 2 ? 'bg-gray-50' : ''}>
+                  <td className="px-4 py-3 font-medium text-gray-800">{o.ad_soyad}</td>
+                  <td className="px-4 py-3 text-gray-500">{o.telefon || '—'}</td>
+                  <td className="px-4 py-3">
+                    <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${
+                      durum === 'aktif' ? 'bg-green-100 text-green-700' : 'bg-gray-200 text-gray-600'
+                    }`}>
+                      {durum === 'aktif' ? 'Aktif' : 'Pasif'}
+                    </span>
+                  </td>
+                  <td className="px-4 py-3 text-right">
+                    {durum === 'aktif' ? (
+                      <button
+                        onClick={() => durumDegistir(o.id, 'pasif')}
+                        className="text-gray-500 text-sm hover:underline"
+                      >
+                        Pasif Yap
+                      </button>
+                    ) : (
+                      <button
+                        onClick={() => durumDegistir(o.id, 'aktif')}
+                        className="text-green-600 text-sm hover:underline"
+                      >
+                        Aktif Yap
+                      </button>
+                    )}
+                  </td>
+                </tr>
+              )
+            })}
           </tbody>
         </table>
       </div>
+      <p className="text-xs text-gray-400 mt-3">
+        "Pasif" işaretlenen öğrenciler Sınıflar ve Ders Programı gibi yerlerde görünmez, ama Muhasebe'de aranıp
+        geçmiş ödemeleri görülebilir. Sadece geçmiş yıldan ödeme takibi kalan öğrenciler için kullanışlıdır.
+      </p>
     </div>
   )
 }
