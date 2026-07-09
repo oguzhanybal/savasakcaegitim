@@ -9,6 +9,7 @@ import Siniflar from './pages/Siniflar'
 import SinifDetay from './pages/SinifDetay'
 import DersProgrami from './pages/DersProgrami'
 import Yoklama from './pages/Yoklama'
+import YoklamaRaporu from './pages/YoklamaRaporu'
 
 function Yukleniyor() {
   return (
@@ -85,6 +86,14 @@ function AnaUygulama() {
             element={
               <Korumali izinliRoller={['yonetici', 'ogretmen']}>
                 <Yoklama />
+              </Korumali>
+            }
+          />
+          <Route
+            path="yoklama-raporu"
+            element={
+              <Korumali izinliRoller={['yonetici', 'ogretmen']}>
+                <YoklamaRaporu />
               </Korumali>
             }
           />
