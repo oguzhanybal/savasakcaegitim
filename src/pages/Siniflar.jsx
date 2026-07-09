@@ -1,17 +1,20 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
 
+const EGITIM_YILLARI = ['2026-2027', '2027-2028', '2028-2029']
+
 export default function Siniflar() {
   const [siniflar, setSiniflar] = useState([])
   const [ogretmenler, setOgretmenler] = useState([])
   const [yeniAd, setYeniAd] = useState('')
   const [yeniOgretmen, setYeniOgretmen] = useState('')
+  const [seciliYil, setSeciliYil] = useState('2026-2027')
   const [loading, setLoading] = useState(true)
 
   async function yukle() {
     setLoading(true)
     const [s, o] = await Promise.all([
-      supabase.from('siniflar').select('*, profiles:ogretmen_profile_id(ad_soyad)').order('ad'),
+      supabase.from('siniflar').select('*, profiles:ogretmen_profile_id(ad_soyad)').eq('egitim_yili', seciliYil).order('ad'),
       supabase.from('profiles').select('*').eq('rol', 'ogretmen'),
     ])
     setSiniflar(s.data || [])
@@ -21,7 +24,8 @@ export default function Siniflar() {
 
   useEffect(() => {
     yukle()
-  }, [])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [seciliYil])
 
   async function sinifEkle(e) {
     e.preventDefault()
@@ -29,6 +33,7 @@ export default function Siniflar() {
     const { error } = await supabase.from('siniflar').insert({
       ad: yeniAd.trim(),
       ogretmen_profile_id: yeniOgretmen || null,
+      egitim_yili: seciliYil,
     })
     if (!error) {
       setYeniAd('')
@@ -41,7 +46,21 @@ export default function Siniflar() {
 
   return (
     <div>
-      <h1 className="text-2xl font-bold text-navy mb-6">Sınıflar</h1>
+      <div className="flex items-center justify-between mb-6 flex-wrap gap-3">
+        <h1 className="text-2xl font-bold text-navy">Sınıflar</h1>
+        <div className="flex items-center gap-2">
+          <label className="text-sm font-medium text-gray-600">Eğitim Yılı:</label>
+          <select
+            value={seciliYil}
+            onChange={(e) => setSeciliYil(e.target.value)}
+            className="px-3 py-1.5 border border-gray-200 rounded-lg bg-white font-semibold text-navy focus:outline-none focus:ring-2 focus:ring-blue"
+          >
+            {EGITIM_YILLARI.map((y) => (
+              <option key={y} value={y}>{y}</option>
+            ))}
+          </select>
+        </div>
+      </div>
 
       <form onSubmit={sinifEkle} className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5 mb-6 flex flex-wrap gap-3 items-end">
         <div className="flex-1 min-w-[180px]">
@@ -67,7 +86,7 @@ export default function Siniflar() {
           </select>
         </div>
         <button type="submit" className="bg-orange text-white font-semibold px-5 py-2 rounded-lg hover:opacity-90 transition-opacity">
-          Sınıf Ekle
+          {seciliYil} İçin Sınıf Ekle
         </button>
       </form>
 
@@ -82,7 +101,7 @@ export default function Siniflar() {
           <tbody>
             {loading && <tr><td colSpan={2} className="px-4 py-6 text-center text-gray-400">Yükleniyor...</td></tr>}
             {!loading && siniflar.length === 0 && (
-              <tr><td colSpan={2} className="px-4 py-6 text-center text-gray-400">Henüz sınıf eklenmedi.</td></tr>
+              <tr><td colSpan={2} className="px-4 py-6 text-center text-gray-400">{seciliYil} için henüz sınıf eklenmedi.</td></tr>
             )}
             {siniflar.map((s, i) => (
               <tr key={s.id} className={i % 2 ? 'bg-gray-50' : ''}>
