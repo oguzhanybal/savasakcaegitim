@@ -8,6 +8,9 @@ export default function Ogrenciler() {
   const [yeniTelefon, setYeniTelefon] = useState('')
   const [ekleniyor, setEkleniyor] = useState(false)
   const [filtre, setFiltre] = useState('aktif') // aktif | pasif | tumu
+  const [duzenlenenId, setDuzenlenenId] = useState(null)
+  const [duzenleAd, setDuzenleAd] = useState('')
+  const [duzenleTelefon, setDuzenleTelefon] = useState('')
 
   async function yukle() {
     setLoading(true)
@@ -37,6 +40,43 @@ export default function Ogrenciler() {
 
   async function durumDegistir(ogrenciId, yeniDurum) {
     const { error } = await supabase.from('ogrenciler').update({ durum: yeniDurum }).eq('id', ogrenciId)
+    if (!error) yukle()
+    else alert('Hata: ' + error.message)
+  }
+
+  function duzenlemeyeBasla(o) {
+    setDuzenlenenId(o.id)
+    setDuzenleAd(o.ad_soyad)
+    setDuzenleTelefon(o.telefon || '')
+  }
+
+  function duzenlemeyiVazgec() {
+    setDuzenlenenId(null)
+  }
+
+  async function duzenlemeyiKaydet(ogrenciId) {
+    if (!duzenleAd.trim()) return
+    const { error } = await supabase
+      .from('ogrenciler')
+      .update({ ad_soyad: duzenleAd.trim(), telefon: duzenleTelefon.trim() || null })
+      .eq('id', ogrenciId)
+    if (!error) {
+      setDuzenlenenId(null)
+      yukle()
+    } else {
+      alert('Hata: ' + error.message)
+    }
+  }
+
+  async function ogrenciSil(o) {
+    const onay = confirm(
+      `"${o.ad_soyad}" öğrencisini KALICI OLARAK silmek istediğinize emin misiniz?\n\n` +
+      `DİKKAT: Bu işlem, bu öğrenciye ait TÜM ödeme geçmişini, sözleşmelerini, sınıf kayıtlarını ve ` +
+      `yoklama kayıtlarını da kalıcı olarak silecektir. Bu işlem GERİ ALINAMAZ.\n\n` +
+      `Emin değilseniz, silmek yerine "Pasif Yap" seçeneğini kullanmanızı öneririz.`
+    )
+    if (!onay) return
+    const { error } = await supabase.from('ogrenciler').delete().eq('id', o.id)
     if (!error) yukle()
     else alert('Hata: ' + error.message)
   }
@@ -115,7 +155,7 @@ export default function Ogrenciler() {
               <th className="px-4 py-3 font-semibold">Ad Soyad</th>
               <th className="px-4 py-3 font-semibold">Telefon</th>
               <th className="px-4 py-3 font-semibold">Durum</th>
-              <th className="px-4 py-3 font-semibold"></th>
+              <th className="px-4 py-3 font-semibold text-right">İşlemler</th>
             </tr>
           </thead>
           <tbody>
@@ -127,6 +167,39 @@ export default function Ogrenciler() {
             )}
             {gosterilecekler.map((o, i) => {
               const durum = o.durum || 'aktif'
+              const duzenleniyor = duzenlenenId === o.id
+
+              if (duzenleniyor) {
+                return (
+                  <tr key={o.id} className="bg-blue-50">
+                    <td className="px-4 py-2">
+                      <input
+                        value={duzenleAd}
+                        onChange={(e) => setDuzenleAd(e.target.value)}
+                        className="w-full px-2 py-1.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue"
+                      />
+                    </td>
+                    <td className="px-4 py-2">
+                      <input
+                        value={duzenleTelefon}
+                        onChange={(e) => setDuzenleTelefon(e.target.value)}
+                        className="w-full px-2 py-1.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue"
+                        placeholder="905XXXXXXXXX"
+                      />
+                    </td>
+                    <td className="px-4 py-2 text-gray-400 text-xs">—</td>
+                    <td className="px-4 py-2 text-right space-x-3 whitespace-nowrap">
+                      <button onClick={() => duzenlemeyiKaydet(o.id)} className="text-green-600 text-sm font-semibold hover:underline">
+                        Kaydet
+                      </button>
+                      <button onClick={duzenlemeyiVazgec} className="text-gray-500 text-sm hover:underline">
+                        Vazgeç
+                      </button>
+                    </td>
+                  </tr>
+                )
+              }
+
               return (
                 <tr key={o.id} className={i % 2 ? 'bg-gray-50' : ''}>
                   <td className="px-4 py-3 font-medium text-gray-800">{o.ad_soyad}</td>
@@ -138,22 +211,22 @@ export default function Ogrenciler() {
                       {durum === 'aktif' ? 'Aktif' : 'Pasif'}
                     </span>
                   </td>
-                  <td className="px-4 py-3 text-right">
+                  <td className="px-4 py-3 text-right space-x-3 whitespace-nowrap">
+                    <button onClick={() => duzenlemeyeBasla(o)} className="text-blue text-sm hover:underline">
+                      Düzenle
+                    </button>
                     {durum === 'aktif' ? (
-                      <button
-                        onClick={() => durumDegistir(o.id, 'pasif')}
-                        className="text-gray-500 text-sm hover:underline"
-                      >
+                      <button onClick={() => durumDegistir(o.id, 'pasif')} className="text-gray-500 text-sm hover:underline">
                         Pasif Yap
                       </button>
                     ) : (
-                      <button
-                        onClick={() => durumDegistir(o.id, 'aktif')}
-                        className="text-green-600 text-sm hover:underline"
-                      >
+                      <button onClick={() => durumDegistir(o.id, 'aktif')} className="text-green-600 text-sm hover:underline">
                         Aktif Yap
                       </button>
                     )}
+                    <button onClick={() => ogrenciSil(o)} className="text-red-500 text-sm hover:underline">
+                      Sil
+                    </button>
                   </td>
                 </tr>
               )
@@ -162,8 +235,8 @@ export default function Ogrenciler() {
         </table>
       </div>
       <p className="text-xs text-gray-400 mt-3">
-        "Pasif" işaretlenen öğrenciler Sınıflar ve Ders Programı gibi yerlerde görünmez, ama Muhasebe'de aranıp
-        geçmiş ödemeleri görülebilir. Sadece geçmiş yıldan ödeme takibi kalan öğrenciler için kullanışlıdır.
+        "Sil" işlemi geri alınamaz ve öğrencinin tüm ödeme/sözleşme/yoklama geçmişini de siler. Geçmiş yıldan
+        sadece ödeme takibi kalan öğrenciler için "Sil" yerine "Pasif Yap" kullanmanızı öneririz.
       </p>
     </div>
   )
