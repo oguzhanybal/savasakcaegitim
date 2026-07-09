@@ -4,6 +4,7 @@ import Layout from './components/Layout'
 import Login from './pages/Login'
 import Dashboard from './pages/Dashboard'
 import Ogrenciler from './pages/Ogrenciler'
+import Ogretmenler from './pages/Ogretmenler'
 import Muhasebe from './pages/Muhasebe'
 import Siniflar from './pages/Siniflar'
 import SinifDetay from './pages/SinifDetay'
@@ -53,6 +54,14 @@ function AnaUygulama() {
             element={
               <Korumali izinliRoller={['yonetici']}>
                 <Ogrenciler />
+              </Korumali>
+            }
+          />
+          <Route
+            path="ogretmenler"
+            element={
+              <Korumali izinliRoller={['yonetici']}>
+                <Ogretmenler />
               </Korumali>
             }
           />
