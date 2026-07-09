@@ -178,6 +178,100 @@ function SozlesmeEkleForm({ ogrenciId, onEklendi }) {
   )
 }
 
+function AylikBorcEkleForm({ ogrenciId, onEklendi }) {
+  const [kalem, setKalem] = useState('Bire Bir')
+  const [tutar, setTutar] = useState('')
+  const [donem, setDonem] = useState(() => new Date().toISOString().slice(0, 7))
+  const [gonderiliyor, setGonderiliyor] = useState(false)
+  const [acik, setAcik] = useState(false)
+
+  async function ekle(e) {
+    e.preventDefault()
+    if (!tutar || Number(tutar) <= 0 || !donem) return
+    setGonderiliyor(true)
+    const { error } = await supabase.from('aylik_borclar').insert({
+      ogrenci_id: ogrenciId,
+      kalem,
+      tutar: Number(tutar),
+      donem: `${donem}-01`,
+    })
+    setGonderiliyor(false)
+    if (!error) {
+      setTutar('')
+      setAcik(false)
+      onEklendi()
+    } else {
+      alert('Hata: ' + error.message)
+    }
+  }
+
+  if (!acik) {
+    return (
+      <button
+        onClick={() => setAcik(true)}
+        className="mb-6 text-navy font-semibold text-sm underline hover:no-underline"
+      >
+        + Aylık kalem borcu ekle
+      </button>
+    )
+  }
+
+  return (
+    <form onSubmit={ekle} className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5 mb-6">
+      <div className="flex flex-wrap gap-3 items-end">
+        <div className="flex-1 min-w-[120px]">
+          <label className="block text-sm font-medium text-gray-700 mb-1">Kalem</label>
+          <select
+            value={kalem}
+            onChange={(e) => setKalem(e.target.value)}
+            className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue bg-white"
+          >
+            <option>Bire Bir</option>
+            <option>Yemek</option>
+            <option>Kantin</option>
+          </select>
+        </div>
+        <div className="flex-1 min-w-[140px]">
+          <label className="block text-sm font-medium text-gray-700 mb-1">Tutar (₺)</label>
+          <input
+            type="number"
+            min="0"
+            step="0.01"
+            value={tutar}
+            onChange={(e) => setTutar(e.target.value)}
+            className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue"
+          />
+        </div>
+        <div className="flex-1 min-w-[140px]">
+          <label className="block text-sm font-medium text-gray-700 mb-1">Dönem (Ay)</label>
+          <input
+            type="month"
+            value={donem}
+            onChange={(e) => setDonem(e.target.value)}
+            className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue"
+          />
+        </div>
+      </div>
+      <div className="flex gap-2 mt-3">
+        <button
+          type="submit"
+          disabled={gonderiliyor}
+          className="bg-navy text-white font-semibold px-5 py-2 rounded-lg hover:bg-blue transition-colors disabled:opacity-50"
+        >
+          {gonderiliyor ? 'Ekleniyor...' : 'Aylık Borç Ekle'}
+        </button>
+        <button
+          type="button"
+          onClick={() => setAcik(false)}
+          className="text-gray-500 font-medium px-4 py-2 hover:text-gray-700"
+        >
+          Vazgeç
+        </button>
+      </div>
+    </form>
+  )
+}
+
 export default function Muhasebe() {
   const { profile } = useAuth()
   const isYonetici = profile?.rol === 'yonetici'
@@ -185,6 +279,7 @@ export default function Muhasebe() {
   const [ogrenciler, setOgrenciler] = useState([])
   const [seciliId, setSeciliId] = useState('')
   const [sozlesmeler, setSozlesmeler] = useState([])
+  const [aylikBorclar, setAylikBorclar] = useState([])
   const [odemeler, setOdemeler] = useState([])
   const [loading, setLoading] = useState(true)
 
@@ -201,9 +296,11 @@ export default function Muhasebe() {
     setLoading(true)
     Promise.all([
       supabase.from('sozlesmeler').select('*').eq('ogrenci_id', seciliId),
+      supabase.from('aylik_borclar').select('*').eq('ogrenci_id', seciliId).order('donem', { ascending: false }),
       supabase.from('odemeler').select('*').eq('ogrenci_id', seciliId).order('tarih', { ascending: false }),
-    ]).then(([s, o]) => {
+    ]).then(([s, a, o]) => {
       setSozlesmeler(s.data || [])
+      setAylikBorclar(a.data || [])
       setOdemeler(o.data || [])
       setLoading(false)
     })
@@ -218,7 +315,8 @@ export default function Muhasebe() {
 
   const toplamOdenen = odemeler.reduce((t, o) => t + Number(o.tutar), 0)
   const toplamSozlesme = sozlesmeler.reduce((t, s) => t + Number(s.toplam_tutar), 0)
-  const kalanBakiye = Math.max(0, toplamSozlesme - toplamOdenen)
+  const toplamAylikBorc = aylikBorclar.reduce((t, a) => t + Number(a.tutar), 0)
+  const kalanBakiye = Math.max(0, toplamSozlesme + toplamAylikBorc - toplamOdenen)
 
   return (
     <div>
@@ -249,13 +347,18 @@ export default function Muhasebe() {
             <>
               <OdemeEkleForm ogrenciId={seciliId} onEklendi={veriyiYenile} />
               <SozlesmeEkleForm ogrenciId={seciliId} onEklendi={veriyiYenile} />
+              <AylikBorcEkleForm ogrenciId={seciliId} onEklendi={veriyiYenile} />
             </>
           )}
 
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
             <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
               <p className="text-sm text-gray-500 font-medium">Toplam Sözleşme</p>
               <p className="text-2xl font-bold text-navy mt-1">{paraFormat(toplamSozlesme)}</p>
+            </div>
+            <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
+              <p className="text-sm text-gray-500 font-medium">Toplam Aylık Borç</p>
+              <p className="text-2xl font-bold text-navy mt-1">{paraFormat(toplamAylikBorc)}</p>
             </div>
             <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
               <p className="text-sm text-gray-500 font-medium">Toplam Ödenen</p>
@@ -290,6 +393,33 @@ export default function Muhasebe() {
                     <td className="px-4 py-2">{paraFormat(s.toplam_tutar)}</td>
                     <td className="px-4 py-2">{s.taksit_sayisi}</td>
                     <td className="px-4 py-2">{s.ilk_taksit_tarihi ? new Date(s.ilk_taksit_tarihi).toLocaleDateString('tr-TR') : '—'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden mb-6">
+            <div className="px-4 py-3 border-b border-gray-100 bg-gray-50">
+              <h2 className="font-semibold text-gray-700">Aylık Kalem Borçları (Bire Bir / Yemek / Kantin)</h2>
+            </div>
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="text-left text-gray-500">
+                  <th className="px-4 py-2 font-medium">Kalem</th>
+                  <th className="px-4 py-2 font-medium">Dönem</th>
+                  <th className="px-4 py-2 font-medium">Tutar</th>
+                </tr>
+              </thead>
+              <tbody>
+                {aylikBorclar.length === 0 && (
+                  <tr><td colSpan={3} className="px-4 py-4 text-center text-gray-400">Aylık kalem borcu bulunamadı.</td></tr>
+                )}
+                {aylikBorclar.map((a) => (
+                  <tr key={a.id} className="border-t border-gray-50">
+                    <td className="px-4 py-2 font-medium text-gray-800">{a.kalem}</td>
+                    <td className="px-4 py-2">{new Date(a.donem).toLocaleDateString('tr-TR', { month: 'long', year: 'numeric' })}</td>
+                    <td className="px-4 py-2">{paraFormat(a.tutar)}</td>
                   </tr>
                 ))}
               </tbody>
