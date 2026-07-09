@@ -11,6 +11,9 @@ export default function Siniflar() {
   const [yeniOgretmen, setYeniOgretmen] = useState('')
   const [seciliYil, setSeciliYil] = useState('2026-2027')
   const [loading, setLoading] = useState(true)
+  const [duzenlenenId, setDuzenlenenId] = useState(null)
+  const [duzenleAd, setDuzenleAd] = useState('')
+  const [duzenleOgretmen, setDuzenleOgretmen] = useState('')
 
   async function yukle() {
     setLoading(true)
@@ -43,6 +46,42 @@ export default function Siniflar() {
     } else {
       alert('Hata: ' + error.message)
     }
+  }
+
+  function duzenlemeyeBasla(s) {
+    setDuzenlenenId(s.id)
+    setDuzenleAd(s.ad)
+    setDuzenleOgretmen(s.ogretmen_profile_id || '')
+  }
+
+  function duzenlemeyiVazgec() {
+    setDuzenlenenId(null)
+  }
+
+  async function duzenlemeyiKaydet(sinifId) {
+    if (!duzenleAd.trim()) return
+    const { error } = await supabase
+      .from('siniflar')
+      .update({ ad: duzenleAd.trim(), ogretmen_profile_id: duzenleOgretmen || null })
+      .eq('id', sinifId)
+    if (!error) {
+      setDuzenlenenId(null)
+      yukle()
+    } else {
+      alert('Hata: ' + error.message)
+    }
+  }
+
+  async function sinifSil(s) {
+    const onay = confirm(
+      `"${s.ad}" sınıfını KALICI OLARAK silmek istediğinize emin misiniz?\n\n` +
+      `DİKKAT: Bu işlem, bu sınıfa ait tüm ders saatlerini, öğrenci kayıtlarını (öğrencilerin kendisi silinmez, ` +
+      `sadece bu sınıfla bağlantısı kalkar) ve yoklama kayıtlarını da kalıcı olarak silecektir. Bu işlem GERİ ALINAMAZ.`
+    )
+    if (!onay) return
+    const { error } = await supabase.from('siniflar').delete().eq('id', s.id)
+    if (!error) yukle()
+    else alert('Hata: ' + error.message)
   }
 
   return (
@@ -97,28 +136,75 @@ export default function Siniflar() {
             <tr className="bg-navy text-white text-left">
               <th className="px-4 py-3 font-semibold">Sınıf Adı</th>
               <th className="px-4 py-3 font-semibold">Öğretmen</th>
+              <th className="px-4 py-3 font-semibold text-right">İşlemler</th>
             </tr>
           </thead>
           <tbody>
-            {loading && <tr><td colSpan={2} className="px-4 py-6 text-center text-gray-400">Yükleniyor...</td></tr>}
+            {loading && <tr><td colSpan={3} className="px-4 py-6 text-center text-gray-400">Yükleniyor...</td></tr>}
             {!loading && siniflar.length === 0 && (
-              <tr><td colSpan={2} className="px-4 py-6 text-center text-gray-400">{seciliYil} için henüz sınıf eklenmedi.</td></tr>
+              <tr><td colSpan={3} className="px-4 py-6 text-center text-gray-400">{seciliYil} için henüz sınıf eklenmedi.</td></tr>
             )}
-            {siniflar.map((s, i) => (
-              <tr key={s.id} className={i % 2 ? 'bg-gray-50' : ''}>
-                <td className="px-4 py-3 font-medium">
-                  <Link to={`/siniflar/${s.id}`} className="text-blue hover:underline">
-                    {s.ad}
-                  </Link>
-                </td>
-                <td className="px-4 py-3 text-gray-500">{s.profiles?.ad_soyad || '—'}</td>
-              </tr>
-            ))}
+            {siniflar.map((s, i) => {
+              const duzenleniyor = duzenlenenId === s.id
+
+              if (duzenleniyor) {
+                return (
+                  <tr key={s.id} className="bg-blue-50">
+                    <td className="px-4 py-2">
+                      <input
+                        value={duzenleAd}
+                        onChange={(e) => setDuzenleAd(e.target.value)}
+                        className="w-full px-2 py-1.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue"
+                      />
+                    </td>
+                    <td className="px-4 py-2">
+                      <select
+                        value={duzenleOgretmen}
+                        onChange={(e) => setDuzenleOgretmen(e.target.value)}
+                        className="w-full px-2 py-1.5 border border-gray-300 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue"
+                      >
+                        <option value="">Yok</option>
+                        {ogretmenler.map((o) => (
+                          <option key={o.id} value={o.id}>{o.ad_soyad}</option>
+                        ))}
+                      </select>
+                    </td>
+                    <td className="px-4 py-2 text-right space-x-3 whitespace-nowrap">
+                      <button onClick={() => duzenlemeyiKaydet(s.id)} className="text-green-600 text-sm font-semibold hover:underline">
+                        Kaydet
+                      </button>
+                      <button onClick={duzenlemeyiVazgec} className="text-gray-500 text-sm hover:underline">
+                        Vazgeç
+                      </button>
+                    </td>
+                  </tr>
+                )
+              }
+
+              return (
+                <tr key={s.id} className={i % 2 ? 'bg-gray-50' : ''}>
+                  <td className="px-4 py-3 font-medium">
+                    <Link to={`/siniflar/${s.id}`} className="text-blue hover:underline">
+                      {s.ad}
+                    </Link>
+                  </td>
+                  <td className="px-4 py-3 text-gray-500">{s.profiles?.ad_soyad || '—'}</td>
+                  <td className="px-4 py-3 text-right space-x-3 whitespace-nowrap">
+                    <button onClick={() => duzenlemeyeBasla(s)} className="text-blue text-sm hover:underline">
+                      Düzenle
+                    </button>
+                    <button onClick={() => sinifSil(s)} className="text-red-500 text-sm hover:underline">
+                      Sil
+                    </button>
+                  </td>
+                </tr>
+              )
+            })}
           </tbody>
         </table>
       </div>
       <p className="text-xs text-gray-400 mt-3">
-        Sınıf adına tıklayarak öğrenci ekleyebilir ve ders saatlerini belirleyebilirsiniz.
+        Sınıf adına tıklayarak öğrenci ekleyebilir ve ders saatlerini belirleyebilirsiniz. "Sil" işlemi geri alınamaz.
       </p>
     </div>
   )
