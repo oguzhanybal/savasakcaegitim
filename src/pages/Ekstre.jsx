@@ -144,3 +144,76 @@ export default function Ekstre() {
             <table className="w-full text-sm border border-gray-200 rounded-lg overflow-hidden">
               <thead>
                 <tr className="bg-navy text-white text-left">
+                  <th className="px-3 py-2 font-semibold">Açıklama / Kalem</th>
+                  <th className="px-3 py-2 font-semibold">Vade / Durum</th>
+                  <th className="px-3 py-2 font-semibold text-right">Tutar</th>
+                </tr>
+              </thead>
+              <tbody>
+                {buAyTaksitler.length === 0 && buAyKalemBorclari.length === 0 && (
+                  <tr><td colSpan={3} className="px-3 py-4 text-center text-gray-400">Bu dönem için kayıt bulunamadı.</td></tr>
+                )}
+                {buAyTaksitler.map((t, i) => (
+                  <tr key={'t' + i} className={i % 2 ? 'bg-gray-50' : ''}>
+                    <td className="px-3 py-2">{t.kalem} - Taksit ({t.taksitNo}/{t.taksitSayisi})</td>
+                    <td className="px-3 py-2 text-gray-500">Ödenmesi Gereken Vade: {t.vade.toLocaleDateString('tr-TR', { day: '2-digit', month: 'long', year: 'numeric' })}</td>
+                    <td className="px-3 py-2 text-right font-medium">{paraFormat(t.tutar)}</td>
+                  </tr>
+                ))}
+                {buAyKalemBorclari.map((a, i) => (
+                  <tr key={a.id} className={(buAyTaksitler.length + i) % 2 ? 'bg-gray-50' : ''}>
+                    <td className="px-3 py-2">{a.kalem}</td>
+                    <td className="px-3 py-2 text-gray-500">Bakiye Borçlu</td>
+                    <td className="px-3 py-2 text-right font-medium">{paraFormat(a.tutar)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+
+            <div className="mt-4 border border-gray-200 rounded-lg overflow-hidden">
+              <div className="flex justify-between px-4 py-2 bg-gray-50 font-semibold">
+                <span>BU AYKİ TAKSİT VE HARCAMALAR TOPLAMI</span>
+                <span>{paraFormat(buAyToplam)}</span>
+              </div>
+              <div className="flex justify-between px-4 py-3 bg-orange/10 border-t border-gray-200">
+                <span className="font-bold text-orange">GENEL KALAN BAKİYE (TÜM ZAMANLAR)</span>
+                <span className="font-bold text-orange text-lg">{paraFormat(genelKalanBakiye)}</span>
+              </div>
+            </div>
+
+            <p className="text-xs text-gray-400 mt-3">
+              🔴 "Bu Ayki Toplam" seçilen döneme denk gelen taksit ve aylık kalemleri gösterir. "Genel Kalan
+              Bakiye" bugüne kadarki tüm sözleşme + aylık kalem borcundan tüm ödemeler düşülerek hesaplanan
+              güncel toplam bakiyedir.
+            </p>
+
+            <div className="mt-6">
+              <p className="font-semibold text-navy mb-2">ÖDEME GEÇMİŞİ (Son {sonOdemeler.length} Kayıt)</p>
+              <table className="w-full text-sm border border-gray-200 rounded-lg overflow-hidden">
+                <thead>
+                  <tr className="bg-navy text-white text-left">
+                    <th className="px-3 py-2 font-semibold">Tarih</th>
+                    <th className="px-3 py-2 font-semibold">Kalem</th>
+                    <th className="px-3 py-2 font-semibold text-right">Tutar</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {sonOdemeler.length === 0 && (
+                    <tr><td colSpan={3} className="px-3 py-3 text-center text-gray-400">Ödeme kaydı yok.</td></tr>
+                  )}
+                  {sonOdemeler.map((o, i) => (
+                    <tr key={o.id} className={i % 2 ? 'bg-gray-50' : ''}>
+                      <td className="px-3 py-2">{new Date(o.tarih).toLocaleDateString('tr-TR')}</td>
+                      <td className="px-3 py-2">{o.kalem || '—'}</td>
+                      <td className="px-3 py-2 text-right">{paraFormat(o.tutar)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
