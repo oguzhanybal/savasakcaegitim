@@ -1,9 +1,17 @@
 import { useState } from 'react'
 import { useAuth } from '../lib/AuthContext'
 
+const SAHTE_DOMAIN = 'savasakcaegitim.giris'
+
+function girisEmailineDonustur(deger) {
+  const temiz = deger.trim()
+  if (temiz.includes('@')) return temiz // zaten e-posta (yönetici için)
+  return `${temiz.toLowerCase()}@${SAHTE_DOMAIN}` // kullanıcı adı -> sahte e-posta
+}
+
 export default function Login() {
   const { signIn } = useAuth()
-  const [email, setEmail] = useState('')
+  const [girisAdi, setGirisAdi] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
@@ -12,9 +20,10 @@ export default function Login() {
     e.preventDefault()
     setError('')
     setLoading(true)
+    const email = girisEmailineDonustur(girisAdi)
     const { error } = await signIn(email, password)
     setLoading(false)
-    if (error) setError('E-posta veya şifre hatalı.')
+    if (error) setError('Kullanıcı adı/e-posta veya şifre hatalı.')
   }
 
   return (
@@ -30,14 +39,16 @@ export default function Login() {
 
         <form onSubmit={handleSubmit} className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6 space-y-4">
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">E-posta</label>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Kullanıcı Adı</label>
             <input
-              type="email"
+              type="text"
               required
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
+              value={girisAdi}
+              onChange={(e) => setGirisAdi(e.target.value)}
               className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue"
-              placeholder="ornek@eposta.com"
+              placeholder="kullaniciadi"
+              autoCapitalize="none"
+              autoCorrect="off"
             />
           </div>
           <div>
