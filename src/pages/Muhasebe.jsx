@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { Link } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../lib/AuthContext'
 
@@ -105,7 +106,7 @@ function SozlesmeEkleForm({ ogrenciId, onEklendi }) {
     return (
       <button
         onClick={() => setAcik(true)}
-        className="mb-6 text-navy font-semibold text-sm underline hover:no-underline"
+        className="text-navy font-semibold text-sm underline hover:no-underline"
       >
         + Yeni sözleşme ekle
       </button>
@@ -209,7 +210,7 @@ function AylikBorcEkleForm({ ogrenciId, onEklendi }) {
     return (
       <button
         onClick={() => setAcik(true)}
-        className="mb-6 text-navy font-semibold text-sm underline hover:no-underline"
+        className="text-navy font-semibold text-sm underline hover:no-underline"
       >
         + Aylık kalem borcu ekle
       </button>
@@ -320,7 +321,18 @@ export default function Muhasebe() {
 
   return (
     <div>
-      <h1 className="text-2xl font-bold text-navy mb-6">{isYonetici ? 'Muhasebe' : 'Ödeme Durumu'}</h1>
+      <div className="flex items-center justify-between mb-6 flex-wrap gap-3">
+        <h1 className="text-2xl font-bold text-navy">{isYonetici ? 'Muhasebe' : 'Ödeme Durumu'}</h1>
+        {seciliId && (
+          <Link
+            to={`/ekstre/${seciliId}`}
+            target="_blank"
+            className="bg-navy text-white font-semibold px-4 py-2 rounded-lg hover:bg-blue transition-colors text-sm"
+          >
+            Aylık Ekstre Görüntüle / Yazdır
+          </Link>
+        )}
+      </div>
 
       {isYonetici && ogrenciler.length > 0 && (
         <div className="mb-6">
@@ -346,8 +358,10 @@ export default function Muhasebe() {
           {isYonetici && (
             <>
               <OdemeEkleForm ogrenciId={seciliId} onEklendi={veriyiYenile} />
-              <SozlesmeEkleForm ogrenciId={seciliId} onEklendi={veriyiYenile} />
-              <AylikBorcEkleForm ogrenciId={seciliId} onEklendi={veriyiYenile} />
+              <div className="flex flex-wrap gap-4 mb-6">
+                <SozlesmeEkleForm ogrenciId={seciliId} onEklendi={veriyiYenile} />
+                <AylikBorcEkleForm ogrenciId={seciliId} onEklendi={veriyiYenile} />
+              </div>
             </>
           )}
 
@@ -436,17 +450,25 @@ export default function Muhasebe() {
                   <th className="px-4 py-2 font-medium">Tarih</th>
                   <th className="px-4 py-2 font-medium">Kalem</th>
                   <th className="px-4 py-2 font-medium">Tutar</th>
+                  {isYonetici && <th className="px-4 py-2 font-medium text-right">Makbuz</th>}
                 </tr>
               </thead>
               <tbody>
                 {odemeler.length === 0 && (
-                  <tr><td colSpan={3} className="px-4 py-4 text-center text-gray-400">Ödeme kaydı bulunamadı.</td></tr>
+                  <tr><td colSpan={isYonetici ? 4 : 3} className="px-4 py-4 text-center text-gray-400">Ödeme kaydı bulunamadı.</td></tr>
                 )}
                 {odemeler.map((o) => (
                   <tr key={o.id} className="border-t border-gray-50">
                     <td className="px-4 py-2">{new Date(o.tarih).toLocaleDateString('tr-TR')}</td>
                     <td className="px-4 py-2">{o.kalem || '—'}</td>
                     <td className="px-4 py-2 font-medium">{paraFormat(o.tutar)}</td>
+                    {isYonetici && (
+                      <td className="px-4 py-2 text-right">
+                        <Link to={`/makbuz/${o.id}`} target="_blank" className="text-blue text-sm hover:underline">
+                          Makbuz Yazdır
+                        </Link>
+                      </td>
+                    )}
                   </tr>
                 ))}
               </tbody>
