@@ -6,6 +6,7 @@ import Dashboard from './pages/Dashboard'
 import Ogrenciler from './pages/Ogrenciler'
 import Muhasebe from './pages/Muhasebe'
 import Siniflar from './pages/Siniflar'
+import SinifDetay from './pages/SinifDetay'
 import DersProgrami from './pages/DersProgrami'
 import Yoklama from './pages/Yoklama'
 
@@ -67,6 +68,14 @@ function AnaUygulama() {
             element={
               <Korumali izinliRoller={['yonetici']}>
                 <Siniflar />
+              </Korumali>
+            }
+          />
+          <Route
+            path="siniflar/:sinifId"
+            element={
+              <Korumali izinliRoller={['yonetici']}>
+                <SinifDetay />
               </Korumali>
             }
           />
