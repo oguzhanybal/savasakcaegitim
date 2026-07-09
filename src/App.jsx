@@ -11,6 +11,8 @@ import SinifDetay from './pages/SinifDetay'
 import DersProgrami from './pages/DersProgrami'
 import Yoklama from './pages/Yoklama'
 import YoklamaRaporu from './pages/YoklamaRaporu'
+import Makbuz from './pages/Makbuz'
+import Ekstre from './pages/Ekstre'
 
 function Yukleniyor() {
   return (
@@ -40,6 +42,25 @@ function AnaUygulama() {
     <BrowserRouter>
       <Routes>
         <Route path="/giris" element={<GirisSayfasi />} />
+
+        {/* Yazdırılabilir sayfalar: kenar menüsüz, tam sayfa */}
+        <Route
+          path="/makbuz/:odemeId"
+          element={
+            <Korumali izinliRoller={['yonetici']}>
+              <Makbuz />
+            </Korumali>
+          }
+        />
+        <Route
+          path="/ekstre/:ogrenciId"
+          element={
+            <Korumali izinliRoller={['yonetici', 'veli']}>
+              <Ekstre />
+            </Korumali>
+          }
+        />
+
         <Route
           path="/"
           element={
