@@ -17,6 +17,7 @@ export default function Layout() {
     links.push(
       { to: '/', label: 'Panel', end: true },
       { to: '/ogrenciler', label: 'Öğrenciler' },
+      { to: '/ogretmenler', label: 'Öğretmenler' },
       { to: '/muhasebe', label: 'Muhasebe' },
       { to: '/siniflar', label: 'Sınıflar' },
       { to: '/program', label: 'Ders Programı' },
