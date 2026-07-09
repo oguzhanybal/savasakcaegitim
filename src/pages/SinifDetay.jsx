@@ -11,9 +11,10 @@ export default function SinifDetay() {
   const [tumOgrenciler, setTumOgrenciler] = useState([])
   const [program, setProgram] = useState([])
   const [seciliOgrenci, setSeciliOgrenci] = useState('')
-  const [gun, setGun] = useState('1')
+  const [seciliGunler, setSeciliGunler] = useState([])
   const [baslangic, setBaslangic] = useState('09:00')
   const [bitis, setBitis] = useState('10:00')
+  const [ekleniyor, setEkleniyor] = useState(false)
   const [loading, setLoading] = useState(true)
 
   async function yukle() {
@@ -58,15 +59,27 @@ export default function SinifDetay() {
     else alert('Hata: ' + error.message)
   }
 
+  function gunSecToggle(g) {
+    setSeciliGunler((prev) => (prev.includes(g) ? prev.filter((x) => x !== g) : [...prev, g]))
+  }
+
   async function dersSaatiEkle(e) {
     e.preventDefault()
-    const { error } = await supabase.from('ders_programi').insert({
+    if (seciliGunler.length === 0) {
+      alert('Lütfen en az bir gün seçin.')
+      return
+    }
+    setEkleniyor(true)
+    const kayitlar = seciliGunler.map((g) => ({
       sinif_id: sinifId,
-      gun: Number(gun),
+      gun: g,
       baslangic_saat: baslangic,
       bitis_saat: bitis,
-    })
+    }))
+    const { error } = await supabase.from('ders_programi').insert(kayitlar)
+    setEkleniyor(false)
     if (!error) {
+      setSeciliGunler([])
       yukle()
     } else {
       alert('Hata: ' + error.message)
@@ -129,31 +142,59 @@ export default function SinifDetay() {
           <h2 className="font-semibold text-gray-700 mb-3">Ders Saatleri</h2>
 
           <form onSubmit={dersSaatiEkle} className="bg-white rounded-2xl border border-gray-100 shadow-sm p-4 mb-4 space-y-3">
-            <div className="grid grid-cols-3 gap-2">
-              <select
-                value={gun}
-                onChange={(e) => setGun(e.target.value)}
-                className="px-2 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue bg-white text-sm"
-              >
-                {GUNLER.slice(1).map((g, i) => (
-                  <option key={i + 1} value={i + 1}>{g}</option>
-                ))}
-              </select>
-              <input
-                type="time"
-                value={baslangic}
-                onChange={(e) => setBaslangic(e.target.value)}
-                className="px-2 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue text-sm"
-              />
-              <input
-                type="time"
-                value={bitis}
-                onChange={(e) => setBitis(e.target.value)}
-                className="px-2 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue text-sm"
-              />
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">Günler (birden fazla seçebilirsiniz)</label>
+              <div className="flex flex-wrap gap-2">
+                {GUNLER.slice(1).map((g, i) => {
+                  const gunNo = i + 1
+                  const secili = seciliGunler.includes(gunNo)
+                  return (
+                    <button
+                      key={gunNo}
+                      type="button"
+                      onClick={() => gunSecToggle(gunNo)}
+                      className={`px-3 py-1.5 rounded-lg text-sm font-medium border transition-colors ${
+                        secili
+                          ? 'bg-navy text-white border-navy'
+                          : 'bg-white text-gray-600 border-gray-200 hover:border-navy'
+                      }`}
+                    >
+                      {g.slice(0, 3)}
+                    </button>
+                  )
+                })}
+              </div>
             </div>
-            <button type="submit" className="w-full bg-navy text-white font-semibold px-4 py-2 rounded-lg hover:bg-blue transition-colors">
-              Ders Saati Ekle
+            <div className="grid grid-cols-2 gap-2">
+              <div>
+                <label className="block text-xs font-medium text-gray-500 mb-1">Başlangıç</label>
+                <input
+                  type="time"
+                  value={baslangic}
+                  onChange={(e) => setBaslangic(e.target.value)}
+                  className="w-full px-2 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue text-sm"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-500 mb-1">Bitiş</label>
+                <input
+                  type="time"
+                  value={bitis}
+                  onChange={(e) => setBitis(e.target.value)}
+                  className="w-full px-2 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue text-sm"
+                />
+              </div>
+            </div>
+            <button
+              type="submit"
+              disabled={ekleniyor}
+              className="w-full bg-navy text-white font-semibold px-4 py-2 rounded-lg hover:bg-blue transition-colors disabled:opacity-50"
+            >
+              {ekleniyor
+                ? 'Ekleniyor...'
+                : seciliGunler.length > 1
+                ? `${seciliGunler.length} Güne Birden Ekle`
+                : 'Ders Saati Ekle'}
             </button>
           </form>
 
