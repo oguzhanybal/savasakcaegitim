@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useParams, Link } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
+import { useAuth } from '../lib/AuthContext'
 
 function paraFormat(n) {
   return new Intl.NumberFormat('tr-TR', { style: 'currency', currency: 'TRY' }).format(n || 0)
@@ -12,13 +13,23 @@ function ayCoz(ayStr) {
   return { yil, ay }
 }
 
-// Bir sözleşmenin seçili ayda kaçıncı taksitinin düştüğünü hesaplar (1 tabanlı), yoksa null döner
+// Bir "YYYY-MM" değerine 1 ay ekler, "YYYY-MM" döner
+function ayEkle(ayStr, adet) {
+  const { yil, ay } = ayCoz(ayStr)
+  const toplam = yil * 12 + (ay - 1) + adet
+  const yeniYil = Math.floor(toplam / 12)
+  const yeniAy = (toplam % 12) + 1
+  return { yil: yeniYil, ay: yeniAy }
+}
+
+// Ekstre "seciliAy" için gönderiliyorsa, VADESİ BİR SONRAKİ AYA denk gelen taksiti gösterir
+// (örn. Haziran ekstresi -> Temmuz vadeli taksit), aylık kalemlerdeki mantığın aksine.
 function taksitHesapla(sozlesme, seciliAy) {
   if (!sozlesme.ilk_taksit_tarihi) return null
   const ilk = new Date(sozlesme.ilk_taksit_tarihi)
-  const { yil, ay } = ayCoz(seciliAy)
-  const ayFarki = (yil - ilk.getFullYear()) * 12 + (ay - (ilk.getMonth() + 1))
-  const taksitNo = ayFarki + 1
+  const hedef = ayEkle(seciliAy, 1)
+  const ayFarki = (hedef.yil - ilk.getFullYear()) * 12 + (hedef.ay - (ilk.getMonth() + 1))
+  const taksitNo = ayFarki
   if (taksitNo < 1 || taksitNo > sozlesme.taksit_sayisi) return null
   const vade = new Date(ilk)
   vade.setMonth(vade.getMonth() + ayFarki)
@@ -31,6 +42,9 @@ function taksitHesapla(sozlesme, seciliAy) {
 
 export default function Ekstre() {
   const { ogrenciId } = useParams()
+  const { profile } = useAuth()
+  const isVeli = profile?.rol === 'veli'
+
   const [ogrenci, setOgrenci] = useState(null)
   const [sozlesmeler, setSozlesmeler] = useState([])
   const [aylikBorclar, setAylikBorclar] = useState([])
@@ -60,7 +74,7 @@ export default function Ekstre() {
   const buAyTaksitler = sozlesmeler
     .map((s) => {
       const t = taksitHesapla(s, seciliAy)
-      return t ? { kalem: s.kalem, ...t } : null
+      return t ? { kalem: s.kalem, taksitSayisi: s.taksit_sayisi, ...t } : null
     })
     .filter(Boolean)
 
@@ -74,7 +88,10 @@ export default function Ekstre() {
   const toplamOdenen = odemeler.reduce((t, o) => t + Number(o.tutar), 0)
   const genelKalanBakiye = Math.max(0, toplamSozlesme + toplamAylikBorc - toplamOdenen)
 
-  const sonOdemeler = odemeler.slice(0, 10)
+  // Veli, "Devreden Ödeme" (sisteme geçmeden önceki eski ödeme) kayıtlarını görmesin —
+  // kafası karışabilir, o ödemeyi kendisi yapmış gibi görünmesin diye. Yönetici hepsini görür.
+  const gorunurOdemeler = isVeli ? odemeler.filter((o) => !o.kalem?.includes('Devreden')) : odemeler
+  const sonOdemeler = gorunurOdemeler.slice(0, 10)
 
   return (
     <div className="min-h-screen bg-cream py-8 px-4">
@@ -104,75 +121,26 @@ export default function Ekstre() {
           </div>
         </div>
 
-        <div className="bg-white rounded-2xl shadow-sm p-6">
-          <p className="text-center font-bold text-lg text-navy">AYLIK ÖĞRENCİ EKSTRESİ</p>
-          <p className="mt-4"><span className="font-medium text-gray-600">Öğrenci Adı:</span> {ogrenci.ad_soyad}</p>
-          <p><span className="font-medium text-gray-600">Bilgilendirme Dönemi:</span> {new Date(seciliAy + '-01').toLocaleDateString('tr-TR', { month: 'long', year: 'numeric' })}</p>
-
-          <table className="w-full text-sm mt-4 border-t border-gray-200">
-            <thead>
-              <tr className="text-left text-gray-500">
-                <th className="py-2">Açıklama / Kalem</th>
-                <th className="py-2">Vade / Durum</th>
-                <th className="py-2 text-right">Tutar</th>
-              </tr>
-            </thead>
-            <tbody>
-              {buAyTaksitler.length === 0 && buAyKalemBorclari.length === 0 && (
-                <tr><td colSpan={3} className="py-4 text-center text-gray-400">Bu dönem için kayıt bulunamadı.</td></tr>
-              )}
-              {buAyTaksitler.map((t, i) => (
-                <tr key={'t' + i} className="border-t border-gray-100">
-                  <td className="py-2">{t.kalem} - Taksit ({t.taksitNo}/{sozlesmeler.find((s) => s.kalem === t.kalem)?.taksit_sayisi})</td>
-                  <td className="py-2 text-gray-500">Vade: {t.vade.toLocaleDateString('tr-TR')}</td>
-                  <td className="py-2 text-right">{paraFormat(t.tutar)}</td>
-                </tr>
-              ))}
-              {buAyKalemBorclari.map((a) => (
-                <tr key={a.id} className="border-t border-gray-100">
-                  <td className="py-2">{a.kalem}</td>
-                  <td className="py-2 text-gray-500">Bu Dönem</td>
-                  <td className="py-2 text-right">{paraFormat(a.tutar)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-
-          <div className="border-t border-gray-200 mt-2 pt-3 space-y-1">
-            <div className="flex justify-between font-semibold">
-              <span>Bu Dönem Toplamı</span>
-              <span>{paraFormat(buAyToplam)}</span>
-            </div>
-            <div className="flex justify-between text-orange font-bold text-lg mt-2">
-              <span>Genel Kalan Bakiye (Tüm Zamanlar)</span>
-              <span>{paraFormat(genelKalanBakiye)}</span>
-            </div>
+        <div className="bg-white rounded-2xl shadow-sm overflow-hidden border border-gray-100">
+          <div className="bg-navy text-white text-center py-5">
+            <p className="font-bold text-xl tracking-wide">SAVAŞ AKÇA EĞİTİM</p>
+            <p className="text-sm text-white/80 mt-1">AYLIK ÖĞRENCİ EKSTRESİ</p>
           </div>
 
-          <p className="text-xs text-gray-400 mt-4">
-            "Bu Dönem Toplamı" seçilen aya denk gelen taksit ve aylık kalemleri gösterir. "Genel Kalan Bakiye"
-            bugüne kadarki tüm sözleşme + aylık kalem borcundan tüm ödemeler düşülerek hesaplanan güncel toplam bakiyedir.
-          </p>
-
-          <div className="mt-6">
-            <p className="font-semibold text-gray-700 mb-2">Ödeme Geçmişi (Son {sonOdemeler.length} Kayıt)</p>
-            <table className="w-full text-sm border-t border-gray-200">
+          <div className="p-6">
+            <table className="w-full text-sm mb-4">
               <tbody>
-                {sonOdemeler.length === 0 && (
-                  <tr><td className="py-3 text-center text-gray-400">Ödeme kaydı yok.</td></tr>
-                )}
-                {sonOdemeler.map((o) => (
-                  <tr key={o.id} className="border-t border-gray-100">
-                    <td className="py-2">{new Date(o.tarih).toLocaleDateString('tr-TR')}</td>
-                    <td className="py-2">{o.kalem || '—'}</td>
-                    <td className="py-2 text-right">{paraFormat(o.tutar)}</td>
-                  </tr>
-                ))}
+                <tr>
+                  <td className="py-1 font-semibold text-gray-600 w-1/3">Öğrenci Adı</td>
+                  <td className="py-1 font-bold text-navy">{ogrenci.ad_soyad}</td>
+                </tr>
+                <tr>
+                  <td className="py-1 font-semibold text-gray-600">Bilgilendirme Dönemi</td>
+                  <td className="py-1">{new Date(seciliAy + '-01').toLocaleDateString('tr-TR', { month: 'long', year: 'numeric' })}</td>
+                </tr>
               </tbody>
             </table>
-          </div>
-        </div>
-      </div>
-    </div>
-  )
-}
+
+            <table className="w-full text-sm border border-gray-200 rounded-lg overflow-hidden">
+              <thead>
+                <tr className="bg-navy text-white text-left">
