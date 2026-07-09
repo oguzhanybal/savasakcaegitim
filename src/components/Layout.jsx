@@ -20,6 +20,7 @@ export default function Layout() {
       { to: '/muhasebe', label: 'Muhasebe' },
       { to: '/siniflar', label: 'Sınıflar' },
       { to: '/program', label: 'Ders Programı' },
+      { to: '/yoklama', label: 'Yoklama' },
     )
   } else if (rol === 'ogretmen') {
     links.push(
