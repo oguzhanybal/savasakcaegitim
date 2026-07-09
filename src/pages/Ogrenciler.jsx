@@ -3,6 +3,7 @@ import { supabase } from '../lib/supabase'
 
 export default function Ogrenciler() {
   const [ogrenciler, setOgrenciler] = useState([])
+  const [veliler, setVeliler] = useState([])
   const [loading, setLoading] = useState(true)
   const [yeniAd, setYeniAd] = useState('')
   const [yeniTelefon, setYeniTelefon] = useState('')
@@ -11,11 +12,17 @@ export default function Ogrenciler() {
   const [duzenlenenId, setDuzenlenenId] = useState(null)
   const [duzenleAd, setDuzenleAd] = useState('')
   const [duzenleTelefon, setDuzenleTelefon] = useState('')
+  const [veliBaglanan, setVeliBaglanan] = useState(null)
+  const [seciliVeli, setSeciliVeli] = useState('')
 
   async function yukle() {
     setLoading(true)
-    const { data } = await supabase.from('ogrenciler').select('*').order('ad_soyad')
-    setOgrenciler(data || [])
+    const [o, v] = await Promise.all([
+      supabase.from('ogrenciler').select('*, veli:veli_profile_id(ad_soyad)').order('ad_soyad'),
+      supabase.from('profiles').select('*').eq('rol', 'veli').order('ad_soyad'),
+    ])
+    setOgrenciler(o.data || [])
+    setVeliler(v.data || [])
     setLoading(false)
   }
 
@@ -81,6 +88,24 @@ export default function Ogrenciler() {
     else alert('Hata: ' + error.message)
   }
 
+  function veliBaglamayaBasla(o) {
+    setVeliBaglanan(o.id)
+    setSeciliVeli(o.veli_profile_id || '')
+  }
+
+  async function veliBaglamayiKaydet(ogrenciId) {
+    const { error } = await supabase
+      .from('ogrenciler')
+      .update({ veli_profile_id: seciliVeli || null })
+      .eq('id', ogrenciId)
+    if (!error) {
+      setVeliBaglanan(null)
+      yukle()
+    } else {
+      alert('Hata: ' + error.message)
+    }
+  }
+
   const gosterilecekler = ogrenciler.filter((o) => {
     if (filtre === 'tumu') return true
     return (o.durum || 'aktif') === filtre
@@ -121,6 +146,13 @@ export default function Ogrenciler() {
         </button>
       </form>
 
+      {veliler.length === 0 && (
+        <div className="bg-yellow-50 border border-yellow-200 rounded-xl p-4 mb-4 text-sm text-yellow-800">
+          Henüz hiç veli hesabı yok. Bir veliyi öğrenciye bağlayabilmek için önce Supabase Dashboard'dan
+          o velinin giriş hesabını oluşturup (rol = 'veli' ile) profiles tablosuna eklemeniz gerekir.
+        </div>
+      )}
+
       <div className="flex gap-2 mb-4">
         <button
           onClick={() => setFiltre('aktif')}
@@ -154,20 +186,22 @@ export default function Ogrenciler() {
             <tr className="bg-navy text-white text-left">
               <th className="px-4 py-3 font-semibold">Ad Soyad</th>
               <th className="px-4 py-3 font-semibold">Telefon</th>
+              <th className="px-4 py-3 font-semibold">Veli</th>
               <th className="px-4 py-3 font-semibold">Durum</th>
               <th className="px-4 py-3 font-semibold text-right">İşlemler</th>
             </tr>
           </thead>
           <tbody>
             {loading && (
-              <tr><td colSpan={4} className="px-4 py-6 text-center text-gray-400">Yükleniyor...</td></tr>
+              <tr><td colSpan={5} className="px-4 py-6 text-center text-gray-400">Yükleniyor...</td></tr>
             )}
             {!loading && gosterilecekler.length === 0 && (
-              <tr><td colSpan={4} className="px-4 py-6 text-center text-gray-400">Bu filtrede öğrenci bulunamadı.</td></tr>
+              <tr><td colSpan={5} className="px-4 py-6 text-center text-gray-400">Bu filtrede öğrenci bulunamadı.</td></tr>
             )}
             {gosterilecekler.map((o, i) => {
               const durum = o.durum || 'aktif'
               const duzenleniyor = duzenlenenId === o.id
+              const veliBagli = veliBaglanan === o.id
 
               if (duzenleniyor) {
                 return (
@@ -188,6 +222,7 @@ export default function Ogrenciler() {
                       />
                     </td>
                     <td className="px-4 py-2 text-gray-400 text-xs">—</td>
+                    <td className="px-4 py-2 text-gray-400 text-xs">—</td>
                     <td className="px-4 py-2 text-right space-x-3 whitespace-nowrap">
                       <button onClick={() => duzenlemeyiKaydet(o.id)} className="text-green-600 text-sm font-semibold hover:underline">
                         Kaydet
@@ -200,10 +235,46 @@ export default function Ogrenciler() {
                 )
               }
 
+              if (veliBagli) {
+                return (
+                  <tr key={o.id} className="bg-purple-50">
+                    <td className="px-4 py-3 font-medium text-gray-800">{o.ad_soyad}</td>
+                    <td className="px-4 py-3 text-gray-500">{o.telefon || '—'}</td>
+                    <td className="px-4 py-2" colSpan={2}>
+                      <select
+                        value={seciliVeli}
+                        onChange={(e) => setSeciliVeli(e.target.value)}
+                        className="w-full px-2 py-1.5 border border-gray-300 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue"
+                      >
+                        <option value="">Bağlı veli yok</option>
+                        {veliler.map((v) => (
+                          <option key={v.id} value={v.id}>{v.ad_soyad}</option>
+                        ))}
+                      </select>
+                    </td>
+                    <td className="px-4 py-2 text-right space-x-3 whitespace-nowrap">
+                      <button onClick={() => veliBaglamayiKaydet(o.id)} className="text-green-600 text-sm font-semibold hover:underline">
+                        Kaydet
+                      </button>
+                      <button onClick={() => setVeliBaglanan(null)} className="text-gray-500 text-sm hover:underline">
+                        Vazgeç
+                      </button>
+                    </td>
+                  </tr>
+                )
+              }
+
               return (
                 <tr key={o.id} className={i % 2 ? 'bg-gray-50' : ''}>
                   <td className="px-4 py-3 font-medium text-gray-800">{o.ad_soyad}</td>
                   <td className="px-4 py-3 text-gray-500">{o.telefon || '—'}</td>
+                  <td className="px-4 py-3">
+                    {o.veli?.ad_soyad ? (
+                      <span className="text-gray-700">{o.veli.ad_soyad}</span>
+                    ) : (
+                      <span className="text-gray-400 text-xs">Bağlı değil</span>
+                    )}
+                  </td>
                   <td className="px-4 py-3">
                     <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${
                       durum === 'aktif' ? 'bg-green-100 text-green-700' : 'bg-gray-200 text-gray-600'
@@ -212,6 +283,9 @@ export default function Ogrenciler() {
                     </span>
                   </td>
                   <td className="px-4 py-3 text-right space-x-3 whitespace-nowrap">
+                    <button onClick={() => veliBaglamayaBasla(o)} className="text-purple-600 text-sm hover:underline">
+                      Veli Bağla
+                    </button>
                     <button onClick={() => duzenlemeyeBasla(o)} className="text-blue text-sm hover:underline">
                       Düzenle
                     </button>
@@ -236,7 +310,8 @@ export default function Ogrenciler() {
       </div>
       <p className="text-xs text-gray-400 mt-3">
         "Sil" işlemi geri alınamaz ve öğrencinin tüm ödeme/sözleşme/yoklama geçmişini de siler. Geçmiş yıldan
-        sadece ödeme takibi kalan öğrenciler için "Sil" yerine "Pasif Yap" kullanmanızı öneririz.
+        sadece ödeme takibi kalan öğrenciler için "Sil" yerine "Pasif Yap" kullanmanızı öneririz. "Veli Bağla" ile
+        bir veli hesabını bu öğrenciyle eşleştirebilirsiniz — veli giriş yaptığında sadece bu öğrencinin bilgilerini görür.
       </p>
     </div>
   )
