@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { Link } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 
 const EGITIM_YILLARI = ['2026-2027', '2027-2028', '2028-2029']
@@ -105,7 +106,11 @@ export default function Siniflar() {
             )}
             {siniflar.map((s, i) => (
               <tr key={s.id} className={i % 2 ? 'bg-gray-50' : ''}>
-                <td className="px-4 py-3 font-medium text-gray-800">{s.ad}</td>
+                <td className="px-4 py-3 font-medium">
+                  <Link to={`/siniflar/${s.id}`} className="text-blue hover:underline">
+                    {s.ad}
+                  </Link>
+                </td>
                 <td className="px-4 py-3 text-gray-500">{s.profiles?.ad_soyad || '—'}</td>
               </tr>
             ))}
@@ -113,7 +118,7 @@ export default function Siniflar() {
         </table>
       </div>
       <p className="text-xs text-gray-400 mt-3">
-        Not: Öğrencileri bir sınıfa eklemek ve ders saatlerini belirlemek için ileride "Sınıf Detayı" ekranını birlikte ekleyebiliriz.
+        Sınıf adına tıklayarak öğrenci ekleyebilir ve ders saatlerini belirleyebilirsiniz.
       </p>
     </div>
   )
