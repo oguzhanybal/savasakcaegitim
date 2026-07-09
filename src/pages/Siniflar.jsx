@@ -4,6 +4,10 @@ import { supabase } from '../lib/supabase'
 
 const EGITIM_YILLARI = ['2026-2027', '2027-2028', '2028-2029']
 
+function ogretmenEtiket(o) {
+  return o.brans ? `${o.ad_soyad} — ${o.brans}` : o.ad_soyad
+}
+
 export default function Siniflar() {
   const [siniflar, setSiniflar] = useState([])
   const [ogretmenler, setOgretmenler] = useState([])
@@ -18,8 +22,8 @@ export default function Siniflar() {
   async function yukle() {
     setLoading(true)
     const [s, o] = await Promise.all([
-      supabase.from('siniflar').select('*, profiles:ogretmen_profile_id(ad_soyad)').eq('egitim_yili', seciliYil).order('ad'),
-      supabase.from('profiles').select('*').eq('rol', 'ogretmen'),
+      supabase.from('siniflar').select('*, profiles:ogretmen_profile_id(ad_soyad, brans)').eq('egitim_yili', seciliYil).order('ad'),
+      supabase.from('profiles').select('*').eq('rol', 'ogretmen').order('ad_soyad'),
     ])
     setSiniflar(s.data || [])
     setOgretmenler(o.data || [])
@@ -121,7 +125,7 @@ export default function Siniflar() {
           >
             <option value="">Seçiniz (opsiyonel)</option>
             {ogretmenler.map((o) => (
-              <option key={o.id} value={o.id}>{o.ad_soyad}</option>
+              <option key={o.id} value={o.id}>{ogretmenEtiket(o)}</option>
             ))}
           </select>
         </div>
@@ -165,7 +169,7 @@ export default function Siniflar() {
                       >
                         <option value="">Yok</option>
                         {ogretmenler.map((o) => (
-                          <option key={o.id} value={o.id}>{o.ad_soyad}</option>
+                          <option key={o.id} value={o.id}>{ogretmenEtiket(o)}</option>
                         ))}
                       </select>
                     </td>
@@ -188,7 +192,20 @@ export default function Siniflar() {
                       {s.ad}
                     </Link>
                   </td>
-                  <td className="px-4 py-3 text-gray-500">{s.profiles?.ad_soyad || '—'}</td>
+                  <td className="px-4 py-3 text-gray-500">
+                    {s.profiles?.ad_soyad ? (
+                      <>
+                        {s.profiles.ad_soyad}
+                        {s.profiles.brans && (
+                          <span className="ml-2 px-2 py-0.5 rounded-full text-xs font-semibold bg-blue-100 text-blue-700">
+                            {s.profiles.brans}
+                          </span>
+                        )}
+                      </>
+                    ) : (
+                      '—'
+                    )}
+                  </td>
                   <td className="px-4 py-3 text-right space-x-3 whitespace-nowrap">
                     <button onClick={() => duzenlemeyeBasla(s)} className="text-blue text-sm hover:underline">
                       Düzenle
