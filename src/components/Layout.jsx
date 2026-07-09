@@ -21,12 +21,14 @@ export default function Layout() {
       { to: '/siniflar', label: 'Sınıflar' },
       { to: '/program', label: 'Ders Programı' },
       { to: '/yoklama', label: 'Yoklama' },
+      { to: '/yoklama-raporu', label: 'Yoklama Raporu' },
     )
   } else if (rol === 'ogretmen') {
     links.push(
       { to: '/', label: 'Panel', end: true },
       { to: '/program', label: 'Ders Programım' },
       { to: '/yoklama', label: 'Yoklama Al' },
+      { to: '/yoklama-raporu', label: 'Yoklama Raporu' },
     )
   } else if (rol === 'veli') {
     links.push(
