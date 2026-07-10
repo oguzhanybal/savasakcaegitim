@@ -19,6 +19,7 @@ export default function Layout() {
       { to: '/ogrenciler', label: 'Öğrenciler' },
       { to: '/ogretmenler', label: 'Öğretmenler' },
       { to: '/muhasebe', label: 'Muhasebe' },
+      { to: '/toplu-ekstre', label: 'Toplu Ekstre' },
       { to: '/siniflar', label: 'Sınıflar' },
       { to: '/program', label: 'Ders Programı' },
       { to: '/yoklama', label: 'Yoklama' },
