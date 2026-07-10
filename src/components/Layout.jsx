@@ -20,6 +20,7 @@ export default function Layout() {
       { to: '/', label: 'Panel', end: true },
       { to: '/ogrenciler', label: 'Öğrenciler' },
       { to: '/ogretmenler', label: 'Öğretmenler' },
+      { to: '/kullanici-olustur', label: 'Kullanıcı Oluştur' },
       { to: '/muhasebe', label: 'Muhasebe' },
       { to: '/toplu-ekstre', label: 'Toplu Ekstre' },
       { to: '/siniflar', label: 'Sınıflar' },
