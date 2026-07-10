@@ -132,7 +132,7 @@ export default function TopluEkstre() {
                     Ekstre
                   </Link>
                   {r.whatsappLink ? (
-                    
+                    <a
                       href={r.whatsappLink}
                       target="_blank"
                       rel="noreferrer"
