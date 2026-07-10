@@ -231,3 +231,50 @@ export function aylikBorcDurumHesapla(borc, tumAylikBorclar, odemeler) {
   if (borcTarihi < bugun) return 'gecikti'
   return 'bekliyor'
 }
+
+// ============================================================================
+// BİRE BİR DERS ÜCRETİ — Bir öğrencinin bire bir atamasına (öğretmen + ders
+// ücreti) göre alınan yoklama ('geldi') kayıtlarını, aylik_borclar tablosuyla
+// AYNI ŞEKİLDE ({kalem, tutar, donem}) sentetik satırlara çevirir. Bu sayede
+// Ekstre / Muhasebe / Toplu Ekstre'deki kümülatif borç motoru hiç değişmeden
+// "Bire Bir" borcunu otomatik hesaplar — elle "Aylık kalem borcu ekle" girişine
+// gerek kalmaz, her "Geldi" yoklaması otomatik borç olur.
+//
+// İki tür yoklama kaydı olabilir:
+//  - Haftalık atamaya bağlı (atama_id dolu): ücret atamadan okunur.
+//  - "Ek Ders" (atama_id boş): asıl öğrenci gelmediğinde başka bir öğrenciye
+//    verilen tek seferlik ders — ücret, öğrenci ve öğretmen doğrudan yoklama
+//    satırının kendi ogrenci_id/ogretmen_profile_id/tutar alanlarında durur.
+// ============================================================================
+export function bireBirBorclariOlustur(atamalar, yoklamalar) {
+  const atamaMap = new Map(atamalar.map((a) => [a.id, a]))
+  return yoklamalar
+    .filter((y) => y.durum === 'geldi')
+    .map((y) => {
+      const t = new Date(y.tarih)
+      const donem = new Date(t.getFullYear(), t.getMonth(), 1).toISOString().slice(0, 10)
+
+      if (y.atama_id) {
+        const atama = atamaMap.get(y.atama_id)
+        if (!atama) return null
+        return {
+          id: `bb-${y.id}`,
+          ogrenci_id: atama.ogrenci_id,
+          kalem: 'Bire Bir',
+          tutar: Number(atama.ders_ucreti) || 0,
+          donem,
+        }
+      }
+
+      // Ek ders — atamaya bağlı değil, ücret/öğrenci doğrudan yoklama satırında.
+      if (!y.ogrenci_id) return null
+      return {
+        id: `bb-${y.id}`,
+        ogrenci_id: y.ogrenci_id,
+        kalem: 'Bire Bir',
+        tutar: Number(y.tutar) || 0,
+        donem,
+      }
+    })
+    .filter(Boolean)
+}
