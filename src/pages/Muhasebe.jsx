@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../lib/AuthContext'
-import { taksitPlaniOlustur, aylikBorcDurumHesapla } from '../lib/ekstreHesap'
+import { taksitPlaniOlustur, aylikBorcDurumHesapla, gunAnahtari } from '../lib/ekstreHesap'
 
 function paraFormat(n) {
   return new Intl.NumberFormat('tr-TR', { style: 'currency', currency: 'TRY' }).format(n || 0)
@@ -500,6 +500,11 @@ export default function Muhasebe() {
           <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
             <div className="px-4 py-3 border-b border-gray-100 bg-gray-50">
               <h2 className="font-semibold text-gray-700">Ödeme Geçmişi</h2>
+              {isYonetici && (
+                <p className="text-xs text-gray-400 mt-0.5">
+                  "Makbuz Yazdır" o günün TÜM kalemlerini tek makbuzda toplu gösterir — her kalem için ayrı ayrı basmanıza gerek yok.
+                </p>
+              )}
             </div>
             <table className="w-full text-sm">
               <thead>
@@ -521,7 +526,11 @@ export default function Muhasebe() {
                     <td className="px-4 py-2 font-medium">{paraFormat(o.tutar)}</td>
                     {isYonetici && (
                       <td className="px-4 py-2 text-right">
-                        <Link to={`/makbuz/${o.id}`} target="_blank" className="text-blue text-sm hover:underline">
+                        <Link
+                          to={`/makbuz-gun/${seciliId}/${gunAnahtari(o.tarih)}`}
+                          target="_blank"
+                          className="text-blue text-sm hover:underline"
+                        >
                           Makbuz Yazdır
                         </Link>
                       </td>
