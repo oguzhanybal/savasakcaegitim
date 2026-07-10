@@ -19,6 +19,163 @@ function DurumRozeti({ durum }) {
   return <span className={`text-xs font-semibold px-2 py-1 rounded-full ${d.cls}`}>{d.text}</span>
 }
 
+const DAGITILAMAYAN_ETIKET = 'Dağıtılmamış'
+const DAGITILABILIR_KALEMLER = ['Okul', 'Kurs', 'Kitap', 'Bire Bir', 'Yemek', 'Kantin']
+
+// Veli genel bir tutar bıraktığında (hangi kaleme ne kadar gideceği henüz belli
+// değilken), bu tek satırı sonradan birden fazla kalem satırına böler.
+function OdemeDagitForm({ odeme, onTamam, onVazgec }) {
+  const [satirlar, setSatirlar] = useState([{ kalem: 'Okul', tutar: '' }])
+  const [gonderiliyor, setGonderiliyor] = useState(false)
+
+  const toplamDagitilan = satirlar.reduce((t, s) => t + (Number(s.tutar) || 0), 0)
+  const kalanTutar = Number(odeme.tutar) - toplamDagitilan
+
+  function satirGuncelle(i, alan, deger) {
+    setSatirlar((prev) => prev.map((s, idx) => (idx === i ? { ...s, [alan]: deger } : s)))
+  }
+  function satirEkle() {
+    setSatirlar((prev) => [...prev, { kalem: 'Okul', tutar: '' }])
+  }
+  function satirSil(i) {
+    setSatirlar((prev) => prev.filter((_, idx) => idx !== i))
+  }
+
+  async function kaydet() {
+    if (toplamDagitilan <= 0) {
+      alert('En az bir kaleme tutar girin.')
+      return
+    }
+    if (toplamDagitilan > Number(odeme.tutar) + 0.01) {
+      alert('Dağıtılan toplam, ödeme tutarını geçemez.')
+      return
+    }
+    setGonderiliyor(true)
+    const eklenecekler = satirlar
+      .filter((s) => Number(s.tutar) > 0)
+      .map((s) => ({
+        ogrenci_id: odeme.ogrenci_id,
+        tutar: Number(s.tutar),
+        kalem: s.kalem,
+        tarih: odeme.tarih,
+      }))
+    const { error: eklemeHatasi } = await supabase.from('odemeler').insert(eklenecekler)
+    if (eklemeHatasi) {
+      alert('Hata: ' + eklemeHatasi.message)
+      setGonderiliyor(false)
+      return
+    }
+    if (kalanTutar > 0.01) {
+      await supabase.from('odemeler').update({ tutar: kalanTutar }).eq('id', odeme.id)
+    } else {
+      await supabase.from('odemeler').delete().eq('id', odeme.id)
+    }
+    setGonderiliyor(false)
+    onTamam()
+  }
+
+  return (
+    <div className="p-4 bg-gray-50 border-t border-gray-100">
+      <p className="text-sm text-gray-600 mb-3">
+        Toplam {paraFormat(odeme.tutar)} — hangi kaleme ne kadar gideceğini gir.
+      </p>
+      {satirlar.map((s, i) => (
+        <div key={i} className="flex gap-2 items-center mb-2">
+          <select
+            value={s.kalem}
+            onChange={(e) => satirGuncelle(i, 'kalem', e.target.value)}
+            className="px-2 py-1.5 border border-gray-200 rounded-lg bg-white text-sm"
+          >
+            {DAGITILABILIR_KALEMLER.map((k) => <option key={k}>{k}</option>)}
+          </select>
+          <input
+            type="number"
+            min="0"
+            step="0.01"
+            value={s.tutar}
+            onChange={(e) => satirGuncelle(i, 'tutar', e.target.value)}
+            placeholder="0.00"
+            className="flex-1 px-2 py-1.5 border border-gray-200 rounded-lg text-sm"
+          />
+          {satirlar.length > 1 && (
+            <button type="button" onClick={() => satirSil(i)} className="text-red-500 text-xs hover:underline shrink-0">
+              Sil
+            </button>
+          )}
+        </div>
+      ))}
+      <button
+        type="button"
+        onClick={satirEkle}
+        className="text-navy text-xs font-semibold underline hover:no-underline mb-3"
+      >
+        + Satır Ekle
+      </button>
+      <p className={`text-sm font-medium mb-3 ${kalanTutar < -0.01 ? 'text-red-600' : 'text-gray-600'}`}>
+        Dağıtılan: {paraFormat(toplamDagitilan)} · Kalan: {paraFormat(kalanTutar)}
+      </p>
+      <div className="flex gap-2">
+        <button
+          type="button"
+          onClick={kaydet}
+          disabled={gonderiliyor || toplamDagitilan <= 0}
+          className="bg-orange text-white font-semibold px-4 py-2 rounded-lg text-sm hover:opacity-90 transition-opacity disabled:opacity-50"
+        >
+          {gonderiliyor ? 'Kaydediliyor...' : 'Kalemlere Dağıt'}
+        </button>
+        <button type="button" onClick={onVazgec} className="text-gray-500 text-sm px-3 py-2 hover:text-gray-700">
+          Vazgeç
+        </button>
+      </div>
+    </div>
+  )
+}
+
+function DagitilmamisOdemelerPaneli({ odemeler, onDegisti }) {
+  const [acikId, setAcikId] = useState(null)
+  const dagitilmamislar = odemeler.filter((o) => o.kalem === DAGITILAMAYAN_ETIKET)
+
+  if (dagitilmamislar.length === 0) return null
+
+  return (
+    <div className="bg-white rounded-2xl border border-orange/30 shadow-sm overflow-hidden mb-6">
+      <div className="px-4 py-3 border-b border-gray-100 bg-orange/10">
+        <h2 className="font-semibold text-orange">Dağıtılmamış Ödemeler</h2>
+        <p className="text-xs text-gray-500 mt-0.5">
+          Veli genel bir tutar bıraktığında buraya düşer. Makbuzu hemen kesebilirsiniz, hangi kaleme ne kadar
+          gideceğini sonradan burada belirleyin.
+        </p>
+      </div>
+      <div className="divide-y divide-gray-50">
+        {dagitilmamislar.map((o) => (
+          <div key={o.id}>
+            <div className="flex items-center justify-between px-4 py-3">
+              <div>
+                <p className="font-medium text-gray-800">{paraFormat(o.tutar)}</p>
+                <p className="text-xs text-gray-400">{new Date(o.tarih).toLocaleDateString('tr-TR')}</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setAcikId(acikId === o.id ? null : o.id)}
+                className="text-blue text-sm font-semibold hover:underline shrink-0"
+              >
+                {acikId === o.id ? 'Kapat' : 'Kalemlere Dağıt'}
+              </button>
+            </div>
+            {acikId === o.id && (
+              <OdemeDagitForm
+                odeme={o}
+                onTamam={() => { setAcikId(null); onDegisti() }}
+                onVazgec={() => setAcikId(null)}
+              />
+            )}
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
 function OdemeEkleForm({ ogrenciId, onEklendi }) {
   const [tutar, setTutar] = useState('')
   const [kalem, setKalem] = useState('Okul')
@@ -52,6 +209,7 @@ function OdemeEkleForm({ ogrenciId, onEklendi }) {
           onChange={(e) => setKalem(e.target.value)}
           className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue bg-white"
         >
+          <option value="Dağıtılmamış">Dağıtılmamış (Genel Ödeme)</option>
           <option>Okul</option>
           <option>Kurs</option>
           <option>Kitap</option>
@@ -59,6 +217,9 @@ function OdemeEkleForm({ ogrenciId, onEklendi }) {
           <option>Yemek</option>
           <option>Kantin</option>
         </select>
+        <p className="text-xs text-gray-400 mt-1">
+          Hangi kaleme gideceği belli değilse "Dağıtılmamış" seçip makbuzu hemen kesin, sonra aşağıdan dağıtın.
+        </p>
       </div>
       <div className="flex-1 min-w-[140px]">
         <label className="block text-sm font-medium text-gray-700 mb-1">Tutar (₺)</label>
@@ -374,6 +535,7 @@ export default function Muhasebe() {
                 <SozlesmeEkleForm ogrenciId={seciliId} onEklendi={veriyiYenile} />
                 <AylikBorcEkleForm ogrenciId={seciliId} onEklendi={veriyiYenile} />
               </div>
+              <DagitilmamisOdemelerPaneli odemeler={odemeler} onDegisti={veriyiYenile} />
             </>
           )}
 
