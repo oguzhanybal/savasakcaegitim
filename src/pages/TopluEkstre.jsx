@@ -100,8 +100,8 @@ export default function TopluEkstre() {
         </label>
       </div>
 
-      <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
-        <table className="w-full text-sm">
+      <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-x-auto">
+        <table className="w-full text-sm min-w-[720px]">
           <thead>
             <tr className="text-left text-gray-500 bg-gray-50">
               <th className="px-4 py-2 font-medium">Öğrenci</th>
