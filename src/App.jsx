@@ -12,6 +12,7 @@ import DersProgrami from './pages/DersProgrami'
 import Yoklama from './pages/Yoklama'
 import YoklamaRaporu from './pages/YoklamaRaporu'
 import Makbuz from './pages/Makbuz'
+import MakbuzGunluk from './pages/MakbuzGunluk'
 import Ekstre from './pages/Ekstre'
 import TopluEkstre from './pages/TopluEkstre'
 import KullaniciOlustur from './pages/KullaniciOlustur'
@@ -51,6 +52,14 @@ function AnaUygulama() {
           element={
             <Korumali izinliRoller={['yonetici']}>
               <Makbuz />
+            </Korumali>
+          }
+        />
+        <Route
+          path="/makbuz-gun/:ogrenciId/:tarih"
+          element={
+            <Korumali izinliRoller={['yonetici']}>
+              <MakbuzGunluk />
             </Korumali>
           }
         />
