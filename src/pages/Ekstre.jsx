@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { useParams, Link } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../lib/AuthContext'
-import { paraFormat, ogrenciSatirlariHesapla } from '../lib/ekstreHesap'
+import { paraFormat, ogrenciSatirlariHesapla, bireBirBorclariOlustur } from '../lib/ekstreHesap'
 
 export default function Ekstre() {
   const { ogrenciId } = useParams()
@@ -23,12 +23,25 @@ export default function Ekstre() {
       supabase.from('sozlesmeler').select('*').eq('ogrenci_id', ogrenciId),
       supabase.from('aylik_borclar').select('*').eq('ogrenci_id', ogrenciId),
       supabase.from('odemeler').select('*').eq('ogrenci_id', ogrenciId).order('tarih', { ascending: false }),
-    ]).then(([o, s, a, od]) => {
-      setOgrenci(o.data)
-      setSozlesmeler(s.data || [])
-      setAylikBorclar(a.data || [])
-      setOdemeler(od.data || [])
-      setLoading(false)
+      supabase.from('bire_bir_atamalari').select('*').eq('ogrenci_id', ogrenciId),
+      // "Ek Ders" (atamaya bağlı olmayan, tek seferlik bire bir) kayıtları
+      supabase.from('bire_bir_yoklama').select('*').eq('ogrenci_id', ogrenciId).is('atama_id', null),
+    ]).then(([o, s, a, od, bba, ekDersler]) => {
+      const atamalar = bba.data || []
+      const atamaIdleri = atamalar.map((x) => x.id)
+      const yoklamaSorgusu =
+        atamaIdleri.length > 0
+          ? supabase.from('bire_bir_yoklama').select('*').in('atama_id', atamaIdleri)
+          : Promise.resolve({ data: [] })
+      yoklamaSorgusu.then((by) => {
+        const tumYoklamalar = [...(by.data || []), ...(ekDersler.data || [])]
+        const bireBirBorclar = bireBirBorclariOlustur(atamalar, tumYoklamalar)
+        setOgrenci(o.data)
+        setSozlesmeler(s.data || [])
+        setAylikBorclar([...(a.data || []), ...bireBirBorclar])
+        setOdemeler(od.data || [])
+        setLoading(false)
+      })
     })
   }, [ogrenciId])
 
