@@ -13,6 +13,7 @@ import Yoklama from './pages/Yoklama'
 import YoklamaRaporu from './pages/YoklamaRaporu'
 import Makbuz from './pages/Makbuz'
 import Ekstre from './pages/Ekstre'
+import TopluEkstre from './pages/TopluEkstre'
 
 function Yukleniyor() {
   return (
@@ -91,6 +92,14 @@ function AnaUygulama() {
             element={
               <Korumali izinliRoller={['yonetici', 'veli']}>
                 <Muhasebe />
+              </Korumali>
+            }
+          />
+          <Route
+            path="toplu-ekstre"
+            element={
+              <Korumali izinliRoller={['yonetici']}>
+                <TopluEkstre />
               </Korumali>
             }
           />
