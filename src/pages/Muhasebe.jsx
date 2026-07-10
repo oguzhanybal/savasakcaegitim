@@ -2,9 +2,21 @@ import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../lib/AuthContext'
+import { taksitPlaniOlustur, aylikBorcDurumHesapla } from '../lib/ekstreHesap'
 
 function paraFormat(n) {
   return new Intl.NumberFormat('tr-TR', { style: 'currency', currency: 'TRY' }).format(n || 0)
+}
+
+const DURUM_ETIKET = {
+  odendi: { text: 'Ödendi', cls: 'bg-green-100 text-green-700' },
+  gecikti: { text: 'Gecikti', cls: 'bg-red-100 text-red-700' },
+  bekliyor: { text: 'Bekliyor', cls: 'bg-gray-100 text-gray-600' },
+}
+
+function DurumRozeti({ durum }) {
+  const d = DURUM_ETIKET[durum] || DURUM_ETIKET.bekliyor
+  return <span className={`text-xs font-semibold px-2 py-1 rounded-full ${d.cls}`}>{d.text}</span>
 }
 
 function OdemeEkleForm({ ogrenciId, onEklendi }) {
@@ -413,6 +425,49 @@ export default function Muhasebe() {
             </table>
           </div>
 
+          {sozlesmeler.length > 0 && (
+            <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden mb-6">
+              <div className="px-4 py-3 border-b border-gray-100 bg-gray-50">
+                <h2 className="font-semibold text-gray-700">Ödeme Planı (Taksit Taksit)</h2>
+                <p className="text-xs text-gray-400 mt-0.5">Her sözleşmenin tüm taksitleri, vade tarihi ve durumuyla.</p>
+              </div>
+              <div className="divide-y divide-gray-50">
+                {sozlesmeler.map((s) => {
+                  const taksitler = taksitPlaniOlustur(s, odemeler)
+                  if (taksitler.length === 0) return null
+                  return (
+                    <div key={s.id} className="p-4">
+                      <p className="font-semibold text-gray-800 mb-2">{s.kalem}</p>
+                      <table className="w-full text-sm">
+                        <thead>
+                          <tr className="text-left text-gray-500">
+                            <th className="px-2 py-1 font-medium">Taksit</th>
+                            <th className="px-2 py-1 font-medium">Vade Tarihi</th>
+                            <th className="px-2 py-1 font-medium">Tutar</th>
+                            <th className="px-2 py-1 font-medium">Durum</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {taksitler.map((t) => (
+                            <tr
+                              key={t.taksitNo}
+                              className={`border-t border-gray-50 ${t.durum === 'gecikti' ? 'bg-red-50' : ''}`}
+                            >
+                              <td className="px-2 py-1.5">{t.taksitNo}/{s.taksit_sayisi}</td>
+                              <td className="px-2 py-1.5">{t.vade.toLocaleDateString('tr-TR', { day: '2-digit', month: 'long', year: 'numeric' })}</td>
+                              <td className="px-2 py-1.5">{paraFormat(t.tutar)}</td>
+                              <td className="px-2 py-1.5"><DurumRozeti durum={t.durum} /></td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )
+                })}
+              </div>
+            </div>
+          )}
+
           <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden mb-6">
             <div className="px-4 py-3 border-b border-gray-100 bg-gray-50">
               <h2 className="font-semibold text-gray-700">Aylık Kalem Borçları (Bire Bir / Yemek / Kantin)</h2>
@@ -423,17 +478,19 @@ export default function Muhasebe() {
                   <th className="px-4 py-2 font-medium">Kalem</th>
                   <th className="px-4 py-2 font-medium">Dönem</th>
                   <th className="px-4 py-2 font-medium">Tutar</th>
+                  <th className="px-4 py-2 font-medium">Durum</th>
                 </tr>
               </thead>
               <tbody>
                 {aylikBorclar.length === 0 && (
-                  <tr><td colSpan={3} className="px-4 py-4 text-center text-gray-400">Aylık kalem borcu bulunamadı.</td></tr>
+                  <tr><td colSpan={4} className="px-4 py-4 text-center text-gray-400">Aylık kalem borcu bulunamadı.</td></tr>
                 )}
                 {aylikBorclar.map((a) => (
-                  <tr key={a.id} className="border-t border-gray-50">
+                  <tr key={a.id} className={`border-t border-gray-50 ${aylikBorcDurumHesapla(a, aylikBorclar, odemeler) === 'gecikti' ? 'bg-red-50' : ''}`}>
                     <td className="px-4 py-2 font-medium text-gray-800">{a.kalem}</td>
                     <td className="px-4 py-2">{new Date(a.donem).toLocaleDateString('tr-TR', { month: 'long', year: 'numeric' })}</td>
                     <td className="px-4 py-2">{paraFormat(a.tutar)}</td>
+                    <td className="px-4 py-2"><DurumRozeti durum={aylikBorcDurumHesapla(a, aylikBorclar, odemeler)} /></td>
                   </tr>
                 ))}
               </tbody>
