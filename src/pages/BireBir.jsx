@@ -305,12 +305,12 @@ function AtamaListesi({ atamalar, ogretmenler, dersProgrami, onDegisti }) {
   }
 
   return (
-    <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden mb-6">
+    <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-x-auto mb-6">
       <div className="px-4 py-3 border-b border-gray-100 bg-gray-50">
         <h2 className="font-semibold text-gray-700">Atamalar</h2>
         <p className="text-xs text-gray-400 mt-0.5">Öğretmen yanlış girildiyse "Düzenle" ile gün/saat/öğretmen/ücreti düzeltebilirsiniz.</p>
       </div>
-      <table className="w-full text-sm">
+      <table className="w-full text-sm min-w-[760px]">
         <thead>
           <tr className="text-left text-gray-500">
             <th className="px-4 py-2 font-medium">Öğrenci</th>
@@ -564,11 +564,11 @@ function EkDerslerListesi({ yoklamalar, ogrenciAdMap, ogretmenAdMap, onDegisti }
   if (ekDersler.length === 0) return null
 
   return (
-    <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden mb-6">
+    <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-x-auto mb-6">
       <div className="px-4 py-3 border-b border-gray-100 bg-gray-50">
         <h2 className="font-semibold text-gray-700">Son Ek Dersler</h2>
       </div>
-      <table className="w-full text-sm">
+      <table className="w-full text-sm min-w-[560px]">
         <thead>
           <tr className="text-left text-gray-500">
             <th className="px-4 py-2 font-medium">Tarih</th>
