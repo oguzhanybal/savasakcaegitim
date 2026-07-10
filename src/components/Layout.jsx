@@ -55,7 +55,7 @@ export default function Layout() {
           <div className="bg-white rounded-lg p-1 shrink-0">
             <img src="/logo.png" alt="Savaş Akça Eğitim" className="w-7 h-7 object-contain" />
           </div>
-          <span className="font-bold truncate">Savaş Akça</span>
+          <span className="font-bold truncate">Savaş Akça Eğitim</span>
         </div>
         <button
           onClick={() => setMenuAcik(true)}
@@ -87,7 +87,7 @@ export default function Layout() {
           <div className="bg-white rounded-xl p-1.5 mb-2">
             <img src="/logo.png" alt="Savaş Akça Eğitim" className="w-14 h-14 object-contain" />
           </div>
-          <p className="font-bold text-lg leading-tight">Savaş Akça</p>
+          <p className="font-bold text-lg leading-tight">Savaş Akça Eğitim</p>
           <span className="inline-block text-[11px] font-semibold text-white/80 bg-white/10 px-2 py-0.5 rounded-full mt-1.5">
             {ROL_ETIKET[rol] || ''}
           </span>
