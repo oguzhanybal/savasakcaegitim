@@ -30,9 +30,7 @@ export default function Login() {
     <div className="min-h-screen flex items-center justify-center bg-cream px-4">
       <div className="w-full max-w-sm">
         <div className="text-center mb-8">
-          <div className="w-14 h-14 bg-navy rounded-2xl mx-auto mb-4 flex items-center justify-center">
-            <span className="text-white font-bold text-xl">SA</span>
-          </div>
+          <img src="/logo.png" alt="Savaş Akça Eğitim" className="w-28 h-28 mx-auto mb-4 object-contain" />
           <h1 className="text-2xl font-bold text-navy">Savaş Akça Eğitim</h1>
           <p className="text-gray-500 text-sm mt-1">Sisteme giriş yapın</p>
         </div>
