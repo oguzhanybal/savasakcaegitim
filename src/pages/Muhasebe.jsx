@@ -460,8 +460,7 @@ export default function Muhasebe() {
   useEffect(() => {
     supabase.from('ogrenciler').select('*').order('ad_soyad').then(({ data }) => {
       setOgrenciler(data || [])
-      if (data && data.length > 0) setSeciliId(data[0].id)
-      else setLoading(false)
+      setLoading(false)
     })
   }, [])
 
@@ -515,6 +514,7 @@ export default function Muhasebe() {
             onChange={(e) => setSeciliId(e.target.value)}
             className="w-full max-w-sm px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue bg-white"
           >
+            <option value="">— Öğrenci Seçin —</option>
             {ogrenciler.map((o) => (
               <option key={o.id} value={o.id}>{o.ad_soyad}</option>
             ))}
@@ -524,6 +524,10 @@ export default function Muhasebe() {
 
       {ogrenciler.length === 0 && !loading && (
         <p className="text-gray-400">Görüntülenecek öğrenci kaydı bulunamadı.</p>
+      )}
+
+      {isYonetici && !seciliId && ogrenciler.length > 0 && !loading && (
+        <p className="text-gray-400">Devam etmek için yukarıdan bir öğrenci seçin.</p>
       )}
 
       {seciliOgrenci && (
