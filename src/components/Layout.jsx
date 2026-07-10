@@ -44,6 +44,7 @@ function menuOlustur(rol) {
         ogeler: [
           { to: '/yoklama', label: 'Yoklama Al' },
           { to: '/yoklama-raporu', label: 'Yoklama Raporu' },
+          { to: '/bire-bir', label: 'Bire Bir' },
         ],
       },
     ]
@@ -54,6 +55,7 @@ function menuOlustur(rol) {
       { tur: 'link', to: '/program', label: 'Ders Programım' },
       { tur: 'link', to: '/yoklama', label: 'Yoklama Al' },
       { tur: 'link', to: '/yoklama-raporu', label: 'Yoklama Raporu' },
+      { tur: 'link', to: '/bire-bir', label: 'Bire Bir Derslerim' },
     ]
   }
   if (rol === 'veli') {
