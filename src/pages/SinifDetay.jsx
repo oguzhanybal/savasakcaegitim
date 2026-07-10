@@ -3,6 +3,19 @@ import { useParams, Link } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 
 const GUNLER = ['', 'Pazartesi', 'Salı', 'Çarşamba', 'Perşembe', 'Cuma', 'Cumartesi', 'Pazar']
+const GUNLER_KISA = ['', 'Pzt', 'Sal', 'Çar', 'Per', 'Cum', 'Cmt', 'Paz']
+const DERS_ONERILERI = [
+  'Matematik', 'Türk Dili ve Edebiyatı', 'Fizik', 'Kimya', 'Biyoloji', 'Tarih', 'Coğrafya',
+  'Felsefe', 'İngilizce', 'Din Kültürü ve Ahlak Bilgisi', 'Beden Eğitimi', 'Fen Bilimleri', 'Sosyal Bilgiler',
+]
+
+function saatKisalt(s) {
+  return s ? s.slice(0, 5) : s
+}
+
+function araliklarCakisiyorMu(b1, s1, b2, s2) {
+  return saatKisalt(b1) < saatKisalt(s2) && saatKisalt(b2) < saatKisalt(s1)
+}
 
 export default function SinifDetay() {
   const { sinifId } = useParams()
@@ -10,25 +23,39 @@ export default function SinifDetay() {
   const [kayitliOgrenciler, setKayitliOgrenciler] = useState([])
   const [tumOgrenciler, setTumOgrenciler] = useState([])
   const [program, setProgram] = useState([])
+  const [tumProgram, setTumProgram] = useState([]) // çakışma kontrolü için tüm sınıfların programı
+  const [ogretmenler, setOgretmenler] = useState([])
   const [seciliOgrenci, setSeciliOgrenci] = useState('')
   const [seciliGunler, setSeciliGunler] = useState([])
   const [baslangic, setBaslangic] = useState('09:00')
   const [bitis, setBitis] = useState('10:00')
+  const [dersAdi, setDersAdi] = useState('')
+  const [dersOgretmen, setDersOgretmen] = useState('')
+  const [hata, setHata] = useState('')
   const [ekleniyor, setEkleniyor] = useState(false)
   const [loading, setLoading] = useState(true)
 
   async function yukle() {
     setLoading(true)
-    const [s, so, o, p] = await Promise.all([
+    const [s, so, o, p, tp, og] = await Promise.all([
       supabase.from('siniflar').select('*').eq('id', sinifId).single(),
       supabase.from('sinif_ogrenciler').select('ogrenciler(id, ad_soyad)').eq('sinif_id', sinifId),
       supabase.from('ogrenciler').select('*').order('ad_soyad'),
-      supabase.from('ders_programi').select('*').eq('sinif_id', sinifId).order('gun').order('baslangic_saat'),
+      supabase
+        .from('ders_programi')
+        .select('*, profiles:ogretmen_profile_id(ad_soyad)')
+        .eq('sinif_id', sinifId)
+        .order('gun')
+        .order('baslangic_saat'),
+      supabase.from('ders_programi').select('*').order('gun'),
+      supabase.from('profiles').select('*').eq('rol', 'ogretmen').order('ad_soyad'),
     ])
     setSinif(s.data)
     setKayitliOgrenciler((so.data || []).map((r) => r.ogrenciler).filter(Boolean))
     setTumOgrenciler(o.data || [])
     setProgram(p.data || [])
+    setTumProgram(tp.data || [])
+    setOgretmenler(og.data || [])
     setLoading(false)
   }
 
@@ -65,18 +92,51 @@ export default function SinifDetay() {
     setSeciliGunler((prev) => (prev.includes(g) ? prev.filter((x) => x !== g) : [...prev, g]))
   }
 
+  // Seçilen her gün için: aynı sınıfta ya da aynı öğretmende çakışma var mı?
+  function cakismaBul(gun) {
+    for (const p of tumProgram) {
+      if (p.gun !== gun) continue
+      const ayniSinif = p.sinif_id === sinifId
+      const ayniOgretmen = !!dersOgretmen && p.ogretmen_profile_id === dersOgretmen
+      if (!ayniSinif && !ayniOgretmen) continue
+      if (!araliklarCakisiyorMu(baslangic, bitis, p.baslangic_saat, p.bitis_saat)) continue
+      return { tur: ayniSinif ? 'sinif' : 'ogretmen', gun }
+    }
+    return null
+  }
+
   async function dersSaatiEkle(e) {
     e.preventDefault()
+    setHata('')
     if (seciliGunler.length === 0) {
-      alert('Lütfen en az bir gün seçin.')
+      setHata('Lütfen en az bir gün seçin.')
       return
     }
+    if (baslangic >= bitis) {
+      setHata('Başlangıç saati bitiş saatinden önce olmalı.')
+      return
+    }
+
+    for (const g of seciliGunler) {
+      const cakisma = cakismaBul(g)
+      if (cakisma) {
+        setHata(
+          cakisma.tur === 'ogretmen'
+            ? `Çakışma var: bu öğretmenin ${GUNLER[g]} günü ${saatKisalt(baslangic)}–${saatKisalt(bitis)} arasında zaten başka bir dersi var.`
+            : `Çakışma var: bu sınıfın ${GUNLER[g]} günü ${saatKisalt(baslangic)}–${saatKisalt(bitis)} arasında zaten başka bir dersi var.`
+        )
+        return
+      }
+    }
+
     setEkleniyor(true)
     const kayitlar = seciliGunler.map((g) => ({
       sinif_id: sinifId,
       gun: g,
       baslangic_saat: baslangic,
       bitis_saat: bitis,
+      ders_adi: dersAdi.trim() || null,
+      ogretmen_profile_id: dersOgretmen || null,
     }))
     const { error } = await supabase.from('ders_programi').insert(kayitlar)
     setEkleniyor(false)
@@ -84,7 +144,7 @@ export default function SinifDetay() {
       setSeciliGunler([])
       yukle()
     } else {
-      alert('Hata: ' + error.message)
+      setHata('Hata: ' + error.message)
     }
   }
 
@@ -144,6 +204,35 @@ export default function SinifDetay() {
           <h2 className="font-semibold text-gray-700 mb-3">Ders Saatleri</h2>
 
           <form onSubmit={dersSaatiEkle} className="bg-white rounded-2xl border border-gray-100 shadow-sm p-4 mb-4 space-y-3">
+            <div className="grid grid-cols-2 gap-2">
+              <div>
+                <label className="block text-xs font-medium text-gray-500 mb-1">Ders Adı</label>
+                <input
+                  list="ders-onerileri"
+                  value={dersAdi}
+                  onChange={(e) => setDersAdi(e.target.value)}
+                  placeholder="örn. Matematik"
+                  className="w-full px-2 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue text-sm"
+                />
+                <datalist id="ders-onerileri">
+                  {DERS_ONERILERI.map((d) => <option key={d} value={d} />)}
+                </datalist>
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-500 mb-1">Öğretmen</label>
+                <select
+                  value={dersOgretmen}
+                  onChange={(e) => setDersOgretmen(e.target.value)}
+                  className="w-full px-2 py-2 border border-gray-200 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-blue text-sm"
+                >
+                  <option value="">Seçiniz...</option>
+                  {ogretmenler.map((o) => (
+                    <option key={o.id} value={o.id}>{o.brans ? `${o.ad_soyad} — ${o.brans}` : o.ad_soyad}</option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">Günler (birden fazla seçebilirsiniz)</label>
               <div className="flex flex-wrap gap-2">
@@ -161,7 +250,7 @@ export default function SinifDetay() {
                           : 'bg-white text-gray-600 border-gray-200 hover:border-navy'
                       }`}
                     >
-                      {g.slice(0, 3)}
+                      {GUNLER_KISA[gunNo]}
                     </button>
                   )
                 })}
@@ -187,6 +276,7 @@ export default function SinifDetay() {
                 />
               </div>
             </div>
+            {hata && <p className="text-red-600 text-sm">{hata}</p>}
             <button
               type="submit"
               disabled={ekleniyor}
@@ -206,10 +296,13 @@ export default function SinifDetay() {
             )}
             {program.map((p, i) => (
               <div key={p.id} className={`px-4 py-3 flex items-center justify-between ${i % 2 ? 'bg-gray-50' : ''}`}>
-                <span className="font-medium text-gray-800">
-                  {GUNLER[p.gun]} · {p.baslangic_saat?.slice(0, 5)} – {p.bitis_saat?.slice(0, 5)}
-                </span>
-                <button onClick={() => dersSaatiSil(p.id)} className="text-red-500 text-sm hover:underline">
+                <div>
+                  <p className="font-medium text-gray-800">
+                    {p.ders_adi || 'Ders'} <span className="font-normal text-gray-400">— {GUNLER[p.gun]} · {saatKisalt(p.baslangic_saat)}–{saatKisalt(p.bitis_saat)}</span>
+                  </p>
+                  {p.profiles?.ad_soyad && <p className="text-xs text-gray-400">{p.profiles.ad_soyad}</p>}
+                </div>
+                <button onClick={() => dersSaatiSil(p.id)} className="text-red-500 text-sm hover:underline shrink-0">
                   Sil
                 </button>
               </div>

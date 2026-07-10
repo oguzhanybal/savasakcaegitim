@@ -113,11 +113,11 @@ export default function Siniflar() {
             value={yeniAd}
             onChange={(e) => setYeniAd(e.target.value)}
             className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue"
-            placeholder="örn. 8. Sınıf Matematik"
+            placeholder="örn. 12-Sayısal"
           />
         </div>
         <div className="flex-1 min-w-[180px]">
-          <label className="block text-sm font-medium text-gray-700 mb-1">Öğretmen</label>
+          <label className="block text-sm font-medium text-gray-700 mb-1">Sınıf Öğretmeni (opsiyonel)</label>
           <select
             value={yeniOgretmen}
             onChange={(e) => setYeniOgretmen(e.target.value)}
@@ -139,7 +139,7 @@ export default function Siniflar() {
           <thead>
             <tr className="bg-navy text-white text-left">
               <th className="px-4 py-3 font-semibold">Sınıf Adı</th>
-              <th className="px-4 py-3 font-semibold">Öğretmen</th>
+              <th className="px-4 py-3 font-semibold">Sınıf Öğretmeni</th>
               <th className="px-4 py-3 font-semibold text-right">İşlemler</th>
             </tr>
           </thead>
@@ -221,7 +221,7 @@ export default function Siniflar() {
         </table>
       </div>
       <p className="text-xs text-gray-400 mt-3">
-        Sınıf adına tıklayarak öğrenci ekleyebilir ve ders saatlerini belirleyebilirsiniz. "Sil" işlemi geri alınamaz.
+        Sınıf adına tıklayarak öğrenci ekleyebilir ve o sınıfın haftalık ders saatlerini (ders adı + öğretmen ile) belirleyebilirsiniz. "Sil" işlemi geri alınamaz.
       </p>
     </div>
   )
