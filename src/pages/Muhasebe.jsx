@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../lib/AuthContext'
-import { taksitPlaniOlustur, aylikBorcDurumHesapla, gunAnahtari } from '../lib/ekstreHesap'
+import { taksitPlaniOlustur, aylikBorcDurumHesapla, gunAnahtari, bireBirBorclariOlustur } from '../lib/ekstreHesap'
 
 function paraFormat(n) {
   return new Intl.NumberFormat('tr-TR', { style: 'currency', currency: 'TRY' }).format(n || 0)
@@ -353,7 +353,7 @@ function SozlesmeEkleForm({ ogrenciId, onEklendi }) {
 }
 
 function AylikBorcEkleForm({ ogrenciId, onEklendi }) {
-  const [kalem, setKalem] = useState('Bire Bir')
+  const [kalem, setKalem] = useState('Yemek')
   const [tutar, setTutar] = useState('')
   const [donem, setDonem] = useState(() => new Date().toISOString().slice(0, 7))
   const [gonderiliyor, setGonderiliyor] = useState(false)
@@ -400,10 +400,12 @@ function AylikBorcEkleForm({ ogrenciId, onEklendi }) {
             onChange={(e) => setKalem(e.target.value)}
             className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue bg-white"
           >
-            <option>Bire Bir</option>
             <option>Yemek</option>
             <option>Kantin</option>
           </select>
+          <p className="text-xs text-gray-400 mt-1">
+            "Bire Bir" borcu artık buradan girilmiyor — Bire Bir sayfasında yoklama alındıkça otomatik eklenir.
+          </p>
         </div>
         <div className="flex-1 min-w-[140px]">
           <label className="block text-sm font-medium text-gray-700 mb-1">Tutar (₺)</label>
@@ -471,11 +473,24 @@ export default function Muhasebe() {
       supabase.from('sozlesmeler').select('*').eq('ogrenci_id', seciliId),
       supabase.from('aylik_borclar').select('*').eq('ogrenci_id', seciliId).order('donem', { ascending: false }),
       supabase.from('odemeler').select('*').eq('ogrenci_id', seciliId).order('tarih', { ascending: false }),
-    ]).then(([s, a, o]) => {
-      setSozlesmeler(s.data || [])
-      setAylikBorclar(a.data || [])
-      setOdemeler(o.data || [])
-      setLoading(false)
+      supabase.from('bire_bir_atamalari').select('*').eq('ogrenci_id', seciliId),
+      // "Ek Ders" (atamaya bağlı olmayan, tek seferlik bire bir) kayıtları
+      supabase.from('bire_bir_yoklama').select('*').eq('ogrenci_id', seciliId).is('atama_id', null),
+    ]).then(([s, a, o, bba, ekDersler]) => {
+      const atamalar = bba.data || []
+      const atamaIdleri = atamalar.map((x) => x.id)
+      const yoklamaSorgusu =
+        atamaIdleri.length > 0
+          ? supabase.from('bire_bir_yoklama').select('*').in('atama_id', atamaIdleri)
+          : Promise.resolve({ data: [] })
+      yoklamaSorgusu.then((by) => {
+        const tumYoklamalar = [...(by.data || []), ...(ekDersler.data || [])]
+        const bireBirBorclar = bireBirBorclariOlustur(atamalar, tumYoklamalar)
+        setSozlesmeler(s.data || [])
+        setAylikBorclar([...(a.data || []), ...bireBirBorclar])
+        setOdemeler(o.data || [])
+        setLoading(false)
+      })
     })
   }
 
