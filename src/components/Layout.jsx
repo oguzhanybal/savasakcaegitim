@@ -48,7 +48,10 @@ export default function Layout() {
   return (
     <div className="min-h-screen bg-cream flex">
       <aside className="w-60 bg-navy text-white flex flex-col shrink-0">
-        <div className="p-5 border-b border-white/10">
+        <div className="p-5 border-b border-white/10 flex flex-col items-center text-center">
+          <div className="bg-white rounded-xl p-1.5 mb-2">
+            <img src="/logo.png" alt="Savaş Akça Eğitim" className="w-14 h-14 object-contain" />
+          </div>
           <p className="font-bold text-lg leading-tight">Savaş Akça</p>
           <p className="text-xs text-white/60">{ROL_ETIKET[rol] || ''}</p>
         </div>
