@@ -577,11 +577,11 @@ export default function Muhasebe() {
             </div>
           </div>
 
-          <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden mb-6">
+          <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-x-auto mb-6">
             <div className="px-4 py-3 border-b border-gray-100 bg-gray-50">
               <h2 className="font-semibold text-gray-700">Sözleşmeler</h2>
             </div>
-            <table className="w-full text-sm">
+            <table className="w-full text-sm min-w-[520px]">
               <thead>
                 <tr className="text-left text-gray-500">
                   <th className="px-4 py-2 font-medium">Kalem</th>
@@ -617,9 +617,9 @@ export default function Muhasebe() {
                   const taksitler = taksitPlaniOlustur(s, odemeler)
                   if (taksitler.length === 0) return null
                   return (
-                    <div key={s.id} className="p-4">
+                    <div key={s.id} className="p-4 overflow-x-auto">
                       <p className="font-semibold text-gray-800 mb-2">{s.kalem}</p>
-                      <table className="w-full text-sm">
+                      <table className="w-full text-sm min-w-[440px]">
                         <thead>
                           <tr className="text-left text-gray-500">
                             <th className="px-2 py-1 font-medium">Taksit</th>
@@ -649,11 +649,11 @@ export default function Muhasebe() {
             </div>
           )}
 
-          <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden mb-6">
+          <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-x-auto mb-6">
             <div className="px-4 py-3 border-b border-gray-100 bg-gray-50">
               <h2 className="font-semibold text-gray-700">Aylık Kalem Borçları (Bire Bir / Yemek / Kantin)</h2>
             </div>
-            <table className="w-full text-sm">
+            <table className="w-full text-sm min-w-[480px]">
               <thead>
                 <tr className="text-left text-gray-500">
                   <th className="px-4 py-2 font-medium">Kalem</th>
@@ -678,7 +678,7 @@ export default function Muhasebe() {
             </table>
           </div>
 
-          <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+          <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-x-auto">
             <div className="px-4 py-3 border-b border-gray-100 bg-gray-50">
               <h2 className="font-semibold text-gray-700">Ödeme Geçmişi</h2>
               {isYonetici && (
@@ -687,7 +687,7 @@ export default function Muhasebe() {
                 </p>
               )}
             </div>
-            <table className="w-full text-sm">
+            <table className="w-full text-sm min-w-[480px]">
               <thead>
                 <tr className="text-left text-gray-500">
                   <th className="px-4 py-2 font-medium">Tarih</th>
