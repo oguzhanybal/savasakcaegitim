@@ -2,138 +2,7 @@ import { useEffect, useState } from 'react'
 import { useParams, Link } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../lib/AuthContext'
-
-function paraFormat(n) {
-  return new Intl.NumberFormat('tr-TR', { style: 'currency', currency: 'TRY' }).format(n || 0)
-}
-
-// ---- Ay yardımcıları ("YYYY-MM" string'i ile {yil, ay} arasında dönüşüm) ----
-function ayCoz(ayStr) {
-  const [yil, ay] = ayStr.split('-').map(Number)
-  return { yil, ay }
-}
-
-function ayEkle(ayStr, adet) {
-  const { yil, ay } = ayCoz(ayStr)
-  const toplam = yil * 12 + (ay - 1) + adet
-  return { yil: Math.floor(toplam / 12), ay: (toplam % 12) + 1 }
-}
-
-function ayIndexOf(ay) {
-  return ay.yil * 12 + ay.ay
-}
-
-function ayFarki(hedef, ilk) {
-  return ayIndexOf(hedef) - ayIndexOf(ilk)
-}
-
-// Bir ödemenin "kalem" alanı tam eşleşme değilse de (ör. "Okul - Devreden Ödeme")
-// ilgili kalemle başlıyorsa sayılır — devreden (eski sistemden gelen) ödemeler de
-// borç hesabına dahil edilsin diye.
-function odemeToplamKalem(odemeler, kalemAdi, hedefAy) {
-  const hedefIndex = ayIndexOf(hedefAy)
-  return odemeler
-    .filter((o) => o.kalem && o.kalem.startsWith(kalemAdi))
-    .filter((o) => {
-      const t = new Date(o.tarih)
-      return ayIndexOf({ yil: t.getFullYear(), ay: t.getMonth() + 1 }) <= hedefIndex
-    })
-    .reduce((t, o) => t + Number(o.tutar), 0)
-}
-
-// ============================================================================
-// SÖZLEŞME KALEMLERİ (Okul / Kurs / Kitap) — Excel'deki _HESAP_EKSTRE mantığı:
-// Her ay için "o aya kadar vadesi gelmiş TOPLAM borç" ile "o aya kadar ÖDENMİŞ
-// TOPLAM" karşılaştırılır (tek bir ayın taksiti değil, kümülatif bakiye).
-// Böylece ödenmeyen taksit otomatik olarak bir sonraki aya da taşınır.
-// ============================================================================
-function sozlesmeKalemHesapla(sozlesme, odemeler, seciliAy) {
-  const taksitSayisi = Number(sozlesme.taksit_sayisi) || 0
-  const toplamTutar = Number(sozlesme.toplam_tutar) || 0
-  if (!sozlesme.ilk_taksit_tarihi || taksitSayisi <= 0) return null
-
-  const ilkTarih = new Date(sozlesme.ilk_taksit_tarihi)
-  const ilk = { yil: ilkTarih.getFullYear(), ay: ilkTarih.getMonth() + 1 }
-  const hedef = ayEkle(seciliAy, 1) // vade ayı: seçili ay + 1 (Excel: EOMONTH(B4,1))
-  const simdi = ayEkle(seciliAy, 0) // seçili ayın kendisi (Excel: EOMONTH(B4,0))
-
-  const taksitTutari = toplamTutar / taksitSayisi
-
-  // G: hedef aya kadar vadesi gelmiş taksit sayısı (kümülatif, taksit_sayisi ile sınırlı)
-  const G = Math.max(0, Math.min(taksitSayisi, ayFarki(hedef, ilk) + 1))
-  // H: seçili aya kadar vadesi gelmiş taksit sayısı
-  const H = Math.max(0, Math.min(taksitSayisi, ayFarki(simdi, ilk) + 1))
-
-  // Bu kalem için şimdiye kadar (hedef aya kadar) yapılmış TÜM ödemeler
-  // (devreden ödemeler dahil, çünkü onlar da odemeler tablosunda kayıtlı)
-  const odenen = odemeToplamKalem(odemeler, sozlesme.kalem, hedef)
-
-  const J = taksitTutari * G // hedef aya kadar vadesi gelen toplam borç
-  const L = taksitTutari * H // seçili aya kadar vadesi gelen toplam borç
-  const M = taksitTutari > 0 ? Math.min(taksitSayisi, Math.floor(odenen / taksitTutari)) : 0 // ödenmiş taksit sayısı
-
-  let vade = null
-  if (G > 0) {
-    const vadeAyIndex = G >= taksitSayisi ? taksitSayisi - 1 : G - 1
-    vade = new Date(ilkTarih)
-    vade.setMonth(vade.getMonth() + vadeAyIndex)
-  }
-
-  const kalanToplam = Math.max(0, J - odenen) // TOPLAM ÖDENECEK
-  const buAyTutar = Math.max(0, J - L) // BU AYIN TUTARI (bu dönemde yeni eklenen taksit)
-  const gecmisBorc = Math.max(0, kalanToplam - buAyTutar) // GEÇMİŞ BORÇ (devreden bakiye)
-
-  if (kalanToplam <= 0) return null // tamamen ödenmiş -> Excel'deki gibi satır hiç gösterilmez
-
-  return {
-    label: `${sozlesme.kalem} - Taksit (${M}/${taksitSayisi})`,
-    durum: `Ödenmesi Gereken Vade: ${vade.toLocaleDateString('tr-TR', { day: '2-digit', month: 'long', year: 'numeric' })}`,
-    buAyTutar,
-    gecmisBorc,
-    toplamOdenecek: kalanToplam,
-  }
-}
-
-// ============================================================================
-// AYLIK KALEM BORÇLARI (Bire Bir / Yemek / Kantin) — taksit yok, sadece
-// "o aya kadar kümülatif borç" vs "o aya kadar kümülatif ödenen" karşılaştırması.
-// ============================================================================
-function aylikKalemHesapla(kalemAdi, aylikBorclar, odemeler, seciliAy) {
-  const simdi = ayEkle(seciliAy, 0)
-  const simdiIndex = ayIndexOf(simdi)
-
-  const borclarBuKaleme = aylikBorclar.filter((a) => a.kalem === kalemAdi)
-  if (borclarBuKaleme.length === 0) return null
-
-  const J = borclarBuKaleme
-    .filter((a) => {
-      const d = new Date(a.donem)
-      return ayIndexOf({ yil: d.getFullYear(), ay: d.getMonth() + 1 }) <= simdiIndex
-    })
-    .reduce((t, a) => t + Number(a.tutar), 0)
-
-  const odenen = odemeToplamKalem(odemeler, kalemAdi, simdi)
-
-  const buAyTutar = borclarBuKaleme
-    .filter((a) => {
-      const d = new Date(a.donem)
-      return d.getFullYear() === simdi.yil && d.getMonth() + 1 === simdi.ay
-    })
-    .reduce((t, a) => t + Number(a.tutar), 0)
-
-  const kalanToplam = Math.max(0, J - odenen)
-  const gecmisBorc = Math.max(0, kalanToplam - buAyTutar)
-
-  if (kalanToplam <= 0) return null
-
-  return {
-    label: kalemAdi,
-    durum: 'Bakiye Borçlu',
-    buAyTutar,
-    gecmisBorc,
-    toplamOdenecek: kalanToplam,
-  }
-}
+import { paraFormat, ogrenciSatirlariHesapla } from '../lib/ekstreHesap'
 
 export default function Ekstre() {
   const { ogrenciId } = useParams()
@@ -166,10 +35,7 @@ export default function Ekstre() {
   if (loading) return <p className="p-6 text-gray-400">Yükleniyor...</p>
   if (!ogrenci) return <p className="p-6 text-gray-400">Öğrenci bulunamadı.</p>
 
-  const satirlar = [
-    ...sozlesmeler.map((s) => sozlesmeKalemHesapla(s, odemeler, seciliAy)),
-    ...['Bire Bir', 'Yemek', 'Kantin'].map((k) => aylikKalemHesapla(k, aylikBorclar, odemeler, seciliAy)),
-  ].filter(Boolean)
+  const satirlar = ogrenciSatirlariHesapla(sozlesmeler, aylikBorclar, odemeler, seciliAy)
 
   const buAyToplam = satirlar.reduce((t, x) => t + x.buAyTutar, 0)
   const gecmisBorcToplam = satirlar.reduce((t, x) => t + x.gecmisBorc, 0)
