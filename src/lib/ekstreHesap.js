@@ -1,0 +1,170 @@
+// Ekstre / Toplu Ekstre hesaplama motoru — Excel'deki "_HESAP_EKSTRE" ve
+// "TOPLU EKSTRE" sayfalarındaki formüllerin JavaScript karşılığı.
+// Hem Ekstre.jsx hem de TopluEkstre.jsx bu dosyayı kullanır (tek yerden yönetilsin diye).
+
+export function paraFormat(n) {
+  return new Intl.NumberFormat('tr-TR', { style: 'currency', currency: 'TRY' }).format(n || 0)
+}
+
+// ---- Ay yardımcıları ("YYYY-MM" string'i ile {yil, ay} arasında dönüşüm) ----
+export function ayCoz(ayStr) {
+  const [yil, ay] = ayStr.split('-').map(Number)
+  return { yil, ay }
+}
+
+export function ayEkle(ayStr, adet) {
+  const { yil, ay } = ayCoz(ayStr)
+  const toplam = yil * 12 + (ay - 1) + adet
+  return { yil: Math.floor(toplam / 12), ay: (toplam % 12) + 1 }
+}
+
+export function ayIndexOf(ay) {
+  return ay.yil * 12 + ay.ay
+}
+
+export function ayFarki(hedef, ilk) {
+  return ayIndexOf(hedef) - ayIndexOf(ilk)
+}
+
+// Bir ödemenin "kalem" alanı tam eşleşme değilse de (ör. "Okul - Devreden Ödeme")
+// ilgili kalemle başlıyorsa sayılır — devreden (eski sistemden gelen) ödemeler de
+// borç hesabına dahil edilsin diye.
+export function odemeToplamKalem(odemeler, kalemAdi, hedefAy) {
+  const hedefIndex = ayIndexOf(hedefAy)
+  return odemeler
+    .filter((o) => o.kalem && o.kalem.startsWith(kalemAdi))
+    .filter((o) => {
+      const t = new Date(o.tarih)
+      return ayIndexOf({ yil: t.getFullYear(), ay: t.getMonth() + 1 }) <= hedefIndex
+    })
+    .reduce((t, o) => t + Number(o.tutar), 0)
+}
+
+// ============================================================================
+// SÖZLEŞME KALEMLERİ (Okul / Kurs / Kitap) — Excel'deki _HESAP_EKSTRE mantığı:
+// Her ay için "o aya kadar vadesi gelmiş TOPLAM borç" ile "o aya kadar ÖDENMİŞ
+// TOPLAM" karşılaştırılır (tek bir ayın taksiti değil, kümülatif bakiye).
+// Böylece ödenmeyen taksit otomatik olarak bir sonraki aya da taşınır.
+// ============================================================================
+export function sozlesmeKalemHesapla(sozlesme, odemeler, seciliAy) {
+  const taksitSayisi = Number(sozlesme.taksit_sayisi) || 0
+  const toplamTutar = Number(sozlesme.toplam_tutar) || 0
+  if (!sozlesme.ilk_taksit_tarihi || taksitSayisi <= 0) return null
+
+  const ilkTarih = new Date(sozlesme.ilk_taksit_tarihi)
+  const ilk = { yil: ilkTarih.getFullYear(), ay: ilkTarih.getMonth() + 1 }
+  const hedef = ayEkle(seciliAy, 1) // vade ayı: seçili ay + 1 (Excel: EOMONTH(B4,1))
+  const simdi = ayEkle(seciliAy, 0) // seçili ayın kendisi (Excel: EOMONTH(B4,0))
+
+  const taksitTutari = toplamTutar / taksitSayisi
+
+  const G = Math.max(0, Math.min(taksitSayisi, ayFarki(hedef, ilk) + 1))
+  const H = Math.max(0, Math.min(taksitSayisi, ayFarki(simdi, ilk) + 1))
+
+  const odenen = odemeToplamKalem(odemeler, sozlesme.kalem, hedef)
+
+  const J = taksitTutari * G
+  const L = taksitTutari * H
+  const M = taksitTutari > 0 ? Math.min(taksitSayisi, Math.floor(odenen / taksitTutari)) : 0
+
+  let vade = null
+  if (G > 0) {
+    const vadeAyIndex = G >= taksitSayisi ? taksitSayisi - 1 : G - 1
+    vade = new Date(ilkTarih)
+    vade.setMonth(vade.getMonth() + vadeAyIndex)
+  }
+
+  const kalanToplam = Math.max(0, J - odenen)
+  const buAyTutar = Math.max(0, J - L)
+  const gecmisBorc = Math.max(0, kalanToplam - buAyTutar)
+
+  if (kalanToplam <= 0) return null
+
+  return {
+    label: `${sozlesme.kalem} - Taksit (${M}/${taksitSayisi})`,
+    durum: `Ödenmesi Gereken Vade: ${vade.toLocaleDateString('tr-TR', { day: '2-digit', month: 'long', year: 'numeric' })}`,
+    buAyTutar,
+    gecmisBorc,
+    toplamOdenecek: kalanToplam,
+  }
+}
+
+// ============================================================================
+// AYLIK KALEM BORÇLARI (Bire Bir / Yemek / Kantin) — taksit yok, sadece
+// "o aya kadar kümülatif borç" vs "o aya kadar kümülatif ödenen" karşılaştırması.
+// ============================================================================
+export function aylikKalemHesapla(kalemAdi, aylikBorclar, odemeler, seciliAy) {
+  const simdi = ayEkle(seciliAy, 0)
+  const simdiIndex = ayIndexOf(simdi)
+
+  const borclarBuKaleme = aylikBorclar.filter((a) => a.kalem === kalemAdi)
+  if (borclarBuKaleme.length === 0) return null
+
+  const J = borclarBuKaleme
+    .filter((a) => {
+      const d = new Date(a.donem)
+      return ayIndexOf({ yil: d.getFullYear(), ay: d.getMonth() + 1 }) <= simdiIndex
+    })
+    .reduce((t, a) => t + Number(a.tutar), 0)
+
+  const odenen = odemeToplamKalem(odemeler, kalemAdi, simdi)
+
+  const buAyTutar = borclarBuKaleme
+    .filter((a) => {
+      const d = new Date(a.donem)
+      return d.getFullYear() === simdi.yil && d.getMonth() + 1 === simdi.ay
+    })
+    .reduce((t, a) => t + Number(a.tutar), 0)
+
+  const kalanToplam = Math.max(0, J - odenen)
+  const gecmisBorc = Math.max(0, kalanToplam - buAyTutar)
+
+  if (kalanToplam <= 0) return null
+
+  return {
+    label: kalemAdi,
+    durum: 'Bakiye Borçlu',
+    buAyTutar,
+    gecmisBorc,
+    toplamOdenecek: kalanToplam,
+  }
+}
+
+// Bir öğrencinin TÜM kalemlerini (sözleşme + aylık) tek listede hesaplar.
+export function ogrenciSatirlariHesapla(sozlesmeler, aylikBorclar, odemeler, seciliAy) {
+  return [
+    ...sozlesmeler.map((s) => sozlesmeKalemHesapla(s, odemeler, seciliAy)),
+    ...['Bire Bir', 'Yemek', 'Kantin'].map((k) => aylikKalemHesapla(k, aylikBorclar, odemeler, seciliAy)),
+  ].filter(Boolean)
+}
+
+// Türkçe telefon numarasını wa.me linkinin istediği "90XXXXXXXXXX" formatına çevirir.
+export function telefonNormallestir(telefon) {
+  if (!telefon) return null
+  let t = String(telefon).replace(/[\s\-()]/g, '').replace(/^\+/, '')
+  if (!t) return null
+  if (t.startsWith('0')) t = '90' + t.slice(1)
+  else if (t.startsWith('5') && t.length === 10) t = '90' + t
+  else if (!t.startsWith('90')) t = '90' + t
+  return t
+}
+
+// Excel'deki WHATSAPP MESAJ ŞABLONU'nun aynısı.
+export function whatsappMesajiOlustur({ ogrenciAdi, ayYil, buAyTutar, kalanTutar, pdfLink }) {
+  return (
+    `Değerli Velimiz, \n${ogrenciAdi} için ${ayYil} ekstresi hazırdır.\n` +
+    `Bu ayki taksit ve harcamalarınız: *₺${buAyTutar.toLocaleString('tr-TR', { minimumFractionDigits: 2 })}*\n` +
+    `Toplam ödenmesi gereken bakiye: *₺${kalanTutar.toLocaleString('tr-TR', { minimumFractionDigits: 2 })}*\n` +
+    `Ekstre: ${pdfLink}\n` +
+    `Bilgi için bizimle iletişime geçebilirsiniz. Teşekkür ederiz.`
+  )
+}
+
+export function whatsappLinkOlustur(ogrenci, seciliAy, buAyTutar, kalanTutar) {
+  const telefon = telefonNormallestir(ogrenci.telefon)
+  if (!telefon) return null
+  const ayYil = new Date(seciliAy + '-01').toLocaleDateString('tr-TR', { month: 'long', year: 'numeric' })
+  const pdfLink = `${window.location.origin}/ekstre/${ogrenci.id}`
+  const mesaj = whatsappMesajiOlustur({ ogrenciAdi: ogrenci.ad_soyad, ayYil, buAyTutar, kalanTutar, pdfLink })
+  return `https://wa.me/${telefon}?text=${encodeURIComponent(mesaj)}`
+}
