@@ -1,1 +1,71 @@
+// Vercel sunucu tarafı fonksiyonu (serverless). Bu dosya tarayıcıda ÇALIŞMAZ,
+// Vercel'in sunucusunda çalışır — bu yüzden gizli "service role key" burada
+// güvenle kullanılabilir (tarayıcıya asla gönderilmez).
+import { createClient } from '@supabase/supabase-js'
 
+const GECERLI_ROLLER = ['yonetici', 'ogretmen', 'veli', 'ogrenci']
+
+export default async function handler(req, res) {
+  if (req.method !== 'POST') {
+    res.status(405).json({ error: 'Sadece POST istekleri kabul edilir.' })
+    return
+  }
+
+  const { adSoyad, kullaniciAdi, sifre, rol, telefon } = req.body || {}
+
+  if (!adSoyad?.trim() || !kullaniciAdi?.trim() || !sifre || !rol) {
+    res.status(400).json({ error: 'Ad soyad, kullanıcı adı, şifre ve rol zorunludur.' })
+    return
+  }
+  if (!GECERLI_ROLLER.includes(rol)) {
+    res.status(400).json({ error: 'Geçersiz rol.' })
+    return
+  }
+  if (sifre.length < 6) {
+    res.status(400).json({ error: 'Şifre en az 6 karakter olmalı.' })
+    return
+  }
+
+  const supabaseUrl = process.env.VITE_SUPABASE_URL
+  const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY
+  if (!supabaseUrl || !serviceKey) {
+    res.status(500).json({
+      error: 'Sunucu yapılandırması eksik: Vercel ayarlarına SUPABASE_SERVICE_ROLE_KEY eklenmemiş.',
+    })
+    return
+  }
+
+  const admin = createClient(supabaseUrl, serviceKey)
+
+  const temizKullaniciAdi = kullaniciAdi.trim()
+  const email = temizKullaniciAdi.includes('@')
+    ? temizKullaniciAdi
+    : `${temizKullaniciAdi.toLowerCase()}@savasakcaegitim.giris`
+
+  const { data: olusturulan, error: olusturmaHatasi } = await admin.auth.admin.createUser({
+    email,
+    password: sifre,
+    email_confirm: true,
+  })
+
+  if (olusturmaHatasi) {
+    res.status(400).json({ error: 'Hesap oluşturulamadı: ' + olusturmaHatasi.message })
+    return
+  }
+
+  const { error: profilHatasi } = await admin.from('profiles').insert({
+    id: olusturulan.user.id,
+    ad_soyad: adSoyad.trim(),
+    rol,
+    telefon: telefon?.trim() || null,
+  })
+
+  if (profilHatasi) {
+    // Profil eklenemediyse yarım kalan auth kullanıcısını geri al.
+    await admin.auth.admin.deleteUser(olusturulan.user.id)
+    res.status(400).json({ error: 'Profil kaydı oluşturulamadı: ' + profilHatasi.message })
+    return
+  }
+
+  res.status(200).json({ ok: true, userId: olusturulan.user.id, email })
+}
