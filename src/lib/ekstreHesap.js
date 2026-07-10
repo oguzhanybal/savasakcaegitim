@@ -130,6 +130,16 @@ export function aylikKalemHesapla(kalemAdi, aylikBorclar, odemeler, seciliAy) {
   }
 }
 
+// Bir tarih string'inden (ödemenin "tarih" alanı gibi) yerel gün anahtarı
+// üretir ("YYYY-MM-DD") — aynı günün tüm ödemelerini gruplamak için kullanılır.
+export function gunAnahtari(tarihStr) {
+  const d = new Date(tarihStr)
+  const yil = d.getFullYear()
+  const ay = String(d.getMonth() + 1).padStart(2, '0')
+  const gun = String(d.getDate()).padStart(2, '0')
+  return `${yil}-${ay}-${gun}`
+}
+
 // Bir öğrencinin TÜM kalemlerini (sözleşme + aylık) tek listede hesaplar.
 export function ogrenciSatirlariHesapla(sozlesmeler, aylikBorclar, odemeler, seciliAy) {
   return [
