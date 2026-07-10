@@ -189,6 +189,7 @@ export default function DersProgrami() {
   const [siniflar, setSiniflar] = useState([])
   const [ogretmenler, setOgretmenler] = useState([])
   const [loading, setLoading] = useState(true)
+  const [gorunum, setGorunum] = useState('tablo')
 
   function veriyiYenile() {
     setLoading(true)
@@ -228,9 +229,32 @@ export default function DersProgrami() {
 
   const gunlereGore = GUNLER.map((_, gun) => program.filter((p) => p.gun === gun)).slice(1)
 
+  // Tablo görünümü için: programdaki tüm benzersiz başlangıç saatleri, sıralı satırlar olarak.
+  const saatSatirlari = [...new Set(program.map((p) => saatKisalt(p.baslangic_saat)))].sort()
+
+  function hucreDersleri(gun, saat) {
+    return program.filter((p) => p.gun === gun && saatKisalt(p.baslangic_saat) === saat)
+  }
+
   return (
     <div>
-      <h1 className="text-2xl font-bold text-navy mb-6">Ders Programı</h1>
+      <div className="flex items-center justify-between mb-6 flex-wrap gap-3">
+        <h1 className="text-2xl font-bold text-navy">Ders Programı</h1>
+        <div className="flex bg-white border border-gray-200 rounded-lg overflow-hidden text-sm">
+          <button
+            onClick={() => setGorunum('tablo')}
+            className={`px-3 py-1.5 font-medium transition-colors ${gorunum === 'tablo' ? 'bg-navy text-white' : 'text-gray-600 hover:bg-gray-50'}`}
+          >
+            Tablo
+          </button>
+          <button
+            onClick={() => setGorunum('liste')}
+            className={`px-3 py-1.5 font-medium transition-colors ${gorunum === 'liste' ? 'bg-navy text-white' : 'text-gray-600 hover:bg-gray-50'}`}
+          >
+            Liste
+          </button>
+        </div>
+      </div>
 
       {isYonetici && (
         <DersEkleForm siniflar={siniflar} ogretmenler={ogretmenler} program={program} onEklendi={veriyiYenile} />
@@ -244,7 +268,61 @@ export default function DersProgrami() {
         </div>
       )}
 
-      {!loading && program.length > 0 && (
+      {!loading && program.length > 0 && gorunum === 'tablo' && (
+        <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-x-auto">
+          <table className="border-collapse text-sm min-w-[900px] w-full">
+            <thead>
+              <tr>
+                <th className="sticky left-0 z-10 bg-navy text-white px-3 py-2.5 text-left font-semibold w-24">Saat</th>
+                {GUNLER.slice(1).map((g, i) => (
+                  <th key={i + 1} className="bg-navy text-white px-3 py-2.5 text-left font-semibold min-w-[150px] border-l border-white/10">
+                    {GUNLER_KISA[i + 1]}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {saatSatirlari.map((saat, ri) => (
+                <tr key={saat} className={ri % 2 ? 'bg-gray-50/60' : ''}>
+                  <td className="sticky left-0 z-10 bg-white px-3 py-2 font-semibold text-gray-600 whitespace-nowrap border-t border-gray-100 text-xs">
+                    {saat}
+                  </td>
+                  {GUNLER.slice(1).map((_, i) => {
+                    const gun = i + 1
+                    const dersler = hucreDersleri(gun, saat)
+                    return (
+                      <td key={gun} className="px-1.5 py-1.5 align-top border-t border-l border-gray-100">
+                        <div className="space-y-1">
+                          {dersler.map((d) => (
+                            <div key={d.id} className="bg-blue-50 border border-blue-100 rounded-lg px-2 py-1 relative group">
+                              <p className="font-semibold text-navy text-xs leading-tight">{d.ders_adi || d.sinif_adi}</p>
+                              <p className="text-[11px] text-gray-500 leading-tight">{d.sinif_adi}</p>
+                              {d.ogretmen_adi && <p className="text-[11px] text-gray-400 leading-tight">{d.ogretmen_adi}</p>}
+                              <p className="text-[10px] text-gray-400 leading-tight">
+                                {saatKisalt(d.baslangic_saat)}–{saatKisalt(d.bitis_saat)}
+                              </p>
+                              {isYonetici && (
+                                <button
+                                  onClick={() => sil(d.id)}
+                                  className="absolute top-0.5 right-1 text-[10px] text-red-400 hover:text-red-700 opacity-0 group-hover:opacity-100 transition-opacity"
+                                >
+                                  Sil
+                                </button>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      </td>
+                    )
+                  })}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {!loading && program.length > 0 && gorunum === 'liste' && (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {gunlereGore.map((dersler, i) =>
             dersler.length === 0 ? null : (
