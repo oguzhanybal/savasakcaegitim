@@ -168,3 +168,56 @@ export function whatsappLinkOlustur(ogrenci, seciliAy, buAyTutar, kalanTutar) {
   const mesaj = whatsappMesajiOlustur({ ogrenciAdi: ogrenci.ad_soyad, ayYil, buAyTutar, kalanTutar, pdfLink })
   return `https://wa.me/${telefon}?text=${encodeURIComponent(mesaj)}`
 }
+
+// ============================================================================
+// TEK TEK ÖDEME PLANI — Bir sözleşmenin (Okul/Kurs/Kitap) TÜM taksitlerini,
+// her birinin vade tarihi ve durumuyla (ödendi / gecikti / bekliyor) birlikte
+// listeler. Hem veli hem yönetici bunu görebilir (Muhasebe sayfasında).
+// ============================================================================
+export function taksitPlaniOlustur(sozlesme, odemeler) {
+  const taksitSayisi = Number(sozlesme.taksit_sayisi) || 0
+  const toplamTutar = Number(sozlesme.toplam_tutar) || 0
+  if (!sozlesme.ilk_taksit_tarihi || taksitSayisi <= 0) return []
+
+  const ilkTarih = new Date(sozlesme.ilk_taksit_tarihi)
+  const taksitTutari = toplamTutar / taksitSayisi
+  const bugun = new Date()
+
+  // Bu kalem için bugüne kadar yapılmış TÜM ödemeler (devreden dahil, cutoff yok)
+  const odenenToplam = odemeToplamKalem(odemeler, sozlesme.kalem, { yil: 9999, ay: 12 })
+
+  const taksitler = []
+  for (let n = 1; n <= taksitSayisi; n++) {
+    const vade = new Date(ilkTarih)
+    vade.setMonth(vade.getMonth() + (n - 1))
+    const kumulatifGereken = taksitTutari * n
+
+    let durum
+    if (odenenToplam >= kumulatifGereken - 0.01) durum = 'odendi'
+    else if (vade < bugun) durum = 'gecikti'
+    else durum = 'bekliyor'
+
+    taksitler.push({ taksitNo: n, vade, tutar: taksitTutari, durum })
+  }
+  return taksitler
+}
+
+// Aylık kalem borçları (Bire Bir / Yemek / Kantin) için tek tek satır bazında
+// durum hesaplar (ödendi / gecikti / bekliyor) — taksit yapısı olmadığı için
+// kümülatif borç/ödeme karşılaştırması üzerinden gider.
+export function aylikBorcDurumHesapla(borc, tumAylikBorclar, odemeler) {
+  const kalemAdi = borc.kalem
+  const borcTarihi = new Date(borc.donem)
+  const bugun = new Date()
+
+  const kumulatifBorc = tumAylikBorclar
+    .filter((a) => a.kalem === kalemAdi)
+    .filter((a) => new Date(a.donem) <= borcTarihi)
+    .reduce((t, a) => t + Number(a.tutar), 0)
+
+  const odenenToplam = odemeToplamKalem(odemeler, kalemAdi, { yil: 9999, ay: 12 })
+
+  if (odenenToplam >= kumulatifBorc - 0.01) return 'odendi'
+  if (borcTarihi < bugun) return 'gecikti'
+  return 'bekliyor'
+}
