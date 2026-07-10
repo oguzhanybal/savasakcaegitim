@@ -13,6 +13,7 @@ import Yoklama from './pages/Yoklama'
 import YoklamaRaporu from './pages/YoklamaRaporu'
 import Makbuz from './pages/Makbuz'
 import MakbuzGunluk from './pages/MakbuzGunluk'
+import BireBir from './pages/BireBir'
 import Ekstre from './pages/Ekstre'
 import TopluEkstre from './pages/TopluEkstre'
 import KullaniciOlustur from './pages/KullaniciOlustur'
@@ -138,6 +139,14 @@ function AnaUygulama() {
             }
           />
           <Route path="program" element={<DersProgrami />} />
+          <Route
+            path="bire-bir"
+            element={
+              <Korumali izinliRoller={['yonetici', 'ogretmen']}>
+                <BireBir />
+              </Korumali>
+            }
+          />
           <Route
             path="yoklama"
             element={
