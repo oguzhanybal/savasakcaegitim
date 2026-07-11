@@ -22,7 +22,12 @@ function yeniBarkodUret() {
 const CODE39_DESENLERI = {
   '0': 'NNNWWNWNN', '1': 'WNNWNNNNW', '2': 'NNWWNNNNW', '3': 'WNWWNNNNN',
   '4': 'NNNWWNNNW', '5': 'WNNWWNNNN', '6': 'NNWWWNNNN', '7': 'NNNWNNWNW',
-  '8': 'WNNWNNWNN', '9': 'NNWWNNWNN', '*': 'NNNWNWNNW',
+  '8': 'WNNWNNWNN', '9': 'NNWWNNWNN',
+  // DÜZELTME: Bu başlangıç/bitiş ("*") deseni yanlış yazılmıştı (NNNWNWNNW).
+  // Barkodun ortasındaki rakamlar doğru olsa da, tarayıcılar barkodu ancak
+  // doğru "*" işaretiyle tanıyabiliyor — bu yüzden hiçbir kamera/okuyucu
+  // şimdiye kadar üretilen barkodları okuyamıyordu. Doğrusu: NWNNWNWNN.
+  '*': 'NWNNWNWNN',
 }
 
 function code39CubuklariUret(deger) {
