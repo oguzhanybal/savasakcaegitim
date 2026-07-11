@@ -36,6 +36,7 @@ function menuOlustur(rol) {
         ogeler: [
           { to: '/siniflar', label: 'Sınıf Listesi' },
           { to: '/program', label: 'Ders Programı' },
+          { to: '/bire-bir', label: 'Bire Bir' },
         ],
       },
       {
@@ -44,7 +45,6 @@ function menuOlustur(rol) {
         ogeler: [
           { to: '/yoklama', label: 'Yoklama Al' },
           { to: '/yoklama-raporu', label: 'Yoklama Raporu' },
-          { to: '/bire-bir', label: 'Bire Bir' },
         ],
       },
     ]
@@ -53,9 +53,9 @@ function menuOlustur(rol) {
     return [
       { tur: 'link', to: '/', label: 'Panel', end: true },
       { tur: 'link', to: '/program', label: 'Ders Programım' },
+      { tur: 'link', to: '/bire-bir', label: 'Bire Bir Derslerim' },
       { tur: 'link', to: '/yoklama', label: 'Yoklama Al' },
       { tur: 'link', to: '/yoklama-raporu', label: 'Yoklama Raporu' },
-      { tur: 'link', to: '/bire-bir', label: 'Bire Bir Derslerim' },
     ]
   }
   if (rol === 'veli') {
