@@ -39,35 +39,43 @@ function code39CubuklariUret(deger) {
   return cubuklar
 }
 
-function BarkodSVG({ deger, darBirim = 2, yukseklik = 45 }) {
+function BarkodSVG({ deger, darBirim = 3, yukseklik = 60 }) {
   if (!deger) return null
   const cubuklar = code39CubuklariUret(deger)
-  let x = 0
+  // Kamera/okuyucuların barkodu ayırt edebilmesi için sağda-solda boş bir
+  // "sessiz bölge" (quiet zone) şart — yoksa bar kod bitişik gibi algılanıp
+  // hiç okunmuyor.
+  const kenarBosluk = darBirim * 10
+  let x = kenarBosluk
   const dikdortgenler = []
   for (const c of cubuklar) {
     const genislik = c.genis ? darBirim * 3 : darBirim
     if (c.siyah) dikdortgenler.push(<rect key={x} x={x} y={0} width={genislik} height={yukseklik} fill="black" />)
     x += genislik
   }
+  const toplamGenislik = x + kenarBosluk
   return (
-    <svg width={x} height={yukseklik + 16} viewBox={`0 0 ${x} ${yukseklik + 16}`}>
+    <svg width={toplamGenislik} height={yukseklik + 16} viewBox={`0 0 ${toplamGenislik} ${yukseklik + 16}`}>
+      <rect x={0} y={0} width={toplamGenislik} height={yukseklik} fill="white" />
       {dikdortgenler}
-      <text x={x / 2} y={yukseklik + 13} textAnchor="middle" fontSize="11" fontFamily="monospace">{deger}</text>
+      <text x={toplamGenislik / 2} y={yukseklik + 13} textAnchor="middle" fontSize="11" fontFamily="monospace">{deger}</text>
     </svg>
   )
 }
 
 // Yazdırma penceresi için barkodu SVG metni olarak üretir (React'siz, düz HTML).
-function barkodSvgMetni(deger, darBirim = 3, yukseklik = 60) {
+function barkodSvgMetni(deger, darBirim = 4, yukseklik = 80) {
   const cubuklar = code39CubuklariUret(deger)
-  let x = 0
+  const kenarBosluk = darBirim * 10
+  let x = kenarBosluk
   let dikdortgenler = ''
   for (const c of cubuklar) {
     const genislik = c.genis ? darBirim * 3 : darBirim
     if (c.siyah) dikdortgenler += `<rect x="${x}" y="0" width="${genislik}" height="${yukseklik}" fill="black" />`
     x += genislik
   }
-  return `<svg xmlns="http://www.w3.org/2000/svg" width="${x}" height="${yukseklik + 20}" viewBox="0 0 ${x} ${yukseklik + 20}">${dikdortgenler}<text x="${x / 2}" y="${yukseklik + 16}" text-anchor="middle" font-size="14" font-family="monospace">${deger}</text></svg>`
+  const toplamGenislik = x + kenarBosluk
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${toplamGenislik}" height="${yukseklik + 20}" viewBox="0 0 ${toplamGenislik} ${yukseklik + 20}"><rect x="0" y="0" width="${toplamGenislik}" height="${yukseklik}" fill="white" />${dikdortgenler}<text x="${toplamGenislik / 2}" y="${yukseklik + 16}" text-anchor="middle" font-size="14" font-family="monospace">${deger}</text></svg>`
 }
 
 function barkoduYazdir(urun) {
@@ -501,9 +509,20 @@ export default function Kantin() {
               target: kameraKutusuRef.current,
               // "ideal" olarak istiyoruz — laptop/masaüstü gibi arka kamerası
               // olmayan cihazlarda "zorunlu" istenirse kamera hiç açılmıyordu.
-              constraints: { facingMode: { ideal: 'environment' } },
+              constraints: {
+                facingMode: { ideal: 'environment' },
+                width: { ideal: 1280 },
+                height: { ideal: 720 },
+              },
             },
-            decoder: { readers: ['code_39_reader'] },
+            // numOfWorkers: 0 -> arka plan iş parçacığı (Web Worker) kullanmadan
+            // ana iş parçacığında okusun. CDN'den yüklenen sürümlerde bazı
+            // mobil tarayıcılarda worker'lar sessizce çalışmayıp kamera açık
+            // görünse de barkod hiç okunmuyordu; bu ayar bunu ortadan kaldırıyor.
+            numOfWorkers: 0,
+            frequency: 10,
+            locator: { patchSize: 'medium', halfSample: true },
+            decoder: { readers: ['code_39_reader'], multiple: false },
             locate: true,
           },
           (hata) => {
@@ -645,7 +664,9 @@ export default function Kantin() {
               style={{ minHeight: 220 }}
             />
             <p className="text-xs text-gray-400 mt-1">
-              Ürünün barkodunu kameraya net ve iyi ışıkta gösterin — algılanınca otomatik eklenir.
+              Barkodu kameradan yaklaşık 10-15 cm uzakta, iyi ışıkta ve tüm barkod (etrafındaki boşluklarla
+              birlikte) kutunun içinde kalacak şekilde sabit tutun — bulanıksa biraz uzaklaştırıp yaklaştırarak
+              netleşmesini bekleyin, algılanınca otomatik eklenir.
             </p>
           </div>
         )}
