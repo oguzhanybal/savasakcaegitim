@@ -8,6 +8,87 @@ function yerelBugunTarihi() {
   return `${n.getFullYear()}-${String(n.getMonth() + 1).padStart(2, '0')}-${String(n.getDate()).padStart(2, '0')}`
 }
 
+// Yeni bir ürün için 8 haneli, rakamlardan oluşan bir barkod üretir (zamana
+// dayalı olduğu için pratikte hiç çakışmaz). Elle barkod girmeye gerek yok.
+function yeniBarkodUret() {
+  return String(Date.now()).slice(-8)
+}
+
+// ============================================================================
+// BARKOD (Code 39) — dışarıdan kütüphane eklemeden, saf JS ile barkod çizimi.
+// Code 39, ucuz USB barkod okuyucuların neredeyse tamamının fabrika ayarıyla
+// okuyabildiği en yaygın barkod türlerinden biri olduğu için seçildi.
+// ============================================================================
+const CODE39_DESENLERI = {
+  '0': 'NNNWWNWNN', '1': 'WNNWNNNNW', '2': 'NNWWNNNNW', '3': 'WNWWNNNNN',
+  '4': 'NNNWWNNNW', '5': 'WNNWWNNNN', '6': 'NNWWWNNNN', '7': 'NNNWNNWNW',
+  '8': 'WNNWNNWNN', '9': 'NNWWNNWNN', '*': 'NNNWNWNNW',
+}
+
+function code39CubuklariUret(deger) {
+  const icerik = `*${deger}*`
+  const cubuklar = []
+  for (const karakter of icerik) {
+    const desen = CODE39_DESENLERI[karakter]
+    if (!desen) continue
+    for (let i = 0; i < desen.length; i++) {
+      cubuklar.push({ siyah: i % 2 === 0, genis: desen[i] === 'W' })
+    }
+    cubuklar.push({ siyah: false, genis: false }) // karakterler arası dar boşluk
+  }
+  return cubuklar
+}
+
+function BarkodSVG({ deger, darBirim = 2, yukseklik = 45 }) {
+  if (!deger) return null
+  const cubuklar = code39CubuklariUret(deger)
+  let x = 0
+  const dikdortgenler = []
+  for (const c of cubuklar) {
+    const genislik = c.genis ? darBirim * 3 : darBirim
+    if (c.siyah) dikdortgenler.push(<rect key={x} x={x} y={0} width={genislik} height={yukseklik} fill="black" />)
+    x += genislik
+  }
+  return (
+    <svg width={x} height={yukseklik + 16} viewBox={`0 0 ${x} ${yukseklik + 16}`}>
+      {dikdortgenler}
+      <text x={x / 2} y={yukseklik + 13} textAnchor="middle" fontSize="11" fontFamily="monospace">{deger}</text>
+    </svg>
+  )
+}
+
+// Yazdırma penceresi için barkodu SVG metni olarak üretir (React'siz, düz HTML).
+function barkodSvgMetni(deger, darBirim = 3, yukseklik = 60) {
+  const cubuklar = code39CubuklariUret(deger)
+  let x = 0
+  let dikdortgenler = ''
+  for (const c of cubuklar) {
+    const genislik = c.genis ? darBirim * 3 : darBirim
+    if (c.siyah) dikdortgenler += `<rect x="${x}" y="0" width="${genislik}" height="${yukseklik}" fill="black" />`
+    x += genislik
+  }
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${x}" height="${yukseklik + 20}" viewBox="0 0 ${x} ${yukseklik + 20}">${dikdortgenler}<text x="${x / 2}" y="${yukseklik + 16}" text-anchor="middle" font-size="14" font-family="monospace">${deger}</text></svg>`
+}
+
+function barkoduYazdir(urun) {
+  const pencere = window.open('', '_blank', 'width=420,height=320')
+  if (!pencere) {
+    alert('Yazdırma penceresi açılamadı — tarayıcınız pop-up\'ı engellemiş olabilir.')
+    return
+  }
+  pencere.document.write(`
+    <html>
+      <head><title>${urun.ad} — Barkod</title></head>
+      <body style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:100vh;margin:0;font-family:sans-serif;">
+        <p style="margin-bottom:12px;font-weight:600;">${urun.ad}</p>
+        ${barkodSvgMetni(urun.barkod)}
+        <script>window.onload = function() { window.print(); }</script>
+      </body>
+    </html>
+  `)
+  pencere.document.close()
+}
+
 // ============================================================================
 // ÜRÜN YÖNETİMİ — sadece yönetici görür. Kantin görevlisi ürün ekleyip
 // düzenleyemez, sadece listeden seçip satış girer.
@@ -26,7 +107,9 @@ function UrunEkleForm({ onEklendi }) {
       return
     }
     setGonderiliyor(true)
-    const { error } = await supabase.from('kantin_urunler').insert({ ad: ad.trim(), fiyat: Number(fiyat) })
+    const { error } = await supabase
+      .from('kantin_urunler')
+      .insert({ ad: ad.trim(), fiyat: Number(fiyat), barkod: yeniBarkodUret() })
     setGonderiliyor(false)
     if (error) {
       setHata('Hata: ' + error.message)
@@ -101,6 +184,7 @@ function UrunSatiri({ u, onKaydedildi, onVazgec }) {
           className="w-28 px-2 py-1.5 border border-gray-300 rounded-lg text-sm"
         />
       </td>
+      <td className="px-4 py-2 text-xs font-mono text-gray-400">{u.barkod || '—'}</td>
       <td className="px-4 py-2 text-gray-400 text-xs">—</td>
       <td className="px-4 py-2 text-right space-x-3 whitespace-nowrap">
         <button onClick={kaydet} disabled={gonderiliyor} className="text-green-600 text-sm font-semibold hover:underline">
@@ -137,11 +221,12 @@ function UrunYonetimi({ urunler, onDegisti }) {
       <div className="p-4 border-b border-gray-50">
         <UrunEkleForm onEklendi={onDegisti} />
       </div>
-      <table className="w-full text-sm min-w-[480px]">
+      <table className="w-full text-sm min-w-[560px]">
         <thead>
           <tr className="text-left text-gray-500">
             <th className="px-4 py-2 font-medium">Ürün</th>
             <th className="px-4 py-2 font-medium">Fiyat</th>
+            <th className="px-4 py-2 font-medium">Barkod</th>
             <th className="px-4 py-2 font-medium">Durum</th>
             <th className="px-4 py-2 font-medium text-right">İşlemler</th>
           </tr>
@@ -149,7 +234,7 @@ function UrunYonetimi({ urunler, onDegisti }) {
         <tbody>
           {urunler.length === 0 && (
             <tr>
-              <td colSpan={4} className="px-4 py-4 text-center text-gray-400">Henüz ürün eklenmedi.</td>
+              <td colSpan={5} className="px-4 py-4 text-center text-gray-400">Henüz ürün eklenmedi.</td>
             </tr>
           )}
           {urunler.map((u) =>
@@ -164,6 +249,18 @@ function UrunYonetimi({ urunler, onDegisti }) {
               <tr key={u.id} className="border-t border-gray-50">
                 <td className="px-4 py-2 font-medium text-gray-800">{u.ad}</td>
                 <td className="px-4 py-2">{paraFormat(u.fiyat)}</td>
+                <td className="px-4 py-2">
+                  {u.barkod ? (
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs font-mono text-gray-500">{u.barkod}</span>
+                      <button onClick={() => barkoduYazdir(u)} className="text-blue text-xs hover:underline whitespace-nowrap">
+                        Barkodu Yazdır
+                      </button>
+                    </div>
+                  ) : (
+                    <span className="text-xs text-gray-400">—</span>
+                  )}
+                </td>
                 <td className="px-4 py-2">
                   {u.aktif ? (
                     <span className="text-xs font-semibold bg-green-100 text-green-700 px-2 py-1 rounded-full">Aktif</span>
@@ -189,11 +286,11 @@ function UrunYonetimi({ urunler, onDegisti }) {
 
 // ============================================================================
 // KANTİN ANA SAYFA — hem yönetici hem kantin rolü görür. Öğrenci bir kez
-// seçilir, sonra her ürün butonuna tıklamak o öğrenciye ANINDA bir veresiye
-// kaydı ekler (henüz barkod okuyucu yok ama akış ileride "önce öğrenci kartı
-// okut, sonra ürün barkodlarını okut" şekline kolayca uyarlanabilecek şekilde
-// kuruldu — okuyucu geldiğinde sadece arama kutusuna odaklanıp Enter'a basma
-// eklenmesi yeterli olur).
+// seçilir (isim yazarak, listeden), sonra ürün ya "Barkod Okut" kutusuna
+// okutularak ya da butona tıklanarak o öğrenciye ANINDA veresiye kaydı olarak
+// eklenir. USB barkod okuyucular klavye gibi davranır (kodu yazıp Enter'a
+// basar), bu yüzden ekstra bir donanım/API entegrasyonu gerekmiyor — okutma
+// kutusunun odakta kalması yeterli.
 // ============================================================================
 export default function Kantin() {
   const { profile } = useAuth()
@@ -211,6 +308,8 @@ export default function Kantin() {
   const [ekleniyorUrunId, setEkleniyorUrunId] = useState(null)
   const [hata, setHata] = useState('')
   const [basari, setBasari] = useState('')
+  const [barkodDeger, setBarkodDeger] = useState('')
+  const barkodInputRef = useRef(null)
 
   function veriyiYenile() {
     if (!ilkYuklemeTamamRef.current) setLoading(true)
@@ -232,6 +331,10 @@ export default function Kantin() {
     veriyiYenile()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
+
+  useEffect(() => {
+    if (!loading) barkodInputRef.current?.focus()
+  }, [loading])
 
   const ogrenciAdMap = useMemo(() => new Map(ogrenciler.map((o) => [o.id, o.ad_soyad])), [ogrenciler])
 
@@ -268,6 +371,31 @@ export default function Kantin() {
       setAdet(1)
       veriyiYenile()
     }
+    barkodInputRef.current?.focus()
+  }
+
+  // Barkod okuyucu, tarattığı kodu klavyeden yazılmış gibi yazıp en sonunda
+  // Enter'a basar — bu yüzden burada özel bir donanım/API entegrasyonu
+  // gerekmiyor, sadece bu input'un odakta kalması yeterli.
+  async function barkodOkutuldu(e) {
+    e.preventDefault()
+    const deger = barkodDeger.trim()
+    setBarkodDeger('')
+    if (!deger) return
+    setHata('')
+    setBasari('')
+    if (!ogrenciId) {
+      setHata('Önce öğrenci seçin.')
+      barkodInputRef.current?.focus()
+      return
+    }
+    const urun = aktifUrunler.find((u) => u.barkod === deger)
+    if (!urun) {
+      setHata(`Bu barkoda (${deger}) ait aktif bir ürün bulunamadı.`)
+      barkodInputRef.current?.focus()
+      return
+    }
+    await urunEkle(urun)
   }
 
   async function sil(id) {
@@ -324,11 +452,24 @@ export default function Kantin() {
 
         {ogrenciId ? (
           <p className="text-sm text-gray-500 mb-2">
-            Seçili öğrenci: <span className="font-semibold text-navy">{ogrenciAdMap.get(ogrenciId)}</span> — aşağıdan ürüne tıklayınca anında kaydedilir.
+            Seçili öğrenci: <span className="font-semibold text-navy">{ogrenciAdMap.get(ogrenciId)}</span> — barkod okutun ya da aşağıdan ürüne tıklayın, anında kaydedilir.
           </p>
         ) : (
           <p className="text-sm text-orange-600 mb-2">Önce yukarıdan bir öğrenci seçin.</p>
         )}
+
+        <form onSubmit={barkodOkutuldu} className="mb-4">
+          <label className="block text-sm font-medium text-gray-700 mb-1">Barkod Okut</label>
+          <input
+            ref={barkodInputRef}
+            type="text"
+            value={barkodDeger}
+            onChange={(e) => setBarkodDeger(e.target.value)}
+            placeholder="Barkod okuyucuyla okutun (ya da elle yazıp Enter'a basın)"
+            autoComplete="off"
+            className="w-full max-w-sm px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue"
+          />
+        </form>
 
         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2">
           {aktifUrunler.map((u) => (
