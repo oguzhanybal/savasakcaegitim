@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../lib/AuthContext'
 import { paraFormat } from '../lib/ekstreHesap'
+import MusaitlikTablosu from '../components/MusaitlikTablosu'
 
 const GUNLER = ['', 'Pazartesi', 'Salı', 'Çarşamba', 'Perşembe', 'Cuma', 'Cumartesi', 'Pazar']
 const GUNLER_KISA = ['', 'Pzt', 'Sal', 'Çar', 'Per', 'Cum', 'Cmt', 'Paz']
@@ -971,6 +972,13 @@ export default function BireBir() {
             dersProgrami={dersProgrami}
             yoklamalar={yoklamalar}
             onEklendi={veriyiYenile}
+          />
+          <MusaitlikTablosu
+            ogretmenler={ogretmenler}
+            dersProgrami={dersProgrami}
+            atamalar={atamalar}
+            yoklamalar={yoklamalar}
+            ogrenciAdMap={ogrenciAdMap}
           />
           <AtamaListesi
             atamalar={atamalar}
