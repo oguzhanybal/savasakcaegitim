@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../lib/AuthContext'
 import { paraFormat } from '../lib/ekstreHesap'
@@ -486,11 +486,14 @@ function EkDersEkleForm({ ogrenciler, ogretmenler, onEklendi }) {
   const [tutar, setTutar] = useState('')
   const [tarih, setTarih] = useState(() => new Date().toISOString().slice(0, 10))
   const [hata, setHata] = useState('')
+  const [basari, setBasari] = useState('')
   const [gonderiliyor, setGonderiliyor] = useState(false)
+  const ogrenciSelectRef = useRef(null)
 
   async function ekle(e) {
     e.preventDefault()
     setHata('')
+    setBasari('')
     if (!ogrenciId || !ogretmenId || !tutar || !tarih) {
       setHata('Lütfen tüm alanları doldurun.')
       return
@@ -507,9 +510,12 @@ function EkDersEkleForm({ ogrenciler, ogretmenler, onEklendi }) {
     if (error) {
       setHata('Hata: ' + error.message)
     } else {
+      // Art arda çok sayıda ek ders eklerken (aynı gün / aynı öğretmen / aynı
+      // ücret sık tekrar ettiği için) sadece öğrenciyi sıfırlıyoruz — öğretmen,
+      // tarih ve ücret bir sonraki kayıt için hazır kalsın diye korunuyor.
       setOgrenciId('')
-      setOgretmenId('')
-      setTutar('')
+      setBasari('✓ Eklendi — devam edebilirsiniz.')
+      ogrenciSelectRef.current?.focus()
       onEklendi()
     }
   }
@@ -520,11 +526,14 @@ function EkDersEkleForm({ ogrenciler, ogretmenler, onEklendi }) {
       <p className="text-xs text-gray-400 mb-3">
         Asıl atanan öğrenci gelmediğinde, o boşta kalan saatte başka bir öğrenciye verilen tek seferlik dersi
         buradan kaydedin — bunun için haftalık atama kurmanıza gerek yok, öğrencinin hesabına anında borç eklenir.
+        Art arda ekleme yaparken öğretmen, tarih ve ücret bir sonraki kayıt için korunur, sadece öğrenciyi
+        değiştirmeniz yeterli.
       </p>
       <div className="flex flex-wrap gap-3 items-end">
         <div className="flex-1 min-w-[180px]">
           <label className="block text-sm font-medium text-gray-700 mb-1">Öğrenci</label>
           <select
+            ref={ogrenciSelectRef}
             value={ogrenciId}
             onChange={(e) => setOgrenciId(e.target.value)}
             className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue bg-white"
@@ -578,6 +587,7 @@ function EkDersEkleForm({ ogrenciler, ogretmenler, onEklendi }) {
         </button>
       </div>
       {hata && <p className="text-red-600 text-sm mt-3">{hata}</p>}
+      {!hata && basari && <p className="text-green-600 text-sm mt-3">{basari}</p>}
     </form>
   )
 }
@@ -641,6 +651,8 @@ export default function BireBir() {
   const [yoklamalar, setYoklamalar] = useState([])
   const [loading, setLoading] = useState(true)
   const [sadeceAktif, setSadeceAktif] = useState(true)
+  const [sadeceBugun, setSadeceBugun] = useState(true)
+  const [yoklamaArama, setYoklamaArama] = useState('')
 
   function veriyiYenile() {
     setLoading(true)
@@ -675,10 +687,24 @@ export default function BireBir() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  const gorunenAtamalar = useMemo(
-    () => atamalar.filter((a) => !sadeceAktif || a.aktif),
-    [atamalar, sadeceAktif]
-  )
+  const bugunGun = useMemo(() => {
+    const g = new Date().getDay()
+    return g === 0 ? 7 : g
+  }, [])
+
+  const gorunenAtamalar = useMemo(() => {
+    const aranan = yoklamaArama.trim().toLowerCase()
+    return atamalar
+      .filter((a) => !sadeceAktif || a.aktif)
+      .filter((a) => !sadeceBugun || a.gun === bugunGun)
+      .filter((a) => {
+        if (!aranan) return true
+        return (
+          (a.ogrenci_adi || '').toLowerCase().includes(aranan) ||
+          (a.ogretmen_adi || '').toLowerCase().includes(aranan)
+        )
+      })
+  }, [atamalar, sadeceAktif, sadeceBugun, yoklamaArama, bugunGun])
 
   const ogrenciAdMap = useMemo(() => new Map(ogrenciler.map((o) => [o.id, o.ad_soyad])), [ogrenciler])
   const ogretmenAdMap = useMemo(() => new Map(ogretmenler.map((o) => [o.id, o.ad_soyad])), [ogretmenler])
@@ -715,7 +741,7 @@ export default function BireBir() {
       )}
 
       <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
-        <div className="px-4 py-3 border-b border-gray-100 bg-gray-50 flex items-center justify-between flex-wrap gap-2">
+        <div className="px-4 py-3 border-b border-gray-100 bg-gray-50 flex items-center justify-between flex-wrap gap-3">
           <div>
             <h2 className="font-semibold text-gray-700">Yoklama Al</h2>
             <p className="text-xs text-gray-400 mt-0.5">
@@ -723,16 +749,36 @@ export default function BireBir() {
               {!isYonetici && ' Ders ücretleri sadece yönetim tarafından görülür.'}
             </p>
           </div>
-          {isYonetici && (
+          <div className="flex items-center gap-3 flex-wrap">
+            <input
+              type="text"
+              value={yoklamaArama}
+              onChange={(e) => setYoklamaArama(e.target.value)}
+              placeholder="Öğrenci / öğretmen ara..."
+              className="px-3 py-1.5 border border-gray-200 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue min-w-[160px]"
+            />
             <label className="flex items-center gap-2 text-sm text-gray-600 select-none">
-              <input type="checkbox" checked={sadeceAktif} onChange={(e) => setSadeceAktif(e.target.checked)} />
-              Sadece aktif atamalar
+              <input type="checkbox" checked={sadeceBugun} onChange={(e) => setSadeceBugun(e.target.checked)} />
+              Sadece bugünün dersleri
             </label>
-          )}
+            {isYonetici && (
+              <label className="flex items-center gap-2 text-sm text-gray-600 select-none">
+                <input type="checkbox" checked={sadeceAktif} onChange={(e) => setSadeceAktif(e.target.checked)} />
+                Sadece aktif atamalar
+              </label>
+            )}
+          </div>
         </div>
         <div className="divide-y divide-gray-50">
           {gorunenAtamalar.length === 0 && (
-            <p className="px-4 py-4 text-center text-gray-400 text-sm">Gösterilecek atama yok.</p>
+            <p className="px-4 py-4 text-center text-gray-400 text-sm">
+              Gösterilecek atama yok.{' '}
+              {sadeceBugun && (
+                <button onClick={() => setSadeceBugun(false)} className="text-blue hover:underline">
+                  Tüm haftayı göster
+                </button>
+              )}
+            </p>
           )}
           {gorunenAtamalar.map((a) => (
             <YoklamaSatiri
