@@ -380,10 +380,34 @@ function YoklamaSatiri({ atama, yoklamalar, onDegisti, ucretGorunur }) {
     .slice(0, 5)
 
   async function isaretle(durum) {
+    // Mevcut kayıt varsa ve durum gerçekten değişiyorsa (ör. yanlışlıkla "Geldi"
+    // işaretlenmiş kaydı "Gelmedi"ye çevirmek gibi) onay iste — bu, öğrencinin
+    // borcunu da etkileyen bir değişiklik olduğu için yanlışlıkla tıklamaya karşı.
+    if (mevcutKayit && mevcutKayit.durum !== durum) {
+      const mesaj =
+        mevcutKayit.durum === 'geldi'
+          ? 'Bu kayıt "Geldi" olarak işaretliydi ve öğrenciye ders ücreti borç olarak eklenmişti. "Gelmedi" yapmak istediğinize emin misiniz? (borç kaydı kaldırılacak)'
+          : 'Bu kaydın durumunu değiştirmek istediğinize emin misiniz?'
+      if (!confirm(mesaj)) return
+    }
     setGonderiliyor(true)
     const { error } = await supabase
       .from('bire_bir_yoklama')
       .upsert({ atama_id: atama.id, tarih, durum }, { onConflict: 'atama_id,tarih' })
+    setGonderiliyor(false)
+    if (error) alert('Hata: ' + error.message)
+    else onDegisti()
+  }
+
+  async function kaydiSil() {
+    if (!mevcutKayit) return
+    const mesaj =
+      mevcutKayit.durum === 'geldi'
+        ? 'Bu "Geldi" kaydını tamamen silmek istediğinize emin misiniz? Öğrenciye eklenen ders ücreti borcu da kaldırılacak.'
+        : 'Bu yoklama kaydını silmek istediğinize emin misiniz?'
+    if (!confirm(mesaj)) return
+    setGonderiliyor(true)
+    const { error } = await supabase.from('bire_bir_yoklama').delete().eq('id', mevcutKayit.id)
     setGonderiliyor(false)
     if (error) alert('Hata: ' + error.message)
     else onDegisti()
@@ -425,6 +449,16 @@ function YoklamaSatiri({ atama, yoklamalar, onDegisti, ucretGorunur }) {
           >
             Gelmedi
           </button>
+          {mevcutKayit && (
+            <button
+              onClick={kaydiSil}
+              disabled={gonderiliyor}
+              className="px-3 py-1.5 rounded-lg text-sm font-medium text-gray-400 hover:text-gray-600 hover:bg-gray-100 disabled:opacity-50"
+              title="Bu tarihteki yoklama kaydını tamamen sil"
+            >
+              Kaydı Sil
+            </button>
+          )}
         </div>
       </div>
       {gecmis.length > 0 && (
