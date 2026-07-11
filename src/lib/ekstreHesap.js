@@ -266,11 +266,15 @@ export function bireBirBorclariOlustur(atamalar, yoklamalar) {
       if (y.atama_id) {
         const atama = atamaMap.get(y.atama_id)
         if (!atama) return null
+        // Yoklama satırında "damgalanmış" bir ücret varsa (o gün geçerli olan
+        // fiyat) onu kullan; yoksa (eski kayıtlar için) atamanın güncel ücretine
+        // düş. Böylece sonradan yapılan zamlar geçmiş ayların borcunu değiştirmez.
+        const tutar = y.tutar != null ? Number(y.tutar) : Number(atama.ders_ucreti) || 0
         return {
           id: `bb-${y.id}`,
           ogrenci_id: atama.ogrenci_id,
           kalem: 'Bire Bir',
-          tutar: Number(atama.ders_ucreti) || 0,
+          tutar,
           donem,
         }
       }
