@@ -14,6 +14,17 @@ function araliklarCakisiyorMu(b1, s1, b2, s2) {
   return saatKisalt(b1) < saatKisalt(s2) && saatKisalt(b2) < saatKisalt(s1)
 }
 
+// "HH:MM" formatındaki bir saate dakika ekler (gece yarısını taşırsa 00:00'a sarar) —
+// başlangıç saati girilince bitiş saatini otomatik +45 dakika önermek için kullanılır.
+function saateDakikaEkle(saat, dakika) {
+  if (!saat) return ''
+  const [h, m] = saat.split(':').map(Number)
+  const toplamDakika = (((h * 60 + m + dakika) % (24 * 60)) + 24 * 60) % (24 * 60)
+  const yeniSaat = Math.floor(toplamDakika / 60)
+  const yeniDakika = toplamDakika % 60
+  return `${String(yeniSaat).padStart(2, '0')}:${String(yeniDakika).padStart(2, '0')}`
+}
+
 // Verilen haftanın gününe (1=Pzt...7=Paz) denk gelen, İÇİNDE BULUNULAN HAFTAdaki
 // tarihi hesaplar — yoklama alırken tarih kutusunun varsayılan değeri bu olsun diye.
 function buHaftaGunTarihi(hedefGun) {
@@ -58,6 +69,7 @@ function AtamaEkleForm({ ogrenciler, ogretmenler, atamalar, dersProgrami, onEkle
   const [baslangic, setBaslangic] = useState('')
   const [bitis, setBitis] = useState('')
   const [hata, setHata] = useState('')
+  const [basari, setBasari] = useState('')
   const [gonderiliyor, setGonderiliyor] = useState(false)
 
   // Seçilen öğretmenin, seçilen gündeki tüm dolu saatlerini (hem sınıf dersleri hem
@@ -88,6 +100,7 @@ function AtamaEkleForm({ ogrenciler, ogretmenler, atamalar, dersProgrami, onEkle
   async function ekle(e) {
     e.preventDefault()
     setHata('')
+    setBasari('')
     if (!ogrenciId || !ogretmenId || !dersUcreti || !baslangic || !bitis) {
       setHata('Lütfen tüm alanları doldurun.')
       return
@@ -116,11 +129,14 @@ function AtamaEkleForm({ ogrenciler, ogretmenler, atamalar, dersProgrami, onEkle
     if (error) {
       setHata('Hata: ' + error.message)
     } else {
-      setOgrenciId('')
-      setOgretmenId('')
-      setDersUcreti('')
+      // Aynı öğrenciye/öğretmene haftanın birden çok gününe art arda ders eklerken
+      // öğrenci, öğretmen ve ücret korunuyor, sadece saatleri temizliyoruz ve gün
+      // otomatik bir sonraki güne geçiyor — sen sadece o günün saatini girip
+      // "Ata" demeye devam edersin.
       setBaslangic('')
       setBitis('')
+      setGun((g) => (Number(g) < 7 ? Number(g) + 1 : 1))
+      setBasari('✓ Eklendi — aynı öğrenci/öğretmen/ücretle devam edebilirsiniz.')
       onEklendi()
     }
   }
@@ -184,7 +200,13 @@ function AtamaEkleForm({ ogrenciler, ogretmenler, atamalar, dersProgrami, onEkle
           <input
             type="time"
             value={baslangic}
-            onChange={(e) => setBaslangic(e.target.value)}
+            onChange={(e) => {
+              const yeniBaslangic = e.target.value
+              setBaslangic(yeniBaslangic)
+              // Bitiş saatini otomatik +45 dakika öneriyoruz, ama kullanıcı isterse
+              // aşağıdaki Bitiş kutusundan elle değiştirebilir.
+              setBitis(saateDakikaEkle(yeniBaslangic, 45))
+            }}
             className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue"
           />
         </div>
@@ -196,6 +218,7 @@ function AtamaEkleForm({ ogrenciler, ogretmenler, atamalar, dersProgrami, onEkle
             onChange={(e) => setBitis(e.target.value)}
             className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue"
           />
+          <p className="text-[11px] text-gray-400 mt-0.5">Otomatik +45dk önerilir, değiştirilebilir.</p>
         </div>
         <button
           type="submit"
@@ -224,6 +247,7 @@ function AtamaEkleForm({ ogrenciler, ogretmenler, atamalar, dersProgrami, onEkle
         </div>
       )}
       {hata && <p className="text-red-600 text-sm mt-3">{hata}</p>}
+      {!hata && basari && <p className="text-green-600 text-sm mt-3">{basari}</p>}
     </form>
   )
 }
@@ -300,7 +324,11 @@ function AtamaDuzenleSatiri({ a, ogretmenler, atamalar, dersProgrami, onKaydedil
           <input
             type="time"
             value={baslangic}
-            onChange={(e) => setBaslangic(e.target.value)}
+            onChange={(e) => {
+              const yeniBaslangic = e.target.value
+              setBaslangic(yeniBaslangic)
+              setBitis(saateDakikaEkle(yeniBaslangic, 45))
+            }}
             className="px-2 py-1.5 border border-gray-300 rounded-lg text-sm"
           />
           <input
@@ -434,9 +462,15 @@ function YoklamaSatiri({ atama, yoklamalar, onDegisti, ucretGorunur }) {
       if (!confirm(mesaj)) return
     }
     setGonderiliyor(true)
+    // O anki ders ücretini de kayda "damgalıyoruz" (tutar alanı) — ileride ücret
+    // zam görürse, geçmişte zaten "Geldi" işaretlenmiş kayıtların borcu değişmesin,
+    // sadece o günkü fiyatla sabit kalsın diye.
     const { error } = await supabase
       .from('bire_bir_yoklama')
-      .upsert({ atama_id: atama.id, tarih, durum }, { onConflict: 'atama_id,tarih' })
+      .upsert(
+        { atama_id: atama.id, tarih, durum, tutar: atama.ders_ucreti },
+        { onConflict: 'atama_id,tarih' }
+      )
     setGonderiliyor(false)
     if (error) alert('Hata: ' + error.message)
     else onDegisti()
@@ -507,12 +541,19 @@ function YoklamaSatiri({ atama, yoklamalar, onDegisti, ucretGorunur }) {
       {gecmis.length > 0 && (
         <div className="flex flex-wrap gap-1.5 mt-2">
           {gecmis.map((y) => (
-            <span
+            <button
               key={y.id}
-              className={`text-[11px] px-1.5 py-0.5 rounded ${y.durum === 'geldi' ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-600'}`}
+              type="button"
+              onClick={() => setTarih(y.tarih)}
+              title="Bu kaydı düzenlemek veya silmek için tıklayın"
+              className={`text-[11px] px-1.5 py-0.5 rounded hover:ring-1 hover:ring-offset-1 transition-shadow ${
+                y.durum === 'geldi'
+                  ? 'bg-green-50 text-green-700 hover:ring-green-300'
+                  : 'bg-red-50 text-red-600 hover:ring-red-300'
+              } ${y.tarih === tarih ? 'ring-1 ring-offset-1 ring-navy' : ''}`}
             >
               {new Date(y.tarih + 'T12:00:00').toLocaleDateString('tr-TR', { day: '2-digit', month: '2-digit' })}: {y.durum === 'geldi' ? 'Geldi' : 'Gelmedi'}
-            </span>
+            </button>
           ))}
         </div>
       )}
