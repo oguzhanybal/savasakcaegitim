@@ -228,7 +228,13 @@ export function aylikBorcDurumHesapla(borc, tumAylikBorclar, odemeler) {
   const odenenToplam = odemeToplamKalem(odemeler, kalemAdi, { yil: 9999, ay: 12 })
 
   if (odenenToplam >= kumulatifBorc - 0.01) return 'odendi'
-  if (borcTarihi < bugun) return 'gecikti'
+
+  // "Gecikti" sadece borcun ait olduğu AY geçtiyse (ör. Haziran borcu, Temmuz'a
+  // girildiğinde) verilir — bu kalemler ay sonunda ekstre ile faturalandığı için,
+  // içinde bulunduğumuz ayın borcu henüz "gecikmiş" sayılmaz, "bekliyor" kalır.
+  const borcAyIndex = ayIndexOf({ yil: borcTarihi.getFullYear(), ay: borcTarihi.getMonth() + 1 })
+  const simdiAyIndex = ayIndexOf({ yil: bugun.getFullYear(), ay: bugun.getMonth() + 1 })
+  if (borcAyIndex < simdiAyIndex) return 'gecikti'
   return 'bekliyor'
 }
 
