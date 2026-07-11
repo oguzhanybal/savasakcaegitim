@@ -252,7 +252,10 @@ export function bireBirBorclariOlustur(atamalar, yoklamalar) {
     .filter((y) => y.durum === 'geldi')
     .map((y) => {
       const t = new Date(y.tarih)
-      const donem = new Date(t.getFullYear(), t.getMonth(), 1).toISOString().slice(0, 10)
+      // NOT: burada bilerek toISOString() kullanılmıyor — o, yerel tarihi UTC'ye
+      // çevirirken (Türkiye UTC+3) ayın 1'ini bir önceki ayın son gününe kaydırıp
+      // "Temmuz" yerine "Haziran" gibi yanlış bir döneme düşürüyordu.
+      const donem = `${t.getFullYear()}-${String(t.getMonth() + 1).padStart(2, '0')}-01`
 
       if (y.atama_id) {
         const atama = atamaMap.get(y.atama_id)
