@@ -69,22 +69,38 @@ function cakismaBul({ ogretmenId, gun, baslangic, bitis, haricAtamaId }, dersPro
   return null
 }
 
-function AtamaEkleForm({ ogrenciler, ogretmenler, atamalar, dersProgrami, onEklendi }) {
+// ============================================================================
+// BİRE BİR DERS EKLE — Tek form: öğrenci, öğretmen, ücret girilir, sonra
+// "her hafta tekrarlansın mı?" sorusuna Evet/Hayır cevabı verilir.
+//  - Evet  -> haftalık tekrar eden bir "atama" kurulur (gün + saat aralığı ister,
+//             çakışma kontrolü yapılır, sonsuza kadar her hafta geçerli olur).
+//  - Hayır -> sadece o tarihe özel, tek seferlik bir ders kaydı (bire_bir_yoklama,
+//             atama_id boş) oluşturulur, hemen "Geldi" olarak borç eklenir.
+// ============================================================================
+function BireBirDersEkleForm({ ogrenciler, ogretmenler, atamalar, dersProgrami, onEklendi }) {
   const [ogrenciId, setOgrenciId] = useState('')
   const [ogretmenId, setOgretmenId] = useState('')
   const [dersUcreti, setDersUcreti] = useState('')
+  const [tekrarlansin, setTekrarlansin] = useState(true)
+
+  // Haftalık tekrar (Evet) alanları
   const [gun, setGun] = useState(1)
   const [baslangic, setBaslangic] = useState('')
   const [bitis, setBitis] = useState('')
+
+  // Tek seferlik (Hayır) alanı
+  const [tarih, setTarih] = useState(() => new Date().toISOString().slice(0, 10))
+
   const [hata, setHata] = useState('')
   const [basari, setBasari] = useState('')
   const [gonderiliyor, setGonderiliyor] = useState(false)
+  const ogrenciSelectRef = useRef(null)
 
   // Seçilen öğretmenin, seçilen gündeki tüm dolu saatlerini (hem sınıf dersleri hem
-  // diğer bire bir dersleri) tek listede gösterir — çakışmayı deneme yanılmayla
-  // bulmak yerine, boş saatler saat girmeden önce bir bakışta görülsün diye.
+  // diğer bire bir dersleri) tek listede gösterir — sadece "Evet, tekrarlansın"
+  // seçiliyken anlamlı, çünkü tek seferlik derste gün bazlı çakışma aranmıyor.
   const buGunMesgulSaatler = useMemo(() => {
-    if (!ogretmenId) return []
+    if (!ogretmenId || !tekrarlansin) return []
     const gunNum = Number(gun)
     const sinifDersleri = dersProgrami
       .filter((d) => d.ogretmen_profile_id === ogretmenId && d.gun === gunNum)
@@ -103,71 +119,106 @@ function AtamaEkleForm({ ogrenciler, ogretmenler, atamalar, dersProgrami, onEkle
     return [...sinifDersleri, ...bireBirDersleri].sort((x, y) =>
       saatKisalt(x.baslangic) < saatKisalt(y.baslangic) ? -1 : 1
     )
-  }, [ogretmenId, gun, dersProgrami, atamalar])
+  }, [ogretmenId, gun, dersProgrami, atamalar, tekrarlansin])
+
+  // Bu öğrenci-öğretmen ikilisi için daha önce girilmiş bir ücret varsa (haftalık
+  // bir atamada zaten kayıtlıysa) otomatik dolduruyoruz — elle tekrar yazmaya
+  // gerek kalmasın diye. Kullanıcı isterse üzerine yazıp değiştirebilir.
+  function fiyatiOner(ogrenciIdParam, ogretmenIdParam) {
+    if (!ogrenciIdParam || !ogretmenIdParam) return
+    const eslesen = atamalar.find(
+      (a) => a.ogrenci_id === ogrenciIdParam && a.ogretmen_profile_id === ogretmenIdParam
+    )
+    if (eslesen) setDersUcreti(String(eslesen.ders_ucreti))
+  }
 
   async function ekle(e) {
     e.preventDefault()
     setHata('')
     setBasari('')
-    if (!ogrenciId || !ogretmenId || !dersUcreti || !baslangic || !bitis) {
-      setHata('Lütfen tüm alanları doldurun.')
-      return
-    }
-    if (baslangic >= bitis) {
-      setHata('Başlangıç saati bitiş saatinden önce olmalı.')
+
+    if (!ogrenciId || !ogretmenId || !dersUcreti) {
+      setHata('Lütfen öğrenci, öğretmen ve ders ücretini girin.')
       return
     }
 
-    const cakisma = cakismaBul({ ogretmenId, gun: Number(gun), baslangic, bitis }, dersProgrami, atamalar)
-    if (cakisma) {
-      setHata(`Çakışma var: ${cakisma.aciklama}.`)
-      return
-    }
+    if (tekrarlansin) {
+      if (!baslangic || !bitis) {
+        setHata('Lütfen başlangıç ve bitiş saatini girin.')
+        return
+      }
+      if (baslangic >= bitis) {
+        setHata('Başlangıç saati bitiş saatinden önce olmalı.')
+        return
+      }
+      const cakisma = cakismaBul({ ogretmenId, gun: Number(gun), baslangic, bitis }, dersProgrami, atamalar)
+      if (cakisma) {
+        setHata(`Çakışma var: ${cakisma.aciklama}.`)
+        return
+      }
 
-    setGonderiliyor(true)
-    const { error } = await supabase.from('bire_bir_atamalari').insert({
-      ogrenci_id: ogrenciId,
-      ogretmen_profile_id: ogretmenId,
-      ders_ucreti: Number(dersUcreti),
-      gun: Number(gun),
-      baslangic_saat: baslangic,
-      bitis_saat: bitis,
-    })
-    setGonderiliyor(false)
-    if (error) {
-      setHata('Hata: ' + error.message)
+      setGonderiliyor(true)
+      const { error } = await supabase.from('bire_bir_atamalari').insert({
+        ogrenci_id: ogrenciId,
+        ogretmen_profile_id: ogretmenId,
+        ders_ucreti: Number(dersUcreti),
+        gun: Number(gun),
+        baslangic_saat: baslangic,
+        bitis_saat: bitis,
+      })
+      setGonderiliyor(false)
+      if (error) {
+        setHata('Hata: ' + error.message)
+      } else {
+        // Aynı öğrenci/öğretmene haftanın birden çok gününe art arda ders eklerken
+        // öğrenci, öğretmen ve ücret korunuyor, sadece saatleri temizliyoruz ve gün
+        // otomatik bir sonraki güne geçiyor.
+        setBaslangic('')
+        setBitis('')
+        setGun((g) => (Number(g) < 7 ? Number(g) + 1 : 1))
+        setBasari('✓ Her hafta tekrarlanacak şekilde eklendi — devam edebilirsiniz.')
+        onEklendi()
+      }
     } else {
-      // Aynı öğrenciye/öğretmene haftanın birden çok gününe art arda ders eklerken
-      // öğrenci, öğretmen ve ücret korunuyor, sadece saatleri temizliyoruz ve gün
-      // otomatik bir sonraki güne geçiyor — sen sadece o günün saatini girip
-      // "Ata" demeye devam edersin.
-      setBaslangic('')
-      setBitis('')
-      setGun((g) => (Number(g) < 7 ? Number(g) + 1 : 1))
-      setBasari('✓ Eklendi — aynı öğrenci/öğretmen/ücretle devam edebilirsiniz.')
-      onEklendi()
+      if (!tarih) {
+        setHata('Lütfen tarihi girin.')
+        return
+      }
+      setGonderiliyor(true)
+      const { error } = await supabase.from('bire_bir_yoklama').insert({
+        ogrenci_id: ogrenciId,
+        ogretmen_profile_id: ogretmenId,
+        tutar: Number(dersUcreti),
+        tarih,
+        durum: 'geldi',
+      })
+      setGonderiliyor(false)
+      if (error) {
+        setHata('Hata: ' + error.message)
+      } else {
+        // Art arda çok sayıda tek seferlik ders eklerken (aynı gün / aynı öğretmen
+        // / aynı ücret sık tekrar ettiği için) sadece öğrenciyi sıfırlıyoruz.
+        setOgrenciId('')
+        setBasari('✓ Tek seferlik ders eklendi — devam edebilirsiniz.')
+        ogrenciSelectRef.current?.focus()
+        onEklendi()
+      }
     }
   }
 
   return (
     <form onSubmit={ekle} className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5 mb-6">
-      <p className="font-semibold text-gray-700 mb-3">Yeni Bire Bir Ataması</p>
+      <p className="font-semibold text-gray-700 mb-3">Bire Bir Ders Ekle</p>
       <div className="flex flex-wrap gap-3 items-end">
         <div className="flex-1 min-w-[180px]">
           <label className="block text-sm font-medium text-gray-700 mb-1">Öğrenci</label>
           <select
+            ref={ogrenciSelectRef}
             value={ogrenciId}
             onChange={(e) => {
-              const yeniOgrenciId = e.target.value
-              setOgrenciId(yeniOgrenciId)
-              // Bu öğrenci-öğretmen ikilisi için daha önce girilmiş bir ücret varsa
-              // (aynı ikili başka bir saatte de ders alıyorsa) otomatik dolduruyoruz.
-              if (yeniOgrenciId && ogretmenId) {
-                const eslesen = atamalar.find(
-                  (a) => a.ogrenci_id === yeniOgrenciId && a.ogretmen_profile_id === ogretmenId
-                )
-                if (eslesen) setDersUcreti(String(eslesen.ders_ucreti))
-              }
+              const v = e.target.value
+              setOgrenciId(v)
+              fiyatiOner(v, ogretmenId)
             }}
             className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue bg-white"
           >
@@ -182,14 +233,9 @@ function AtamaEkleForm({ ogrenciler, ogretmenler, atamalar, dersProgrami, onEkle
           <select
             value={ogretmenId}
             onChange={(e) => {
-              const yeniOgretmenId = e.target.value
-              setOgretmenId(yeniOgretmenId)
-              if (ogrenciId && yeniOgretmenId) {
-                const eslesen = atamalar.find(
-                  (a) => a.ogrenci_id === ogrenciId && a.ogretmen_profile_id === yeniOgretmenId
-                )
-                if (eslesen) setDersUcreti(String(eslesen.ders_ucreti))
-              }
+              const v = e.target.value
+              setOgretmenId(v)
+              fiyatiOner(ogrenciId, v)
             }}
             className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue bg-white"
           >
@@ -211,69 +257,114 @@ function AtamaEkleForm({ ogrenciler, ogretmenler, atamalar, dersProgrami, onEkle
             className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue"
           />
         </div>
-        <div className="min-w-[130px]">
-          <label className="block text-sm font-medium text-gray-700 mb-1">Gün</label>
-          <select
-            value={gun}
-            onChange={(e) => setGun(e.target.value)}
-            className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue bg-white"
-          >
-            {GUNLER.slice(1).map((g, i) => (
-              <option key={i + 1} value={i + 1}>{g}</option>
-            ))}
-          </select>
-        </div>
-        <div className="min-w-[110px]">
-          <label className="block text-sm font-medium text-gray-700 mb-1">Başlangıç</label>
-          <input
-            type="time"
-            value={baslangic}
-            onChange={(e) => {
-              const yeniBaslangic = e.target.value
-              setBaslangic(yeniBaslangic)
-              // Bitiş saatini otomatik +45 dakika öneriyoruz, ama kullanıcı isterse
-              // aşağıdaki Bitiş kutusundan elle değiştirebilir.
-              setBitis(saateDakikaEkle(yeniBaslangic, 45))
-            }}
-            className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue"
-          />
-        </div>
-        <div className="min-w-[110px]">
-          <label className="block text-sm font-medium text-gray-700 mb-1">Bitiş</label>
-          <input
-            type="time"
-            value={bitis}
-            onChange={(e) => setBitis(e.target.value)}
-            className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue"
-          />
-          <p className="text-[11px] text-gray-400 mt-0.5">Otomatik +45dk önerilir, değiştirilebilir.</p>
-        </div>
-        <button
-          type="submit"
-          disabled={gonderiliyor}
-          className="bg-orange text-white font-semibold px-5 py-2 rounded-lg hover:opacity-90 transition-opacity disabled:opacity-50"
-        >
-          {gonderiliyor ? 'Ekleniyor...' : 'Ata'}
-        </button>
       </div>
-      {ogretmenId && (
-        <div className="mt-3 bg-gray-50 border border-gray-100 rounded-lg p-3">
-          <p className="text-xs font-medium text-gray-600 mb-1.5">
-            {ogretmenler.find((o) => o.id === ogretmenId)?.ad_soyad} — {GUNLER[Number(gun)]} günü dolu saatler:
-          </p>
-          {buGunMesgulSaatler.length === 0 ? (
-            <p className="text-xs text-green-600">Bu gün için kayıtlı ders yok, tüm saatler boş.</p>
-          ) : (
-            <div className="flex flex-wrap gap-1.5">
-              {buGunMesgulSaatler.map((s, i) => (
-                <span key={i} className="text-[11px] px-1.5 py-0.5 rounded bg-orange-50 text-orange-700">
-                  {saatKisalt(s.baslangic)}–{saatKisalt(s.bitis)} · {s.etiket}
-                </span>
-              ))}
-            </div>
-          )}
+
+      <div className="mt-4 bg-gray-50 border border-gray-100 rounded-lg p-3">
+        <p className="text-sm font-medium text-gray-700 mb-2">Bu ders her hafta aynı gün tekrarlansın mı?</p>
+        <div className="flex gap-2">
+          <button
+            type="button"
+            onClick={() => setTekrarlansin(true)}
+            className={`px-3 py-1.5 rounded-lg text-sm font-semibold transition-colors ${
+              tekrarlansin ? 'bg-navy text-white' : 'bg-white border border-gray-200 text-gray-600 hover:bg-gray-100'
+            }`}
+          >
+            Evet, her hafta tekrarlansın
+          </button>
+          <button
+            type="button"
+            onClick={() => setTekrarlansin(false)}
+            className={`px-3 py-1.5 rounded-lg text-sm font-semibold transition-colors ${
+              !tekrarlansin ? 'bg-navy text-white' : 'bg-white border border-gray-200 text-gray-600 hover:bg-gray-100'
+            }`}
+          >
+            Hayır, sadece bu sefer
+          </button>
         </div>
-      )}
+
+        {tekrarlansin ? (
+          <div className="flex flex-wrap gap-3 items-end mt-3">
+            <div className="min-w-[130px]">
+              <label className="block text-sm font-medium text-gray-700 mb-1">Gün</label>
+              <select
+                value={gun}
+                onChange={(e) => setGun(e.target.value)}
+                className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue bg-white"
+              >
+                {GUNLER.slice(1).map((g, i) => (
+                  <option key={i + 1} value={i + 1}>{g}</option>
+                ))}
+              </select>
+            </div>
+            <div className="min-w-[110px]">
+              <label className="block text-sm font-medium text-gray-700 mb-1">Başlangıç</label>
+              <input
+                type="time"
+                value={baslangic}
+                onChange={(e) => {
+                  const yeniBaslangic = e.target.value
+                  setBaslangic(yeniBaslangic)
+                  setBitis(saateDakikaEkle(yeniBaslangic, 45))
+                }}
+                className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue"
+              />
+            </div>
+            <div className="min-w-[110px]">
+              <label className="block text-sm font-medium text-gray-700 mb-1">Bitiş</label>
+              <input
+                type="time"
+                value={bitis}
+                onChange={(e) => setBitis(e.target.value)}
+                className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue"
+              />
+              <p className="text-[11px] text-gray-400 mt-0.5">Otomatik +45dk önerilir, değiştirilebilir.</p>
+            </div>
+          </div>
+        ) : (
+          <div className="flex flex-wrap gap-3 items-end mt-3">
+            <div className="min-w-[150px]">
+              <label className="block text-sm font-medium text-gray-700 mb-1">Tarih</label>
+              <input
+                type="date"
+                value={tarih}
+                onChange={(e) => setTarih(e.target.value)}
+                className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue"
+              />
+            </div>
+            <p className="text-xs text-gray-400 pb-2">
+              Bu ders sadece seçtiğiniz tarihte geçerli olur, tekrar etmez. Öğrencinin hesabına hemen borç eklenir.
+            </p>
+          </div>
+        )}
+
+        {tekrarlansin && ogretmenId && (
+          <div className="mt-3 bg-white border border-gray-100 rounded-lg p-3">
+            <p className="text-xs font-medium text-gray-600 mb-1.5">
+              {ogretmenler.find((o) => o.id === ogretmenId)?.ad_soyad} — {GUNLER[Number(gun)]} günü dolu saatler:
+            </p>
+            {buGunMesgulSaatler.length === 0 ? (
+              <p className="text-xs text-green-600">Bu gün için kayıtlı ders yok, tüm saatler boş.</p>
+            ) : (
+              <div className="flex flex-wrap gap-1.5">
+                {buGunMesgulSaatler.map((s, i) => (
+                  <span key={i} className="text-[11px] px-1.5 py-0.5 rounded bg-orange-50 text-orange-700">
+                    {saatKisalt(s.baslangic)}–{saatKisalt(s.bitis)} · {s.etiket}
+                  </span>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+
+      <button
+        type="submit"
+        disabled={gonderiliyor}
+        className="mt-4 bg-orange text-white font-semibold px-5 py-2 rounded-lg hover:opacity-90 transition-opacity disabled:opacity-50"
+      >
+        {gonderiliyor ? 'Ekleniyor...' : 'Ekle'}
+      </button>
+
       {hata && <p className="text-red-600 text-sm mt-3">{hata}</p>}
       {!hata && basari && <p className="text-green-600 text-sm mt-3">{basari}</p>}
     </form>
@@ -406,8 +497,11 @@ function AtamaListesi({ atamalar, ogretmenler, dersProgrami, onDegisti }) {
   return (
     <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-x-auto mb-6">
       <div className="px-4 py-3 border-b border-gray-100 bg-gray-50">
-        <h2 className="font-semibold text-gray-700">Atamalar</h2>
-        <p className="text-xs text-gray-400 mt-0.5">Öğretmen yanlış girildiyse "Düzenle" ile gün/saat/öğretmen/ücreti düzeltebilirsiniz.</p>
+        <h2 className="font-semibold text-gray-700">Haftalık Tekrar Eden Dersler (Atamalar)</h2>
+        <p className="text-xs text-gray-400 mt-0.5">
+          Bunlar "Evet, her hafta tekrarlansın" ile eklenen, sabit programı olan öğrenciler. Öğretmen yanlış
+          girildiyse "Düzenle" ile gün/saat/öğretmen/ücreti düzeltebilirsiniz.
+        </p>
       </div>
       <table className="w-full text-sm min-w-[760px]">
         <thead>
@@ -422,7 +516,7 @@ function AtamaListesi({ atamalar, ogretmenler, dersProgrami, onDegisti }) {
         </thead>
         <tbody>
           {atamalar.length === 0 && (
-            <tr><td colSpan={6} className="px-4 py-4 text-center text-gray-400">Henüz atama yok.</td></tr>
+            <tr><td colSpan={6} className="px-4 py-4 text-center text-gray-400">Henüz haftalık tekrar eden bir atama yok.</td></tr>
           )}
           {atamalar.map((a) =>
             duzenlenenId === a.id ? (
@@ -605,160 +699,26 @@ function YoklamaSatiri({ atama, yoklamalar, onDegisti, ucretGorunur }) {
   )
 }
 
-// Asıl atanan öğrenci o gün gelmediğinde, öğretmenin boşta kalan saatinde
-// BAŞKA bir öğrenciye verdiği tek seferlik dersi kaydeder — haftalık atama
-// kurmaya gerek yoktur, öğrenci hesabına o an borç olarak eklenir.
-function EkDersEkleForm({ ogrenciler, ogretmenler, atamalar, onEklendi }) {
-  const [ogrenciId, setOgrenciId] = useState('')
-  const [ogretmenId, setOgretmenId] = useState('')
-  const [tutar, setTutar] = useState('')
-  const [tarih, setTarih] = useState(() => new Date().toISOString().slice(0, 10))
-  const [hata, setHata] = useState('')
-  const [basari, setBasari] = useState('')
-  const [gonderiliyor, setGonderiliyor] = useState(false)
-  const ogrenciSelectRef = useRef(null)
-
-  async function ekle(e) {
-    e.preventDefault()
-    setHata('')
-    setBasari('')
-    if (!ogrenciId || !ogretmenId || !tutar || !tarih) {
-      setHata('Lütfen tüm alanları doldurun.')
-      return
-    }
-    setGonderiliyor(true)
-    const { error } = await supabase.from('bire_bir_yoklama').insert({
-      ogrenci_id: ogrenciId,
-      ogretmen_profile_id: ogretmenId,
-      tutar: Number(tutar),
-      tarih,
-      durum: 'geldi',
-    })
-    setGonderiliyor(false)
-    if (error) {
-      setHata('Hata: ' + error.message)
-    } else {
-      // Art arda çok sayıda ek ders eklerken (aynı gün / aynı öğretmen / aynı
-      // ücret sık tekrar ettiği için) sadece öğrenciyi sıfırlıyoruz — öğretmen,
-      // tarih ve ücret bir sonraki kayıt için hazır kalsın diye korunuyor.
-      setOgrenciId('')
-      setBasari('✓ Eklendi — devam edebilirsiniz.')
-      ogrenciSelectRef.current?.focus()
-      onEklendi()
-    }
-  }
-
-  return (
-    <form onSubmit={ekle} className="bg-white rounded-2xl border border-orange/30 shadow-sm p-5 mb-6">
-      <p className="font-semibold text-gray-700 mb-1">Ek Ders Ekle</p>
-      <p className="text-xs text-gray-400 mb-3">
-        Asıl atanan öğrenci gelmediğinde, o boşta kalan saatte başka bir öğrenciye verilen tek seferlik dersi
-        buradan kaydedin — bunun için haftalık atama kurmanıza gerek yok, öğrencinin hesabına anında borç eklenir.
-        Art arda ekleme yaparken öğretmen, tarih ve ücret bir sonraki kayıt için korunur, sadece öğrenciyi
-        değiştirmeniz yeterli.
-      </p>
-      <div className="flex flex-wrap gap-3 items-end">
-        <div className="flex-1 min-w-[180px]">
-          <label className="block text-sm font-medium text-gray-700 mb-1">Öğrenci</label>
-          <select
-            ref={ogrenciSelectRef}
-            value={ogrenciId}
-            onChange={(e) => {
-              const yeniOgrenciId = e.target.value
-              setOgrenciId(yeniOgrenciId)
-              // Bu öğrenci-öğretmen ikilisi haftalık atamalarda daha önce kayıtlıysa,
-              // o ücreti otomatik dolduruyoruz.
-              if (yeniOgrenciId && ogretmenId) {
-                const eslesen = atamalar.find(
-                  (a) => a.ogrenci_id === yeniOgrenciId && a.ogretmen_profile_id === ogretmenId
-                )
-                if (eslesen) setTutar(String(eslesen.ders_ucreti))
-              }
-            }}
-            className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue bg-white"
-          >
-            <option value="">Seçiniz...</option>
-            {ogrenciler.map((o) => (
-              <option key={o.id} value={o.id}>{o.ad_soyad}</option>
-            ))}
-          </select>
-        </div>
-        <div className="flex-1 min-w-[180px]">
-          <label className="block text-sm font-medium text-gray-700 mb-1">Öğretmen</label>
-          <select
-            value={ogretmenId}
-            onChange={(e) => {
-              const yeniOgretmenId = e.target.value
-              setOgretmenId(yeniOgretmenId)
-              if (ogrenciId && yeniOgretmenId) {
-                const eslesen = atamalar.find(
-                  (a) => a.ogrenci_id === ogrenciId && a.ogretmen_profile_id === yeniOgretmenId
-                )
-                if (eslesen) setTutar(String(eslesen.ders_ucreti))
-              }
-            }}
-            className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue bg-white"
-          >
-            <option value="">Seçiniz...</option>
-            {ogretmenler.map((o) => (
-              <option key={o.id} value={o.id}>{o.brans ? `${o.ad_soyad} — ${o.brans}` : o.ad_soyad}</option>
-            ))}
-          </select>
-        </div>
-        <div className="min-w-[130px]">
-          <label className="block text-sm font-medium text-gray-700 mb-1">Tarih</label>
-          <input
-            type="date"
-            value={tarih}
-            onChange={(e) => setTarih(e.target.value)}
-            className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue"
-          />
-        </div>
-        <div className="min-w-[130px]">
-          <label className="block text-sm font-medium text-gray-700 mb-1">Ders Ücreti (₺)</label>
-          <input
-            type="number"
-            min="0"
-            step="0.01"
-            value={tutar}
-            onChange={(e) => setTutar(e.target.value)}
-            placeholder="1500"
-            className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue"
-          />
-        </div>
-        <button
-          type="submit"
-          disabled={gonderiliyor}
-          className="bg-orange text-white font-semibold px-5 py-2 rounded-lg hover:opacity-90 transition-opacity disabled:opacity-50"
-        >
-          {gonderiliyor ? 'Ekleniyor...' : 'Ekle'}
-        </button>
-      </div>
-      {hata && <p className="text-red-600 text-sm mt-3">{hata}</p>}
-      {!hata && basari && <p className="text-green-600 text-sm mt-3">{basari}</p>}
-    </form>
-  )
-}
-
-function EkDerslerListesi({ yoklamalar, ogrenciAdMap, ogretmenAdMap, onDegisti }) {
-  const ekDersler = yoklamalar
+function TekSeferlikDerslerListesi({ yoklamalar, ogrenciAdMap, ogretmenAdMap, onDegisti }) {
+  const tekSeferlikler = yoklamalar
     .filter((y) => !y.atama_id)
     .sort((a, b) => (a.tarih < b.tarih ? 1 : -1))
     .slice(0, 15)
 
   async function sil(id) {
-    if (!confirm('Bu ek ders kaydını silmek istediğinize emin misiniz?')) return
+    if (!confirm('Bu tek seferlik ders kaydını silmek istediğinize emin misiniz?')) return
     const { error } = await supabase.from('bire_bir_yoklama').delete().eq('id', id)
     if (error) alert('Hata: ' + error.message)
     else onDegisti()
   }
 
-  if (ekDersler.length === 0) return null
+  if (tekSeferlikler.length === 0) return null
 
   return (
     <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-x-auto mb-6">
       <div className="px-4 py-3 border-b border-gray-100 bg-gray-50">
-        <h2 className="font-semibold text-gray-700">Son Ek Dersler</h2>
+        <h2 className="font-semibold text-gray-700">Son Tek Seferlik Dersler</h2>
+        <p className="text-xs text-gray-400 mt-0.5">"Hayır, sadece bu sefer" ile eklenen, tekrar etmeyen dersler.</p>
       </div>
       <table className="w-full text-sm min-w-[560px]">
         <thead>
@@ -771,7 +731,7 @@ function EkDerslerListesi({ yoklamalar, ogrenciAdMap, ogretmenAdMap, onDegisti }
           </tr>
         </thead>
         <tbody>
-          {ekDersler.map((y) => (
+          {tekSeferlikler.map((y) => (
             <tr key={y.id} className="border-t border-gray-50">
               <td className="px-4 py-2">{new Date(y.tarih + 'T12:00:00').toLocaleDateString('tr-TR')}</td>
               <td className="px-4 py-2 font-medium text-gray-800">{ogrenciAdMap.get(y.ogrenci_id) || '—'}</td>
@@ -865,7 +825,7 @@ export default function BireBir() {
 
       {isYonetici && (
         <>
-          <AtamaEkleForm
+          <BireBirDersEkleForm
             ogrenciler={ogrenciler}
             ogretmenler={ogretmenler}
             atamalar={atamalar}
@@ -878,8 +838,7 @@ export default function BireBir() {
             dersProgrami={dersProgrami}
             onDegisti={veriyiYenile}
           />
-          <EkDersEkleForm ogrenciler={ogrenciler} ogretmenler={ogretmenler} atamalar={atamalar} onEklendi={veriyiYenile} />
-          <EkDerslerListesi
+          <TekSeferlikDerslerListesi
             yoklamalar={yoklamalar}
             ogrenciAdMap={ogrenciAdMap}
             ogretmenAdMap={ogretmenAdMap}
