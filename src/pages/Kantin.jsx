@@ -321,6 +321,7 @@ export default function Kantin() {
   // listesini ve en güncel urunEkle fonksiyonunu ref'lerde tutuyoruz.
   const aktifUrunlerRef = useRef([])
   const urunEkleRef = useRef(() => {})
+  const kameraZamanAsimiRef = useRef(null)
 
   function veriyiYenile() {
     if (!ilkYuklemeTamamRef.current) setLoading(true)
@@ -422,18 +423,34 @@ export default function Kantin() {
   })
 
   // QuaggaJS kütüphanesini sadece kamera ilk açıldığında, CDN üzerinden yükler
-  // (projeye npm bağımlılığı eklemeye gerek kalmasın diye).
+  // (projeye npm bağımlılığı eklemeye gerek kalmasın diye). Bazı ağlarda tek
+  // bir CDN'e erişim sorunlu olabildiği için birden fazla kaynak sırayla denenir.
   function quaggaYukle() {
+    const kaynaklar = [
+      'https://cdn.jsdelivr.net/npm/quagga@0.12.1/dist/quagga.min.js',
+      'https://unpkg.com/quagga@0.12.1/dist/quagga.min.js',
+    ]
     return new Promise((resolve, reject) => {
       if (window.Quagga) {
         resolve(window.Quagga)
         return
       }
-      const script = document.createElement('script')
-      script.src = 'https://cdn.jsdelivr.net/npm/quagga@0.12.1/dist/quagga.min.js'
-      script.onload = () => resolve(window.Quagga)
-      script.onerror = () => reject(new Error('Kamera kütüphanesi yüklenemedi, internet bağlantınızı kontrol edin.'))
-      document.body.appendChild(script)
+      let i = 0
+      function dene() {
+        if (i >= kaynaklar.length) {
+          reject(new Error('Kamera kütüphanesi hiçbir kaynaktan yüklenemedi. İnternet bağlantınızı kontrol edin.'))
+          return
+        }
+        const script = document.createElement('script')
+        script.src = kaynaklar[i]
+        script.onload = () => resolve(window.Quagga)
+        script.onerror = () => {
+          i += 1
+          dene()
+        }
+        document.body.appendChild(script)
+      }
+      dene()
     })
   }
 
@@ -460,6 +477,17 @@ export default function Kantin() {
       return
     }
     setKameraYukleniyor(true)
+
+    // Quagga bazı durumlarda (izin penceresi kapatılırsa, kamera bulunamazsa vb.)
+    // hiç callback çağırmadan asılı kalabiliyor — bu yüzden 8 saniye içinde
+    // açılmazsa kullanıcıyı bekletmemek için otomatik olarak hata gösteriyoruz.
+    const zamanAsimi = setTimeout(() => {
+      setKameraYukleniyor(false)
+      setKameraAcik(false)
+      setHata('Kamera 8 saniyede açılamadı. Tarayıcının adres çubuğunda kamera izni engellenmiş olabilir, ya da bu cihazda/tarayıcıda kamera erişimi desteklenmiyor olabilir.')
+    }, 8000)
+    kameraZamanAsimiRef.current = zamanAsimi
+
     try {
       const Quagga = await quaggaYukle()
       setKameraAcik(true)
@@ -471,15 +499,18 @@ export default function Kantin() {
             inputStream: {
               type: 'LiveStream',
               target: kameraKutusuRef.current,
-              constraints: { facingMode: 'environment' },
+              // "ideal" olarak istiyoruz — laptop/masaüstü gibi arka kamerası
+              // olmayan cihazlarda "zorunlu" istenirse kamera hiç açılmıyordu.
+              constraints: { facingMode: { ideal: 'environment' } },
             },
             decoder: { readers: ['code_39_reader'] },
             locate: true,
           },
           (hata) => {
+            clearTimeout(zamanAsimi)
             setKameraYukleniyor(false)
             if (hata) {
-              setHata('Kamera açılamadı: ' + hata.message + ' (kameraya izin verdiniz mi?)')
+              setHata('Kamera açılamadı: ' + (hata.message || hata.name || 'bilinmeyen hata') + ' (kameraya izin verdiniz mi?)')
               setKameraAcik(false)
               return
             }
@@ -489,17 +520,21 @@ export default function Kantin() {
         Quagga.onDetected(kameraOkuma)
       }, 50)
     } catch (e) {
+      clearTimeout(zamanAsimi)
       setKameraYukleniyor(false)
+      setKameraAcik(false)
       setHata(e.message)
     }
   }
 
   function kamerayiKapat() {
+    if (kameraZamanAsimiRef.current) clearTimeout(kameraZamanAsimiRef.current)
     if (window.Quagga) {
       window.Quagga.offDetected(kameraOkuma)
       window.Quagga.stop()
     }
     setKameraAcik(false)
+    setKameraYukleniyor(false)
   }
 
   // Sayfadan tamamen ayrılırken kamera açık kalmasın.
