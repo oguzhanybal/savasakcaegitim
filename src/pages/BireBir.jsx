@@ -36,6 +36,14 @@ function buHaftaGunTarihi(hedefGun) {
   return tarih.toISOString().slice(0, 10)
 }
 
+// "YYYY-MM-DD" formatındaki bir tarihe gün ekler/çıkarır — tarih kutusunun
+// yanındaki "Önceki hafta / Sonraki hafta" butonları için kullanılır.
+function gunEkle(tarihStr, gunSayisi) {
+  const t = new Date(tarihStr + 'T12:00:00')
+  t.setDate(t.getDate() + gunSayisi)
+  return t.toISOString().slice(0, 10)
+}
+
 // Yeni bir bire bir atamasının (öğretmen + gün + saat), o öğretmenin sınıf ders
 // programıyla ya da başka bir bire bir dersiyle çakışıp çakışmadığını kontrol eder.
 function cakismaBul({ ogretmenId, gun, baslangic, bitis, haricAtamaId }, dersProgrami, atamalar) {
@@ -149,7 +157,18 @@ function AtamaEkleForm({ ogrenciler, ogretmenler, atamalar, dersProgrami, onEkle
           <label className="block text-sm font-medium text-gray-700 mb-1">Öğrenci</label>
           <select
             value={ogrenciId}
-            onChange={(e) => setOgrenciId(e.target.value)}
+            onChange={(e) => {
+              const yeniOgrenciId = e.target.value
+              setOgrenciId(yeniOgrenciId)
+              // Bu öğrenci-öğretmen ikilisi için daha önce girilmiş bir ücret varsa
+              // (aynı ikili başka bir saatte de ders alıyorsa) otomatik dolduruyoruz.
+              if (yeniOgrenciId && ogretmenId) {
+                const eslesen = atamalar.find(
+                  (a) => a.ogrenci_id === yeniOgrenciId && a.ogretmen_profile_id === ogretmenId
+                )
+                if (eslesen) setDersUcreti(String(eslesen.ders_ucreti))
+              }
+            }}
             className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue bg-white"
           >
             <option value="">Seçiniz...</option>
@@ -162,7 +181,16 @@ function AtamaEkleForm({ ogrenciler, ogretmenler, atamalar, dersProgrami, onEkle
           <label className="block text-sm font-medium text-gray-700 mb-1">Öğretmen</label>
           <select
             value={ogretmenId}
-            onChange={(e) => setOgretmenId(e.target.value)}
+            onChange={(e) => {
+              const yeniOgretmenId = e.target.value
+              setOgretmenId(yeniOgretmenId)
+              if (ogrenciId && yeniOgretmenId) {
+                const eslesen = atamalar.find(
+                  (a) => a.ogrenci_id === ogrenciId && a.ogretmen_profile_id === yeniOgretmenId
+                )
+                if (eslesen) setDersUcreti(String(eslesen.ders_ucreti))
+              }
+            }}
             className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue bg-white"
           >
             <option value="">Seçiniz...</option>
@@ -502,12 +530,28 @@ function YoklamaSatiri({ atama, yoklamalar, onDegisti, ucretGorunur }) {
           </p>
         </div>
         <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => setTarih((t) => gunEkle(t, -7))}
+            title="Önceki hafta"
+            className="px-2 py-1.5 rounded-lg text-sm text-gray-500 hover:bg-gray-100"
+          >
+            ◀
+          </button>
           <input
             type="date"
             value={tarih}
             onChange={(e) => setTarih(e.target.value)}
             className="px-2 py-1.5 border border-gray-200 rounded-lg text-sm"
           />
+          <button
+            type="button"
+            onClick={() => setTarih((t) => gunEkle(t, 7))}
+            title="Sonraki hafta"
+            className="px-2 py-1.5 rounded-lg text-sm text-gray-500 hover:bg-gray-100"
+          >
+            ▶
+          </button>
           <button
             onClick={() => isaretle('geldi')}
             disabled={gonderiliyor}
@@ -564,7 +608,7 @@ function YoklamaSatiri({ atama, yoklamalar, onDegisti, ucretGorunur }) {
 // Asıl atanan öğrenci o gün gelmediğinde, öğretmenin boşta kalan saatinde
 // BAŞKA bir öğrenciye verdiği tek seferlik dersi kaydeder — haftalık atama
 // kurmaya gerek yoktur, öğrenci hesabına o an borç olarak eklenir.
-function EkDersEkleForm({ ogrenciler, ogretmenler, onEklendi }) {
+function EkDersEkleForm({ ogrenciler, ogretmenler, atamalar, onEklendi }) {
   const [ogrenciId, setOgrenciId] = useState('')
   const [ogretmenId, setOgretmenId] = useState('')
   const [tutar, setTutar] = useState('')
@@ -619,7 +663,18 @@ function EkDersEkleForm({ ogrenciler, ogretmenler, onEklendi }) {
           <select
             ref={ogrenciSelectRef}
             value={ogrenciId}
-            onChange={(e) => setOgrenciId(e.target.value)}
+            onChange={(e) => {
+              const yeniOgrenciId = e.target.value
+              setOgrenciId(yeniOgrenciId)
+              // Bu öğrenci-öğretmen ikilisi haftalık atamalarda daha önce kayıtlıysa,
+              // o ücreti otomatik dolduruyoruz.
+              if (yeniOgrenciId && ogretmenId) {
+                const eslesen = atamalar.find(
+                  (a) => a.ogrenci_id === yeniOgrenciId && a.ogretmen_profile_id === ogretmenId
+                )
+                if (eslesen) setTutar(String(eslesen.ders_ucreti))
+              }
+            }}
             className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue bg-white"
           >
             <option value="">Seçiniz...</option>
@@ -632,7 +687,16 @@ function EkDersEkleForm({ ogrenciler, ogretmenler, onEklendi }) {
           <label className="block text-sm font-medium text-gray-700 mb-1">Öğretmen</label>
           <select
             value={ogretmenId}
-            onChange={(e) => setOgretmenId(e.target.value)}
+            onChange={(e) => {
+              const yeniOgretmenId = e.target.value
+              setOgretmenId(yeniOgretmenId)
+              if (ogrenciId && yeniOgretmenId) {
+                const eslesen = atamalar.find(
+                  (a) => a.ogrenci_id === ogrenciId && a.ogretmen_profile_id === yeniOgretmenId
+                )
+                if (eslesen) setTutar(String(eslesen.ders_ucreti))
+              }
+            }}
             className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue bg-white"
           >
             <option value="">Seçiniz...</option>
@@ -814,7 +878,7 @@ export default function BireBir() {
             dersProgrami={dersProgrami}
             onDegisti={veriyiYenile}
           />
-          <EkDersEkleForm ogrenciler={ogrenciler} ogretmenler={ogretmenler} onEklendi={veriyiYenile} />
+          <EkDersEkleForm ogrenciler={ogrenciler} ogretmenler={ogretmenler} atamalar={atamalar} onEklendi={veriyiYenile} />
           <EkDerslerListesi
             yoklamalar={yoklamalar}
             ogrenciAdMap={ogrenciAdMap}
