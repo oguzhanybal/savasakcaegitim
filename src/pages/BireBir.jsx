@@ -81,15 +81,20 @@ function BireBirDersEkleForm({ ogrenciler, ogretmenler, atamalar, dersProgrami, 
   const [ogrenciId, setOgrenciId] = useState('')
   const [ogretmenId, setOgretmenId] = useState('')
   const [dersUcreti, setDersUcreti] = useState('')
-  const [tekrarlansin, setTekrarlansin] = useState(true)
+  // Çoğu öğrencinin sabit haftalık programı olmadığı için varsayılan (öncelikli)
+  // seçenek "Hayır, sadece bu sefer" — sabit programı olanlar için elle "Evet"e geçilir.
+  const [tekrarlansin, setTekrarlansin] = useState(false)
 
   // Haftalık tekrar (Evet) alanları
   const [gun, setGun] = useState(1)
   const [baslangic, setBaslangic] = useState('')
   const [bitis, setBitis] = useState('')
 
-  // Tek seferlik (Hayır) alanı
+  // Tek seferlik (Hayır) alanları — saat opsiyonel: girilirse kayda saat de damgalanır,
+  // girilmezse boş bırakılabilir.
   const [tarih, setTarih] = useState(() => new Date().toISOString().slice(0, 10))
+  const [tekBaslangic, setTekBaslangic] = useState('')
+  const [tekBitis, setTekBitis] = useState('')
 
   const [hata, setHata] = useState('')
   const [basari, setBasari] = useState('')
@@ -184,6 +189,11 @@ function BireBirDersEkleForm({ ogrenciler, ogretmenler, atamalar, dersProgrami, 
         setHata('Lütfen tarihi girin.')
         return
       }
+      if (tekBaslangic && tekBitis && tekBaslangic >= tekBitis) {
+        setHata('Başlangıç saati bitiş saatinden önce olmalı.')
+        return
+      }
+
       setGonderiliyor(true)
       const { error } = await supabase.from('bire_bir_yoklama').insert({
         ogrenci_id: ogrenciId,
@@ -191,6 +201,8 @@ function BireBirDersEkleForm({ ogrenciler, ogretmenler, atamalar, dersProgrami, 
         tutar: Number(dersUcreti),
         tarih,
         durum: 'geldi',
+        baslangic_saat: tekBaslangic || null,
+        bitis_saat: tekBitis || null,
       })
       setGonderiliyor(false)
       if (error) {
@@ -331,7 +343,30 @@ function BireBirDersEkleForm({ ogrenciler, ogretmenler, atamalar, dersProgrami, 
                 className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue"
               />
             </div>
-            <p className="text-xs text-gray-400 pb-2">
+            <div className="min-w-[110px]">
+              <label className="block text-sm font-medium text-gray-700 mb-1">Başlangıç (opsiyonel)</label>
+              <input
+                type="time"
+                value={tekBaslangic}
+                onChange={(e) => {
+                  const yeniBaslangic = e.target.value
+                  setTekBaslangic(yeniBaslangic)
+                  setTekBitis(yeniBaslangic ? saateDakikaEkle(yeniBaslangic, 45) : '')
+                }}
+                className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue"
+              />
+            </div>
+            <div className="min-w-[110px]">
+              <label className="block text-sm font-medium text-gray-700 mb-1">Bitiş</label>
+              <input
+                type="time"
+                value={tekBitis}
+                onChange={(e) => setTekBitis(e.target.value)}
+                className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue"
+              />
+              <p className="text-[11px] text-gray-400 mt-0.5">Girerseniz otomatik +45dk önerilir, değiştirilebilir.</p>
+            </div>
+            <p className="text-xs text-gray-400 pb-2 basis-full">
               Bu ders sadece seçtiğiniz tarihte geçerli olur, tekrar etmez. Öğrencinin hesabına hemen borç eklenir.
             </p>
           </div>
@@ -724,6 +759,7 @@ function TekSeferlikDerslerListesi({ yoklamalar, ogrenciAdMap, ogretmenAdMap, on
         <thead>
           <tr className="text-left text-gray-500">
             <th className="px-4 py-2 font-medium">Tarih</th>
+            <th className="px-4 py-2 font-medium">Saat</th>
             <th className="px-4 py-2 font-medium">Öğrenci</th>
             <th className="px-4 py-2 font-medium">Öğretmen</th>
             <th className="px-4 py-2 font-medium">Tutar</th>
@@ -734,6 +770,9 @@ function TekSeferlikDerslerListesi({ yoklamalar, ogrenciAdMap, ogretmenAdMap, on
           {tekSeferlikler.map((y) => (
             <tr key={y.id} className="border-t border-gray-50">
               <td className="px-4 py-2">{new Date(y.tarih + 'T12:00:00').toLocaleDateString('tr-TR')}</td>
+              <td className="px-4 py-2 text-gray-500">
+                {y.baslangic_saat ? `${saatKisalt(y.baslangic_saat)}${y.bitis_saat ? '–' + saatKisalt(y.bitis_saat) : ''}` : '—'}
+              </td>
               <td className="px-4 py-2 font-medium text-gray-800">{ogrenciAdMap.get(y.ogrenci_id) || '—'}</td>
               <td className="px-4 py-2">{ogretmenAdMap.get(y.ogretmen_profile_id) || '—'}</td>
               <td className="px-4 py-2">{paraFormat(y.tutar)}</td>
