@@ -53,6 +53,14 @@ function gunNumaraTarihten(tarihStr) {
   return g === 0 ? 7 : g
 }
 
+// Bugünün tarihini "YYYY-MM-DD" olarak, YEREL saate göre üretir (toISOString
+// KULLANMIYORUZ — Türkiye UTC+3 olduğu için gece yarısına yakın saatlerde bir
+// gün geriye kayabiliyor, bkz. Haziran/Temmuz dönem hatası).
+function yerelBugunTarihi() {
+  const n = new Date()
+  return `${n.getFullYear()}-${String(n.getMonth() + 1).padStart(2, '0')}-${String(n.getDate()).padStart(2, '0')}`
+}
+
 // Yeni bir bire bir atamasının (öğretmen + gün + saat), o öğretmenin sınıf ders
 // programıyla ya da başka bir bire bir dersiyle çakışıp çakışmadığını kontrol eder.
 function cakismaBul({ ogretmenId, gun, baslangic, bitis, haricAtamaId }, dersProgrami, atamalar) {
@@ -105,6 +113,7 @@ function tekSeferlikCakismaBul({ ogretmenId, tarih, baslangic, bitis }, dersProg
 
   for (const y of yoklamalar) {
     if (y.atama_id) continue // sadece diğer TEK SEFERLİK derslerle karşılaştırılır
+    if (y.durum === 'gelmedi') continue // öğrenci gelmediyse o saat artık boş sayılır
     if (y.ogretmen_profile_id !== ogretmenId || y.tarih !== tarih) continue
     if (!y.baslangic_saat || !y.bitis_saat) continue
     if (!araliklarCakisiyorMu(baslangic, bitis, y.baslangic_saat, y.bitis_saat)) continue
@@ -274,13 +283,21 @@ function BireBirDersEkleForm({ ogrenciler, ogretmenler, atamalar, dersProgrami, 
         }
       }
 
+      // Tarih BUGÜNDEN SONRAsıysa (ileri tarihli, önceden planlanan bir ders),
+      // henüz gerçekleşmediği için doğrudan "Geldi" sayıp borç eklemiyoruz —
+      // "Bekliyor" olarak kaydediliyor, ders yapıldıktan sonra "Son Tek Seferlik
+      // Dersler" listesinden Geldi/Gelmedi işaretlenir. Bugün ya da geçmiş bir
+      // tarihse (unutulmuş/geçmiş bir dersi girme senaryosu) direkt "Geldi" olur.
+      const ileriTarihli = tarih > yerelBugunTarihi()
+      const durum = ileriTarihli ? 'bekliyor' : 'geldi'
+
       setGonderiliyor(true)
       const { error } = await supabase.from('bire_bir_yoklama').insert({
         ogrenci_id: ogrenciId,
         ogretmen_profile_id: ogretmenId,
         tutar: Number(dersUcreti),
         tarih,
-        durum: 'geldi',
+        durum,
         baslangic_saat: tekBaslangic || null,
         bitis_saat: tekBitis || null,
       })
@@ -293,16 +310,19 @@ function BireBirDersEkleForm({ ogrenciler, ogretmenler, atamalar, dersProgrami, 
         // Saat girilmişse, bir sonraki dersin başlangıcı otomatik olarak "bu dersin
         // bitişi + 10 dakika ara" olarak öneriliyor (bitiş de +45dk ile hesaplanıyor).
         // Bu sadece formu ÖNCEDEN dolduruyor — kaydetmek için yine "Ekle"ye basmak gerekiyor.
+        const bekliyorNotu = ileriTarihli
+          ? ' İleri tarihli olduğu için "Bekliyor" olarak eklendi, henüz borç eklenmedi — ders yapıldıktan sonra "Son Tek Seferlik Dersler" listesinden Geldi/Gelmedi işaretleyin.'
+          : ''
         if (tekBitis) {
           const yeniBaslangic = saateDakikaEkle(tekBitis, 10)
           const yeniBitis = saateDakikaEkle(yeniBaslangic, 45)
           setTekBaslangic(yeniBaslangic)
           setTekBitis(yeniBitis)
           setBasari(
-            `✓ Eklendi. Sıradaki ders için ${new Date(tarih + 'T12:00:00').toLocaleDateString('tr-TR')} tarihinde ${yeniBaslangic}–${yeniBitis} önerildi (10dk ara) — kontrol edip tekrar "Ekle"ye basabilirsiniz.`
+            `✓ Eklendi.${bekliyorNotu} Sıradaki ders için ${new Date(tarih + 'T12:00:00').toLocaleDateString('tr-TR')} tarihinde ${yeniBaslangic}–${yeniBitis} önerildi (10dk ara) — kontrol edip tekrar "Ekle"ye basabilirsiniz.`
           )
         } else {
-          setBasari('✓ Tek seferlik ders eklendi — devam edebilirsiniz.')
+          setBasari(`✓ Tek seferlik ders eklendi.${bekliyorNotu}`)
         }
         tekBaslangicRef.current?.focus()
         onEklendi()
@@ -841,15 +861,32 @@ function TekSeferlikDerslerListesi({ yoklamalar, ogrenciAdMap, ogretmenAdMap, on
     else onDegisti()
   }
 
+  // "Bekliyor" (henüz gerçekleşmemiş, ileri tarihli) bir dersi Geldi/Gelmedi yapmak,
+  // ya da zaten "Geldi" olan bir kaydı yanlışlıkla "Gelmedi"ye çevirmek borcu
+  // etkiliyor — o durumda onay isteniyor. Bekliyor'dan Geldi/Gelmedi'ye geçişte
+  // (henüz borç yokken) onay istemiyoruz.
+  async function durumDegistir(y, yeniDurum) {
+    if (y.durum === yeniDurum) return
+    if (y.durum === 'geldi' && yeniDurum === 'gelmedi') {
+      if (!confirm('Bu ders "Geldi" olarak işaretliydi ve öğrenciye borç eklenmişti. "Gelmedi" yapmak istediğinize emin misiniz? (borç kaldırılacak)')) return
+    }
+    const { error } = await supabase.from('bire_bir_yoklama').update({ durum: yeniDurum }).eq('id', y.id)
+    if (error) alert('Hata: ' + error.message)
+    else onDegisti()
+  }
+
   if (tekSeferlikler.length === 0) return null
 
   return (
     <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-x-auto mb-6">
       <div className="px-4 py-3 border-b border-gray-100 bg-gray-50">
         <h2 className="font-semibold text-gray-700">Son Tek Seferlik Dersler</h2>
-        <p className="text-xs text-gray-400 mt-0.5">"Hayır, sadece bu sefer" ile eklenen, tekrar etmeyen dersler.</p>
+        <p className="text-xs text-gray-400 mt-0.5">
+          "Hayır, sadece bu sefer" ile eklenen, tekrar etmeyen dersler. İleri tarihli eklenenler "Bekliyor"
+          durumunda başlar, borç eklenmez — ders yapıldıktan sonra Geldi/Gelmedi işaretleyin.
+        </p>
       </div>
-      <table className="w-full text-sm min-w-[560px]">
+      <table className="w-full text-sm min-w-[720px]">
         <thead>
           <tr className="text-left text-gray-500">
             <th className="px-4 py-2 font-medium">Tarih</th>
@@ -857,6 +894,7 @@ function TekSeferlikDerslerListesi({ yoklamalar, ogrenciAdMap, ogretmenAdMap, on
             <th className="px-4 py-2 font-medium">Öğrenci</th>
             <th className="px-4 py-2 font-medium">Öğretmen</th>
             <th className="px-4 py-2 font-medium">Tutar</th>
+            <th className="px-4 py-2 font-medium">Durum</th>
             <th className="px-4 py-2 font-medium text-right">İşlemler</th>
           </tr>
         </thead>
@@ -870,8 +908,29 @@ function TekSeferlikDerslerListesi({ yoklamalar, ogrenciAdMap, ogretmenAdMap, on
               <td className="px-4 py-2 font-medium text-gray-800">{ogrenciAdMap.get(y.ogrenci_id) || '—'}</td>
               <td className="px-4 py-2">{ogretmenAdMap.get(y.ogretmen_profile_id) || '—'}</td>
               <td className="px-4 py-2">{paraFormat(y.tutar)}</td>
-              <td className="px-4 py-2 text-right">
-                <button onClick={() => sil(y.id)} className="text-red-500 text-sm hover:underline">Sil</button>
+              <td className="px-4 py-2">
+                {y.durum === 'geldi' && (
+                  <span className="text-xs font-semibold bg-green-100 text-green-700 px-2 py-1 rounded-full">Geldi</span>
+                )}
+                {y.durum === 'gelmedi' && (
+                  <span className="text-xs font-semibold bg-red-100 text-red-600 px-2 py-1 rounded-full">Gelmedi</span>
+                )}
+                {y.durum === 'bekliyor' && (
+                  <span className="text-xs font-semibold bg-yellow-100 text-yellow-700 px-2 py-1 rounded-full">Bekliyor</span>
+                )}
+              </td>
+              <td className="px-4 py-2 text-right whitespace-nowrap space-x-2">
+                {y.durum !== 'geldi' && (
+                  <button onClick={() => durumDegistir(y, 'geldi')} className="text-green-600 text-sm hover:underline">
+                    Geldi
+                  </button>
+                )}
+                {y.durum !== 'gelmedi' && (
+                  <button onClick={() => durumDegistir(y, 'gelmedi')} className="text-red-500 text-sm hover:underline">
+                    Gelmedi
+                  </button>
+                )}
+                <button onClick={() => sil(y.id)} className="text-gray-400 text-sm hover:underline">Sil</button>
               </td>
             </tr>
           ))}
