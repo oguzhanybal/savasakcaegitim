@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
+import { adSoyadDuzelt } from '../lib/adSoyadFormat'
 
 const BRANSLAR = [
   'Matematik', 'Türkçe', 'Fen Bilimleri', 'Sosyal Bilgiler', 'İngilizce',
@@ -41,7 +42,7 @@ export default function Ogretmenler() {
     if (!duzenleAd.trim()) return
     const { error } = await supabase
       .from('profiles')
-      .update({ ad_soyad: duzenleAd.trim(), telefon: duzenleTelefon.trim() || null, brans: duzenleBrans || null })
+      .update({ ad_soyad: adSoyadDuzelt(duzenleAd), telefon: duzenleTelefon.trim() || null, brans: duzenleBrans || null })
       .eq('id', id)
     if (!error) {
       setDuzenlenenId(null)
