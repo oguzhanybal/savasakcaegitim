@@ -7,6 +7,7 @@ const ROL_ETIKET = {
   ogretmen: 'Öğretmen',
   veli: 'Veli',
   ogrenci: 'Öğrenci',
+  kantin: 'Kantin Görevlisi',
 }
 
 function menuOlustur(rol) {
@@ -47,6 +48,12 @@ function menuOlustur(rol) {
           { to: '/yoklama-raporu', label: 'Yoklama Raporu' },
         ],
       },
+      { tur: 'link', to: '/kantin', label: 'Kantin' },
+    ]
+  }
+  if (rol === 'kantin') {
+    return [
+      { tur: 'link', to: '/kantin', label: 'Kantin', end: true },
     ]
   }
   if (rol === 'ogretmen') {
