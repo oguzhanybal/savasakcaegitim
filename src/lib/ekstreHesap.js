@@ -291,3 +291,23 @@ export function bireBirBorclariOlustur(atamalar, yoklamalar) {
     })
     .filter(Boolean)
 }
+
+// ============================================================================
+// KANTİN BORÇLARI — bireBirBorclariOlustur ile birebir aynı mantık: her veresiye
+// alışı, aylik_borclar ile AYNI ŞEKİLDE ({kalem:'Kantin', tutar, donem}) sentetik
+// bir satıra çevrilir. Alış anında damgalanmış "tutar" kullanılır (ürünün o anki
+// fiyatı) — sonradan ürün fiyatı değişse bile geçmiş ay borçları değişmez.
+// ============================================================================
+export function kantinBorclariOlustur(alislar) {
+  return (alislar || []).map((k) => {
+    const t = new Date(k.tarih)
+    const donem = `${t.getFullYear()}-${String(t.getMonth() + 1).padStart(2, '0')}-01`
+    return {
+      id: `kt-${k.id}`,
+      ogrenci_id: k.ogrenci_id,
+      kalem: 'Kantin',
+      tutar: Number(k.tutar) || 0,
+      donem,
+    }
+  })
+}
