@@ -349,6 +349,9 @@ export default function Kantin() {
   const [ogrenciArama, setOgrenciArama] = useState('')
   const [adet, setAdet] = useState(1)
   const [ekleniyorUrunId, setEkleniyorUrunId] = useState(null)
+  // Butona hızlı hızlı basılınca ya da barkod arka arkaya okununca birden
+  // fazla satır açılmasını engelleyen kilit — bkz. urunEkle içindeki açıklama.
+  const eklemeKilitliRef = useRef(false)
   const [hata, setHata] = useState('')
   const [basari, setBasari] = useState('')
   const [barkodDeger, setBarkodDeger] = useState('')
@@ -367,7 +370,18 @@ export default function Kantin() {
   const videoElRef = useRef(null) // Native BarcodeDetector için kendi <video>'muz
   const mediaStreamRef = useRef(null)
   const algilamaAralikRef = useRef(null)
-  const sonOkunanRef = useRef({ kod: null, zaman: 0 })
+  const quaggaOkumaIsleyiciRef = useRef(null)
+  const quaggaIslemeIsleyiciRef = useRef(null)
+  // "Aynı ürün kaç kez görüldüyse o kadar eklendi" sorununu çözen kilit: bir
+  // barkod eklendiğinde burada "kilitli" olarak tutulur ve kamera o barkodu
+  // görmeye devam ettiği sürece (ürün hâlâ kadrajdaysa) TEKRAR EKLENMEZ.
+  // Kilit ancak barkod kadrajdan tamamen çıkıp kaybolduğunda açılıyor — yani
+  // aynı ürünü tekrar eklemek için ürünü bir an kameradan uzaklaştırıp
+  // tekrar göstermeniz gerekiyor.
+  const kilitliKodRef = useRef(null)
+  // Bir okuma işlenirken (veritabanına kaydedilirken) gelen yeni okumaları
+  // yok sayar — üst üste hızlı eklemeleri engelliyor.
+  const islemSurerRef = useRef(false)
   // Quagga'nın algılama olayı sadece BİR KEZ kaydedildiği için (kamera açılırken),
   // içeride her zaman GÜNCEL değerleri kullanabilmek adına en son öğrenci/ürün
   // listesini ve en güncel urunEkle fonksiyonunu ref'lerde tutuyoruz.
@@ -428,10 +442,23 @@ export default function Kantin() {
 
   // Geriye { ok, mesaj } döner — kamera okuması bu sonucu doğrudan kameranın
   // üstündeki bildirimde göstermek için kullanıyor.
+  //
+  // eklemeKilitliRef: butona hızlı hızlı (çift/üçlü) dokunulduğunda ya da
+  // barkod arka arkaya okutulduğunda birden fazla kayıt açılmasını engeller.
+  // "disabled" ile buton devre dışı bırakmak tek başına yetmiyordu, çünkü
+  // ekranın yeniden çizilip butonu devre dışı göstermesi bir an sürüyor — bu
+  // sırada atılan ikinci dokunuş yine de geçebiliyordu. Bu kilit ise ANINDA
+  // (ekran yeniden çizilmeden) devreye giriyor, bu yüzden hiçbir ikinci
+  // çağrı sızamıyor.
   async function urunEkle(urun) {
+    if (eklemeKilitliRef.current) {
+      return { ok: false, mesaj: 'Az önce bir ekleme yapıldı, bir saniye bekleyin.' }
+    }
+    eklemeKilitliRef.current = true
     setHata('')
     setBasari('')
     if (!ogrenciId) {
+      eklemeKilitliRef.current = false
       const mesaj = 'Önce öğrenci seçin.'
       setHata(mesaj)
       return { ok: false, mesaj }
@@ -460,6 +487,7 @@ export default function Kantin() {
       sonuc = { ok: true, mesaj }
     }
     barkodInputRef.current?.focus()
+    eklemeKilitliRef.current = false
     return sonuc
   }
 
@@ -527,19 +555,31 @@ export default function Kantin() {
     })
   }
 
+  // Bir barkod GERÇEKTEN eklenmeye değer mi? (kilitli değilse ve o an başka
+  // bir okuma işlenmiyorsa) — kilitleme/kilit-açma mantığı, algılama döngüsü
+  // (hem native BarcodeDetector hem Quagga tarafı) tarafından çağrılıyor.
+  function kareGorundu(kod) {
+    if (!kod) {
+      // Bu karede barkod görünmüyor — ürün kadrajdan çıktı, kilidi kaldır ki
+      // aynı ürün tekrar gösterildiğinde yeniden eklenebilsin.
+      kilitliKodRef.current = null
+      return
+    }
+    if (islemSurerRef.current) return // önceki ekleme hâlâ işleniyor
+    if (kilitliKodRef.current === kod) return // bu ürün zaten eklendi, hâlâ kadrajda — tekrar ekleme
+    kilitliKodRef.current = kod
+    kameraOkuma({ codeResult: { code: kod } })
+  }
+
   async function kameraOkuma(sonuc) {
     const kod = sonuc?.codeResult?.code
     if (!kod) return
-    const simdi = Date.now()
-    // Aynı barkodu peş peşe defalarca algılayıp yanlışlıkla birkaç kez
-    // eklemesin diye 2 saniyelik bir "soğuma" süresi var.
-    if (sonOkunanRef.current.kod === kod && simdi - sonOkunanRef.current.zaman < 2000) return
-    sonOkunanRef.current = { kod, zaman: simdi }
     const urun = aktifUrunlerRef.current.find((u) => u.barkod === kod)
     if (!urun) {
       kameraBildirimGoster('hata', `Bilinmeyen barkod: ${kod}`)
       return
     }
+    islemSurerRef.current = true
     // Telefon titreşimi + kameranın üstünde büyük "ekleniyor" yazısı — kullanıcı
     // okumanın gerçekten algılandığını hemen, aşağı bakmadan görsün.
     if (navigator.vibrate) navigator.vibrate(80)
@@ -548,6 +588,7 @@ export default function Kantin() {
     if (sonucEkle) {
       kameraBildirimGoster(sonucEkle.ok ? 'basari' : 'hata', sonucEkle.ok ? `✓ ${sonucEkle.mesaj}` : sonucEkle.mesaj)
     }
+    islemSurerRef.current = false
   }
 
   // Telefonun/tarayıcının kendi barkod tanıma motorunu (varsa) kullanır.
@@ -592,9 +633,7 @@ export default function Kantin() {
         if (!video || video.readyState < 2) return
         try {
           const sonuclar = await detector.detect(video)
-          if (sonuclar && sonuclar.length > 0) {
-            kameraOkuma({ codeResult: { code: sonuclar[0].rawValue } })
-          }
+          kareGorundu(sonuclar && sonuclar.length > 0 ? sonuclar[0].rawValue : null)
         } catch {
           // tek bir karede okuma başarısız olabilir, bir sonraki karede tekrar dener
         }
@@ -643,7 +682,15 @@ export default function Kantin() {
           Quagga.start()
         }
       )
-      Quagga.onDetected(kameraOkuma)
+      quaggaOkumaIsleyiciRef.current = (sonuc) => kareGorundu(sonuc?.codeResult?.code)
+      // Quagga sadece BAŞARILI okumada onDetected'i tetikliyor; barkodun
+      // kadrajdan çıktığını anlayabilmemiz (kilidi açabilmemiz) için her
+      // işlenen karede (başarısız olsa da) onProcessed'i de dinliyoruz.
+      quaggaIslemeIsleyiciRef.current = (sonuc) => {
+        if (!sonuc || !sonuc.codeResult) kilitliKodRef.current = null
+      }
+      Quagga.onDetected(quaggaOkumaIsleyiciRef.current)
+      Quagga.onProcessed(quaggaIslemeIsleyiciRef.current)
     }, 50)
   }
 
@@ -655,6 +702,8 @@ export default function Kantin() {
     }
     setKameraYukleniyor(true)
     setKameraBildirim(null)
+    kilitliKodRef.current = null
+    islemSurerRef.current = false
 
     // Kamera bazı durumlarda (izin penceresi kapatılırsa, kamera bulunamazsa vb.)
     // hiç callback çağırmadan asılı kalabiliyor — bu yüzden 8 saniye içinde
@@ -693,9 +742,12 @@ export default function Kantin() {
       mediaStreamRef.current = null
     }
     if (window.Quagga) {
-      window.Quagga.offDetected(kameraOkuma)
+      if (quaggaOkumaIsleyiciRef.current) window.Quagga.offDetected(quaggaOkumaIsleyiciRef.current)
+      if (quaggaIslemeIsleyiciRef.current) window.Quagga.offProcessed(quaggaIslemeIsleyiciRef.current)
       window.Quagga.stop()
     }
+    kilitliKodRef.current = null
+    islemSurerRef.current = false
     setKameraAcik(false)
     setKameraYukleniyor(false)
     setKameraBildirim(null)
@@ -750,14 +802,28 @@ export default function Kantin() {
               ))}
             </select>
           </div>
-          <div className="min-w-[120px]">
+          <div className="min-w-[160px]">
             <label className="block text-sm font-medium text-gray-700 mb-1">Adet</label>
-            <div className="flex items-center border border-gray-200 rounded-lg overflow-hidden bg-white">
-              <button type="button" onClick={() => setAdet((a) => Math.max(1, a - 1))} className="px-3 py-2 text-gray-500 hover:bg-gray-50">
+            <div
+              className={`flex items-center rounded-lg overflow-hidden bg-white border-2 ${
+                adet > 1 ? 'border-orange' : 'border-gray-200'
+              }`}
+            >
+              <button
+                type="button"
+                onClick={() => setAdet((a) => Math.max(1, a - 1))}
+                className="w-11 h-11 flex items-center justify-center text-xl font-bold text-gray-600 hover:bg-gray-50"
+              >
                 −
               </button>
-              <span className="flex-1 text-center font-semibold">{adet}</span>
-              <button type="button" onClick={() => setAdet((a) => a + 1)} className="px-3 py-2 text-gray-500 hover:bg-gray-50">
+              <span className={`flex-1 text-center text-xl font-bold ${adet > 1 ? 'text-orange' : 'text-gray-800'}`}>
+                {adet}
+              </span>
+              <button
+                type="button"
+                onClick={() => setAdet((a) => a + 1)}
+                className="w-11 h-11 flex items-center justify-center text-xl font-bold text-gray-600 hover:bg-gray-50"
+              >
                 +
               </button>
             </div>
@@ -851,13 +917,52 @@ export default function Kantin() {
                 </>
               )}
             </div>
+            {/* Kameranın hemen altında da bir "kapat" butonu — kutuya bakarken elinizi
+                yukarı kaydırmadan da kapatabilesiniz diye. */}
+            <button
+              type="button"
+              onClick={kamerayiKapat}
+              className="mt-2 w-full max-w-sm px-4 py-2 rounded-lg text-sm font-semibold border border-red-200 text-red-600 hover:bg-red-50"
+            >
+              Kamerayı Kapat
+            </button>
             <p className="text-xs text-gray-400 mt-1">
               Barkodu kameradan yaklaşık 10-15 cm uzakta, iyi ışıkta ve tüm barkod (etrafındaki boşluklarla
               birlikte) kutunun içinde kalacak şekilde sabit tutun — bulanıksa biraz uzaklaştırıp yaklaştırarak
-              netleşmesini bekleyin. Ürün okunduğunda kutunun üstünde yeşil bir onay yazısı çıkar.
+              netleşmesini bekleyin. Ürün okunduğunda kutunun üstünde yeşil bir onay yazısı çıkar. Aynı ürünü
+              tekrar eklemek için barkodu bir an kameradan uzaklaştırıp tekrar gösterin — kamerada göründüğü
+              sürece aynı ürün ikinci kez eklenmez.
             </p>
           </div>
         )}
+
+        {/* Ürün listesinin hemen üstünde adet hatırlatıcısı — kullanıcı yukarı
+            kaydırmadan, tam ürüne basacağı yerde kaç adet ekleyeceğini görsün
+            ve isterse buradan da değiştirebilsin. */}
+        <div className="flex items-center justify-between gap-3 mb-2 bg-gray-50 border border-gray-200 rounded-lg px-3 py-2">
+          <span className="text-sm text-gray-500">
+            Aşağıdaki bir ürüne bastığınızda <span className="font-semibold text-gray-700">{adet} adet</span> eklenecek
+          </span>
+          <div className="flex items-center gap-1.5">
+            <button
+              type="button"
+              onClick={() => setAdet((a) => Math.max(1, a - 1))}
+              className="w-8 h-8 flex items-center justify-center rounded-lg border border-gray-300 bg-white text-base font-bold text-gray-600 hover:bg-gray-100"
+            >
+              −
+            </button>
+            <span className={`w-8 text-center text-lg font-bold ${adet > 1 ? 'text-orange' : 'text-gray-800'}`}>
+              {adet}
+            </span>
+            <button
+              type="button"
+              onClick={() => setAdet((a) => a + 1)}
+              className="w-8 h-8 flex items-center justify-center rounded-lg border border-gray-300 bg-white text-base font-bold text-gray-600 hover:bg-gray-100"
+            >
+              +
+            </button>
+          </div>
+        </div>
 
         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2">
           {aktifUrunler.map((u) => (
