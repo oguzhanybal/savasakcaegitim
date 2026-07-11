@@ -100,6 +100,7 @@ function BireBirDersEkleForm({ ogrenciler, ogretmenler, atamalar, dersProgrami, 
   const [basari, setBasari] = useState('')
   const [gonderiliyor, setGonderiliyor] = useState(false)
   const ogrenciSelectRef = useRef(null)
+  const tekBaslangicRef = useRef(null)
 
   // Seçilen öğretmenin, seçilen gündeki tüm dolu saatlerini (hem sınıf dersleri hem
   // diğer bire bir dersleri) tek listede gösterir — sadece "Evet, tekrarlansın"
@@ -208,11 +209,23 @@ function BireBirDersEkleForm({ ogrenciler, ogretmenler, atamalar, dersProgrami, 
       if (error) {
         setHata('Hata: ' + error.message)
       } else {
-        // Art arda çok sayıda tek seferlik ders eklerken (aynı gün / aynı öğretmen
-        // / aynı ücret sık tekrar ettiği için) sadece öğrenciyi sıfırlıyoruz.
-        setOgrenciId('')
-        setBasari('✓ Tek seferlik ders eklendi — devam edebilirsiniz.')
-        ogrenciSelectRef.current?.focus()
+        // Aynı öğrenci/öğretmene üst üste (aynı gün, arka arkaya) ders eklerken
+        // öğrenci/öğretmen/ücret/tarih AYNEN korunuyor — tekrar seçmeye gerek yok.
+        // Saat girilmişse, bir sonraki dersin başlangıcı otomatik olarak "bu dersin
+        // bitişi + 10 dakika ara" olarak öneriliyor (bitiş de +45dk ile hesaplanıyor).
+        // Bu sadece formu ÖNCEDEN dolduruyor — kaydetmek için yine "Ekle"ye basmak gerekiyor.
+        if (tekBitis) {
+          const yeniBaslangic = saateDakikaEkle(tekBitis, 10)
+          const yeniBitis = saateDakikaEkle(yeniBaslangic, 45)
+          setTekBaslangic(yeniBaslangic)
+          setTekBitis(yeniBitis)
+          setBasari(
+            `✓ Eklendi. Sıradaki ders için ${new Date(tarih + 'T12:00:00').toLocaleDateString('tr-TR')} tarihinde ${yeniBaslangic}–${yeniBitis} önerildi (10dk ara) — kontrol edip tekrar "Ekle"ye basabilirsiniz.`
+          )
+        } else {
+          setBasari('✓ Tek seferlik ders eklendi — devam edebilirsiniz.')
+        }
+        tekBaslangicRef.current?.focus()
         onEklendi()
       }
     }
@@ -346,6 +359,7 @@ function BireBirDersEkleForm({ ogrenciler, ogretmenler, atamalar, dersProgrami, 
             <div className="min-w-[110px]">
               <label className="block text-sm font-medium text-gray-700 mb-1">Başlangıç (opsiyonel)</label>
               <input
+                ref={tekBaslangicRef}
                 type="time"
                 value={tekBaslangic}
                 onChange={(e) => {
