@@ -70,6 +70,7 @@ export default function MusaitlikTablosu({ ogretmenler, dersProgrami, atamalar, 
     }
     for (const y of yoklamalar || []) {
       if (y.atama_id || y.tarih !== tarih || !y.baslangic_saat || !y.bitis_saat) continue
+      if (y.durum === 'gelmedi') continue // öğrenci gelmediyse o saat artık boş sayılır
       if (!harita.has(y.ogretmen_profile_id)) continue
       harita.get(y.ogretmen_profile_id).push({
         baslangic: y.baslangic_saat,
