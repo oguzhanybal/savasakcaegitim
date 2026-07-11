@@ -60,6 +60,31 @@ function AtamaEkleForm({ ogrenciler, ogretmenler, atamalar, dersProgrami, onEkle
   const [hata, setHata] = useState('')
   const [gonderiliyor, setGonderiliyor] = useState(false)
 
+  // Seçilen öğretmenin, seçilen gündeki tüm dolu saatlerini (hem sınıf dersleri hem
+  // diğer bire bir dersleri) tek listede gösterir — çakışmayı deneme yanılmayla
+  // bulmak yerine, boş saatler saat girmeden önce bir bakışta görülsün diye.
+  const buGunMesgulSaatler = useMemo(() => {
+    if (!ogretmenId) return []
+    const gunNum = Number(gun)
+    const sinifDersleri = dersProgrami
+      .filter((d) => d.ogretmen_profile_id === ogretmenId && d.gun === gunNum)
+      .map((d) => ({
+        baslangic: d.baslangic_saat,
+        bitis: d.bitis_saat,
+        etiket: `Sınıf: ${d.ders_adi || d.sinif_adi || 'Ders'}`,
+      }))
+    const bireBirDersleri = atamalar
+      .filter((a) => a.ogretmen_profile_id === ogretmenId && a.gun === gunNum && a.aktif)
+      .map((a) => ({
+        baslangic: a.baslangic_saat,
+        bitis: a.bitis_saat,
+        etiket: `Bire Bir: ${a.ogrenci_adi || 'Öğrenci'}`,
+      }))
+    return [...sinifDersleri, ...bireBirDersleri].sort((x, y) =>
+      saatKisalt(x.baslangic) < saatKisalt(y.baslangic) ? -1 : 1
+    )
+  }, [ogretmenId, gun, dersProgrami, atamalar])
+
   async function ekle(e) {
     e.preventDefault()
     setHata('')
@@ -180,6 +205,24 @@ function AtamaEkleForm({ ogrenciler, ogretmenler, atamalar, dersProgrami, onEkle
           {gonderiliyor ? 'Ekleniyor...' : 'Ata'}
         </button>
       </div>
+      {ogretmenId && (
+        <div className="mt-3 bg-gray-50 border border-gray-100 rounded-lg p-3">
+          <p className="text-xs font-medium text-gray-600 mb-1.5">
+            {ogretmenler.find((o) => o.id === ogretmenId)?.ad_soyad} — {GUNLER[Number(gun)]} günü dolu saatler:
+          </p>
+          {buGunMesgulSaatler.length === 0 ? (
+            <p className="text-xs text-green-600">Bu gün için kayıtlı ders yok, tüm saatler boş.</p>
+          ) : (
+            <div className="flex flex-wrap gap-1.5">
+              {buGunMesgulSaatler.map((s, i) => (
+                <span key={i} className="text-[11px] px-1.5 py-0.5 rounded bg-orange-50 text-orange-700">
+                  {saatKisalt(s.baslangic)}–{saatKisalt(s.bitis)} · {s.etiket}
+                </span>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
       {hata && <p className="text-red-600 text-sm mt-3">{hata}</p>}
     </form>
   )
