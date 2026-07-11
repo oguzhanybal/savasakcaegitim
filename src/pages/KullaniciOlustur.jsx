@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { adSoyadDuzelt } from '../lib/adSoyadFormat'
 
 const ROLLER = [
   { value: 'veli', label: 'Veli' },
@@ -42,7 +43,7 @@ export default function KullaniciOlustur() {
       } else {
         setMesaj({
           tur: 'basari',
-          metin: `Hesap oluşturuldu — ${adSoyad}, giriş adı: "${kullaniciAdi}", şifre: "${sifre}". Bu bilgileri kullanıcıyla paylaşın.`,
+          metin: `Hesap oluşturuldu — ${adSoyadDuzelt(adSoyad)}, giriş adı: "${kullaniciAdi}", şifre: "${sifre}". Bu bilgileri kullanıcıyla paylaşın.`,
         })
         setAdSoyad('')
         setKullaniciAdi('')
