@@ -5,6 +5,24 @@ import { createClient } from '@supabase/supabase-js'
 
 const GECERLI_ROLLER = ['yonetici', 'ogretmen', 'veli', 'ogrenci']
 
+// Ad-soyad'ı, nasıl girilirse girilsin "İlk Harfler Büyük, Diğerleri Küçük"
+// biçimine çevirir. Bu dosya src/lib'i import etmiyor (ayrı bir sunucu ortamı
+// olduğu için), bu yüzden aynı küçük fonksiyon burada da tutuluyor.
+function adSoyadDuzelt(metin) {
+  if (!metin) return metin
+  return metin
+    .trim()
+    .replace(/\s+/g, ' ')
+    .split(' ')
+    .map((kelime) => {
+      if (!kelime) return kelime
+      const ilkHarf = kelime.charAt(0).toLocaleUpperCase('tr-TR')
+      const geriKalan = kelime.slice(1).toLocaleLowerCase('tr-TR')
+      return ilkHarf + geriKalan
+    })
+    .join(' ')
+}
+
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
     res.status(405).json({ error: 'Sadece POST istekleri kabul edilir.' })
@@ -55,7 +73,7 @@ export default async function handler(req, res) {
 
   const { error: profilHatasi } = await admin.from('profiles').insert({
     id: olusturulan.user.id,
-    ad_soyad: adSoyad.trim(),
+    ad_soyad: adSoyadDuzelt(adSoyad),
     rol,
     telefon: telefon?.trim() || null,
   })
