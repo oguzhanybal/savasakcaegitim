@@ -1,6 +1,7 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../lib/AuthContext'
+import MusaitlikTablosu from '../components/MusaitlikTablosu'
 
 const GUNLER = ['', 'Pazartesi', 'Salı', 'Çarşamba', 'Perşembe', 'Cuma', 'Cumartesi', 'Pazar']
 const GUNLER_KISA = ['', 'Pzt', 'Sal', 'Çar', 'Per', 'Cum', 'Cmt', 'Paz']
@@ -188,11 +189,15 @@ export default function DersProgrami() {
   const [program, setProgram] = useState([])
   const [siniflar, setSiniflar] = useState([])
   const [ogretmenler, setOgretmenler] = useState([])
+  const [bireBirAtamalar, setBireBirAtamalar] = useState([])
+  const [bireBirYoklamalar, setBireBirYoklamalar] = useState([])
+  const [ogrenciler, setOgrenciler] = useState([])
   const [loading, setLoading] = useState(true)
   const [gorunum, setGorunum] = useState('tablo')
+  const ilkYuklemeTamamRef = useRef(false)
 
   function veriyiYenile() {
-    setLoading(true)
+    if (!ilkYuklemeTamamRef.current) setLoading(true)
     Promise.all([
       supabase
         .from('ders_programi')
@@ -201,7 +206,12 @@ export default function DersProgrami() {
         .order('baslangic_saat'),
       isYonetici ? supabase.from('siniflar').select('*').order('ad') : Promise.resolve({ data: [] }),
       isYonetici ? supabase.from('profiles').select('*').eq('rol', 'ogretmen').order('ad_soyad') : Promise.resolve({ data: [] }),
-    ]).then(([p, s, og]) => {
+      // Günlük Müsaitlik tablosunda sınıf derslerinin yanında bire bir dersleri de
+      // gösterebilmek için (öğretmen tam olarak boş mu, doluysa neyle dolu).
+      isYonetici ? supabase.from('bire_bir_atamalari').select('*, ogrenciler(ad_soyad)') : Promise.resolve({ data: [] }),
+      isYonetici ? supabase.from('bire_bir_yoklama').select('*') : Promise.resolve({ data: [] }),
+      isYonetici ? supabase.from('ogrenciler').select('id, ad_soyad') : Promise.resolve({ data: [] }),
+    ]).then(([p, s, og, ba, by, o]) => {
       setProgram(
         (p.data || []).map((d) => ({
           ...d,
@@ -211,6 +221,12 @@ export default function DersProgrami() {
       )
       setSiniflar(s.data || [])
       setOgretmenler(og.data || [])
+      setBireBirAtamalar(
+        (ba.data || []).map((a) => ({ ...a, ogrenci_adi: a.ogrenciler?.ad_soyad }))
+      )
+      setBireBirYoklamalar(by.data || [])
+      setOgrenciler(o.data || [])
+      ilkYuklemeTamamRef.current = true
       setLoading(false)
     })
   }
@@ -219,6 +235,8 @@ export default function DersProgrami() {
     veriyiYenile()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
+
+  const ogrenciAdMap = useMemo(() => new Map(ogrenciler.map((o) => [o.id, o.ad_soyad])), [ogrenciler])
 
   async function sil(id) {
     if (!confirm('Bu ders saatini silmek istediğinize emin misiniz?')) return
@@ -257,7 +275,16 @@ export default function DersProgrami() {
       </div>
 
       {isYonetici && (
-        <DersEkleForm siniflar={siniflar} ogretmenler={ogretmenler} program={program} onEklendi={veriyiYenile} />
+        <>
+          <MusaitlikTablosu
+            ogretmenler={ogretmenler}
+            dersProgrami={program}
+            atamalar={bireBirAtamalar}
+            yoklamalar={bireBirYoklamalar}
+            ogrenciAdMap={ogrenciAdMap}
+          />
+          <DersEkleForm siniflar={siniflar} ogretmenler={ogretmenler} program={program} onEklendi={veriyiYenile} />
+        </>
       )}
 
       {loading && <p className="text-gray-400">Yükleniyor...</p>}
