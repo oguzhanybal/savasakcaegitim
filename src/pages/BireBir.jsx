@@ -893,9 +893,15 @@ export default function BireBir() {
   const [sadeceAktif, setSadeceAktif] = useState(true)
   const [sadeceBugun, setSadeceBugun] = useState(true)
   const [yoklamaArama, setYoklamaArama] = useState('')
+  // İlk açılıştan sonra "Yükleniyor..." ekranını bir daha göstermiyoruz — bir ders
+  // ekleyip onEklendi() ile veriyi yenilediğimizde tüm sayfa "Yükleniyor..." ekranına
+  // dönüp formu (bileşeni) komple yeniden kuruyordu, bu da az önce doldurulmuş
+  // öğrenci/saat gibi form alanlarını sıfırlıyordu. Artık sadece ilk yüklemede
+  // gösteriliyor, sonraki yenilemeler arka planda sessizce oluyor.
+  const ilkYuklemeTamamRef = useRef(false)
 
   function veriyiYenile() {
-    setLoading(true)
+    if (!ilkYuklemeTamamRef.current) setLoading(true)
     Promise.all([
       isYonetici ? supabase.from('ogrenciler').select('*').order('ad_soyad') : Promise.resolve({ data: [] }),
       isYonetici ? supabase.from('profiles').select('*').eq('rol', 'ogretmen').order('ad_soyad') : Promise.resolve({ data: [] }),
@@ -918,6 +924,7 @@ export default function BireBir() {
         }))
       )
       setYoklamalar(y.data || [])
+      ilkYuklemeTamamRef.current = true
       setLoading(false)
     })
   }
