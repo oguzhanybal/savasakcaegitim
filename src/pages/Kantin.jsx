@@ -78,19 +78,49 @@ function barkodSvgMetni(deger, darBirim = 4, yukseklik = 80) {
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${toplamGenislik}" height="${yukseklik + 20}" viewBox="0 0 ${toplamGenislik} ${yukseklik + 20}"><rect x="0" y="0" width="${toplamGenislik}" height="${yukseklik}" fill="white" />${dikdortgenler}<text x="${toplamGenislik / 2}" y="${yukseklik + 16}" text-anchor="middle" font-size="14" font-family="monospace">${deger}</text></svg>`
 }
 
+// Barkodun toplam piksel genişliğini önceden hesaplar — pencereyi barkoda göre
+// boyutlandırmak için gerekli. Önceden pencere sabit (420px) boyuttaydı ama
+// barkod bundan çok daha genişti; bu yüzden barkodun bir kısmı pencerenin
+// dışında kalıyor, ekrandan okutmaya çalışan kamera barkodun TAMAMINI değil
+// sadece kırpılmış bir kısmını görüyordu ve hiç okuyamıyordu.
+function code39ToplamGenislik(deger, darBirim) {
+  const cubuklar = code39CubuklariUret(deger)
+  let x = darBirim * 10
+  for (const c of cubuklar) x += c.genis ? darBirim * 3 : darBirim
+  return x + darBirim * 10
+}
+
 function barkoduYazdir(urun) {
-  const pencere = window.open('', '_blank', 'width=420,height=320')
+  const darBirim = 4
+  const yukseklik = 80
+  const barkodGenislik = code39ToplamGenislik(urun.barkod, darBirim)
+  // Pencereyi barkodun tamamı sığacak şekilde açıyoruz (kırpılmasın diye),
+  // en az 480 en fazla 1000 piksel genişlikte.
+  const pencereGenislik = Math.min(Math.max(barkodGenislik + 80, 480), 1000)
+  const pencere = window.open('', '_blank', `width=${pencereGenislik},height=360`)
   if (!pencere) {
     alert('Yazdırma penceresi açılamadı — tarayıcınız pop-up\'ı engellemiş olabilir.')
     return
   }
   pencere.document.write(`
     <html>
-      <head><title>${urun.ad} — Barkod</title></head>
-      <body style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:100vh;margin:0;font-family:sans-serif;">
+      <head>
+        <title>${urun.ad} — Barkod</title>
+        <style>
+          @media print { .yazdirma-gizli { display: none; } }
+        </style>
+      </head>
+      <body style="display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:100vh;margin:0;font-family:sans-serif;padding:16px;box-sizing:border-box;">
         <p style="margin-bottom:12px;font-weight:600;">${urun.ad}</p>
-        ${barkodSvgMetni(urun.barkod)}
-        <script>window.onload = function() { window.print(); }</script>
+        ${barkodSvgMetni(urun.barkod, darBirim, yukseklik)}
+        <p class="yazdirma-gizli" style="margin-top:18px;font-size:12px;color:#888;max-width:340px;text-align:center;">
+          Kağıda yapıştıracaksanız "Yazdır"a basın. Ekrandan okutacaksanız bu pencereyi
+          açık bırakıp kamerayı barkoda yaklaştırın (barkodun tamamı, kenarlardaki boşluklarla
+          birlikte kamerada görünmeli).
+        </p>
+        <button class="yazdirma-gizli" onclick="window.print()" style="margin-top:14px;padding:10px 22px;font-size:14px;font-weight:600;background:#1e3a5f;color:white;border:none;border-radius:8px;cursor:pointer;">
+          Yazdır
+        </button>
       </body>
     </html>
   `)
@@ -330,6 +360,18 @@ export default function Kantin() {
   const aktifUrunlerRef = useRef([])
   const urunEkleRef = useRef(() => {})
   const kameraZamanAsimiRef = useRef(null)
+  // Kamera açıkken kullanıcı ekranın altındaki mesajı fark etmiyor — okutunca
+  // ne olduğu kameranın ÜSTÜNDE, büyük ve renkli olarak gösterilsin diye.
+  const [kameraBildirim, setKameraBildirim] = useState(null) // { tur: 'basari'|'hata'|'yukleniyor', mesaj }
+  const kameraBildirimZamanlayiciRef = useRef(null)
+
+  function kameraBildirimGoster(tur, mesaj, sureMs = 2200) {
+    setKameraBildirim({ tur, mesaj })
+    if (kameraBildirimZamanlayiciRef.current) clearTimeout(kameraBildirimZamanlayiciRef.current)
+    if (tur !== 'yukleniyor') {
+      kameraBildirimZamanlayiciRef.current = setTimeout(() => setKameraBildirim(null), sureMs)
+    }
+  }
 
   function veriyiYenile() {
     if (!ilkYuklemeTamamRef.current) setLoading(true)
@@ -370,12 +412,15 @@ export default function Kantin() {
     aktifUrunlerRef.current = aktifUrunler
   })
 
+  // Geriye { ok, mesaj } döner — kamera okuması bu sonucu doğrudan kameranın
+  // üstündeki bildirimde göstermek için kullanıyor.
   async function urunEkle(urun) {
     setHata('')
     setBasari('')
     if (!ogrenciId) {
-      setHata('Önce öğrenci seçin.')
-      return
+      const mesaj = 'Önce öğrenci seçin.'
+      setHata(mesaj)
+      return { ok: false, mesaj }
     }
     setEkleniyorUrunId(urun.id)
     const { error } = await supabase.from('kantin_alislar').insert({
@@ -388,14 +433,20 @@ export default function Kantin() {
       tarih: yerelBugunTarihi(),
     })
     setEkleniyorUrunId(null)
+    let sonuc
     if (error) {
-      setHata('Hata: ' + error.message)
+      const mesaj = 'Hata: ' + error.message
+      setHata(mesaj)
+      sonuc = { ok: false, mesaj }
     } else {
-      setBasari(`✓ ${ogrenciAdMap.get(ogrenciId) || 'Öğrenci'} — ${adet} x ${urun.ad} eklendi.`)
+      const mesaj = `${ogrenciAdMap.get(ogrenciId) || 'Öğrenci'} — ${adet} x ${urun.ad} eklendi`
+      setBasari(`✓ ${mesaj}.`)
       setAdet(1)
       veriyiYenile()
+      sonuc = { ok: true, mesaj }
     }
     barkodInputRef.current?.focus()
+    return sonuc
   }
 
   // Barkod okuyucu, tarattığı kodu klavyeden yazılmış gibi yazıp en sonunda
@@ -462,7 +513,7 @@ export default function Kantin() {
     })
   }
 
-  function kameraOkuma(sonuc) {
+  async function kameraOkuma(sonuc) {
     const kod = sonuc?.codeResult?.code
     if (!kod) return
     const simdi = Date.now()
@@ -472,10 +523,17 @@ export default function Kantin() {
     sonOkunanRef.current = { kod, zaman: simdi }
     const urun = aktifUrunlerRef.current.find((u) => u.barkod === kod)
     if (!urun) {
-      setHata(`Bu barkoda (${kod}) ait aktif bir ürün bulunamadı.`)
+      kameraBildirimGoster('hata', `Bilinmeyen barkod: ${kod}`)
       return
     }
-    urunEkleRef.current(urun)
+    // Telefon titreşimi + kameranın üstünde büyük "ekleniyor" yazısı — kullanıcı
+    // okumanın gerçekten algılandığını hemen, aşağı bakmadan görsün.
+    if (navigator.vibrate) navigator.vibrate(80)
+    kameraBildirimGoster('yukleniyor', `${urun.ad} ekleniyor...`)
+    const sonucEkle = await urunEkleRef.current(urun)
+    if (sonucEkle) {
+      kameraBildirimGoster(sonucEkle.ok ? 'basari' : 'hata', sonucEkle.ok ? `✓ ${sonucEkle.mesaj}` : sonucEkle.mesaj)
+    }
   }
 
   async function kamerayiAc() {
@@ -485,6 +543,7 @@ export default function Kantin() {
       return
     }
     setKameraYukleniyor(true)
+    setKameraBildirim(null)
 
     // Quagga bazı durumlarda (izin penceresi kapatılırsa, kamera bulunamazsa vb.)
     // hiç callback çağırmadan asılı kalabiliyor — bu yüzden 8 saniye içinde
@@ -548,18 +607,21 @@ export default function Kantin() {
 
   function kamerayiKapat() {
     if (kameraZamanAsimiRef.current) clearTimeout(kameraZamanAsimiRef.current)
+    if (kameraBildirimZamanlayiciRef.current) clearTimeout(kameraBildirimZamanlayiciRef.current)
     if (window.Quagga) {
       window.Quagga.offDetected(kameraOkuma)
       window.Quagga.stop()
     }
     setKameraAcik(false)
     setKameraYukleniyor(false)
+    setKameraBildirim(null)
   }
 
   // Sayfadan tamamen ayrılırken kamera açık kalmasın.
   useEffect(() => {
     return () => {
       if (window.Quagga) window.Quagga.stop()
+      if (kameraBildirimZamanlayiciRef.current) clearTimeout(kameraBildirimZamanlayiciRef.current)
     }
   }, [])
 
@@ -659,14 +721,44 @@ export default function Kantin() {
         {kameraAcik && (
           <div className="mb-4">
             <div
-              ref={kameraKutusuRef}
               className="relative w-full max-w-sm rounded-lg overflow-hidden border border-gray-200 bg-black"
               style={{ minHeight: 220 }}
-            />
+            >
+              {/* Quagga sadece bu iç kutunun içine video/canvas ekliyor — üstteki
+                  bildirim ayrı bir katman olduğu için birbirine karışmıyor. */}
+              <div ref={kameraKutusuRef} className="absolute inset-0" />
+
+              {kameraBildirim && (
+                <>
+                  <div
+                    className={`absolute inset-0 pointer-events-none transition-colors ${
+                      kameraBildirim.tur === 'basari'
+                        ? 'bg-green-500/30'
+                        : kameraBildirim.tur === 'hata'
+                        ? 'bg-red-500/30'
+                        : 'bg-black/10'
+                    }`}
+                  />
+                  <div
+                    className={`absolute inset-x-0 bottom-0 px-3 py-3 text-center text-sm font-bold text-white ${
+                      kameraBildirim.tur === 'basari'
+                        ? 'bg-green-600'
+                        : kameraBildirim.tur === 'hata'
+                        ? 'bg-red-600'
+                        : 'bg-gray-700'
+                    }`}
+                  >
+                    {kameraBildirim.tur === 'basari' && '✓ '}
+                    {kameraBildirim.tur === 'hata' && '✗ '}
+                    {kameraBildirim.mesaj}
+                  </div>
+                </>
+              )}
+            </div>
             <p className="text-xs text-gray-400 mt-1">
               Barkodu kameradan yaklaşık 10-15 cm uzakta, iyi ışıkta ve tüm barkod (etrafındaki boşluklarla
               birlikte) kutunun içinde kalacak şekilde sabit tutun — bulanıksa biraz uzaklaştırıp yaklaştırarak
-              netleşmesini bekleyin, algılanınca otomatik eklenir.
+              netleşmesini bekleyin. Ürün okunduğunda kutunun üstünde yeşil bir onay yazısı çıkar.
             </p>
           </div>
         )}
