@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
+import { adSoyadDuzelt } from '../lib/adSoyadFormat'
 
 export default function Ogrenciler() {
   const [ogrenciler, setOgrenciler] = useState([])
@@ -34,7 +35,7 @@ export default function Ogrenciler() {
     e.preventDefault()
     if (!yeniAd.trim()) return
     setEkleniyor(true)
-    const { error } = await supabase.from('ogrenciler').insert({ ad_soyad: yeniAd.trim(), telefon: yeniTelefon.trim() || null })
+    const { error } = await supabase.from('ogrenciler').insert({ ad_soyad: adSoyadDuzelt(yeniAd), telefon: yeniTelefon.trim() || null })
     setEkleniyor(false)
     if (!error) {
       setYeniAd('')
@@ -65,7 +66,7 @@ export default function Ogrenciler() {
     if (!duzenleAd.trim()) return
     const { error } = await supabase
       .from('ogrenciler')
-      .update({ ad_soyad: duzenleAd.trim(), telefon: duzenleTelefon.trim() || null })
+      .update({ ad_soyad: adSoyadDuzelt(duzenleAd), telefon: duzenleTelefon.trim() || null })
       .eq('id', ogrenciId)
     if (!error) {
       setDuzenlenenId(null)
