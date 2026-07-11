@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { useParams, Link } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../lib/AuthContext'
-import { paraFormat, ogrenciSatirlariHesapla, bireBirBorclariOlustur } from '../lib/ekstreHesap'
+import { paraFormat, ogrenciSatirlariHesapla, bireBirBorclariOlustur, kantinBorclariOlustur } from '../lib/ekstreHesap'
 
 export default function Ekstre() {
   const { ogrenciId } = useParams()
@@ -26,7 +26,8 @@ export default function Ekstre() {
       supabase.from('bire_bir_atamalari').select('*').eq('ogrenci_id', ogrenciId),
       // "Ek Ders" (atamaya bağlı olmayan, tek seferlik bire bir) kayıtları
       supabase.from('bire_bir_yoklama').select('*').eq('ogrenci_id', ogrenciId).is('atama_id', null),
-    ]).then(([o, s, a, od, bba, ekDersler]) => {
+      supabase.from('kantin_alislar').select('*').eq('ogrenci_id', ogrenciId),
+    ]).then(([o, s, a, od, bba, ekDersler, kantin]) => {
       const atamalar = bba.data || []
       const atamaIdleri = atamalar.map((x) => x.id)
       const yoklamaSorgusu =
@@ -36,9 +37,10 @@ export default function Ekstre() {
       yoklamaSorgusu.then((by) => {
         const tumYoklamalar = [...(by.data || []), ...(ekDersler.data || [])]
         const bireBirBorclar = bireBirBorclariOlustur(atamalar, tumYoklamalar)
+        const kantinBorclar = kantinBorclariOlustur(kantin.data || [])
         setOgrenci(o.data)
         setSozlesmeler(s.data || [])
-        setAylikBorclar([...(a.data || []), ...bireBirBorclar])
+        setAylikBorclar([...(a.data || []), ...bireBirBorclar, ...kantinBorclar])
         setOdemeler(od.data || [])
         setLoading(false)
       })

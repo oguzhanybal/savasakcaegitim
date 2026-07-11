@@ -6,6 +6,7 @@ const ROLLER = [
   { value: 'ogrenci', label: 'Öğrenci' },
   { value: 'ogretmen', label: 'Öğretmen' },
   { value: 'yonetici', label: 'Yönetici' },
+  { value: 'kantin', label: 'Kantin Görevlisi' },
 ]
 
 export default function KullaniciOlustur() {

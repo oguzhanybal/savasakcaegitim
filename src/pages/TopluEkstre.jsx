@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
-import { paraFormat, ogrenciSatirlariHesapla, whatsappLinkOlustur, bireBirBorclariOlustur } from '../lib/ekstreHesap'
+import { paraFormat, ogrenciSatirlariHesapla, whatsappLinkOlustur, bireBirBorclariOlustur, kantinBorclariOlustur } from '../lib/ekstreHesap'
 
 export default function TopluEkstre() {
   const [ogrenciler, setOgrenciler] = useState([])
@@ -21,10 +21,15 @@ export default function TopluEkstre() {
       supabase.from('odemeler').select('*'),
       supabase.from('bire_bir_atamalari').select('*'),
       supabase.from('bire_bir_yoklama').select('*'),
-    ]).then(([o, s, a, od, bba, bby]) => {
+      supabase.from('kantin_alislar').select('*'),
+    ]).then(([o, s, a, od, bba, bby, kantin]) => {
       setOgrenciler(o.data || [])
       setSozlesmeler(s.data || [])
-      setAylikBorclar([...(a.data || []), ...bireBirBorclariOlustur(bba.data || [], bby.data || [])])
+      setAylikBorclar([
+        ...(a.data || []),
+        ...bireBirBorclariOlustur(bba.data || [], bby.data || []),
+        ...kantinBorclariOlustur(kantin.data || []),
+      ])
       setOdemeler(od.data || [])
       setLoading(false)
     })

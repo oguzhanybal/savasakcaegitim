@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../lib/AuthContext'
-import { taksitPlaniOlustur, aylikBorcDurumHesapla, gunAnahtari, bireBirBorclariOlustur } from '../lib/ekstreHesap'
+import { taksitPlaniOlustur, aylikBorcDurumHesapla, gunAnahtari, bireBirBorclariOlustur, kantinBorclariOlustur } from '../lib/ekstreHesap'
 
 function paraFormat(n) {
   return new Intl.NumberFormat('tr-TR', { style: 'currency', currency: 'TRY' }).format(n || 0)
@@ -476,7 +476,8 @@ export default function Muhasebe() {
       supabase.from('bire_bir_atamalari').select('*').eq('ogrenci_id', seciliId),
       // "Ek Ders" (atamaya bağlı olmayan, tek seferlik bire bir) kayıtları
       supabase.from('bire_bir_yoklama').select('*').eq('ogrenci_id', seciliId).is('atama_id', null),
-    ]).then(([s, a, o, bba, ekDersler]) => {
+      supabase.from('kantin_alislar').select('*').eq('ogrenci_id', seciliId),
+    ]).then(([s, a, o, bba, ekDersler, kantin]) => {
       const atamalar = bba.data || []
       const atamaIdleri = atamalar.map((x) => x.id)
       const yoklamaSorgusu =
@@ -486,8 +487,9 @@ export default function Muhasebe() {
       yoklamaSorgusu.then((by) => {
         const tumYoklamalar = [...(by.data || []), ...(ekDersler.data || [])]
         const bireBirBorclar = bireBirBorclariOlustur(atamalar, tumYoklamalar)
+        const kantinBorclar = kantinBorclariOlustur(kantin.data || [])
         setSozlesmeler(s.data || [])
-        setAylikBorclar([...(a.data || []), ...bireBirBorclar])
+        setAylikBorclar([...(a.data || []), ...bireBirBorclar, ...kantinBorclar])
         setOdemeler(o.data || [])
         setLoading(false)
       })
