@@ -44,6 +44,14 @@ function gunEkle(tarihStr, gunSayisi) {
   return t.toISOString().slice(0, 10)
 }
 
+// "YYYY-MM-DD" formatındaki bir tarihin haftanın hangi gününe (1=Pzt...7=Paz)
+// denk geldiğini bulur — tek seferlik derslerde çakışma kontrolü yapabilmek için.
+function gunNumaraTarihten(tarihStr) {
+  if (!tarihStr) return null
+  const g = new Date(tarihStr + 'T12:00:00').getDay()
+  return g === 0 ? 7 : g
+}
+
 // Yeni bir bire bir atamasının (öğretmen + gün + saat), o öğretmenin sınıf ders
 // programıyla ya da başka bir bire bir dersiyle çakışıp çakışmadığını kontrol eder.
 function cakismaBul({ ogretmenId, gun, baslangic, bitis, haricAtamaId }, dersProgrami, atamalar) {
@@ -69,6 +77,45 @@ function cakismaBul({ ogretmenId, gun, baslangic, bitis, haricAtamaId }, dersPro
   return null
 }
 
+// Tek seferlik (atama_id boş) bir dersin, aynı öğretmenin sınıf programıyla,
+// haftalık bire bir atamalarıyla (o tarihin haftanın günü üzerinden) ya da AYNI
+// TARİHTE girilmiş başka bir tek seferlik dersiyle çakışıp çakışmadığını kontrol eder.
+// Saat girilmemişse (tekBaslangic/tekBitis boşsa) kontrol edilmez, çünkü karşılaştırılacak
+// saat yoktur.
+function tekSeferlikCakismaBul({ ogretmenId, tarih, baslangic, bitis }, dersProgrami, atamalar, yoklamalar, ogrenciler) {
+  if (!ogretmenId || !tarih || !baslangic || !bitis) return null
+  const gun = gunNumaraTarihten(tarih)
+
+  for (const d of dersProgrami) {
+    if (d.gun !== gun || d.ogretmen_profile_id !== ogretmenId) continue
+    if (!araliklarCakisiyorMu(baslangic, bitis, d.baslangic_saat, d.bitis_saat)) continue
+    return {
+      aciklama: `bu öğretmenin ${GUNLER[d.gun]} günü ${saatKisalt(d.baslangic_saat)}–${saatKisalt(d.bitis_saat)} arası "${d.ders_adi || d.sinif_adi}" sınıf dersi var`,
+    }
+  }
+
+  for (const a of atamalar) {
+    if (!a.aktif || a.gun !== gun || a.ogretmen_profile_id !== ogretmenId) continue
+    if (!araliklarCakisiyorMu(baslangic, bitis, a.baslangic_saat, a.bitis_saat)) continue
+    return {
+      aciklama: `bu öğretmenin ${GUNLER[a.gun]} günü ${saatKisalt(a.baslangic_saat)}–${saatKisalt(a.bitis_saat)} arası "${a.ogrenci_adi}" ile haftalık bire bir dersi var`,
+    }
+  }
+
+  for (const y of yoklamalar) {
+    if (y.atama_id) continue // sadece diğer TEK SEFERLİK derslerle karşılaştırılır
+    if (y.ogretmen_profile_id !== ogretmenId || y.tarih !== tarih) continue
+    if (!y.baslangic_saat || !y.bitis_saat) continue
+    if (!araliklarCakisiyorMu(baslangic, bitis, y.baslangic_saat, y.bitis_saat)) continue
+    const ogrenciAdi = ogrenciler.find((o) => o.id === y.ogrenci_id)?.ad_soyad || 'başka bir öğrenci'
+    return {
+      aciklama: `bu öğretmenin ${tarih} tarihinde ${saatKisalt(y.baslangic_saat)}–${saatKisalt(y.bitis_saat)} arası "${ogrenciAdi}" ile başka bir tek seferlik dersi var`,
+    }
+  }
+
+  return null
+}
+
 // ============================================================================
 // BİRE BİR DERS EKLE — Tek form: öğrenci, öğretmen, ücret girilir, sonra
 // "her hafta tekrarlansın mı?" sorusuna Evet/Hayır cevabı verilir.
@@ -77,7 +124,7 @@ function cakismaBul({ ogretmenId, gun, baslangic, bitis, haricAtamaId }, dersPro
 //  - Hayır -> sadece o tarihe özel, tek seferlik bir ders kaydı (bire_bir_yoklama,
 //             atama_id boş) oluşturulur, hemen "Geldi" olarak borç eklenir.
 // ============================================================================
-function BireBirDersEkleForm({ ogrenciler, ogretmenler, atamalar, dersProgrami, onEklendi }) {
+function BireBirDersEkleForm({ ogrenciler, ogretmenler, atamalar, dersProgrami, yoklamalar, onEklendi }) {
   const [ogrenciId, setOgrenciId] = useState('')
   const [ogretmenId, setOgretmenId] = useState('')
   const [dersUcreti, setDersUcreti] = useState('')
@@ -127,15 +174,33 @@ function BireBirDersEkleForm({ ogrenciler, ogretmenler, atamalar, dersProgrami, 
     )
   }, [ogretmenId, gun, dersProgrami, atamalar, tekrarlansin])
 
-  // Bu öğrenci-öğretmen ikilisi için daha önce girilmiş bir ücret varsa (haftalık
-  // bir atamada zaten kayıtlıysa) otomatik dolduruyoruz — elle tekrar yazmaya
-  // gerek kalmasın diye. Kullanıcı isterse üzerine yazıp değiştirebilir.
+  // Bu öğrenci-öğretmen ikilisi için daha önce girilmiş bir ücret varsa otomatik
+  // dolduruyoruz — elle tekrar yazmaya gerek kalmasın diye. Kullanıcı isterse
+  // üzerine yazıp değiştirebilir. Önce haftalık atamalara bakılır (varsa en
+  // güncel/otoriter fiyat odur); yoksa bu ikili için daha önce girilmiş EN SON
+  // tek seferlik dersin tutarına bakılır — çoğu ders artık tek seferlik girildiği
+  // için bu ikinci kontrol olmazsa fiyat hiç önerilmiyordu.
   function fiyatiOner(ogrenciIdParam, ogretmenIdParam) {
     if (!ogrenciIdParam || !ogretmenIdParam) return
-    const eslesen = atamalar.find(
+    const atamaEslesen = atamalar.find(
       (a) => a.ogrenci_id === ogrenciIdParam && a.ogretmen_profile_id === ogretmenIdParam
     )
-    if (eslesen) setDersUcreti(String(eslesen.ders_ucreti))
+    if (atamaEslesen) {
+      setDersUcreti(String(atamaEslesen.ders_ucreti))
+      return
+    }
+    const gecmisTekSeferlikler = yoklamalar
+      .filter(
+        (y) =>
+          !y.atama_id &&
+          y.ogrenci_id === ogrenciIdParam &&
+          y.ogretmen_profile_id === ogretmenIdParam &&
+          y.tutar != null
+      )
+      .sort((a, b) => (a.tarih < b.tarih ? 1 : -1))
+    if (gecmisTekSeferlikler.length > 0) {
+      setDersUcreti(String(gecmisTekSeferlikler[0].tutar))
+    }
   }
 
   async function ekle(e) {
@@ -193,6 +258,19 @@ function BireBirDersEkleForm({ ogrenciler, ogretmenler, atamalar, dersProgrami, 
       if (tekBaslangic && tekBitis && tekBaslangic >= tekBitis) {
         setHata('Başlangıç saati bitiş saatinden önce olmalı.')
         return
+      }
+      if (tekBaslangic && tekBitis) {
+        const cakisma = tekSeferlikCakismaBul(
+          { ogretmenId, tarih, baslangic: tekBaslangic, bitis: tekBitis },
+          dersProgrami,
+          atamalar,
+          yoklamalar,
+          ogrenciler
+        )
+        if (cakisma) {
+          setHata(`Çakışma var: ${cakisma.aciklama}.`)
+          return
+        }
       }
 
       setGonderiliyor(true)
@@ -382,6 +460,7 @@ function BireBirDersEkleForm({ ogrenciler, ogretmenler, atamalar, dersProgrami, 
             </div>
             <p className="text-xs text-gray-400 pb-2 basis-full">
               Bu ders sadece seçtiğiniz tarihte geçerli olur, tekrar etmez. Öğrencinin hesabına hemen borç eklenir.
+              Saat girerseniz, bu öğretmenin aynı vakitte başka bir dersi var mı diye kontrol edilir.
             </p>
           </div>
         )}
@@ -883,6 +962,7 @@ export default function BireBir() {
             ogretmenler={ogretmenler}
             atamalar={atamalar}
             dersProgrami={dersProgrami}
+            yoklamalar={yoklamalar}
             onEklendi={veriyiYenile}
           />
           <AtamaListesi
