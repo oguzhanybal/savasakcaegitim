@@ -17,6 +17,7 @@ import BireBir from './pages/BireBir'
 import Ekstre from './pages/Ekstre'
 import TopluEkstre from './pages/TopluEkstre'
 import KullaniciOlustur from './pages/KullaniciOlustur'
+import Kantin from './pages/Kantin'
 
 function Yukleniyor() {
   return (
@@ -39,6 +40,15 @@ function GirisSayfasi() {
   if (loading) return <Yukleniyor />
   if (session) return <Navigate to="/" replace />
   return <Login />
+}
+
+// Kantin görevlisi giriş yapınca doğrudan Kantin sayfasına gitsin — Panel'de
+// onunla ilgisi olmayan öğrenci/ödeme bilgileri var, o yüzden "/" onun için
+// hiç gösterilmiyor.
+function AnaSayfa() {
+  const { profile } = useAuth()
+  if (profile?.rol === 'kantin') return <Navigate to="/kantin" replace />
+  return <Dashboard />
 }
 
 function AnaUygulama() {
@@ -81,7 +91,15 @@ function AnaUygulama() {
             </Korumali>
           }
         >
-          <Route index element={<Dashboard />} />
+          <Route index element={<AnaSayfa />} />
+          <Route
+            path="kantin"
+            element={
+              <Korumali izinliRoller={['yonetici', 'kantin']}>
+                <Kantin />
+              </Korumali>
+            }
+          />
           <Route
             path="ogrenciler"
             element={
