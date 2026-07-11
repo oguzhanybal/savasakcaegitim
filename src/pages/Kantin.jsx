@@ -311,6 +311,17 @@ export default function Kantin() {
   const [barkodDeger, setBarkodDeger] = useState('')
   const barkodInputRef = useRef(null)
 
+  // ---- Kamerayla barkod okuma (QuaggaJS, CDN üzerinden yüklenir) ----
+  const [kameraAcik, setKameraAcik] = useState(false)
+  const [kameraYukleniyor, setKameraYukleniyor] = useState(false)
+  const kameraKutusuRef = useRef(null)
+  const sonOkunanRef = useRef({ kod: null, zaman: 0 })
+  // Quagga'nın algılama olayı sadece BİR KEZ kaydedildiği için (kamera açılırken),
+  // içeride her zaman GÜNCEL değerleri kullanabilmek adına en son öğrenci/ürün
+  // listesini ve en güncel urunEkle fonksiyonunu ref'lerde tutuyoruz.
+  const aktifUrunlerRef = useRef([])
+  const urunEkleRef = useRef(() => {})
+
   function veriyiYenile() {
     if (!ilkYuklemeTamamRef.current) setLoading(true)
     const bugun = yerelBugunTarihi()
@@ -345,6 +356,10 @@ export default function Kantin() {
   }, [ogrenciler, ogrenciArama])
 
   const aktifUrunler = urunler.filter((u) => u.aktif)
+
+  useEffect(() => {
+    aktifUrunlerRef.current = aktifUrunler
+  })
 
   async function urunEkle(urun) {
     setHata('')
@@ -397,6 +412,102 @@ export default function Kantin() {
     }
     await urunEkle(urun)
   }
+
+  // urunEkle her render'da yeniden oluşuyor (ogrenciId'yi kendi içinde okuyor);
+  // Quagga'nın olay dinleyicisi kamerayı açarken SADECE BİR KEZ kaydedildiği
+  // için, dinleyici içinde her zaman en güncel urunEkle'yi çağırabilmek üzere
+  // bunu bir ref'te güncel tutuyoruz.
+  useEffect(() => {
+    urunEkleRef.current = urunEkle
+  })
+
+  // QuaggaJS kütüphanesini sadece kamera ilk açıldığında, CDN üzerinden yükler
+  // (projeye npm bağımlılığı eklemeye gerek kalmasın diye).
+  function quaggaYukle() {
+    return new Promise((resolve, reject) => {
+      if (window.Quagga) {
+        resolve(window.Quagga)
+        return
+      }
+      const script = document.createElement('script')
+      script.src = 'https://cdn.jsdelivr.net/npm/quagga@0.12.1/dist/quagga.min.js'
+      script.onload = () => resolve(window.Quagga)
+      script.onerror = () => reject(new Error('Kamera kütüphanesi yüklenemedi, internet bağlantınızı kontrol edin.'))
+      document.body.appendChild(script)
+    })
+  }
+
+  function kameraOkuma(sonuc) {
+    const kod = sonuc?.codeResult?.code
+    if (!kod) return
+    const simdi = Date.now()
+    // Aynı barkodu peş peşe defalarca algılayıp yanlışlıkla birkaç kez
+    // eklemesin diye 2 saniyelik bir "soğuma" süresi var.
+    if (sonOkunanRef.current.kod === kod && simdi - sonOkunanRef.current.zaman < 2000) return
+    sonOkunanRef.current = { kod, zaman: simdi }
+    const urun = aktifUrunlerRef.current.find((u) => u.barkod === kod)
+    if (!urun) {
+      setHata(`Bu barkoda (${kod}) ait aktif bir ürün bulunamadı.`)
+      return
+    }
+    urunEkleRef.current(urun)
+  }
+
+  async function kamerayiAc() {
+    setHata('')
+    if (!ogrenciId) {
+      setHata('Önce öğrenci seçin.')
+      return
+    }
+    setKameraYukleniyor(true)
+    try {
+      const Quagga = await quaggaYukle()
+      setKameraAcik(true)
+      // Kamera kutusunun (kameraKutusuRef) DOM'a gerçekten yerleşmesi için
+      // bir sonraki render'ı bekliyoruz, yoksa Quagga hedef elementi bulamaz.
+      setTimeout(() => {
+        Quagga.init(
+          {
+            inputStream: {
+              type: 'LiveStream',
+              target: kameraKutusuRef.current,
+              constraints: { facingMode: 'environment' },
+            },
+            decoder: { readers: ['code_39_reader'] },
+            locate: true,
+          },
+          (hata) => {
+            setKameraYukleniyor(false)
+            if (hata) {
+              setHata('Kamera açılamadı: ' + hata.message + ' (kameraya izin verdiniz mi?)')
+              setKameraAcik(false)
+              return
+            }
+            Quagga.start()
+          }
+        )
+        Quagga.onDetected(kameraOkuma)
+      }, 50)
+    } catch (e) {
+      setKameraYukleniyor(false)
+      setHata(e.message)
+    }
+  }
+
+  function kamerayiKapat() {
+    if (window.Quagga) {
+      window.Quagga.offDetected(kameraOkuma)
+      window.Quagga.stop()
+    }
+    setKameraAcik(false)
+  }
+
+  // Sayfadan tamamen ayrılırken kamera açık kalmasın.
+  useEffect(() => {
+    return () => {
+      if (window.Quagga) window.Quagga.stop()
+    }
+  }, [])
 
   async function sil(id) {
     if (!confirm('Bu alışı silmek istediğinize emin misiniz? (borç da kaldırılacak)')) return
@@ -458,18 +569,51 @@ export default function Kantin() {
           <p className="text-sm text-orange-600 mb-2">Önce yukarıdan bir öğrenci seçin.</p>
         )}
 
-        <form onSubmit={barkodOkutuldu} className="mb-4">
-          <label className="block text-sm font-medium text-gray-700 mb-1">Barkod Okut</label>
-          <input
-            ref={barkodInputRef}
-            type="text"
-            value={barkodDeger}
-            onChange={(e) => setBarkodDeger(e.target.value)}
-            placeholder="Barkod okuyucuyla okutun (ya da elle yazıp Enter'a basın)"
-            autoComplete="off"
-            className="w-full max-w-sm px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue"
-          />
-        </form>
+        <div className="flex flex-wrap items-end gap-3 mb-4">
+          <form onSubmit={barkodOkutuldu} className="flex-1 min-w-[240px]">
+            <label className="block text-sm font-medium text-gray-700 mb-1">Barkod Okut</label>
+            <input
+              ref={barkodInputRef}
+              type="text"
+              value={barkodDeger}
+              onChange={(e) => setBarkodDeger(e.target.value)}
+              placeholder="USB okuyucuyla okutun (ya da elle yazıp Enter'a basın)"
+              autoComplete="off"
+              className="w-full max-w-sm px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue"
+            />
+          </form>
+          {!kameraAcik ? (
+            <button
+              type="button"
+              onClick={kamerayiAc}
+              disabled={kameraYukleniyor}
+              className="px-4 py-2 rounded-lg text-sm font-semibold border border-gray-200 text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+            >
+              {kameraYukleniyor ? 'Kamera açılıyor...' : '📷 Kamerayla Okut'}
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={kamerayiKapat}
+              className="px-4 py-2 rounded-lg text-sm font-semibold border border-red-200 text-red-600 hover:bg-red-50"
+            >
+              Kamerayı Kapat
+            </button>
+          )}
+        </div>
+
+        {kameraAcik && (
+          <div className="mb-4">
+            <div
+              ref={kameraKutusuRef}
+              className="relative w-full max-w-sm rounded-lg overflow-hidden border border-gray-200 bg-black"
+              style={{ minHeight: 220 }}
+            />
+            <p className="text-xs text-gray-400 mt-1">
+              Ürünün barkodunu kameraya net ve iyi ışıkta gösterin — algılanınca otomatik eklenir.
+            </p>
+          </div>
+        )}
 
         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2">
           {aktifUrunler.map((u) => (
