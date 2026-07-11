@@ -349,10 +349,19 @@ export default function Kantin() {
   const [barkodDeger, setBarkodDeger] = useState('')
   const barkodInputRef = useRef(null)
 
-  // ---- Kamerayla barkod okuma (QuaggaJS, CDN üzerinden yüklenir) ----
+  // ---- Kamerayla barkod okuma ----
+  // İki yöntem var: (1) telefonun/tarayıcının kendi barkod tanıma motoru
+  // (BarcodeDetector API) — Android Chrome'da donanım hızlandırmalı ve çok
+  // daha güvenilir, bu yüzden varsa ÖNCELİKLE bu kullanılıyor. (2) Bu API'yi
+  // desteklemeyen tarayıcılar (Safari, Firefox, eski Chrome) için CDN'den
+  // yüklenen QuaggaJS kütüphanesi yedek olarak devrede kalıyor.
   const [kameraAcik, setKameraAcik] = useState(false)
   const [kameraYukleniyor, setKameraYukleniyor] = useState(false)
-  const kameraKutusuRef = useRef(null)
+  const [kameraModu, setKameraModu] = useState(null) // 'algilayici' | 'quagga'
+  const kameraKutusuRef = useRef(null) // Quagga'nın video/canvas eklediği kutu
+  const videoElRef = useRef(null) // Native BarcodeDetector için kendi <video>'muz
+  const mediaStreamRef = useRef(null)
+  const algilamaAralikRef = useRef(null)
   const sonOkunanRef = useRef({ kod: null, zaman: 0 })
   // Quagga'nın algılama olayı sadece BİR KEZ kaydedildiği için (kamera açılırken),
   // içeride her zaman GÜNCEL değerleri kullanabilmek adına en son öğrenci/ürün
@@ -536,6 +545,103 @@ export default function Kantin() {
     }
   }
 
+  // Telefonun/tarayıcının kendi barkod tanıma motorunu (varsa) kullanır.
+  // Android Chrome'da bu, işletim sistemi seviyesinde çalışıp donanımdan
+  // yararlandığı için QuaggaJS'in saf JavaScript ile görüntüyü satır satır
+  // taramasından çok daha güvenilir ve hızlı okuyor.
+  async function kameraAlgilayiciDestekleniyorMu() {
+    if (typeof window === 'undefined' || !('BarcodeDetector' in window)) return false
+    try {
+      const formatlar = await window.BarcodeDetector.getSupportedFormats()
+      return formatlar.includes('code_39')
+    } catch {
+      return false
+    }
+  }
+
+  async function kameraDetectorIleAc(zamanAsimi) {
+    const stream = await navigator.mediaDevices.getUserMedia({
+      video: {
+        facingMode: { ideal: 'environment' },
+        width: { ideal: 1280 },
+        height: { ideal: 720 },
+      },
+    })
+    mediaStreamRef.current = stream
+    setKameraModu('algilayici')
+    setKameraAcik(true)
+    // <video> elementinin DOM'a yerleşmesini bekle.
+    setTimeout(async () => {
+      const video = videoElRef.current
+      if (!video) return
+      video.srcObject = stream
+      try {
+        await video.play()
+      } catch {
+        // bazı tarayıcılarda otomatik oynatma anlık olarak reddedilebiliyor, sorun değil
+      }
+      clearTimeout(zamanAsimi)
+      setKameraYukleniyor(false)
+      const detector = new window.BarcodeDetector({ formats: ['code_39'] })
+      algilamaAralikRef.current = setInterval(async () => {
+        if (!video || video.readyState < 2) return
+        try {
+          const sonuclar = await detector.detect(video)
+          if (sonuclar && sonuclar.length > 0) {
+            kameraOkuma({ codeResult: { code: sonuclar[0].rawValue } })
+          }
+        } catch {
+          // tek bir karede okuma başarısız olabilir, bir sonraki karede tekrar dener
+        }
+      }, 300)
+    }, 50)
+  }
+
+  async function kameraQuaggaIleAc(zamanAsimi) {
+    const Quagga = await quaggaYukle()
+    setKameraModu('quagga')
+    setKameraAcik(true)
+    // Kamera kutusunun (kameraKutusuRef) DOM'a gerçekten yerleşmesi için
+    // bir sonraki render'ı bekliyoruz, yoksa Quagga hedef elementi bulamaz.
+    setTimeout(() => {
+      Quagga.init(
+        {
+          inputStream: {
+            type: 'LiveStream',
+            target: kameraKutusuRef.current,
+            // "ideal" olarak istiyoruz — laptop/masaüstü gibi arka kamerası
+            // olmayan cihazlarda "zorunlu" istenirse kamera hiç açılmıyordu.
+            constraints: {
+              facingMode: { ideal: 'environment' },
+              width: { ideal: 1280 },
+              height: { ideal: 720 },
+            },
+          },
+          // numOfWorkers: 0 -> arka plan iş parçacığı (Web Worker) kullanmadan
+          // ana iş parçacığında okusun. CDN'den yüklenen sürümlerde bazı
+          // mobil tarayıcılarda worker'lar sessizce çalışmayıp kamera açık
+          // görünse de barkod hiç okunmuyordu; bu ayar bunu ortadan kaldırıyor.
+          numOfWorkers: 0,
+          frequency: 10,
+          locator: { patchSize: 'medium', halfSample: true },
+          decoder: { readers: ['code_39_reader'], multiple: false },
+          locate: true,
+        },
+        (hata) => {
+          clearTimeout(zamanAsimi)
+          setKameraYukleniyor(false)
+          if (hata) {
+            setHata('Kamera açılamadı: ' + (hata.message || hata.name || 'bilinmeyen hata') + ' (kameraya izin verdiniz mi?)')
+            setKameraAcik(false)
+            return
+          }
+          Quagga.start()
+        }
+      )
+      Quagga.onDetected(kameraOkuma)
+    }, 50)
+  }
+
   async function kamerayiAc() {
     setHata('')
     if (!ogrenciId) {
@@ -545,7 +651,7 @@ export default function Kantin() {
     setKameraYukleniyor(true)
     setKameraBildirim(null)
 
-    // Quagga bazı durumlarda (izin penceresi kapatılırsa, kamera bulunamazsa vb.)
+    // Kamera bazı durumlarda (izin penceresi kapatılırsa, kamera bulunamazsa vb.)
     // hiç callback çağırmadan asılı kalabiliyor — bu yüzden 8 saniye içinde
     // açılmazsa kullanıcıyı bekletmemek için otomatik olarak hata gösteriyoruz.
     const zamanAsimi = setTimeout(() => {
@@ -556,47 +662,12 @@ export default function Kantin() {
     kameraZamanAsimiRef.current = zamanAsimi
 
     try {
-      const Quagga = await quaggaYukle()
-      setKameraAcik(true)
-      // Kamera kutusunun (kameraKutusuRef) DOM'a gerçekten yerleşmesi için
-      // bir sonraki render'ı bekliyoruz, yoksa Quagga hedef elementi bulamaz.
-      setTimeout(() => {
-        Quagga.init(
-          {
-            inputStream: {
-              type: 'LiveStream',
-              target: kameraKutusuRef.current,
-              // "ideal" olarak istiyoruz — laptop/masaüstü gibi arka kamerası
-              // olmayan cihazlarda "zorunlu" istenirse kamera hiç açılmıyordu.
-              constraints: {
-                facingMode: { ideal: 'environment' },
-                width: { ideal: 1280 },
-                height: { ideal: 720 },
-              },
-            },
-            // numOfWorkers: 0 -> arka plan iş parçacığı (Web Worker) kullanmadan
-            // ana iş parçacığında okusun. CDN'den yüklenen sürümlerde bazı
-            // mobil tarayıcılarda worker'lar sessizce çalışmayıp kamera açık
-            // görünse de barkod hiç okunmuyordu; bu ayar bunu ortadan kaldırıyor.
-            numOfWorkers: 0,
-            frequency: 10,
-            locator: { patchSize: 'medium', halfSample: true },
-            decoder: { readers: ['code_39_reader'], multiple: false },
-            locate: true,
-          },
-          (hata) => {
-            clearTimeout(zamanAsimi)
-            setKameraYukleniyor(false)
-            if (hata) {
-              setHata('Kamera açılamadı: ' + (hata.message || hata.name || 'bilinmeyen hata') + ' (kameraya izin verdiniz mi?)')
-              setKameraAcik(false)
-              return
-            }
-            Quagga.start()
-          }
-        )
-        Quagga.onDetected(kameraOkuma)
-      }, 50)
+      const algilayiciVarMi = await kameraAlgilayiciDestekleniyorMu()
+      if (algilayiciVarMi) {
+        await kameraDetectorIleAc(zamanAsimi)
+      } else {
+        await kameraQuaggaIleAc(zamanAsimi)
+      }
     } catch (e) {
       clearTimeout(zamanAsimi)
       setKameraYukleniyor(false)
@@ -608,6 +679,14 @@ export default function Kantin() {
   function kamerayiKapat() {
     if (kameraZamanAsimiRef.current) clearTimeout(kameraZamanAsimiRef.current)
     if (kameraBildirimZamanlayiciRef.current) clearTimeout(kameraBildirimZamanlayiciRef.current)
+    if (algilamaAralikRef.current) {
+      clearInterval(algilamaAralikRef.current)
+      algilamaAralikRef.current = null
+    }
+    if (mediaStreamRef.current) {
+      mediaStreamRef.current.getTracks().forEach((t) => t.stop())
+      mediaStreamRef.current = null
+    }
     if (window.Quagga) {
       window.Quagga.offDetected(kameraOkuma)
       window.Quagga.stop()
@@ -615,12 +694,15 @@ export default function Kantin() {
     setKameraAcik(false)
     setKameraYukleniyor(false)
     setKameraBildirim(null)
+    setKameraModu(null)
   }
 
   // Sayfadan tamamen ayrılırken kamera açık kalmasın.
   useEffect(() => {
     return () => {
       if (window.Quagga) window.Quagga.stop()
+      if (algilamaAralikRef.current) clearInterval(algilamaAralikRef.current)
+      if (mediaStreamRef.current) mediaStreamRef.current.getTracks().forEach((t) => t.stop())
       if (kameraBildirimZamanlayiciRef.current) clearTimeout(kameraBildirimZamanlayiciRef.current)
     }
   }, [])
@@ -724,9 +806,18 @@ export default function Kantin() {
               className="relative w-full max-w-sm rounded-lg overflow-hidden border border-gray-200 bg-black"
               style={{ minHeight: 220 }}
             >
-              {/* Quagga sadece bu iç kutunun içine video/canvas ekliyor — üstteki
-                  bildirim ayrı bir katman olduğu için birbirine karışmıyor. */}
-              <div ref={kameraKutusuRef} className="absolute inset-0" />
+              {kameraModu === 'algilayici' ? (
+                <video
+                  ref={videoElRef}
+                  className="absolute inset-0 w-full h-full object-cover"
+                  playsInline
+                  muted
+                />
+              ) : (
+                // Quagga sadece bu iç kutunun içine video/canvas ekliyor — üstteki
+                // bildirim ayrı bir katman olduğu için birbirine karışmıyor.
+                <div ref={kameraKutusuRef} className="absolute inset-0" />
+              )}
 
               {kameraBildirim && (
                 <>
