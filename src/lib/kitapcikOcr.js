@@ -145,6 +145,43 @@ export function girintiliAdaylariEle(adaylar, sayfaGenisligi, tolerans = 25) {
   return [...filtrele(adaylar.filter((a) => a.x < ortaX)), ...filtrele(adaylar.filter((a) => a.x >= ortaX))]
 }
 
+// Okuma sırasına dizilmiş (sayfa, sütun, y) aday listesini, GERÇEK bir soru
+// numarası dizisi gibi ARDIŞIK artıp artmadığına göre süzer. Bu, "yanında 3-5
+// satır metin var diye soru sanma" problemini çözer: kitapçığın başındaki
+// YÖNERGE de kendi içinde "1. Bu testte..." "2. Cevaplarınızı..." diye
+// numaralanmış oluyor ve her ikisinin de yanında bol metin var, ama bu sadece
+// 2 elemanlık kısa/kopuk bir dizi — hemen ardından asıl 1. soru yeniden "1."
+// diye başlıyor. Sadece yeterince UZUN (>= minDiziUzunlugu) ardışık artan
+// diziler gerçek soru akışı sayılır; kısa/aykırı diziler (yönerge, girintili
+// alt maddelerden kaçanlar vb.) tamamen elenir. Bir dizi bozulup yeniden 1'den
+// başlarsa bu yeni bir ders/test bölümü sayılır (TYT'de Türkçe/Matematik/
+// Sosyal/Fen ayrı ayrı 1'den başlar) — o yüzden "1"e dönüş tek başına bir
+// hata sayılmaz, sadece dizi KISA kalırsa elenir.
+export function ardisikDiziyeGoreFiltrele(siraliAdaylar, minDiziUzunlugu = 4) {
+  const sonuc = []
+  let mevcutDizi = []
+
+  function diziyiSonlandir() {
+    if (mevcutDizi.length >= minDiziUzunlugu) sonuc.push(...mevcutDizi)
+    mevcutDizi = []
+  }
+
+  for (const aday of siraliAdaylar) {
+    const deger = parseInt(aday.metin, 10)
+    if (Number.isNaN(deger)) continue
+    const sonAday = mevcutDizi[mevcutDizi.length - 1]
+    const sonDeger = sonAday ? parseInt(sonAday.metin, 10) : null
+    if (sonDeger !== null && deger === sonDeger + 1) {
+      mevcutDizi.push(aday)
+    } else {
+      diziyiSonlandir()
+      mevcutDizi.push(aday)
+    }
+  }
+  diziyiSonlandir()
+  return sonuc
+}
+
 // Aday konumlarını sayfanın sütun yapısına göre gruplar (basitçe sayfa
 // genişliğinin ortasına göre sol/sağ) ve yukarıdan aşağıya sıralar. İki
 // sütunlu (ya da tek sütunlu) klasik soru kitapçığı düzenine uygun bir ilk
