@@ -71,7 +71,19 @@ export async function sayfayiGoruntuyeCevir(pdfBelge, sayfaNo, olcek = 2) {
 // rakam+nokta desenini arıyoruz ("12.", "3" gibi) — konu/gövde metnini
 // anlamlandırmaya çalışmıyoruz, o yüzden Türkçe karakterler yanlış okunsa
 // bile bu tespiti etkilemez.
-export async function sayfadaSoruNumaralariniTespitEt(canvas, ilerlemeCallback) {
+//
+// Ham OCR çıktısında bu deseni gerçek soru numaraları DIŞINDA da eşleşen çok
+// sayıda "yanlış alarm" oluyor — özellikle sayfa altındaki SAYFA NUMARASI
+// ("1", "2"... tek başına, satırda başka hiçbir şey yokken) ve soru gövdesi
+// içindeki alt madde işaretleri ("I." "II." gibi Roma rakamlarının OCR
+// tarafından "1." "11." diye yanlış okunması, ya da metin içi "17. yüzyıl"
+// gibi ifadeler). Bu yüzden iki ek filtre uyguluyoruz:
+//   1) Aday, kendi SATIRINDA YALNIZ değilse (yanında soru metninin devamı
+//      olacak başka kelime(ler) varsa) geçerli sayılır — sayfa numarası gibi
+//      satırda tek başına duran sayılar elenir.
+//   2) Sayfanın en üst %6'sı (başlık/logo bandı) ve en alt %5'i (sayfa no
+//      bandı) tamamen dışarıda bırakılır.
+export async function sayfadaSoruNumaralariniTespitEt(canvas, sayfaGenisligi, sayfaYuksekligi, ilerlemeCallback) {
   const Tesseract = await tesseractYukle()
   const { data } = await Tesseract.recognize(canvas, 'eng', {
     logger: (m) => {
@@ -80,16 +92,57 @@ export async function sayfadaSoruNumaralariniTespitEt(canvas, ilerlemeCallback) 
       }
     },
   })
-  const kelimeler = (data.words || []).filter((w) => w.text && w.text.trim())
-  const adaylar = []
-  for (const k of kelimeler) {
-    const metin = k.text.trim()
-    if (/^\d{1,3}\.?$/.test(metin) && k.confidence >= 30) {
-      const { x0, y0, x1, y1 } = k.bbox
-      adaylar.push({ metin, x: x0, y: y0, genislik: x1 - x0, yukseklik: y1 - y0 })
+  const tumKelimeler = (data.words || []).filter((w) => w.text && w.text.trim())
+
+  // Kelimeleri satırlara grupla (y merkezine göre yakınlık).
+  const YAKINLIK = 8
+  const satirlar = []
+  for (const w of tumKelimeler) {
+    const merkezY = (w.bbox.y0 + w.bbox.y1) / 2
+    let satir = satirlar.find((s) => Math.abs(s.y - merkezY) <= YAKINLIK)
+    if (!satir) {
+      satir = { y: merkezY, kelimeler: [] }
+      satirlar.push(satir)
     }
+    satir.kelimeler.push(w)
+  }
+
+  const ustSinir = sayfaYuksekligi * 0.06
+  const altSinir = sayfaYuksekligi * 0.95
+
+  const adaylar = []
+  for (const satir of satirlar) {
+    const siraliKelimeler = [...satir.kelimeler].sort((a, b) => a.bbox.x0 - b.bbox.x0)
+    const ilk = siraliKelimeler[0]
+    if (!ilk) continue
+    const metin = ilk.text.trim()
+    if (!/^\d{1,3}\.?$/.test(metin)) continue
+    if (ilk.confidence < 30) continue
+    if (ilk.bbox.y0 < ustSinir || ilk.bbox.y0 > altSinir) continue
+    if (siraliKelimeler.length < 2) continue // satırda yalnızsa (sayfa no vb.) atla
+    adaylar.push({
+      metin,
+      x: ilk.bbox.x0,
+      y: ilk.bbox.y0,
+      genislik: ilk.bbox.x1 - ilk.bbox.x0,
+      yukseklik: ilk.bbox.y1 - ilk.bbox.y0,
+    })
   }
   return adaylar
+}
+
+// Bir sütunun GERÇEK sol kenarına (o sütundaki en küçük x) yakın olmayan
+// adayları eler — soru gövdesi içinde girintili duran "I." "II." gibi alt
+// madde işaretleri, gerçek soru numaralarının aksine sütunun sol kenarına
+// tam yaslanmaz, birkaç piksel/santim içeride başlar.
+export function girintiliAdaylariEle(adaylar, sayfaGenisligi, tolerans = 25) {
+  const ortaX = sayfaGenisligi / 2
+  const filtrele = (liste) => {
+    if (liste.length === 0) return liste
+    const minX = Math.min(...liste.map((a) => a.x))
+    return liste.filter((a) => a.x - minX <= tolerans)
+  }
+  return [...filtrele(adaylar.filter((a) => a.x < ortaX)), ...filtrele(adaylar.filter((a) => a.x >= ortaX))]
 }
 
 // Aday konumlarını sayfanın sütun yapısına göre gruplar (basitçe sayfa
