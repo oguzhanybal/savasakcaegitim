@@ -3,7 +3,7 @@
 // güvenle kullanılabilir (tarayıcıya asla gönderilmez).
 import { createClient } from '@supabase/supabase-js'
 
-const GECERLI_ROLLER = ['yonetici', 'ogretmen', 'veli', 'ogrenci']
+const GECERLI_ROLLER = ['yonetici', 'ogretmen', 'veli', 'ogrenci', 'kantin']
 
 // Ad-soyad'ı, nasıl girilirse girilsin "İlk Harfler Büyük, Diğerleri Küçük"
 // biçimine çevirir. Bu dosya src/lib'i import etmiyor (ayrı bir sunucu ortamı
@@ -29,7 +29,7 @@ export default async function handler(req, res) {
     return
   }
 
-  const { adSoyad, kullaniciAdi, sifre, rol, telefon } = req.body || {}
+  const { adSoyad, kullaniciAdi, sifre, rol, telefon, brans } = req.body || {}
 
   if (!adSoyad?.trim() || !kullaniciAdi?.trim() || !sifre || !rol) {
     res.status(400).json({ error: 'Ad soyad, kullanıcı adı, şifre ve rol zorunludur.' })
@@ -76,6 +76,7 @@ export default async function handler(req, res) {
     ad_soyad: adSoyadDuzelt(adSoyad),
     rol,
     telefon: telefon?.trim() || null,
+    brans: rol === 'ogretmen' ? brans?.trim() || null : null,
   })
 
   if (profilHatasi) {
