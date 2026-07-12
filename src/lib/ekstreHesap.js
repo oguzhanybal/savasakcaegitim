@@ -309,6 +309,13 @@ export function bireBirDersDetaylariOlustur(atamalar, yoklamalar) {
       const ogretmenAdi = atama
         ? atama.profiles?.ad_soyad || atama.ogretmen_adi
         : y.profiles?.ad_soyad || y.ogretmen_adi
+      // Öğretmenin branşı (Matematik, Türkçe vb.) — veli hocayı isimden değil,
+      // hangi DERS için ders aldığından tanıyor; bu yüzden ders dökümünde
+      // öğretmen adının yanında branşı da gösteriyoruz. Aynı "profiles" join'i
+      // üzerinden geliyor, ayrıca bir sorguya gerek yok.
+      const ogretmenBransi = atama
+        ? atama.profiles?.brans
+        : y.profiles?.brans
       // Öğretmen ekstresinde (OgretmenEkstre.jsx) "karşı taraf" öğrenci olduğu
       // için bunu da hesaplıyoruz — atamalar/yoklamalar parametreleri bunun için
       // ayrıca "ogrenciler(ad_soyad)" join'i içermeli (içermezse ogrenci_adi'ya düşer).
@@ -321,6 +328,7 @@ export function bireBirDersDetaylariOlustur(atamalar, yoklamalar) {
         baslangicSaat: y.baslangic_saat || atama?.baslangic_saat || null,
         bitisSaat: y.bitis_saat || atama?.bitis_saat || null,
         ogretmenAdi: ogretmenAdi || '—',
+        ogretmenBransi: ogretmenBransi || null,
         ogrenciAdi: ogrenciAdi || '—',
         tutar: y.tutar != null ? Number(y.tutar) : Number(atama?.ders_ucreti) || 0,
         kaynak: y.atama_id ? 'Haftalık' : 'Tek Seferlik',
