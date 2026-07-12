@@ -49,6 +49,13 @@ function menuOlustur(rol) {
           { to: '/yoklama-raporu', label: 'Yoklama Raporu' },
         ],
       },
+      {
+        tur: 'grup',
+        label: 'Sınavlar',
+        ogeler: [
+          { to: '/sinav-kitapciklari', label: 'Sınav Kitapçıkları' },
+        ],
+      },
     ]
   }
   if (rol === 'kantin') {
