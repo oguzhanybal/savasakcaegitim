@@ -90,8 +90,11 @@ function ayEtiketi(baslangicStr) {
 }
 
 // Yeni bir bire bir atamasının (öğretmen + gün + saat), o öğretmenin sınıf ders
-// programıyla ya da başka bir bire bir dersiyle çakışıp çakışmadığını kontrol eder.
-function cakismaBul({ ogretmenId, gun, baslangic, bitis, haricAtamaId }, dersProgrami, atamalar) {
+// programıyla, başka bir bire bir dersiyle YA DA aynı ÖĞRENCİNİN (varsa) başka
+// bir öğretmenle olan dersiyle çakışıp çakışmadığını kontrol eder. Öğrenci
+// tarafı kontrolü önemli — aksi halde aynı öğrenci aynı saatte iki farklı
+// öğretmenle derse yazılabiliyor (bkz. Yiğit'in Cuma 12:30 ve 11:55 çakışması).
+function cakismaBul({ ogrenciId, ogretmenId, gun, baslangic, bitis, haricAtamaId }, dersProgrami, atamalar) {
   if (!ogretmenId || !baslangic || !bitis) return null
 
   for (const d of dersProgrami) {
@@ -104,10 +107,17 @@ function cakismaBul({ ogretmenId, gun, baslangic, bitis, haricAtamaId }, dersPro
 
   for (const a of atamalar) {
     if (a.id === haricAtamaId) continue
-    if (!a.aktif || a.gun !== gun || a.ogretmen_profile_id !== ogretmenId) continue
+    if (!a.aktif || a.gun !== gun) continue
     if (!araliklarCakisiyorMu(baslangic, bitis, a.baslangic_saat, a.bitis_saat)) continue
-    return {
-      aciklama: `bu öğretmenin ${GUNLER[a.gun]} günü ${saatKisalt(a.baslangic_saat)}–${saatKisalt(a.bitis_saat)} arası "${a.ogrenci_adi}" ile bire bir dersi var`,
+    if (a.ogretmen_profile_id === ogretmenId) {
+      return {
+        aciklama: `bu öğretmenin ${GUNLER[a.gun]} günü ${saatKisalt(a.baslangic_saat)}–${saatKisalt(a.bitis_saat)} arası "${a.ogrenci_adi}" ile bire bir dersi var`,
+      }
+    }
+    if (ogrenciId && a.ogrenci_id === ogrenciId) {
+      return {
+        aciklama: `bu öğrencinin her hafta ${GUNLER[a.gun]} günü ${saatKisalt(a.baslangic_saat)}–${saatKisalt(a.bitis_saat)} arası "${a.ogretmen_adi}" ile başka bir bire bir dersi var`,
+      }
     }
   }
 
@@ -116,10 +126,18 @@ function cakismaBul({ ogretmenId, gun, baslangic, bitis, haricAtamaId }, dersPro
 
 // Tek seferlik (atama_id boş) bir dersin, aynı öğretmenin sınıf programıyla,
 // haftalık bire bir atamalarıyla (o tarihin haftanın günü üzerinden) ya da AYNI
-// TARİHTE girilmiş başka bir tek seferlik dersiyle çakışıp çakışmadığını kontrol eder.
-// Saat girilmemişse (tekBaslangic/tekBitis boşsa) kontrol edilmez, çünkü karşılaştırılacak
-// saat yoktur.
-function tekSeferlikCakismaBul({ ogretmenId, tarih, baslangic, bitis }, dersProgrami, atamalar, yoklamalar, ogrenciler) {
+// TARİHTE girilmiş başka bir tek seferlik dersiyle çakışıp çakışmadığını kontrol
+// eder — hem öğretmen tarafı hem ÖĞRENCİ tarafı için (öğrenci aynı anda iki
+// farklı öğretmenle derse yazılamaz). Saat girilmemişse (tekBaslangic/tekBitis
+// boşsa) kontrol edilmez, çünkü karşılaştırılacak saat yoktur.
+function tekSeferlikCakismaBul(
+  { ogrenciId, ogretmenId, tarih, baslangic, bitis },
+  dersProgrami,
+  atamalar,
+  yoklamalar,
+  ogrenciler,
+  ogretmenler
+) {
   if (!ogretmenId || !tarih || !baslangic || !bitis) return null
   const gun = gunNumaraTarihten(tarih)
 
@@ -132,22 +150,37 @@ function tekSeferlikCakismaBul({ ogretmenId, tarih, baslangic, bitis }, dersProg
   }
 
   for (const a of atamalar) {
-    if (!a.aktif || a.gun !== gun || a.ogretmen_profile_id !== ogretmenId) continue
+    if (!a.aktif || a.gun !== gun) continue
     if (!araliklarCakisiyorMu(baslangic, bitis, a.baslangic_saat, a.bitis_saat)) continue
-    return {
-      aciklama: `bu öğretmenin ${GUNLER[a.gun]} günü ${saatKisalt(a.baslangic_saat)}–${saatKisalt(a.bitis_saat)} arası "${a.ogrenci_adi}" ile haftalık bire bir dersi var`,
+    if (a.ogretmen_profile_id === ogretmenId) {
+      return {
+        aciklama: `bu öğretmenin ${GUNLER[a.gun]} günü ${saatKisalt(a.baslangic_saat)}–${saatKisalt(a.bitis_saat)} arası "${a.ogrenci_adi}" ile haftalık bire bir dersi var`,
+      }
+    }
+    if (ogrenciId && a.ogrenci_id === ogrenciId) {
+      return {
+        aciklama: `bu öğrencinin her hafta ${GUNLER[a.gun]} günü ${saatKisalt(a.baslangic_saat)}–${saatKisalt(a.bitis_saat)} arası "${a.ogretmen_adi}" ile haftalık bire bir dersi var`,
+      }
     }
   }
 
   for (const y of yoklamalar) {
     if (y.atama_id) continue // sadece diğer TEK SEFERLİK derslerle karşılaştırılır
     if (y.durum === 'gelmedi') continue // öğrenci gelmediyse o saat artık boş sayılır
-    if (y.ogretmen_profile_id !== ogretmenId || y.tarih !== tarih) continue
+    if (y.tarih !== tarih) continue
     if (!y.baslangic_saat || !y.bitis_saat) continue
     if (!araliklarCakisiyorMu(baslangic, bitis, y.baslangic_saat, y.bitis_saat)) continue
-    const ogrenciAdi = ogrenciler.find((o) => o.id === y.ogrenci_id)?.ad_soyad || 'başka bir öğrenci'
-    return {
-      aciklama: `bu öğretmenin ${tarih} tarihinde ${saatKisalt(y.baslangic_saat)}–${saatKisalt(y.bitis_saat)} arası "${ogrenciAdi}" ile başka bir tek seferlik dersi var`,
+    if (y.ogretmen_profile_id === ogretmenId) {
+      const ogrenciAdi = ogrenciler.find((o) => o.id === y.ogrenci_id)?.ad_soyad || 'başka bir öğrenci'
+      return {
+        aciklama: `bu öğretmenin ${tarih} tarihinde ${saatKisalt(y.baslangic_saat)}–${saatKisalt(y.bitis_saat)} arası "${ogrenciAdi}" ile başka bir tek seferlik dersi var`,
+      }
+    }
+    if (ogrenciId && y.ogrenci_id === ogrenciId) {
+      const ogretmenAdi = (ogretmenler || []).find((o) => o.id === y.ogretmen_profile_id)?.ad_soyad || 'başka bir öğretmen'
+      return {
+        aciklama: `bu öğrencinin ${tarih} tarihinde ${saatKisalt(y.baslangic_saat)}–${saatKisalt(y.bitis_saat)} arası "${ogretmenAdi}" ile başka bir tek seferlik dersi var`,
+      }
     }
   }
 
@@ -260,7 +293,7 @@ function BireBirDersEkleForm({ ogrenciler, ogretmenler, atamalar, dersProgrami, 
         setHata('Başlangıç saati bitiş saatinden önce olmalı.')
         return
       }
-      const cakisma = cakismaBul({ ogretmenId, gun: Number(gun), baslangic, bitis }, dersProgrami, atamalar)
+      const cakisma = cakismaBul({ ogrenciId, ogretmenId, gun: Number(gun), baslangic, bitis }, dersProgrami, atamalar)
       if (cakisma) {
         setHata(`Çakışma var: ${cakisma.aciklama}.`)
         return
@@ -299,11 +332,12 @@ function BireBirDersEkleForm({ ogrenciler, ogretmenler, atamalar, dersProgrami, 
       }
       if (tekBaslangic && tekBitis) {
         const cakisma = tekSeferlikCakismaBul(
-          { ogretmenId, tarih, baslangic: tekBaslangic, bitis: tekBitis },
+          { ogrenciId, ogretmenId, tarih, baslangic: tekBaslangic, bitis: tekBitis },
           dersProgrami,
           atamalar,
           yoklamalar,
-          ogrenciler
+          ogrenciler,
+          ogretmenler
         )
         if (cakisma) {
           setHata(`Çakışma var: ${cakisma.aciklama}.`)
@@ -654,7 +688,7 @@ function AtamaDuzenleSatiri({ a, ogretmenler, atamalar, dersProgrami, onKaydedil
     }
 
     const cakisma = cakismaBul(
-      { ogretmenId, gun: Number(gun), baslangic, bitis, haricAtamaId: a.id },
+      { ogrenciId: a.ogrenci_id, ogretmenId, gun: Number(gun), baslangic, bitis, haricAtamaId: a.id },
       dersProgrami,
       atamalar
     )
