@@ -125,7 +125,10 @@ export default function BireBirDersDokumu({ dersler, karsiTarafBasligi, baslangi
                   <td className="px-2 sm:px-3 py-2 text-gray-500">
                     {d.baslangicSaat ? `${d.baslangicSaat.slice(0, 5)}${d.bitisSaat ? '–' + d.bitisSaat.slice(0, 5) : ''}` : '—'}
                   </td>
-                  <td className="px-2 sm:px-3 py-2">{d.karsiTarafAdi || '—'}</td>
+                  <td className="px-2 sm:px-3 py-2">
+                    {d.karsiTarafAdi || '—'}
+                    {d.karsiTarafBransi && <span className="text-gray-400"> ({d.karsiTarafBransi})</span>}
+                  </td>
                   <td className="px-2 sm:px-3 py-2 text-right font-medium">{paraFormat(d.tutar)}</td>
                 </tr>
               ))}
