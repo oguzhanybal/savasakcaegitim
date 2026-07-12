@@ -61,6 +61,23 @@ function yerelBugunTarihi() {
   return `${n.getFullYear()}-${String(n.getMonth() + 1).padStart(2, '0')}-${String(n.getDate()).padStart(2, '0')}`
 }
 
+// Bir tarihin (YYYY-MM-DD) içinde bulunduğu haftanın PAZARTESİ gününü bulur —
+// "Tüm Bire Bir Dersler" listesini haftalık gruplamak için kullanılır.
+function haftaBaslangici(tarihStr) {
+  const d = new Date(tarihStr + 'T12:00:00')
+  const gun = d.getDay() === 0 ? 7 : d.getDay() // 1=Pzt...7=Paz
+  d.setDate(d.getDate() - (gun - 1))
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+}
+
+function haftaEtiketi(baslangicStr) {
+  const b = new Date(baslangicStr + 'T12:00:00')
+  const s = new Date(b)
+  s.setDate(s.getDate() + 6)
+  const fmt = (t) => t.toLocaleDateString('tr-TR', { day: '2-digit', month: 'short' })
+  return `${fmt(b)} – ${fmt(s)} ${s.getFullYear()}`
+}
+
 // Yeni bir bire bir atamasının (öğretmen + gün + saat), o öğretmenin sınıf ders
 // programıyla ya da başka bir bire bir dersiyle çakışıp çakışmadığını kontrol eder.
 function cakismaBul({ ogretmenId, gun, baslangic, bitis, haricAtamaId }, dersProgrami, atamalar) {
@@ -848,18 +865,50 @@ function YoklamaSatiri({ atama, yoklamalar, onDegisti, ucretGorunur }) {
   )
 }
 
+// TÜM bire bir dersleri (hem haftalık tekrarlanan atamalardan Geldi/Gelmedi
+// işaretlenenler, hem "Hayır, sadece bu sefer" ile eklenen tek seferlikler)
+// TEK bir listede, haftalara bölünmüş olarak gösterir — "hangi öğrenci hangi
+// öğretmenden, hangi hafta kaç ders almış" sorusuna tek bakışta cevap versin diye.
 // sadeceOgretmenId verilirse (öğretmen rolünde) sadece o öğretmenin kendi
-// tek seferlik dersleri gösterilir, ücret (tutar) sütunu gizlenir — ders
-// ücretleri sadece yönetim tarafından görülüyor, diğer sayfalarla tutarlı.
-function TekSeferlikDerslerListesi({ yoklamalar, onDegisti, sadeceOgretmenId = null, ucretGorunur = true }) {
-  const tekSeferlikler = yoklamalar
-    .filter((y) => !y.atama_id)
-    .filter((y) => !sadeceOgretmenId || y.ogretmen_profile_id === sadeceOgretmenId)
-    .sort((a, b) => (a.tarih < b.tarih ? 1 : -1))
-    .slice(0, 15)
+// dersleri gösterilir, ücret (tutar) sütunu gizlenir.
+function TekSeferlikDerslerListesi({ yoklamalar, atamalar, onDegisti, sadeceOgretmenId = null, ucretGorunur = true }) {
+  const atamaMap = useMemo(() => new Map(atamalar.map((a) => [a.id, a])), [atamalar])
+
+  const dersler = useMemo(() => {
+    return yoklamalar
+      .map((y) => {
+        // Haftalık atamaya bağlıysa öğrenci/öğretmen/saat bilgisi atamadan gelir
+        // (yoklama satırının kendisinde bu alanlar boş kalıyor); tek seferlikte
+        // doğrudan yoklama satırının kendi (join edilmiş) alanlarından gelir.
+        const atama = y.atama_id ? atamaMap.get(y.atama_id) : null
+        return {
+          ...y,
+          _ogrenciAdi: atama ? atama.ogrenci_adi : y.ogrenci_adi,
+          _ogretmenAdi: atama ? atama.ogretmen_adi : y.ogretmen_adi,
+          _ogretmenId: atama ? atama.ogretmen_profile_id : y.ogretmen_profile_id,
+          _baslangic: y.baslangic_saat || atama?.baslangic_saat || null,
+          _bitis: y.bitis_saat || atama?.bitis_saat || null,
+          _kaynak: y.atama_id ? 'Haftalık' : 'Tek Seferlik',
+        }
+      })
+      .filter((y) => !sadeceOgretmenId || y._ogretmenId === sadeceOgretmenId)
+      .sort((a, b) => (a.tarih < b.tarih ? 1 : -1))
+  }, [yoklamalar, atamaMap, sadeceOgretmenId])
+
+  const haftaGruplari = useMemo(() => {
+    const gruplar = dersler.reduce((acc, y) => {
+      const hafta = haftaBaslangici(y.tarih)
+      if (!acc[hafta]) acc[hafta] = []
+      acc[hafta].push(y)
+      return acc
+    }, {})
+    return Object.entries(gruplar)
+      .sort((a, b) => (a[0] < b[0] ? 1 : -1))
+      .slice(0, 12) // en fazla son 12 hafta — sayfa çok uzamasın diye
+  }, [dersler])
 
   async function sil(id) {
-    if (!confirm('Bu tek seferlik ders kaydını silmek istediğinize emin misiniz?')) return
+    if (!confirm('Bu ders kaydını silmek istediğinize emin misiniz?')) return
     const { error } = await supabase.from('bire_bir_yoklama').delete().eq('id', id)
     if (error) alert('Hata: ' + error.message)
     else onDegisti()
@@ -879,70 +928,82 @@ function TekSeferlikDerslerListesi({ yoklamalar, onDegisti, sadeceOgretmenId = n
     else onDegisti()
   }
 
-  if (tekSeferlikler.length === 0) return null
+  if (dersler.length === 0) return null
 
   return (
-    <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-x-auto mb-6">
+    <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden mb-6">
       <div className="px-4 py-3 border-b border-gray-100 bg-gray-50">
         <h2 className="font-semibold text-gray-700">
-          {sadeceOgretmenId ? 'Tek Seferlik Derslerim' : 'Son Tek Seferlik Dersler'}
+          {sadeceOgretmenId ? 'Tüm Derslerim (Haftalık)' : 'Tüm Bire Bir Dersler (Haftalık)'}
         </h2>
         <p className="text-xs text-gray-400 mt-0.5">
-          "Hayır, sadece bu sefer" ile eklenen, tekrar etmeyen dersler. İleri tarihli eklenenler "Bekliyor"
-          durumunda başlar, borç eklenmez — ders yapıldıktan sonra Geldi/Gelmedi işaretleyin.
+          Hem haftalık tekrarlanan atamalardan işaretlenen dersler hem tek seferlik dersler burada, haftalara
+          bölünmüş halde bir arada. "Bekliyor" ileri tarihli, henüz borç eklenmemiş tek seferlik dersler içindir.
           {sadeceOgretmenId && ' Ders ücretleri sadece yönetim tarafından görülür.'}
         </p>
       </div>
-      <table className="w-full text-sm min-w-[560px]">
-        <thead>
-          <tr className="text-left text-gray-500">
-            <th className="px-4 py-2 font-medium">Tarih</th>
-            <th className="px-4 py-2 font-medium">Saat</th>
-            <th className="px-4 py-2 font-medium">Öğrenci</th>
-            {!sadeceOgretmenId && <th className="px-4 py-2 font-medium">Öğretmen</th>}
-            {ucretGorunur && <th className="px-4 py-2 font-medium">Tutar</th>}
-            <th className="px-4 py-2 font-medium">Durum</th>
-            <th className="px-4 py-2 font-medium text-right">İşlemler</th>
-          </tr>
-        </thead>
-        <tbody>
-          {tekSeferlikler.map((y) => (
-            <tr key={y.id} className="border-t border-gray-50">
-              <td className="px-4 py-2">{new Date(y.tarih + 'T12:00:00').toLocaleDateString('tr-TR')}</td>
-              <td className="px-4 py-2 text-gray-500">
-                {y.baslangic_saat ? `${saatKisalt(y.baslangic_saat)}${y.bitis_saat ? '–' + saatKisalt(y.bitis_saat) : ''}` : '—'}
-              </td>
-              <td className="px-4 py-2 font-medium text-gray-800">{y.ogrenci_adi || '—'}</td>
-              {!sadeceOgretmenId && <td className="px-4 py-2">{y.ogretmen_adi || '—'}</td>}
-              {ucretGorunur && <td className="px-4 py-2">{paraFormat(y.tutar)}</td>}
-              <td className="px-4 py-2">
-                {y.durum === 'geldi' && (
-                  <span className="text-xs font-semibold bg-green-100 text-green-700 px-2 py-1 rounded-full">Geldi</span>
-                )}
-                {y.durum === 'gelmedi' && (
-                  <span className="text-xs font-semibold bg-red-100 text-red-600 px-2 py-1 rounded-full">Gelmedi</span>
-                )}
-                {y.durum === 'bekliyor' && (
-                  <span className="text-xs font-semibold bg-yellow-100 text-yellow-700 px-2 py-1 rounded-full">Bekliyor</span>
-                )}
-              </td>
-              <td className="px-4 py-2 text-right whitespace-nowrap space-x-2">
-                {y.durum !== 'geldi' && (
-                  <button onClick={() => durumDegistir(y, 'geldi')} className="text-green-600 text-sm hover:underline">
-                    Geldi
-                  </button>
-                )}
-                {y.durum !== 'gelmedi' && (
-                  <button onClick={() => durumDegistir(y, 'gelmedi')} className="text-red-500 text-sm hover:underline">
-                    Gelmedi
-                  </button>
-                )}
-                <button onClick={() => sil(y.id)} className="text-gray-400 text-sm hover:underline">Sil</button>
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
+      <div className="divide-y divide-gray-100">
+        {haftaGruplari.map(([hafta, haftaDersleri]) => (
+          <div key={hafta} className="p-4 overflow-x-auto">
+            <div className="flex items-center justify-between mb-2 flex-wrap gap-1">
+              <p className="font-semibold text-gray-700 text-sm">{haftaEtiketi(hafta)}</p>
+              <p className="text-xs text-gray-400">{haftaDersleri.length} ders</p>
+            </div>
+            <table className="w-full text-sm min-w-[560px]">
+              <thead>
+                <tr className="text-left text-gray-500">
+                  <th className="px-2 py-1.5 font-medium">Tarih</th>
+                  <th className="px-2 py-1.5 font-medium">Saat</th>
+                  <th className="px-2 py-1.5 font-medium">Öğrenci</th>
+                  {!sadeceOgretmenId && <th className="px-2 py-1.5 font-medium">Öğretmen</th>}
+                  <th className="px-2 py-1.5 font-medium">Tür</th>
+                  {ucretGorunur && <th className="px-2 py-1.5 font-medium">Tutar</th>}
+                  <th className="px-2 py-1.5 font-medium">Durum</th>
+                  <th className="px-2 py-1.5 font-medium text-right">İşlemler</th>
+                </tr>
+              </thead>
+              <tbody>
+                {haftaDersleri.map((y) => (
+                  <tr key={y.id} className="border-t border-gray-50">
+                    <td className="px-2 py-1.5">{new Date(y.tarih + 'T12:00:00').toLocaleDateString('tr-TR')}</td>
+                    <td className="px-2 py-1.5 text-gray-500">
+                      {y._baslangic ? `${saatKisalt(y._baslangic)}${y._bitis ? '–' + saatKisalt(y._bitis) : ''}` : '—'}
+                    </td>
+                    <td className="px-2 py-1.5 font-medium text-gray-800">{y._ogrenciAdi || '—'}</td>
+                    {!sadeceOgretmenId && <td className="px-2 py-1.5">{y._ogretmenAdi || '—'}</td>}
+                    <td className="px-2 py-1.5 text-gray-500">{y._kaynak}</td>
+                    {ucretGorunur && <td className="px-2 py-1.5">{paraFormat(y.tutar)}</td>}
+                    <td className="px-2 py-1.5">
+                      {y.durum === 'geldi' && (
+                        <span className="text-xs font-semibold bg-green-100 text-green-700 px-2 py-1 rounded-full">Geldi</span>
+                      )}
+                      {y.durum === 'gelmedi' && (
+                        <span className="text-xs font-semibold bg-red-100 text-red-600 px-2 py-1 rounded-full">Gelmedi</span>
+                      )}
+                      {y.durum === 'bekliyor' && (
+                        <span className="text-xs font-semibold bg-yellow-100 text-yellow-700 px-2 py-1 rounded-full">Bekliyor</span>
+                      )}
+                    </td>
+                    <td className="px-2 py-1.5 text-right whitespace-nowrap space-x-2">
+                      {y.durum !== 'geldi' && (
+                        <button onClick={() => durumDegistir(y, 'geldi')} className="text-green-600 text-sm hover:underline">
+                          Geldi
+                        </button>
+                      )}
+                      {y.durum !== 'gelmedi' && (
+                        <button onClick={() => durumDegistir(y, 'gelmedi')} className="text-red-500 text-sm hover:underline">
+                          Gelmedi
+                        </button>
+                      )}
+                      <button onClick={() => sil(y.id)} className="text-gray-400 text-sm hover:underline">Sil</button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ))}
+      </div>
     </div>
   )
 }
@@ -1064,12 +1125,13 @@ export default function BireBir() {
         </>
       )}
 
-      {/* Tek seferlik dersler daha önce sadece yöneticiye görünüyordu — öğretmenler
-          kendi adlarına eklenmiş (özellikle ileri tarihli "Bekliyor") tek seferlik
-          dersleri hiç göremiyordu. Artık öğretmen de KENDİ derslerini (ücret
-          gizli) burada görüp Geldi/Gelmedi işaretleyebiliyor. */}
+      {/* Hem haftalık tekrarlanan atamalardan Geldi/Gelmedi işaretlenen dersler hem
+          tek seferlik dersler burada, haftalara bölünmüş TEK bir listede — "kim
+          hangi haftada kaç ders almış" tek bakışta görülsün diye. Öğretmenler de
+          KENDİ derslerini (ücret gizli) burada görüp Geldi/Gelmedi işaretleyebiliyor. */}
       <TekSeferlikDerslerListesi
         yoklamalar={yoklamalar}
+        atamalar={atamalar}
         onDegisti={veriyiYenile}
         sadeceOgretmenId={isYonetici ? null : profile?.id}
         ucretGorunur={isYonetici}
