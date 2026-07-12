@@ -293,6 +293,53 @@ export function bireBirBorclariOlustur(atamalar, yoklamalar) {
 }
 
 // ============================================================================
+// BİRE BİR DERS DÖKÜMÜ — bireBirBorclariOlustur ile aynı veriyi kullanır ama
+// aya/haftaya göre TOPLAMAK yerine, her dersi TEK TEK (tarih, saat, öğretmen,
+// tür) korur. Muhasebe (yönetici görünümü) ve Ekstre (veliye gönderilen PDF)
+// sayfalarında "hangi tarihte hangi ders yapıldı" dökümü göstermek için.
+// atamalar/yoklamalar parametreleri, öğretmen adının görünmesi için
+// "profiles:ogretmen_profile_id(ad_soyad)" join'i içermeli.
+// ============================================================================
+export function bireBirDersDetaylariOlustur(atamalar, yoklamalar) {
+  const atamaMap = new Map(atamalar.map((a) => [a.id, a]))
+  return yoklamalar
+    .filter((y) => y.durum === 'geldi')
+    .map((y) => {
+      const atama = y.atama_id ? atamaMap.get(y.atama_id) : null
+      const ogretmenAdi = atama
+        ? atama.profiles?.ad_soyad || atama.ogretmen_adi
+        : y.profiles?.ad_soyad || y.ogretmen_adi
+      return {
+        id: y.id,
+        tarih: y.tarih,
+        baslangicSaat: y.baslangic_saat || atama?.baslangic_saat || null,
+        bitisSaat: y.bitis_saat || atama?.bitis_saat || null,
+        ogretmenAdi: ogretmenAdi || '—',
+        tutar: y.tutar != null ? Number(y.tutar) : Number(atama?.ders_ucreti) || 0,
+        kaynak: y.atama_id ? 'Haftalık' : 'Tek Seferlik',
+      }
+    })
+    .sort((a, b) => (a.tarih < b.tarih ? 1 : -1))
+}
+
+// Bir tarihin (YYYY-MM-DD) içinde bulunduğu haftanın PAZARTESİ gününü bulur —
+// haftalık gruplama için kullanılır.
+export function haftaBaslangici(tarihStr) {
+  const d = new Date(tarihStr + 'T12:00:00')
+  const gun = d.getDay() === 0 ? 7 : d.getDay() // 1=Pzt...7=Paz
+  d.setDate(d.getDate() - (gun - 1))
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+}
+
+export function haftaEtiketi(baslangicStr) {
+  const b = new Date(baslangicStr + 'T12:00:00')
+  const s = new Date(b)
+  s.setDate(s.getDate() + 6)
+  const fmt = (t) => t.toLocaleDateString('tr-TR', { day: '2-digit', month: 'short' })
+  return `${fmt(b)} – ${fmt(s)} ${s.getFullYear()}`
+}
+
+// ============================================================================
 // KANTİN BORÇLARI — bireBirBorclariOlustur ile birebir aynı mantık: her veresiye
 // alışı, aylik_borclar ile AYNI ŞEKİLDE ({kalem:'Kantin', tutar, donem}) sentetik
 // bir satıra çevrilir. Alış anında damgalanmış "tutar" kullanılır (ürünün o anki
