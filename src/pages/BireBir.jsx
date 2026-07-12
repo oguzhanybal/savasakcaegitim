@@ -1353,58 +1353,67 @@ export default function BireBir() {
         ucretGorunur={isYonetici}
       />
 
-      <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
-        <div className="px-4 py-3 border-b border-gray-100 bg-gray-50 flex items-center justify-between flex-wrap gap-3">
-          <div>
-            <h2 className="font-semibold text-gray-700">Yoklama Al</h2>
-            <p className="text-xs text-gray-400 mt-0.5">
-              {isYonetici
-                ? '"Geldi" işaretlenince ilgili öğrencinin hesabına o dersin ücreti otomatik borç olarak eklenir. Yanlış işaretlediyseniz tekrar tıklayarak değiştirebilir ya da "Kaydı Sil" ile kaldırabilirsiniz.'
-                : '"Geldi" işaretlenince o ders yapılmış, "Gelmedi" işaretlenince yapılmamış sayılır. Yanlış işaretlediyseniz tekrar tıklayarak değiştirebilirsiniz.'}
-            </p>
-          </div>
-          <div className="flex items-center gap-3 flex-wrap">
-            <input
-              type="text"
-              value={yoklamaArama}
-              onChange={(e) => setYoklamaArama(e.target.value)}
-              placeholder="Öğrenci / öğretmen ara..."
-              className="px-3 py-1.5 border border-gray-200 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue min-w-[160px]"
-            />
-            <label className="flex items-center gap-2 text-sm text-gray-600 select-none">
-              <input type="checkbox" checked={sadeceBugun} onChange={(e) => setSadeceBugun(e.target.checked)} />
-              Sadece bugünün dersleri
-            </label>
-            {isYonetici && (
+      {/* "Yoklama Al", bir haftalık atamanın YENİ bir hafta/tarih için henüz hiç
+          yoklama kaydı oluşturulmamışsa o kaydı ilk defa oluşturan tek yerdir
+          (yukarıdaki "Tüm Derslerim" listesi sadece ZATEN VAR OLAN kayıtları
+          düzenler/siler, yeni haftalık kayıt oluşturmaz). O yüzden aktif hiç
+          haftalık atama yoksa bu bölümün gösterecek hiçbir şeyi kalmıyor —
+          sadece o durumda tamamen gizliyoruz, gerçek bir haftalık atama
+          eklendiğinde otomatik geri gelir. */}
+      {atamalar.some((a) => a.aktif) && (
+        <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+          <div className="px-4 py-3 border-b border-gray-100 bg-gray-50 flex items-center justify-between flex-wrap gap-3">
+            <div>
+              <h2 className="font-semibold text-gray-700">Yoklama Al</h2>
+              <p className="text-xs text-gray-400 mt-0.5">
+                {isYonetici
+                  ? '"Geldi" işaretlenince ilgili öğrencinin hesabına o dersin ücreti otomatik borç olarak eklenir. Yanlış işaretlediyseniz tekrar tıklayarak değiştirebilir ya da "Kaydı Sil" ile kaldırabilirsiniz.'
+                  : '"Geldi" işaretlenince o ders yapılmış, "Gelmedi" işaretlenince yapılmamış sayılır. Yanlış işaretlediyseniz tekrar tıklayarak değiştirebilirsiniz.'}
+              </p>
+            </div>
+            <div className="flex items-center gap-3 flex-wrap">
+              <input
+                type="text"
+                value={yoklamaArama}
+                onChange={(e) => setYoklamaArama(e.target.value)}
+                placeholder="Öğrenci / öğretmen ara..."
+                className="px-3 py-1.5 border border-gray-200 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue min-w-[160px]"
+              />
               <label className="flex items-center gap-2 text-sm text-gray-600 select-none">
-                <input type="checkbox" checked={sadeceAktif} onChange={(e) => setSadeceAktif(e.target.checked)} />
-                Sadece aktif atamalar
+                <input type="checkbox" checked={sadeceBugun} onChange={(e) => setSadeceBugun(e.target.checked)} />
+                Sadece bugünün dersleri
               </label>
+              {isYonetici && (
+                <label className="flex items-center gap-2 text-sm text-gray-600 select-none">
+                  <input type="checkbox" checked={sadeceAktif} onChange={(e) => setSadeceAktif(e.target.checked)} />
+                  Sadece aktif atamalar
+                </label>
+              )}
+            </div>
+          </div>
+          <div className="divide-y divide-gray-50">
+            {gorunenAtamalar.length === 0 && (
+              <p className="px-4 py-4 text-center text-gray-400 text-sm">
+                Gösterilecek atama yok.{' '}
+                {sadeceBugun && (
+                  <button onClick={() => setSadeceBugun(false)} className="text-blue hover:underline">
+                    Tüm haftayı göster
+                  </button>
+                )}
+              </p>
             )}
+            {gorunenAtamalar.map((a) => (
+              <YoklamaSatiri
+                key={a.id}
+                atama={a}
+                yoklamalar={yoklamalar}
+                onDegisti={veriyiYenile}
+                ucretGorunur={isYonetici}
+              />
+            ))}
           </div>
         </div>
-        <div className="divide-y divide-gray-50">
-          {gorunenAtamalar.length === 0 && (
-            <p className="px-4 py-4 text-center text-gray-400 text-sm">
-              Gösterilecek atama yok.{' '}
-              {sadeceBugun && (
-                <button onClick={() => setSadeceBugun(false)} className="text-blue hover:underline">
-                  Tüm haftayı göster
-                </button>
-              )}
-            </p>
-          )}
-          {gorunenAtamalar.map((a) => (
-            <YoklamaSatiri
-              key={a.id}
-              atama={a}
-              yoklamalar={yoklamalar}
-              onDegisti={veriyiYenile}
-              ucretGorunur={isYonetici}
-            />
-          ))}
-        </div>
-      </div>
+      )}
     </div>
   )
 }
