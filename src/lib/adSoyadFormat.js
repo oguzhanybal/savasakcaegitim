@@ -16,3 +16,8 @@ export function adSoyadDuzelt(metin) {
     })
     .join(' ')
 }
+
+// adSoyadDuzelt ile birebir aynı mantık (her kelimenin ilk harfi büyük, gerisi
+// küçük) — isim dışı metinlerde (ör. Kantin ürün adı) kullanılırken daha uygun
+// bir isimle çağrılabilsin diye aynı fonksiyona ikinci bir isim veriyoruz.
+export const ilkHarfleriBuyukYap = adSoyadDuzelt
