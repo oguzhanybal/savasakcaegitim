@@ -3,7 +3,7 @@ import { supabase } from '../lib/supabase'
 import { adSoyadDuzelt } from '../lib/adSoyadFormat'
 
 const BRANSLAR = [
-  'Matematik', 'Türkçe', 'Fen Bilimleri', 'Sosyal Bilgiler', 'İngilizce',
+  'Matematik', 'Türkçe', 'Türkçe/Edebiyat', 'Fen Bilimleri', 'Sosyal Bilgiler', 'İngilizce',
   'Fizik', 'Kimya', 'Biyoloji', 'Tarih', 'Coğrafya', 'Din Kültürü',
   'Beden Eğitimi', 'Müzik', 'Görsel Sanatlar', 'Bilişim Teknolojileri', 'Diğer',
 ]
@@ -15,6 +15,8 @@ export default function Ogretmenler() {
   const [duzenleAd, setDuzenleAd] = useState('')
   const [duzenleTelefon, setDuzenleTelefon] = useState('')
   const [duzenleBrans, setDuzenleBrans] = useState('')
+  const [silinenId, setSilinenId] = useState(null)
+  const [silmeHatasi, setSilmeHatasi] = useState('')
 
   async function yukle() {
     setLoading(true)
@@ -50,6 +52,28 @@ export default function Ogretmenler() {
     } else {
       alert('Hata: ' + error.message)
     }
+  }
+
+  async function sil(o) {
+    if (!confirm(`"${o.ad_soyad}" adlı öğretmeni silmek istediğinize emin misiniz? Bu işlem geri alınamaz.`)) return
+    setSilmeHatasi('')
+    setSilinenId(o.id)
+    try {
+      const yanit = await fetch('/api/kullanici-sil', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: o.id }),
+      })
+      const veri = await yanit.json()
+      if (!yanit.ok) {
+        setSilmeHatasi(veri.error || 'Bilinmeyen bir hata oluştu.')
+      } else {
+        yukle()
+      }
+    } catch (err) {
+      setSilmeHatasi('Bağlantı hatası: ' + err.message)
+    }
+    setSilinenId(null)
   }
 
   return (
@@ -141,6 +165,13 @@ export default function Ogretmenler() {
                     <button onClick={() => duzenlemeyeBasla(o)} className="text-blue text-sm hover:underline">
                       Düzenle
                     </button>
+                    <button
+                      onClick={() => sil(o)}
+                      disabled={silinenId === o.id}
+                      className="text-red-600 text-sm hover:underline disabled:opacity-50"
+                    >
+                      {silinenId === o.id ? 'Siliniyor...' : 'Sil'}
+                    </button>
                   </td>
                 </tr>
               )
@@ -148,6 +179,7 @@ export default function Ogretmenler() {
           </tbody>
         </table>
       </div>
+      {silmeHatasi && <p className="text-red-600 text-sm mt-3">{silmeHatasi}</p>}
       <p className="text-xs text-gray-400 mt-3">
         Branş bilgisi, "Sınıflar" sayfasında öğretmen ataması yaparken listede görünür.
       </p>

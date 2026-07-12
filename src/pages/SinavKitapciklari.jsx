@@ -6,6 +6,7 @@ import {
   sayfadaSoruNumaralariniTespitEt,
   girintiliAdaylariEle,
   sutunSiralaTahmini,
+  ardisikDiziyeGoreFiltrele,
   baslangicKutulariUret,
 } from '../lib/kitapcikOcr'
 
@@ -160,7 +161,12 @@ export default function SinavKitapciklari() {
       const belge = await pdfBelgesiAc(dosya)
       const sayfaSayisi = belge.numPages
       const goruntuler = []
-      const tumSorular = []
+      // Önce TÜM sayfalardaki adayları toplayıp (sayfa sırasına göre) tek bir
+      // okuma-sırası dizisi oluşturuyoruz — bir dersin soruları (örn. Türkçe
+      // testinin 40 sorusu) birden fazla sayfaya yayılabildiği için ardışıklık
+      // kontrolünü SAYFA BAZINDA değil, TÜM belge üzerinde yapmamız gerekiyor.
+      const sayfaVerileri = []
+      const tumAdaylarSirali = []
       for (let s = 1; s <= sayfaSayisi; s++) {
         setAnalizDurumu(`Sayfa ${s}/${sayfaSayisi} görüntüye çevriliyor...`)
         const { dataUrl, genislik, yukseklik, canvas } = await sayfayiGoruntuyeCevir(belge, s, 2)
@@ -170,14 +176,27 @@ export default function SinavKitapciklari() {
           setAnalizDurumu(`Sayfa ${s}/${sayfaSayisi} taranıyor (OCR) — %${Math.round(ilerleme * 100)}`)
         })
         const adaylar = girintiliAdaylariEle(adaylarHam, genislik)
-        const sutunlu = sutunSiralaTahmini(adaylar, genislik)
-        const kutular = baslangicKutulariUret(sutunlu, genislik, yukseklik)
+        const sutunlu = sutunSiralaTahmini(adaylar, genislik).map((a) => ({ ...a, sayfa_no: s }))
+        sayfaVerileri.push({ sayfaNo: s, genislik, yukseklik, sutunluAdaylar: sutunlu })
+        tumAdaylarSirali.push(...sutunlu)
+      }
+
+      // Sadece yeterince UZUN, ardışık artan bir dizinin parçası olan adaylar
+      // gerçek soru sayılır — yönergedeki kısa "1. ... 2. ..." gibi kopuk
+      // numaralandırmalar burada elenir (bkz. kitapcikOcr.js açıklaması).
+      const guvenilirAdaylar = ardisikDiziyeGoreFiltrele(tumAdaylarSirali)
+      const guvenilirSet = new Set(guvenilirAdaylar)
+
+      const tumSorular = []
+      for (const sayfaVerisi of sayfaVerileri) {
+        const buSayfaGuvenilirler = sayfaVerisi.sutunluAdaylar.filter((a) => guvenilirSet.has(a))
+        const kutular = baslangicKutulariUret(buSayfaGuvenilirler, sayfaVerisi.genislik, sayfaVerisi.yukseklik)
         kutular.forEach((k) => {
           tumSorular.push({
-            gecici_id: `s${s}-${tumSorular.length}`,
+            gecici_id: `s${sayfaVerisi.sayfaNo}-${tumSorular.length}`,
             ders_adi: '',
             soru_no: tumSorular.length + 1,
-            sayfa_no: s,
+            sayfa_no: sayfaVerisi.sayfaNo,
             x: k.x,
             y: k.y,
             genislik: k.genislik,
@@ -193,7 +212,7 @@ export default function SinavKitapciklari() {
         setHata('Hiç soru başlangıcı tespit edilemedi. Aşağıdan "Soru Ekle" ile elle işaretleyebilirsiniz.')
       } else {
         setBasari(
-          `${tumSorular.length} olası soru tespit edildi. Bu bir İLK TAHMİN — şimdi her birinin ders adını/numarasını girip kutucuğu gerekirse düzeltin.`
+          `${tumSorular.length} olası soru tespit edildi (yönerge gibi kısa/kopuk numaralar otomatik elendi). Bu bir İLK TAHMİN — şimdi her birinin ders adını/numarasını girip kutucuğu gerekirse düzeltin.`
         )
       }
     } catch (e) {

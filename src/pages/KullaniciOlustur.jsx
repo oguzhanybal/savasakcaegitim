@@ -9,12 +9,21 @@ const ROLLER = [
   { value: 'kantin', label: 'Kantin Görevlisi' },
 ]
 
+// Ogretmenler.jsx'teki listeyle aynı — öğretmen oluştururken de branş
+// seçilebilsin diye burada da tutuluyor (iki ayrı sayfa, aynı küçük liste).
+const BRANSLAR = [
+  'Matematik', 'Türkçe', 'Türkçe/Edebiyat', 'Fen Bilimleri', 'Sosyal Bilgiler', 'İngilizce',
+  'Fizik', 'Kimya', 'Biyoloji', 'Tarih', 'Coğrafya', 'Din Kültürü',
+  'Beden Eğitimi', 'Müzik', 'Görsel Sanatlar', 'Bilişim Teknolojileri', 'Diğer',
+]
+
 export default function KullaniciOlustur() {
   const [adSoyad, setAdSoyad] = useState('')
   const [kullaniciAdi, setKullaniciAdi] = useState('')
   const [sifre, setSifre] = useState('')
   const [rol, setRol] = useState('veli')
   const [telefon, setTelefon] = useState('')
+  const [brans, setBrans] = useState('')
   const [gonderiliyor, setGonderiliyor] = useState(false)
   const [mesaj, setMesaj] = useState(null) // { tur: 'basari' | 'hata', metin }
 
@@ -36,7 +45,7 @@ export default function KullaniciOlustur() {
       const yanit = await fetch('/api/kullanici-olustur', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ adSoyad, kullaniciAdi, sifre, rol, telefon }),
+        body: JSON.stringify({ adSoyad, kullaniciAdi, sifre, rol, telefon, brans: rol === 'ogretmen' ? brans : '' }),
       })
       const veri = await yanit.json()
       if (!yanit.ok) {
@@ -50,6 +59,7 @@ export default function KullaniciOlustur() {
         setKullaniciAdi('')
         setSifre('')
         setTelefon('')
+        setBrans('')
       }
     } catch (err) {
       setMesaj({ tur: 'hata', metin: 'Bağlantı hatası: ' + err.message })
@@ -85,6 +95,22 @@ export default function KullaniciOlustur() {
               ))}
             </select>
           </div>
+
+          {rol === 'ogretmen' && (
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Branş</label>
+              <select
+                value={brans}
+                onChange={(e) => setBrans(e.target.value)}
+                className="w-full px-3 py-2 border border-gray-200 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-blue"
+              >
+                <option value="">Seçiniz</option>
+                {BRANSLAR.map((b) => (
+                  <option key={b} value={b}>{b}</option>
+                ))}
+              </select>
+            </div>
+          )}
 
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Kullanıcı Adı</label>
