@@ -19,6 +19,7 @@ import OgretmenEkstre from './pages/OgretmenEkstre'
 import TopluEkstre from './pages/TopluEkstre'
 import KullaniciOlustur from './pages/KullaniciOlustur'
 import Kantin from './pages/Kantin'
+import SinavKitapciklari from './pages/SinavKitapciklari'
 
 function Yukleniyor() {
   return (
@@ -187,6 +188,14 @@ function AnaUygulama() {
             element={
               <Korumali izinliRoller={['yonetici', 'ogretmen']}>
                 <YoklamaRaporu />
+              </Korumali>
+            }
+          />
+          <Route
+            path="sinav-kitapciklari"
+            element={
+              <Korumali izinliRoller={['yonetici']}>
+                <SinavKitapciklari />
               </Korumali>
             }
           />
