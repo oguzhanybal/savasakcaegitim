@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { Link } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../lib/AuthContext'
 import { paraFormat } from '../lib/ekstreHesap'
@@ -544,6 +545,91 @@ function BireBirDersEkleForm({ ogrenciler, ogretmenler, atamalar, dersProgrami, 
       {hata && <p className="text-red-600 text-sm mt-3">{hata}</p>}
       {!hata && basari && <p className="text-green-600 text-sm mt-3">{basari}</p>}
     </form>
+  )
+}
+
+// Yöneticinin belirli bir öğrenciyi ya da öğretmeni seçip, o kişiye özel
+// haftalık/aylık, yazdırılabilir/PDF alınabilir bire bir ders dökümünü yeni
+// sekmede açmasını sağlar — mevcut "Tüm Bire Bir Dersler" (herkes bir arada)
+// listesine EK olarak, onu değiştirmeden.
+function OgrenciOgretmenEkstreSecici({ ogrenciler, ogretmenler }) {
+  const [seciliOgrenci, setSeciliOgrenci] = useState('')
+  const [seciliOgretmen, setSeciliOgretmen] = useState('')
+
+  return (
+    <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5 mb-6">
+      <p className="font-semibold text-gray-700 mb-1">Öğrenci / Öğretmen Bazında Ekstre</p>
+      <p className="text-xs text-gray-400 mb-3">
+        Belirli bir öğrenci ya da öğretmen seçip, sadece ona ait haftalık/aylık dökümü yeni sekmede
+        görüntüleyin — buradan yazdırabilir ya da PDF olarak kaydedebilirsiniz.
+      </p>
+      <div className="flex flex-wrap gap-4">
+        <div className="flex-1 min-w-[220px]">
+          <label className="block text-sm font-medium text-gray-700 mb-1">Öğrenci</label>
+          <div className="flex gap-2">
+            <select
+              value={seciliOgrenci}
+              onChange={(e) => setSeciliOgrenci(e.target.value)}
+              className="flex-1 px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue bg-white"
+            >
+              <option value="">Öğrenci seçiniz...</option>
+              {ogrenciler.map((o) => (
+                <option key={o.id} value={o.id}>{o.ad_soyad}</option>
+              ))}
+            </select>
+            {seciliOgrenci ? (
+              <Link
+                to={`/ekstre/${seciliOgrenci}`}
+                target="_blank"
+                className="bg-navy text-white text-sm font-semibold px-4 py-2 rounded-lg hover:opacity-90 transition-opacity whitespace-nowrap"
+              >
+                Ekstre Görüntüle
+              </Link>
+            ) : (
+              <button
+                type="button"
+                disabled
+                className="bg-gray-200 text-gray-400 text-sm font-semibold px-4 py-2 rounded-lg whitespace-nowrap cursor-not-allowed"
+              >
+                Ekstre Görüntüle
+              </button>
+            )}
+          </div>
+        </div>
+        <div className="flex-1 min-w-[220px]">
+          <label className="block text-sm font-medium text-gray-700 mb-1">Öğretmen</label>
+          <div className="flex gap-2">
+            <select
+              value={seciliOgretmen}
+              onChange={(e) => setSeciliOgretmen(e.target.value)}
+              className="flex-1 px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue bg-white"
+            >
+              <option value="">Öğretmen seçiniz...</option>
+              {ogretmenler.map((o) => (
+                <option key={o.id} value={o.id}>{o.brans ? `${o.ad_soyad} — ${o.brans}` : o.ad_soyad}</option>
+              ))}
+            </select>
+            {seciliOgretmen ? (
+              <Link
+                to={`/ogretmen-ekstre/${seciliOgretmen}`}
+                target="_blank"
+                className="bg-navy text-white text-sm font-semibold px-4 py-2 rounded-lg hover:opacity-90 transition-opacity whitespace-nowrap"
+              >
+                Ekstre Görüntüle
+              </Link>
+            ) : (
+              <button
+                type="button"
+                disabled
+                className="bg-gray-200 text-gray-400 text-sm font-semibold px-4 py-2 rounded-lg whitespace-nowrap cursor-not-allowed"
+              >
+                Ekstre Görüntüle
+              </button>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
   )
 }
 
@@ -1183,6 +1269,7 @@ export default function BireBir() {
             dersProgrami={dersProgrami}
             onDegisti={veriyiYenile}
           />
+          <OgrenciOgretmenEkstreSecici ogrenciler={ogrenciler} ogretmenler={ogretmenler} />
         </>
       )}
 
