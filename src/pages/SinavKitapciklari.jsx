@@ -60,6 +60,11 @@ function KutuKatmani({ sayfaGoruntusu, sorularBuSayfada, seciliGeciciId, cizimMo
       onMouseUp={mouseUp}
       onMouseLeave={() => setCizilen(null)}
     >
+      {cizimModu && (
+        <div className="absolute inset-x-0 -top-11 z-10 bg-orange text-white text-sm font-semibold text-center py-2 rounded-lg shadow-md animate-pulse">
+          👇 Aşağıdaki sayfada, sorunun SOL ÜST köşesine tıklayıp basılı tutarak SAĞ ALT köşesine kadar sürükle, sonra bırak.
+        </div>
+      )}
       <img
         src={sayfaGoruntusu.dataUrl}
         alt={`Sayfa ${sayfaGoruntusu.sayfaNo}`}
@@ -478,6 +483,12 @@ export default function SinavKitapciklari() {
             <p>2. Gerçek bir soruysa sağa <b>Ders Adı</b> (örn. Türkçe) ve <b>Soru No</b>'yu yaz.</p>
             <p>3. Kutu soruyu tam kapsamıyorsa <b>"Kutuyu Yeniden Çiz"</b>e basıp sayfada soruyu fare ile sürükleyerek yeniden kutula.</p>
             <p>4. <b>Sonraki →</b> ile devam et. Hepsini bitirince en alttaki <b>"Onayla ve Kaydet"</b>e bas.</p>
+            <p className="pt-1 border-t border-blue/10 mt-1">
+              <b>Not:</b> "Kutuyu Yeniden Çiz" ya da "+ Eksik Soru Ekle"ye bastığında sayfanın üstünde turuncu bir
+              uyarı çıkar ve fare imleci artı işaretine döner — o an sayfada, sorunun sol üst köşesinden sağ alt
+              köşesine kadar fareyi BASILI TUTARAK sürüklemen bekleniyor. Yanlışlıkla bu moda girdiysen sağdaki
+              <b> "Vazgeç"</b>e bas, hiçbir şey değişmez.
+            </p>
           </div>
           <div className="flex items-center justify-between flex-wrap gap-3 mb-4">
             <p className="font-semibold text-gray-700">
@@ -562,15 +573,15 @@ export default function SinavKitapciklari() {
                   cizimModu ? 'bg-orange text-white' : 'bg-white border border-gray-200 text-gray-700 hover:bg-gray-100'
                 }`}
               >
-                {cizimModu ? 'Sayfada sürükleyerek yeni kutu çizin...' : 'Kutuyu Yeniden Çiz'}
+                {cizimModu ? '👆 Yukarıda sayfada sürükleyerek kutu çiz' : 'Kutuyu Yeniden Çiz'}
               </button>
               {cizimModu && (
                 <button
                   type="button"
                   onClick={() => setCizimModu(false)}
-                  className="w-full px-3 py-1.5 rounded-lg text-xs text-gray-500 hover:underline"
+                  className="w-full px-3 py-2 rounded-lg text-sm font-semibold text-gray-600 border border-gray-200 hover:bg-gray-100"
                 >
-                  Vazgeç
+                  Vazgeç (kutu çizmeden çık)
                 </button>
               )}
 
