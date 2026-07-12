@@ -2,7 +2,16 @@ import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../lib/AuthContext'
-import { taksitPlaniOlustur, aylikBorcDurumHesapla, gunAnahtari, bireBirBorclariOlustur, kantinBorclariOlustur } from '../lib/ekstreHesap'
+import {
+  taksitPlaniOlustur,
+  aylikBorcDurumHesapla,
+  gunAnahtari,
+  bireBirBorclariOlustur,
+  kantinBorclariOlustur,
+  bireBirDersDetaylariOlustur,
+  haftaBaslangici,
+  haftaEtiketi,
+} from '../lib/ekstreHesap'
 
 function paraFormat(n) {
   return new Intl.NumberFormat('tr-TR', { style: 'currency', currency: 'TRY' }).format(n || 0)
@@ -24,49 +33,6 @@ const DAGITILABILIR_KALEMLER = ['Okul', 'Kurs', 'Kitap', 'Bire Bir', 'Yemek', 'K
 
 function saatKisalt(s) {
   return s ? s.slice(0, 5) : s
-}
-
-// Bir tarihin (YYYY-MM-DD) içinde bulunduğu haftanın PAZARTESİ gününü bulur —
-// "Bire Bir Ders Dökümü"nü haftalık gruplamak için kullanılır.
-function haftaBaslangici(tarihStr) {
-  const d = new Date(tarihStr + 'T12:00:00')
-  const gun = d.getDay() === 0 ? 7 : d.getDay() // 1=Pzt...7=Paz
-  d.setDate(d.getDate() - (gun - 1))
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
-}
-
-function haftaEtiketi(baslangicStr) {
-  const b = new Date(baslangicStr + 'T12:00:00')
-  const s = new Date(b)
-  s.setDate(s.getDate() + 6)
-  const fmt = (t) => t.toLocaleDateString('tr-TR', { day: '2-digit', month: 'short' })
-  return `${fmt(b)} – ${fmt(s)} ${s.getFullYear()}`
-}
-
-// Bir öğrencinin "Geldi" işaretlenmiş (yani gerçekten faturalanmış) TÜM bire
-// bir derslerini — haftalık atamadan gelsin ya da tek seferlik olsun — tarih,
-// saat ve öğretmen adıyla birlikte tek listede toplar. Muhasebe'deki "9 ders"
-// gibi toplam sayının ARDINDA hangi derslerin olduğunu görebilmek için.
-function bireBirDersDetaylariOlustur(atamalar, yoklamalar) {
-  const atamaMap = new Map(atamalar.map((a) => [a.id, a]))
-  return yoklamalar
-    .filter((y) => y.durum === 'geldi')
-    .map((y) => {
-      const atama = y.atama_id ? atamaMap.get(y.atama_id) : null
-      const ogretmenAdi = atama
-        ? atama.profiles?.ad_soyad || atama.ogretmen_adi
-        : y.profiles?.ad_soyad || y.ogretmen_adi
-      return {
-        id: y.id,
-        tarih: y.tarih,
-        baslangicSaat: y.baslangic_saat || atama?.baslangic_saat || null,
-        bitisSaat: y.bitis_saat || atama?.bitis_saat || null,
-        ogretmenAdi: ogretmenAdi || '—',
-        tutar: y.tutar != null ? Number(y.tutar) : Number(atama?.ders_ucreti) || 0,
-        kaynak: y.atama_id ? 'Haftalık' : 'Tek Seferlik',
-      }
-    })
-    .sort((a, b) => (a.tarih < b.tarih ? 1 : -1))
 }
 
 // Veli genel bir tutar bıraktığında (hangi kaleme ne kadar gideceği henüz belli
