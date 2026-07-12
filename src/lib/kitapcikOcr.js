@@ -146,18 +146,24 @@ export function girintiliAdaylariEle(adaylar, sayfaGenisligi, tolerans = 25) {
 }
 
 // Okuma sırasına dizilmiş (sayfa, sütun, y) aday listesini, GERÇEK bir soru
-// numarası dizisi gibi ARDIŞIK artıp artmadığına göre süzer. Bu, "yanında 3-5
-// satır metin var diye soru sanma" problemini çözer: kitapçığın başındaki
-// YÖNERGE de kendi içinde "1. Bu testte..." "2. Cevaplarınızı..." diye
-// numaralanmış oluyor ve her ikisinin de yanında bol metin var, ama bu sadece
-// 2 elemanlık kısa/kopuk bir dizi — hemen ardından asıl 1. soru yeniden "1."
-// diye başlıyor. Sadece yeterince UZUN (>= minDiziUzunlugu) ardışık artan
-// diziler gerçek soru akışı sayılır; kısa/aykırı diziler (yönerge, girintili
-// alt maddelerden kaçanlar vb.) tamamen elenir. Bir dizi bozulup yeniden 1'den
-// başlarsa bu yeni bir ders/test bölümü sayılır (TYT'de Türkçe/Matematik/
-// Sosyal/Fen ayrı ayrı 1'den başlar) — o yüzden "1"e dönüş tek başına bir
-// hata sayılmaz, sadece dizi KISA kalırsa elenir.
-export function ardisikDiziyeGoreFiltrele(siraliAdaylar, minDiziUzunlugu = 4) {
+// numarası dizisi gibi ARTAN bir sırada gidip gitmediğine göre süzer. Bu,
+// "yanında 3-5 satır metin var diye soru sanma" problemini çözer: kitapçığın
+// başındaki YÖNERGE de kendi içinde "1. Bu testte..." "2. Cevaplarınızı..."
+// diye numaralanmış oluyor ve her ikisinin de yanında bol metin var, ama bu
+// sadece 2 elemanlık kısa/kopuk bir dizi — hemen ardından asıl 1. soru
+// yeniden "1." diye başlıyor.
+//
+// ÖNEMLİ: taranmış/fotoğraflanmış sayfalarda OCR bazı soru numaralarını hiç
+// OKUYAMAZ (atlar) — bu yüzden "tam +1" şartı koyarsak taramanın kalitesine
+// göre GERÇEK sorular da zincirden düşüp hepsi elenebilir (yaşanan bug tam
+// buydu: hiçbir soru tespit edilemedi). Bunun yerine aradaki birkaç
+// numaranın kaçırılmış olabileceğini kabul ediyoruz: bir sonraki aday,
+// öncekinden BÜYÜKSE ve makul bir sıçrama içindeyse (maksimumSicrama) aynı
+// diziye sayılır. Sadece yeterince UZUN (>= minDiziUzunlugu) artan diziler
+// gerçek soru akışı sayılır; kısa/aykırı diziler (yönerge vb.) elenir. Bir
+// dizi bozulup yeniden küçük bir sayıdan başlarsa bu yeni bir ders/test
+// bölümü sayılır (TYT'de Türkçe/Matematik/Sosyal/Fen ayrı ayrı 1'den başlar).
+export function ardisikDiziyeGoreFiltrele(siraliAdaylar, minDiziUzunlugu = 3, maksimumSicrama = 6) {
   const sonuc = []
   let mevcutDizi = []
 
@@ -171,7 +177,7 @@ export function ardisikDiziyeGoreFiltrele(siraliAdaylar, minDiziUzunlugu = 4) {
     if (Number.isNaN(deger)) continue
     const sonAday = mevcutDizi[mevcutDizi.length - 1]
     const sonDeger = sonAday ? parseInt(sonAday.metin, 10) : null
-    if (sonDeger !== null && deger === sonDeger + 1) {
+    if (sonDeger !== null && deger > sonDeger && deger - sonDeger <= maksimumSicrama) {
       mevcutDizi.push(aday)
     } else {
       diziyiSonlandir()
