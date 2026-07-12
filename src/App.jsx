@@ -15,6 +15,7 @@ import Makbuz from './pages/Makbuz'
 import MakbuzGunluk from './pages/MakbuzGunluk'
 import BireBir from './pages/BireBir'
 import Ekstre from './pages/Ekstre'
+import OgretmenEkstre from './pages/OgretmenEkstre'
 import TopluEkstre from './pages/TopluEkstre'
 import KullaniciOlustur from './pages/KullaniciOlustur'
 import Kantin from './pages/Kantin'
@@ -79,6 +80,14 @@ function AnaUygulama() {
           element={
             <Korumali izinliRoller={['yonetici', 'veli']}>
               <Ekstre />
+            </Korumali>
+          }
+        />
+        <Route
+          path="/ogretmen-ekstre/:ogretmenId"
+          element={
+            <Korumali izinliRoller={['yonetici', 'ogretmen']}>
+              <OgretmenEkstre />
             </Korumali>
           }
         />
