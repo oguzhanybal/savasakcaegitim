@@ -22,6 +22,53 @@ function DurumRozeti({ durum }) {
 const DAGITILAMAYAN_ETIKET = 'Dağıtılmamış'
 const DAGITILABILIR_KALEMLER = ['Okul', 'Kurs', 'Kitap', 'Bire Bir', 'Yemek', 'Kantin']
 
+function saatKisalt(s) {
+  return s ? s.slice(0, 5) : s
+}
+
+// Bir tarihin (YYYY-MM-DD) içinde bulunduğu haftanın PAZARTESİ gününü bulur —
+// "Bire Bir Ders Dökümü"nü haftalık gruplamak için kullanılır.
+function haftaBaslangici(tarihStr) {
+  const d = new Date(tarihStr + 'T12:00:00')
+  const gun = d.getDay() === 0 ? 7 : d.getDay() // 1=Pzt...7=Paz
+  d.setDate(d.getDate() - (gun - 1))
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+}
+
+function haftaEtiketi(baslangicStr) {
+  const b = new Date(baslangicStr + 'T12:00:00')
+  const s = new Date(b)
+  s.setDate(s.getDate() + 6)
+  const fmt = (t) => t.toLocaleDateString('tr-TR', { day: '2-digit', month: 'short' })
+  return `${fmt(b)} – ${fmt(s)} ${s.getFullYear()}`
+}
+
+// Bir öğrencinin "Geldi" işaretlenmiş (yani gerçekten faturalanmış) TÜM bire
+// bir derslerini — haftalık atamadan gelsin ya da tek seferlik olsun — tarih,
+// saat ve öğretmen adıyla birlikte tek listede toplar. Muhasebe'deki "9 ders"
+// gibi toplam sayının ARDINDA hangi derslerin olduğunu görebilmek için.
+function bireBirDersDetaylariOlustur(atamalar, yoklamalar) {
+  const atamaMap = new Map(atamalar.map((a) => [a.id, a]))
+  return yoklamalar
+    .filter((y) => y.durum === 'geldi')
+    .map((y) => {
+      const atama = y.atama_id ? atamaMap.get(y.atama_id) : null
+      const ogretmenAdi = atama
+        ? atama.profiles?.ad_soyad || atama.ogretmen_adi
+        : y.profiles?.ad_soyad || y.ogretmen_adi
+      return {
+        id: y.id,
+        tarih: y.tarih,
+        baslangicSaat: y.baslangic_saat || atama?.baslangic_saat || null,
+        bitisSaat: y.bitis_saat || atama?.bitis_saat || null,
+        ogretmenAdi: ogretmenAdi || '—',
+        tutar: y.tutar != null ? Number(y.tutar) : Number(atama?.ders_ucreti) || 0,
+        kaynak: y.atama_id ? 'Haftalık' : 'Tek Seferlik',
+      }
+    })
+    .sort((a, b) => (a.tarih < b.tarih ? 1 : -1))
+}
+
 // Veli genel bir tutar bıraktığında (hangi kaleme ne kadar gideceği henüz belli
 // değilken), bu tek satırı sonradan birden fazla kalem satırına böler.
 function OdemeDagitForm({ odeme, onTamam, onVazgec }) {
@@ -457,6 +504,7 @@ export default function Muhasebe() {
   const [sozlesmeler, setSozlesmeler] = useState([])
   const [aylikBorclar, setAylikBorclar] = useState([])
   const [odemeler, setOdemeler] = useState([])
+  const [bireBirDersleri, setBireBirDersleri] = useState([])
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
@@ -473,9 +521,15 @@ export default function Muhasebe() {
       supabase.from('sozlesmeler').select('*').eq('ogrenci_id', seciliId),
       supabase.from('aylik_borclar').select('*').eq('ogrenci_id', seciliId).order('donem', { ascending: false }),
       supabase.from('odemeler').select('*').eq('ogrenci_id', seciliId).order('tarih', { ascending: false }),
-      supabase.from('bire_bir_atamalari').select('*').eq('ogrenci_id', seciliId),
+      // Öğretmen adını da (profiles join) çekiyoruz — döküm tablosunda "hangi
+      // öğretmenden" görebilmek için.
+      supabase.from('bire_bir_atamalari').select('*, profiles:ogretmen_profile_id(ad_soyad)').eq('ogrenci_id', seciliId),
       // "Ek Ders" (atamaya bağlı olmayan, tek seferlik bire bir) kayıtları
-      supabase.from('bire_bir_yoklama').select('*').eq('ogrenci_id', seciliId).is('atama_id', null),
+      supabase
+        .from('bire_bir_yoklama')
+        .select('*, profiles:ogretmen_profile_id(ad_soyad)')
+        .eq('ogrenci_id', seciliId)
+        .is('atama_id', null),
       supabase.from('kantin_alislar').select('*').eq('ogrenci_id', seciliId),
     ]).then(([s, a, o, bba, ekDersler, kantin]) => {
       const atamalar = bba.data || []
@@ -491,6 +545,7 @@ export default function Muhasebe() {
         setSozlesmeler(s.data || [])
         setAylikBorclar([...(a.data || []), ...bireBirBorclar, ...kantinBorclar])
         setOdemeler(o.data || [])
+        setBireBirDersleri(bireBirDersDetaylariOlustur(atamalar, tumYoklamalar))
         setLoading(false)
       })
     })
@@ -679,6 +734,66 @@ export default function Muhasebe() {
               </tbody>
             </table>
           </div>
+
+          {bireBirDersleri.length > 0 && (
+            <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden mb-6">
+              <div className="px-4 py-3 border-b border-gray-100 bg-gray-50">
+                <h2 className="font-semibold text-gray-700">Bire Bir Ders Dökümü (Haftalık)</h2>
+                <p className="text-xs text-gray-400 mt-0.5">
+                  Yukarıdaki "Bire Bir" toplamının ARKASINDAKİ tek tek dersler — hangi tarihte, hangi
+                  öğretmenden, ne kadara. Sadece "Geldi" (faturalanmış) dersler burada görünür.
+                </p>
+              </div>
+              <div className="divide-y divide-gray-100">
+                {Object.entries(
+                  bireBirDersleri.reduce((gruplar, d) => {
+                    const hafta = haftaBaslangici(d.tarih)
+                    if (!gruplar[hafta]) gruplar[hafta] = []
+                    gruplar[hafta].push(d)
+                    return gruplar
+                  }, {})
+                )
+                  .sort((a, b) => (a[0] < b[0] ? 1 : -1))
+                  .map(([hafta, dersler]) => {
+                    const haftaToplami = dersler.reduce((t, d) => t + d.tutar, 0)
+                    return (
+                      <div key={hafta} className="p-4">
+                        <div className="flex items-center justify-between mb-2">
+                          <p className="font-semibold text-gray-700 text-sm">{haftaEtiketi(hafta)}</p>
+                          <p className="text-sm text-gray-500">
+                            {dersler.length} ders · <span className="font-semibold text-navy">{paraFormat(haftaToplami)}</span>
+                          </p>
+                        </div>
+                        <table className="w-full text-sm min-w-[440px]">
+                          <thead>
+                            <tr className="text-left text-gray-400">
+                              <th className="px-2 py-1 font-medium">Tarih</th>
+                              <th className="px-2 py-1 font-medium">Saat</th>
+                              <th className="px-2 py-1 font-medium">Öğretmen</th>
+                              <th className="px-2 py-1 font-medium">Tür</th>
+                              <th className="px-2 py-1 font-medium">Tutar</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {dersler.map((d) => (
+                              <tr key={d.id} className="border-t border-gray-50">
+                                <td className="px-2 py-1.5">{new Date(d.tarih + 'T12:00:00').toLocaleDateString('tr-TR')}</td>
+                                <td className="px-2 py-1.5 text-gray-500">
+                                  {d.baslangicSaat ? `${saatKisalt(d.baslangicSaat)}${d.bitisSaat ? '–' + saatKisalt(d.bitisSaat) : ''}` : '—'}
+                                </td>
+                                <td className="px-2 py-1.5">{d.ogretmenAdi}</td>
+                                <td className="px-2 py-1.5 text-gray-500">{d.kaynak}</td>
+                                <td className="px-2 py-1.5">{paraFormat(d.tutar)}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    )
+                  })}
+              </div>
+            </div>
+          )}
 
           <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-x-auto">
             <div className="px-4 py-3 border-b border-gray-100 bg-gray-50">
