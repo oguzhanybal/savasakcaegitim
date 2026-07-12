@@ -4,6 +4,7 @@ import {
   pdfBelgesiAc,
   sayfayiGoruntuyeCevir,
   sayfadaSoruNumaralariniTespitEt,
+  girintiliAdaylariEle,
   sutunSiralaTahmini,
   baslangicKutulariUret,
 } from '../lib/kitapcikOcr'
@@ -165,9 +166,10 @@ export default function SinavKitapciklari() {
         const { dataUrl, genislik, yukseklik, canvas } = await sayfayiGoruntuyeCevir(belge, s, 2)
         goruntuler.push({ sayfaNo: s, dataUrl, genislik, yukseklik })
         setAnalizDurumu(`Sayfa ${s}/${sayfaSayisi} taranıyor (OCR)...`)
-        const adaylar = await sayfadaSoruNumaralariniTespitEt(canvas, (ilerleme) => {
+        const adaylarHam = await sayfadaSoruNumaralariniTespitEt(canvas, genislik, yukseklik, (ilerleme) => {
           setAnalizDurumu(`Sayfa ${s}/${sayfaSayisi} taranıyor (OCR) — %${Math.round(ilerleme * 100)}`)
         })
+        const adaylar = girintiliAdaylariEle(adaylarHam, genislik)
         const sutunlu = sutunSiralaTahmini(adaylar, genislik)
         const kutular = baslangicKutulariUret(sutunlu, genislik, yukseklik)
         kutular.forEach((k) => {
