@@ -148,7 +148,7 @@ export default function BireBirDersDokumu({ dersler, karsiTarafBasligi, baslangi
             {gunGunMu ? (
               gunGruplari.map(([tarih, gunDersleri]) => (
                 <div key={tarih} className="mb-3 last:mb-0">
-                  <p className="text-xs font-semibold text-navy bg-navy/5 rounded px-2 py-1 mb-1.5">
+                  <p className="text-sm font-bold text-white bg-navy rounded-lg px-3 py-1.5 mb-2 tracking-wide">
                     {GUNLER[gunNumaraTarihten(tarih)]} — {new Date(tarih + 'T12:00:00').toLocaleDateString('tr-TR')}
                   </p>
                   {tabloYaz(gunDersleri, gunDersleri.reduce((t, d) => t + d.tutar, 0))}
