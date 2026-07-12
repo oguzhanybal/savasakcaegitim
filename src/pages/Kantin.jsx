@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../lib/AuthContext'
 import { paraFormat } from '../lib/ekstreHesap'
+import { ilkHarfleriBuyukYap } from '../lib/adSoyadFormat'
 
 function yerelBugunTarihi() {
   const n = new Date()
@@ -152,7 +153,7 @@ function UrunEkleForm({ onEklendi }) {
     setGonderiliyor(true)
     const { error } = await supabase
       .from('kantin_urunler')
-      .insert({ ad: ad.trim(), fiyat: Number(fiyat), barkod: yeniBarkodUret() })
+      .insert({ ad: ilkHarfleriBuyukYap(ad.trim()), fiyat: Number(fiyat), barkod: yeniBarkodUret() })
     setGonderiliyor(false)
     if (error) {
       setHata('Hata: ' + error.message)
@@ -206,7 +207,7 @@ function UrunSatiri({ u, onKaydedildi, onVazgec }) {
   async function kaydet() {
     if (!ad.trim() || !fiyat) return
     setGonderiliyor(true)
-    const { error } = await supabase.from('kantin_urunler').update({ ad: ad.trim(), fiyat: Number(fiyat) }).eq('id', u.id)
+    const { error } = await supabase.from('kantin_urunler').update({ ad: ilkHarfleriBuyukYap(ad.trim()), fiyat: Number(fiyat) }).eq('id', u.id)
     setGonderiliyor(false)
     if (error) alert('Hata: ' + error.message)
     else onKaydedildi()
