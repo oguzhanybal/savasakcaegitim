@@ -17,6 +17,7 @@ export default function Ogretmenler() {
   const [duzenleBrans, setDuzenleBrans] = useState('')
   const [silinenId, setSilinenId] = useState(null)
   const [silmeHatasi, setSilmeHatasi] = useState('')
+  const [durumDegisenId, setDurumDegisenId] = useState(null)
 
   async function yukle() {
     setLoading(true)
@@ -76,6 +77,17 @@ export default function Ogretmenler() {
     setSilinenId(null)
   }
 
+  async function durumDegistir(o) {
+    setDurumDegisenId(o.id)
+    const { error } = await supabase.from('profiles').update({ aktif: !o.aktif }).eq('id', o.id)
+    if (error) {
+      alert('Hata: ' + error.message)
+    } else {
+      yukle()
+    }
+    setDurumDegisenId(null)
+  }
+
   return (
     <div>
       <h1 className="text-2xl font-bold text-navy mb-6">Öğretmenler</h1>
@@ -93,15 +105,16 @@ export default function Ogretmenler() {
               <th className="px-4 py-3 font-semibold">Ad Soyad</th>
               <th className="px-4 py-3 font-semibold">Branş</th>
               <th className="px-4 py-3 font-semibold">Telefon</th>
+              <th className="px-4 py-3 font-semibold">Durum</th>
               <th className="px-4 py-3 font-semibold text-right">İşlemler</th>
             </tr>
           </thead>
           <tbody>
             {loading && (
-              <tr><td colSpan={4} className="px-4 py-6 text-center text-gray-400">Yükleniyor...</td></tr>
+              <tr><td colSpan={5} className="px-4 py-6 text-center text-gray-400">Yükleniyor...</td></tr>
             )}
             {!loading && ogretmenler.length === 0 && (
-              <tr><td colSpan={4} className="px-4 py-6 text-center text-gray-400">Henüz öğretmen eklenmedi.</td></tr>
+              <tr><td colSpan={5} className="px-4 py-6 text-center text-gray-400">Henüz öğretmen eklenmedi.</td></tr>
             )}
             {ogretmenler.map((o, i) => {
               const duzenleniyor = duzenlenenId === o.id
@@ -136,6 +149,7 @@ export default function Ogretmenler() {
                         placeholder="905XXXXXXXXX"
                       />
                     </td>
+                    <td className="px-4 py-2 text-gray-400 text-xs">—</td>
                     <td className="px-4 py-2 text-right space-x-3 whitespace-nowrap">
                       <button onClick={() => duzenlemeyiKaydet(o.id)} className="text-green-600 text-sm font-semibold hover:underline">
                         Kaydet
@@ -148,8 +162,10 @@ export default function Ogretmenler() {
                 )
               }
 
+              const pasif = o.aktif === false
+
               return (
-                <tr key={o.id} className={i % 2 ? 'bg-gray-50' : ''}>
+                <tr key={o.id} className={`${i % 2 ? 'bg-gray-50' : ''} ${pasif ? 'opacity-50' : ''}`}>
                   <td className="px-4 py-3 font-medium text-gray-800">{o.ad_soyad}</td>
                   <td className="px-4 py-3">
                     {o.brans ? (
@@ -161,9 +177,23 @@ export default function Ogretmenler() {
                     )}
                   </td>
                   <td className="px-4 py-3 text-gray-500">{o.telefon || '—'}</td>
+                  <td className="px-4 py-3">
+                    {pasif ? (
+                      <span className="px-2 py-0.5 rounded-full text-xs font-semibold bg-red-100 text-red-700">Pasif</span>
+                    ) : (
+                      <span className="px-2 py-0.5 rounded-full text-xs font-semibold bg-green-100 text-green-700">Aktif</span>
+                    )}
+                  </td>
                   <td className="px-4 py-3 text-right space-x-3 whitespace-nowrap">
                     <button onClick={() => duzenlemeyeBasla(o)} className="text-blue text-sm hover:underline">
                       Düzenle
+                    </button>
+                    <button
+                      onClick={() => durumDegistir(o)}
+                      disabled={durumDegisenId === o.id}
+                      className="text-orange text-sm hover:underline disabled:opacity-50"
+                    >
+                      {durumDegisenId === o.id ? '...' : pasif ? 'Aktif Yap' : 'Pasif Yap'}
                     </button>
                     <button
                       onClick={() => sil(o)}
@@ -181,7 +211,8 @@ export default function Ogretmenler() {
       </div>
       {silmeHatasi && <p className="text-red-600 text-sm mt-3">{silmeHatasi}</p>}
       <p className="text-xs text-gray-400 mt-3">
-        Branş bilgisi, "Sınıflar" sayfasında öğretmen ataması yaparken listede görünür.
+        Branş bilgisi, "Sınıflar" sayfasında öğretmen ataması yaparken listede görünür. "Pasif Yap", öğretmeni
+        silmeden geçmiş kayıtlarını (ders/ödeme/yoklama) korur, sadece o öğretmeni artık kullanmadığınızı işaretler.
       </p>
     </div>
   )
