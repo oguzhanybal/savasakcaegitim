@@ -848,9 +848,13 @@ function YoklamaSatiri({ atama, yoklamalar, onDegisti, ucretGorunur }) {
   )
 }
 
-function TekSeferlikDerslerListesi({ yoklamalar, ogrenciAdMap, ogretmenAdMap, onDegisti }) {
+// sadeceOgretmenId verilirse (öğretmen rolünde) sadece o öğretmenin kendi
+// tek seferlik dersleri gösterilir, ücret (tutar) sütunu gizlenir — ders
+// ücretleri sadece yönetim tarafından görülüyor, diğer sayfalarla tutarlı.
+function TekSeferlikDerslerListesi({ yoklamalar, onDegisti, sadeceOgretmenId = null, ucretGorunur = true }) {
   const tekSeferlikler = yoklamalar
     .filter((y) => !y.atama_id)
+    .filter((y) => !sadeceOgretmenId || y.ogretmen_profile_id === sadeceOgretmenId)
     .sort((a, b) => (a.tarih < b.tarih ? 1 : -1))
     .slice(0, 15)
 
@@ -880,20 +884,23 @@ function TekSeferlikDerslerListesi({ yoklamalar, ogrenciAdMap, ogretmenAdMap, on
   return (
     <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-x-auto mb-6">
       <div className="px-4 py-3 border-b border-gray-100 bg-gray-50">
-        <h2 className="font-semibold text-gray-700">Son Tek Seferlik Dersler</h2>
+        <h2 className="font-semibold text-gray-700">
+          {sadeceOgretmenId ? 'Tek Seferlik Derslerim' : 'Son Tek Seferlik Dersler'}
+        </h2>
         <p className="text-xs text-gray-400 mt-0.5">
           "Hayır, sadece bu sefer" ile eklenen, tekrar etmeyen dersler. İleri tarihli eklenenler "Bekliyor"
           durumunda başlar, borç eklenmez — ders yapıldıktan sonra Geldi/Gelmedi işaretleyin.
+          {sadeceOgretmenId && ' Ders ücretleri sadece yönetim tarafından görülür.'}
         </p>
       </div>
-      <table className="w-full text-sm min-w-[720px]">
+      <table className="w-full text-sm min-w-[560px]">
         <thead>
           <tr className="text-left text-gray-500">
             <th className="px-4 py-2 font-medium">Tarih</th>
             <th className="px-4 py-2 font-medium">Saat</th>
             <th className="px-4 py-2 font-medium">Öğrenci</th>
-            <th className="px-4 py-2 font-medium">Öğretmen</th>
-            <th className="px-4 py-2 font-medium">Tutar</th>
+            {!sadeceOgretmenId && <th className="px-4 py-2 font-medium">Öğretmen</th>}
+            {ucretGorunur && <th className="px-4 py-2 font-medium">Tutar</th>}
             <th className="px-4 py-2 font-medium">Durum</th>
             <th className="px-4 py-2 font-medium text-right">İşlemler</th>
           </tr>
@@ -905,9 +912,9 @@ function TekSeferlikDerslerListesi({ yoklamalar, ogrenciAdMap, ogretmenAdMap, on
               <td className="px-4 py-2 text-gray-500">
                 {y.baslangic_saat ? `${saatKisalt(y.baslangic_saat)}${y.bitis_saat ? '–' + saatKisalt(y.bitis_saat) : ''}` : '—'}
               </td>
-              <td className="px-4 py-2 font-medium text-gray-800">{ogrenciAdMap.get(y.ogrenci_id) || '—'}</td>
-              <td className="px-4 py-2">{ogretmenAdMap.get(y.ogretmen_profile_id) || '—'}</td>
-              <td className="px-4 py-2">{paraFormat(y.tutar)}</td>
+              <td className="px-4 py-2 font-medium text-gray-800">{y.ogrenci_adi || '—'}</td>
+              {!sadeceOgretmenId && <td className="px-4 py-2">{y.ogretmen_adi || '—'}</td>}
+              {ucretGorunur && <td className="px-4 py-2">{paraFormat(y.tutar)}</td>}
               <td className="px-4 py-2">
                 {y.durum === 'geldi' && (
                   <span className="text-xs font-semibold bg-green-100 text-green-700 px-2 py-1 rounded-full">Geldi</span>
@@ -971,7 +978,11 @@ export default function BireBir() {
         .select('*, ogrenciler(ad_soyad), profiles:ogretmen_profile_id(ad_soyad)')
         .order('gun')
         .order('baslangic_saat'),
-      supabase.from('bire_bir_yoklama').select('*'),
+      // Tek seferlik dersler için de öğrenci/öğretmen adını doğrudan sorguyla
+      // birlikte çekiyoruz (atamalardaki gibi) — çünkü öğretmen rolünde tam
+      // öğrenci/öğretmen listesi hiç çekilmiyor (yukarıdaki iki satır sadece
+      // yönetici için), o zaman isim haritaları boş kalıp "—" görünürdü.
+      supabase.from('bire_bir_yoklama').select('*, ogrenciler(ad_soyad), profiles:ogretmen_profile_id(ad_soyad)'),
     ]).then(([o, og, dp, a, y]) => {
       setOgrenciler(o.data || [])
       setOgretmenler(og.data || [])
@@ -983,7 +994,13 @@ export default function BireBir() {
           ogretmen_adi: d.profiles?.ad_soyad,
         }))
       )
-      setYoklamalar(y.data || [])
+      setYoklamalar(
+        (y.data || []).map((d) => ({
+          ...d,
+          ogrenci_adi: d.ogrenciler?.ad_soyad,
+          ogretmen_adi: d.profiles?.ad_soyad,
+        }))
+      )
       ilkYuklemeTamamRef.current = true
       setLoading(false)
     })
@@ -1014,7 +1031,6 @@ export default function BireBir() {
   }, [atamalar, sadeceAktif, sadeceBugun, yoklamaArama, bugunGun])
 
   const ogrenciAdMap = useMemo(() => new Map(ogrenciler.map((o) => [o.id, o.ad_soyad])), [ogrenciler])
-  const ogretmenAdMap = useMemo(() => new Map(ogretmenler.map((o) => [o.id, o.ad_soyad])), [ogretmenler])
 
   if (loading) return <p className="text-gray-400">Yükleniyor...</p>
 
@@ -1045,14 +1061,19 @@ export default function BireBir() {
             dersProgrami={dersProgrami}
             onDegisti={veriyiYenile}
           />
-          <TekSeferlikDerslerListesi
-            yoklamalar={yoklamalar}
-            ogrenciAdMap={ogrenciAdMap}
-            ogretmenAdMap={ogretmenAdMap}
-            onDegisti={veriyiYenile}
-          />
         </>
       )}
+
+      {/* Tek seferlik dersler daha önce sadece yöneticiye görünüyordu — öğretmenler
+          kendi adlarına eklenmiş (özellikle ileri tarihli "Bekliyor") tek seferlik
+          dersleri hiç göremiyordu. Artık öğretmen de KENDİ derslerini (ücret
+          gizli) burada görüp Geldi/Gelmedi işaretleyebiliyor. */}
+      <TekSeferlikDerslerListesi
+        yoklamalar={yoklamalar}
+        onDegisti={veriyiYenile}
+        sadeceOgretmenId={isYonetici ? null : profile?.id}
+        ucretGorunur={isYonetici}
+      />
 
       <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
         <div className="px-4 py-3 border-b border-gray-100 bg-gray-50 flex items-center justify-between flex-wrap gap-3">
