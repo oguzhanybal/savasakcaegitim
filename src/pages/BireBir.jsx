@@ -78,6 +78,16 @@ function haftaEtiketi(baslangicStr) {
   return `${fmt(b)} – ${fmt(s)} ${s.getFullYear()}`
 }
 
+// Bir tarihin ait olduğu ayın 1'ini "YYYY-MM-01" olarak döner — "Aylık" görünüm
+// için gruplama anahtarı.
+function ayBaslangici(tarihStr) {
+  return tarihStr.slice(0, 7) + '-01'
+}
+
+function ayEtiketi(baslangicStr) {
+  return new Date(baslangicStr + 'T12:00:00').toLocaleDateString('tr-TR', { month: 'long', year: 'numeric' })
+}
+
 // Yeni bir bire bir atamasının (öğretmen + gün + saat), o öğretmenin sınıf ders
 // programıyla ya da başka bir bire bir dersiyle çakışıp çakışmadığını kontrol eder.
 function cakismaBul({ ogretmenId, gun, baslangic, bitis, haricAtamaId }, dersProgrami, atamalar) {
@@ -872,6 +882,8 @@ function YoklamaSatiri({ atama, yoklamalar, onDegisti, ucretGorunur }) {
 // sadeceOgretmenId verilirse (öğretmen rolünde) sadece o öğretmenin kendi
 // dersleri gösterilir, ücret (tutar) sütunu gizlenir.
 function TekSeferlikDerslerListesi({ yoklamalar, atamalar, onDegisti, sadeceOgretmenId = null, ucretGorunur = true }) {
+  const [periyot, setPeriyot] = useState('hafta') // 'hafta' | 'ay'
+  const [gosterilenSayisi, setGosterilenSayisi] = useState(8)
   const atamaMap = useMemo(() => new Map(atamalar.map((a) => [a.id, a])), [atamalar])
 
   const dersler = useMemo(() => {
@@ -881,6 +893,11 @@ function TekSeferlikDerslerListesi({ yoklamalar, atamalar, onDegisti, sadeceOgre
         // (yoklama satırının kendisinde bu alanlar boş kalıyor); tek seferlikte
         // doğrudan yoklama satırının kendi (join edilmiş) alanlarından gelir.
         const atama = y.atama_id ? atamaMap.get(y.atama_id) : null
+        // Eski haftalık kayıtların bir kısmında (bu alanın damgalanmaya
+        // başlamasından ÖNCE eklenenler) yoklama satırının kendi "tutar" alanı
+        // boş kalmış olabilir — o yüzden boşsa atamanın GÜNCEL ücretine
+        // düşüyoruz, yoksa ₺0,00 görünüyordu.
+        const tutar = y.tutar != null ? Number(y.tutar) : Number(atama?.ders_ucreti) || 0
         return {
           ...y,
           _ogrenciAdi: atama ? atama.ogrenci_adi : y.ogrenci_adi,
@@ -889,23 +906,28 @@ function TekSeferlikDerslerListesi({ yoklamalar, atamalar, onDegisti, sadeceOgre
           _baslangic: y.baslangic_saat || atama?.baslangic_saat || null,
           _bitis: y.bitis_saat || atama?.bitis_saat || null,
           _kaynak: y.atama_id ? 'Haftalık' : 'Tek Seferlik',
+          _tutar: tutar,
         }
       })
       .filter((y) => !sadeceOgretmenId || y._ogretmenId === sadeceOgretmenId)
       .sort((a, b) => (a.tarih < b.tarih ? 1 : -1))
   }, [yoklamalar, atamaMap, sadeceOgretmenId])
 
-  const haftaGruplari = useMemo(() => {
+  // periyot='hafta' -> her Pazartesi başlangıçlı 7 günlük gruplar,
+  // periyot='ay' -> takvim ayına göre gruplar (Temmuz 2026 gibi).
+  const tumGruplar = useMemo(() => {
+    const anahtarUret = periyot === 'ay' ? ayBaslangici : haftaBaslangici
     const gruplar = dersler.reduce((acc, y) => {
-      const hafta = haftaBaslangici(y.tarih)
-      if (!acc[hafta]) acc[hafta] = []
-      acc[hafta].push(y)
+      const anahtar = anahtarUret(y.tarih)
+      if (!acc[anahtar]) acc[anahtar] = []
+      acc[anahtar].push(y)
       return acc
     }, {})
-    return Object.entries(gruplar)
-      .sort((a, b) => (a[0] < b[0] ? 1 : -1))
-      .slice(0, 12) // en fazla son 12 hafta — sayfa çok uzamasın diye
-  }, [dersler])
+    return Object.entries(gruplar).sort((a, b) => (a[0] < b[0] ? 1 : -1))
+  }, [dersler, periyot])
+
+  const gosterilenGruplar = tumGruplar.slice(0, gosterilenSayisi)
+  const etiketUret = periyot === 'ay' ? ayEtiketi : haftaEtiketi
 
   async function sil(id) {
     if (!confirm('Bu ders kaydını silmek istediğinize emin misiniz?')) return
@@ -932,77 +954,116 @@ function TekSeferlikDerslerListesi({ yoklamalar, atamalar, onDegisti, sadeceOgre
 
   return (
     <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden mb-6">
-      <div className="px-4 py-3 border-b border-gray-100 bg-gray-50">
-        <h2 className="font-semibold text-gray-700">
-          {sadeceOgretmenId ? 'Tüm Derslerim (Haftalık)' : 'Tüm Bire Bir Dersler (Haftalık)'}
-        </h2>
-        <p className="text-xs text-gray-400 mt-0.5">
-          Hem haftalık tekrarlanan atamalardan işaretlenen dersler hem tek seferlik dersler burada, haftalara
-          bölünmüş halde bir arada. "Bekliyor" ileri tarihli, henüz borç eklenmemiş tek seferlik dersler içindir.
-          {sadeceOgretmenId && ' Ders ücretleri sadece yönetim tarafından görülür.'}
-        </p>
+      <div className="px-4 py-3 border-b border-gray-100 bg-gray-50 flex items-center justify-between flex-wrap gap-3">
+        <div>
+          <h2 className="font-semibold text-gray-700">
+            {sadeceOgretmenId ? 'Tüm Derslerim' : 'Tüm Bire Bir Dersler'} — Arşiv
+          </h2>
+          <p className="text-xs text-gray-400 mt-0.5">
+            Hem haftalık tekrarlanan atamalardan işaretlenen dersler hem tek seferlik dersler burada bir arada.
+            "Bekliyor" ileri tarihli, henüz borç eklenmemiş tek seferlik dersler içindir.
+            {sadeceOgretmenId && ' Ders ücretleri sadece yönetim tarafından görülür.'}
+          </p>
+        </div>
+        <div className="flex gap-1.5 shrink-0">
+          <button
+            type="button"
+            onClick={() => { setPeriyot('hafta'); setGosterilenSayisi(8) }}
+            className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors ${
+              periyot === 'hafta' ? 'bg-navy text-white' : 'bg-white border border-gray-200 text-gray-600 hover:bg-gray-100'
+            }`}
+          >
+            Haftalık
+          </button>
+          <button
+            type="button"
+            onClick={() => { setPeriyot('ay'); setGosterilenSayisi(8) }}
+            className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors ${
+              periyot === 'ay' ? 'bg-navy text-white' : 'bg-white border border-gray-200 text-gray-600 hover:bg-gray-100'
+            }`}
+          >
+            Aylık
+          </button>
+        </div>
       </div>
       <div className="divide-y divide-gray-100">
-        {haftaGruplari.map(([hafta, haftaDersleri]) => (
-          <div key={hafta} className="p-4 overflow-x-auto">
-            <div className="flex items-center justify-between mb-2 flex-wrap gap-1">
-              <p className="font-semibold text-gray-700 text-sm">{haftaEtiketi(hafta)}</p>
-              <p className="text-xs text-gray-400">{haftaDersleri.length} ders</p>
-            </div>
-            <table className="w-full text-sm min-w-[560px]">
-              <thead>
-                <tr className="text-left text-gray-500">
-                  <th className="px-2 py-1.5 font-medium">Tarih</th>
-                  <th className="px-2 py-1.5 font-medium">Saat</th>
-                  <th className="px-2 py-1.5 font-medium">Öğrenci</th>
-                  {!sadeceOgretmenId && <th className="px-2 py-1.5 font-medium">Öğretmen</th>}
-                  <th className="px-2 py-1.5 font-medium">Tür</th>
-                  {ucretGorunur && <th className="px-2 py-1.5 font-medium">Tutar</th>}
-                  <th className="px-2 py-1.5 font-medium">Durum</th>
-                  <th className="px-2 py-1.5 font-medium text-right">İşlemler</th>
-                </tr>
-              </thead>
-              <tbody>
-                {haftaDersleri.map((y) => (
-                  <tr key={y.id} className="border-t border-gray-50">
-                    <td className="px-2 py-1.5">{new Date(y.tarih + 'T12:00:00').toLocaleDateString('tr-TR')}</td>
-                    <td className="px-2 py-1.5 text-gray-500">
-                      {y._baslangic ? `${saatKisalt(y._baslangic)}${y._bitis ? '–' + saatKisalt(y._bitis) : ''}` : '—'}
-                    </td>
-                    <td className="px-2 py-1.5 font-medium text-gray-800">{y._ogrenciAdi || '—'}</td>
-                    {!sadeceOgretmenId && <td className="px-2 py-1.5">{y._ogretmenAdi || '—'}</td>}
-                    <td className="px-2 py-1.5 text-gray-500">{y._kaynak}</td>
-                    {ucretGorunur && <td className="px-2 py-1.5">{paraFormat(y.tutar)}</td>}
-                    <td className="px-2 py-1.5">
-                      {y.durum === 'geldi' && (
-                        <span className="text-xs font-semibold bg-green-100 text-green-700 px-2 py-1 rounded-full">Geldi</span>
-                      )}
-                      {y.durum === 'gelmedi' && (
-                        <span className="text-xs font-semibold bg-red-100 text-red-600 px-2 py-1 rounded-full">Gelmedi</span>
-                      )}
-                      {y.durum === 'bekliyor' && (
-                        <span className="text-xs font-semibold bg-yellow-100 text-yellow-700 px-2 py-1 rounded-full">Bekliyor</span>
-                      )}
-                    </td>
-                    <td className="px-2 py-1.5 text-right whitespace-nowrap space-x-2">
-                      {y.durum !== 'geldi' && (
-                        <button onClick={() => durumDegistir(y, 'geldi')} className="text-green-600 text-sm hover:underline">
-                          Geldi
-                        </button>
-                      )}
-                      {y.durum !== 'gelmedi' && (
-                        <button onClick={() => durumDegistir(y, 'gelmedi')} className="text-red-500 text-sm hover:underline">
-                          Gelmedi
-                        </button>
-                      )}
-                      <button onClick={() => sil(y.id)} className="text-gray-400 text-sm hover:underline">Sil</button>
-                    </td>
+        {gosterilenGruplar.map(([anahtar, grupDersleri]) => {
+          const grupToplami = grupDersleri.filter((y) => y.durum === 'geldi').reduce((t, y) => t + y._tutar, 0)
+          return (
+            <div key={anahtar} className="p-4 overflow-x-auto">
+              <div className="flex items-center justify-between mb-2 flex-wrap gap-1">
+                <p className="font-semibold text-gray-700 text-sm capitalize">{etiketUret(anahtar)}</p>
+                <p className="text-xs text-gray-400">
+                  {grupDersleri.length} ders
+                  {ucretGorunur && <> · <span className="font-semibold text-navy">{paraFormat(grupToplami)}</span> (faturalanan)</>}
+                </p>
+              </div>
+              <table className="w-full text-sm min-w-[560px]">
+                <thead>
+                  <tr className="text-left text-gray-500">
+                    <th className="px-2 py-1.5 font-medium">Tarih</th>
+                    <th className="px-2 py-1.5 font-medium">Saat</th>
+                    <th className="px-2 py-1.5 font-medium">Öğrenci</th>
+                    {!sadeceOgretmenId && <th className="px-2 py-1.5 font-medium">Öğretmen</th>}
+                    <th className="px-2 py-1.5 font-medium">Tür</th>
+                    {ucretGorunur && <th className="px-2 py-1.5 font-medium">Tutar</th>}
+                    <th className="px-2 py-1.5 font-medium">Durum</th>
+                    <th className="px-2 py-1.5 font-medium text-right">İşlemler</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody>
+                  {grupDersleri.map((y) => (
+                    <tr key={y.id} className="border-t border-gray-50">
+                      <td className="px-2 py-1.5">{new Date(y.tarih + 'T12:00:00').toLocaleDateString('tr-TR')}</td>
+                      <td className="px-2 py-1.5 text-gray-500">
+                        {y._baslangic ? `${saatKisalt(y._baslangic)}${y._bitis ? '–' + saatKisalt(y._bitis) : ''}` : '—'}
+                      </td>
+                      <td className="px-2 py-1.5 font-medium text-gray-800">{y._ogrenciAdi || '—'}</td>
+                      {!sadeceOgretmenId && <td className="px-2 py-1.5">{y._ogretmenAdi || '—'}</td>}
+                      <td className="px-2 py-1.5 text-gray-500">{y._kaynak}</td>
+                      {ucretGorunur && <td className="px-2 py-1.5">{paraFormat(y._tutar)}</td>}
+                      <td className="px-2 py-1.5">
+                        {y.durum === 'geldi' && (
+                          <span className="text-xs font-semibold bg-green-100 text-green-700 px-2 py-1 rounded-full">Geldi</span>
+                        )}
+                        {y.durum === 'gelmedi' && (
+                          <span className="text-xs font-semibold bg-red-100 text-red-600 px-2 py-1 rounded-full">Gelmedi</span>
+                        )}
+                        {y.durum === 'bekliyor' && (
+                          <span className="text-xs font-semibold bg-yellow-100 text-yellow-700 px-2 py-1 rounded-full">Bekliyor</span>
+                        )}
+                      </td>
+                      <td className="px-2 py-1.5 text-right whitespace-nowrap space-x-2">
+                        {y.durum !== 'geldi' && (
+                          <button onClick={() => durumDegistir(y, 'geldi')} className="text-green-600 text-sm hover:underline">
+                            Geldi
+                          </button>
+                        )}
+                        {y.durum !== 'gelmedi' && (
+                          <button onClick={() => durumDegistir(y, 'gelmedi')} className="text-red-500 text-sm hover:underline">
+                            Gelmedi
+                          </button>
+                        )}
+                        <button onClick={() => sil(y.id)} className="text-gray-400 text-sm hover:underline">Sil</button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )
+        })}
+        {gosterilenGruplar.length < tumGruplar.length && (
+          <div className="p-4 text-center">
+            <button
+              type="button"
+              onClick={() => setGosterilenSayisi((n) => n + 8)}
+              className="text-navy text-sm font-semibold underline hover:no-underline"
+            >
+              Daha eski {periyot === 'ay' ? 'ayları' : 'haftaları'} göster ({tumGruplar.length - gosterilenGruplar.length} tane daha)
+            </button>
           </div>
-        ))}
+        )}
       </div>
     </div>
   )
