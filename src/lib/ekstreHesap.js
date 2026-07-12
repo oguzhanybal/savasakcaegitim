@@ -309,12 +309,19 @@ export function bireBirDersDetaylariOlustur(atamalar, yoklamalar) {
       const ogretmenAdi = atama
         ? atama.profiles?.ad_soyad || atama.ogretmen_adi
         : y.profiles?.ad_soyad || y.ogretmen_adi
+      // Öğretmen ekstresinde (OgretmenEkstre.jsx) "karşı taraf" öğrenci olduğu
+      // için bunu da hesaplıyoruz — atamalar/yoklamalar parametreleri bunun için
+      // ayrıca "ogrenciler(ad_soyad)" join'i içermeli (içermezse ogrenci_adi'ya düşer).
+      const ogrenciAdi = atama
+        ? atama.ogrenciler?.ad_soyad || atama.ogrenci_adi
+        : y.ogrenciler?.ad_soyad || y.ogrenci_adi
       return {
         id: y.id,
         tarih: y.tarih,
         baslangicSaat: y.baslangic_saat || atama?.baslangic_saat || null,
         bitisSaat: y.bitis_saat || atama?.bitis_saat || null,
         ogretmenAdi: ogretmenAdi || '—',
+        ogrenciAdi: ogrenciAdi || '—',
         tutar: y.tutar != null ? Number(y.tutar) : Number(atama?.ders_ucreti) || 0,
         kaynak: y.atama_id ? 'Haftalık' : 'Tek Seferlik',
       }
@@ -337,6 +344,16 @@ export function haftaEtiketi(baslangicStr) {
   s.setDate(s.getDate() + 6)
   const fmt = (t) => t.toLocaleDateString('tr-TR', { day: '2-digit', month: 'short' })
   return `${fmt(b)} – ${fmt(s)} ${s.getFullYear()}`
+}
+
+// Bir tarihin (YYYY-MM-DD) içinde bulunduğu ayın 1'ini döndürür — aylık
+// gruplama için kullanılır (haftaBaslangici'nin ay karşılığı).
+export function ayBaslangici(tarihStr) {
+  return tarihStr.slice(0, 7) + '-01'
+}
+
+export function ayEtiketi(baslangicStr) {
+  return new Date(baslangicStr + 'T12:00:00').toLocaleDateString('tr-TR', { month: 'long', year: 'numeric' })
 }
 
 // ============================================================================
