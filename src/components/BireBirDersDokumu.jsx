@@ -11,6 +11,10 @@ import { paraFormat, haftaBaslangici, haftaEtiketi, ayBaslangici, ayEtiketi } fr
 export default function BireBirDersDokumu({ dersler, karsiTarafBasligi, baslangicPeriyot = 'ay' }) {
   const [periyot, setPeriyot] = useState(baslangicPeriyot) // 'hafta' | 'ay'
   const [gosterilenSayisi, setGosterilenSayisi] = useState(6)
+  // Boşsa en yeni dönemlerden sayfalanmış liste; doluysa (dönem seçiciden
+  // seçilince) sadece o tek dönem gösterilir — belirli bir aya/haftaya direkt
+  // atlayabilmek için (ör. Temmuz'dan Ekim'e geçmek gibi).
+  const [seciliDonem, setSeciliDonem] = useState('')
 
   const tumGruplar = useMemo(() => {
     const anahtarUret = periyot === 'ay' ? ayBaslangici : haftaBaslangici
@@ -23,7 +27,9 @@ export default function BireBirDersDokumu({ dersler, karsiTarafBasligi, baslangi
     return Object.entries(gruplar).sort((a, b) => (a[0] < b[0] ? 1 : -1))
   }, [dersler, periyot])
 
-  const gosterilenGruplar = tumGruplar.slice(0, gosterilenSayisi)
+  const gosterilenGruplar = seciliDonem
+    ? tumGruplar.filter(([anahtar]) => anahtar === seciliDonem)
+    : tumGruplar.slice(0, gosterilenSayisi)
   const etiketUret = periyot === 'ay' ? ayEtiketi : haftaEtiketi
 
   if (dersler.length === 0) {
@@ -32,10 +38,10 @@ export default function BireBirDersDokumu({ dersler, karsiTarafBasligi, baslangi
 
   return (
     <div>
-      <div className="no-print flex gap-1.5 mb-3">
+      <div className="no-print flex gap-1.5 mb-3 items-center flex-wrap">
         <button
           type="button"
-          onClick={() => { setPeriyot('hafta'); setGosterilenSayisi(6) }}
+          onClick={() => { setPeriyot('hafta'); setGosterilenSayisi(6); setSeciliDonem('') }}
           className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors ${
             periyot === 'hafta' ? 'bg-navy text-white' : 'bg-white border border-gray-200 text-gray-600 hover:bg-gray-100'
           }`}
@@ -44,13 +50,23 @@ export default function BireBirDersDokumu({ dersler, karsiTarafBasligi, baslangi
         </button>
         <button
           type="button"
-          onClick={() => { setPeriyot('ay'); setGosterilenSayisi(6) }}
+          onClick={() => { setPeriyot('ay'); setGosterilenSayisi(6); setSeciliDonem('') }}
           className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors ${
             periyot === 'ay' ? 'bg-navy text-white' : 'bg-white border border-gray-200 text-gray-600 hover:bg-gray-100'
           }`}
         >
           Aylık
         </button>
+        <select
+          value={seciliDonem}
+          onChange={(e) => setSeciliDonem(e.target.value)}
+          className="px-2.5 py-1.5 rounded-lg text-xs font-semibold border border-gray-200 bg-white text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue"
+        >
+          <option value="">{periyot === 'ay' ? 'Bir ay seç...' : 'Bir hafta seç...'}</option>
+          {tumGruplar.map(([anahtar]) => (
+            <option key={anahtar} value={anahtar}>{etiketUret(anahtar)}</option>
+          ))}
+        </select>
       </div>
 
       {gosterilenGruplar.map(([anahtar, grupDersleri]) => {
@@ -93,7 +109,16 @@ export default function BireBirDersDokumu({ dersler, karsiTarafBasligi, baslangi
         )
       })}
 
-      {gosterilenGruplar.length < tumGruplar.length && (
+      {seciliDonem && (
+        <button
+          type="button"
+          onClick={() => setSeciliDonem('')}
+          className="no-print text-navy text-sm font-semibold underline hover:no-underline"
+        >
+          ← Tüm {periyot === 'ay' ? 'ayları' : 'haftaları'} listele
+        </button>
+      )}
+      {!seciliDonem && gosterilenGruplar.length < tumGruplar.length && (
         <button
           type="button"
           onClick={() => setGosterilenSayisi((n) => n + 6)}
