@@ -970,10 +970,6 @@ function YoklamaSatiri({ atama, yoklamalar, onDegisti, ucretGorunur }) {
 function TekSeferlikDerslerListesi({ yoklamalar, atamalar, onDegisti, sadeceOgretmenId = null, ucretGorunur = true }) {
   const [periyot, setPeriyot] = useState('hafta') // 'hafta' | 'ay'
   const [gosterilenSayisi, setGosterilenSayisi] = useState(8)
-  // Boşsa en yeni dönemlerden itibaren sayfalanmış liste gösterilir ("Daha eski
-  // göster" ile); doluysa (aşağıdaki dönem seçiciden seçilince) SADECE o tek
-  // dönem gösterilir — Temmuz'dan başka bir aya/haftaya direkt atlayabilmek için.
-  const [seciliDonem, setSeciliDonem] = useState('')
   const atamaMap = useMemo(() => new Map(atamalar.map((a) => [a.id, a])), [atamalar])
 
   const dersler = useMemo(() => {
@@ -1002,6 +998,23 @@ function TekSeferlikDerslerListesi({ yoklamalar, atamalar, onDegisti, sadeceOgre
       .filter((y) => !sadeceOgretmenId || y._ogretmenId === sadeceOgretmenId)
       .sort((a, b) => (a.tarih < b.tarih ? 1 : -1))
   }, [yoklamalar, atamaMap, sadeceOgretmenId])
+
+  // İçinde bulunduğumuz haftanın/ayın anahtarını döner — AMA sadece o dönemde
+  // gerçekten ders varsa (yoksa boş döner, o zaman en yeni dönemlerden itibaren
+  // sayfalanmış listeye düşülür). Dönem seçici ilk açılışta ve Haftalık/Aylık
+  // arası geçişte bu dönemi otomatik seçili getirsin diye.
+  function icindeBulunulanDonem(periyotDegeri) {
+    const anahtarUret = periyotDegeri === 'ay' ? ayBaslangici : haftaBaslangici
+    const hedef = anahtarUret(yerelBugunTarihi())
+    return dersler.some((y) => anahtarUret(y.tarih) === hedef) ? hedef : ''
+  }
+
+  // Boşsa en yeni dönemlerden itibaren sayfalanmış liste gösterilir ("Daha eski
+  // göster" ile); doluysa (içinde bulunulan dönem ya da dönem seçiciden elle
+  // seçilen) SADECE o tek dönem gösterilir. Sayfa ilk açıldığında otomatik
+  // olarak İÇİNDE BULUNULAN haftaya geliyor — öğretmen isterse dropdown'dan
+  // başka bir haftaya/aya geçebilir.
+  const [seciliDonem, setSeciliDonem] = useState(() => icindeBulunulanDonem('hafta'))
 
   // periyot='hafta' -> her Pazartesi başlangıçlı 7 günlük gruplar,
   // periyot='ay' -> takvim ayına göre gruplar (Temmuz 2026 gibi).
@@ -1060,7 +1073,7 @@ function TekSeferlikDerslerListesi({ yoklamalar, atamalar, onDegisti, sadeceOgre
         <div className="flex gap-1.5 shrink-0 items-center flex-wrap">
           <button
             type="button"
-            onClick={() => { setPeriyot('hafta'); setGosterilenSayisi(8); setSeciliDonem('') }}
+            onClick={() => { setPeriyot('hafta'); setGosterilenSayisi(8); setSeciliDonem(icindeBulunulanDonem('hafta')) }}
             className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors ${
               periyot === 'hafta' ? 'bg-navy text-white' : 'bg-white border border-gray-200 text-gray-600 hover:bg-gray-100'
             }`}
@@ -1069,7 +1082,7 @@ function TekSeferlikDerslerListesi({ yoklamalar, atamalar, onDegisti, sadeceOgre
           </button>
           <button
             type="button"
-            onClick={() => { setPeriyot('ay'); setGosterilenSayisi(8); setSeciliDonem('') }}
+            onClick={() => { setPeriyot('ay'); setGosterilenSayisi(8); setSeciliDonem(icindeBulunulanDonem('ay')) }}
             className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors ${
               periyot === 'ay' ? 'bg-navy text-white' : 'bg-white border border-gray-200 text-gray-600 hover:bg-gray-100'
             }`}
