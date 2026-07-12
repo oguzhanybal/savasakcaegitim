@@ -8,6 +8,13 @@ function gunNumaraTarihten(tarihStr) {
   return g === 0 ? 7 : g
 }
 
+// Bugünün tarihini "YYYY-MM-DD" olarak YEREL saate göre üretir (toISOString
+// KULLANMIYORUZ — Türkiye UTC+3 gece yarısına yakın saatlerde bir gün geriye kayabiliyor).
+function yerelBugunTarihi() {
+  const n = new Date()
+  return `${n.getFullYear()}-${String(n.getMonth() + 1).padStart(2, '0')}-${String(n.getDate()).padStart(2, '0')}`
+}
+
 // Bir kişinin (öğrenci ya da öğretmen) tüm bire bir derslerini haftalık ya da
 // aylık gruplar halinde, yazdırılabilir/PDF alınabilir bir tablo olarak
 // gösterir. Hem Ekstre.jsx (öğrenci ekstresi) hem OgretmenEkstre.jsx (öğretmen
@@ -18,10 +25,20 @@ function gunNumaraTarihten(tarihStr) {
 export default function BireBirDersDokumu({ dersler, karsiTarafBasligi, baslangicPeriyot = 'ay' }) {
   const [periyot, setPeriyot] = useState(baslangicPeriyot) // 'hafta' | 'ay'
   const [gosterilenSayisi, setGosterilenSayisi] = useState(6)
-  // Boşsa en yeni dönemlerden sayfalanmış liste; doluysa (dönem seçiciden
-  // seçilince) sadece o tek dönem gösterilir — belirli bir aya/haftaya direkt
-  // atlayabilmek için (ör. Temmuz'dan Ekim'e geçmek gibi).
-  const [seciliDonem, setSeciliDonem] = useState('')
+
+  // İçinde bulunduğumuz haftanın/ayın anahtarını döner — AMA sadece o dönemde
+  // gerçekten ders varsa (yoksa boş döner, en yeni dönemlerden sayfalanmış
+  // listeye düşülür). Sayfa ilk açıldığında ve Haftalık/Aylık geçişte bu dönem
+  // otomatik seçili gelsin diye.
+  function icindeBulunulanDonem(periyotDegeri) {
+    const anahtarUret = periyotDegeri === 'ay' ? ayBaslangici : haftaBaslangici
+    const hedef = anahtarUret(yerelBugunTarihi())
+    return dersler.some((d) => anahtarUret(d.tarih) === hedef) ? hedef : ''
+  }
+
+  // Boşsa en yeni dönemlerden sayfalanmış liste; doluysa (içinde bulunulan
+  // dönem ya da elle seçilen) sadece o tek dönem gösterilir.
+  const [seciliDonem, setSeciliDonem] = useState(() => icindeBulunulanDonem(baslangicPeriyot))
 
   const tumGruplar = useMemo(() => {
     const anahtarUret = periyot === 'ay' ? ayBaslangici : haftaBaslangici
@@ -48,7 +65,7 @@ export default function BireBirDersDokumu({ dersler, karsiTarafBasligi, baslangi
       <div className="no-print flex gap-1.5 mb-3 items-center flex-wrap">
         <button
           type="button"
-          onClick={() => { setPeriyot('hafta'); setGosterilenSayisi(6); setSeciliDonem('') }}
+          onClick={() => { setPeriyot('hafta'); setGosterilenSayisi(6); setSeciliDonem(icindeBulunulanDonem('hafta')) }}
           className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors ${
             periyot === 'hafta' ? 'bg-navy text-white' : 'bg-white border border-gray-200 text-gray-600 hover:bg-gray-100'
           }`}
@@ -57,7 +74,7 @@ export default function BireBirDersDokumu({ dersler, karsiTarafBasligi, baslangi
         </button>
         <button
           type="button"
-          onClick={() => { setPeriyot('ay'); setGosterilenSayisi(6); setSeciliDonem('') }}
+          onClick={() => { setPeriyot('ay'); setGosterilenSayisi(6); setSeciliDonem(icindeBulunulanDonem('ay')) }}
           className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors ${
             periyot === 'ay' ? 'bg-navy text-white' : 'bg-white border border-gray-200 text-gray-600 hover:bg-gray-100'
           }`}
