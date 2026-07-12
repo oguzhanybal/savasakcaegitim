@@ -29,6 +29,7 @@ function menuOlustur(rol) {
         ogeler: [
           { to: '/muhasebe', label: 'Muhasebe' },
           { to: '/toplu-ekstre', label: 'Toplu Ekstre' },
+          { to: '/kantin', label: 'Kantin' },
         ],
       },
       {
@@ -48,7 +49,6 @@ function menuOlustur(rol) {
           { to: '/yoklama-raporu', label: 'Yoklama Raporu' },
         ],
       },
-      { tur: 'link', to: '/kantin', label: 'Kantin' },
     ]
   }
   if (rol === 'kantin') {
