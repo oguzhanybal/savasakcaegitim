@@ -970,6 +970,10 @@ function YoklamaSatiri({ atama, yoklamalar, onDegisti, ucretGorunur }) {
 function TekSeferlikDerslerListesi({ yoklamalar, atamalar, onDegisti, sadeceOgretmenId = null, ucretGorunur = true }) {
   const [periyot, setPeriyot] = useState('hafta') // 'hafta' | 'ay'
   const [gosterilenSayisi, setGosterilenSayisi] = useState(8)
+  // Boşsa en yeni dönemlerden itibaren sayfalanmış liste gösterilir ("Daha eski
+  // göster" ile); doluysa (aşağıdaki dönem seçiciden seçilince) SADECE o tek
+  // dönem gösterilir — Temmuz'dan başka bir aya/haftaya direkt atlayabilmek için.
+  const [seciliDonem, setSeciliDonem] = useState('')
   const atamaMap = useMemo(() => new Map(atamalar.map((a) => [a.id, a])), [atamalar])
 
   const dersler = useMemo(() => {
@@ -1012,7 +1016,9 @@ function TekSeferlikDerslerListesi({ yoklamalar, atamalar, onDegisti, sadeceOgre
     return Object.entries(gruplar).sort((a, b) => (a[0] < b[0] ? 1 : -1))
   }, [dersler, periyot])
 
-  const gosterilenGruplar = tumGruplar.slice(0, gosterilenSayisi)
+  const gosterilenGruplar = seciliDonem
+    ? tumGruplar.filter(([anahtar]) => anahtar === seciliDonem)
+    : tumGruplar.slice(0, gosterilenSayisi)
   const etiketUret = periyot === 'ay' ? ayEtiketi : haftaEtiketi
 
   async function sil(id) {
@@ -1051,10 +1057,10 @@ function TekSeferlikDerslerListesi({ yoklamalar, atamalar, onDegisti, sadeceOgre
             {sadeceOgretmenId && ' Ders ücretleri sadece yönetim tarafından görülür.'}
           </p>
         </div>
-        <div className="flex gap-1.5 shrink-0">
+        <div className="flex gap-1.5 shrink-0 items-center flex-wrap">
           <button
             type="button"
-            onClick={() => { setPeriyot('hafta'); setGosterilenSayisi(8) }}
+            onClick={() => { setPeriyot('hafta'); setGosterilenSayisi(8); setSeciliDonem('') }}
             className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors ${
               periyot === 'hafta' ? 'bg-navy text-white' : 'bg-white border border-gray-200 text-gray-600 hover:bg-gray-100'
             }`}
@@ -1063,13 +1069,23 @@ function TekSeferlikDerslerListesi({ yoklamalar, atamalar, onDegisti, sadeceOgre
           </button>
           <button
             type="button"
-            onClick={() => { setPeriyot('ay'); setGosterilenSayisi(8) }}
+            onClick={() => { setPeriyot('ay'); setGosterilenSayisi(8); setSeciliDonem('') }}
             className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors ${
               periyot === 'ay' ? 'bg-navy text-white' : 'bg-white border border-gray-200 text-gray-600 hover:bg-gray-100'
             }`}
           >
             Aylık
           </button>
+          <select
+            value={seciliDonem}
+            onChange={(e) => setSeciliDonem(e.target.value)}
+            className="px-2.5 py-1.5 rounded-lg text-xs font-semibold border border-gray-200 bg-white text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue"
+          >
+            <option value="">{periyot === 'ay' ? 'Bir ay seç...' : 'Bir hafta seç...'}</option>
+            {tumGruplar.map(([anahtar]) => (
+              <option key={anahtar} value={anahtar}>{etiketUret(anahtar)}</option>
+            ))}
+          </select>
         </div>
       </div>
       <div className="divide-y divide-gray-100">
@@ -1139,7 +1155,18 @@ function TekSeferlikDerslerListesi({ yoklamalar, atamalar, onDegisti, sadeceOgre
             </div>
           )
         })}
-        {gosterilenGruplar.length < tumGruplar.length && (
+        {seciliDonem && (
+          <div className="p-4 text-center">
+            <button
+              type="button"
+              onClick={() => setSeciliDonem('')}
+              className="text-navy text-sm font-semibold underline hover:no-underline"
+            >
+              ← Tüm {periyot === 'ay' ? 'ayları' : 'haftaları'} listele
+            </button>
+          </div>
+        )}
+        {!seciliDonem && gosterilenGruplar.length < tumGruplar.length && (
           <div className="p-4 text-center">
             <button
               type="button"
