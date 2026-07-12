@@ -181,10 +181,19 @@ export default function SinavKitapciklari() {
         tumAdaylarSirali.push(...sutunlu)
       }
 
-      // Sadece yeterince UZUN, ardışık artan bir dizinin parçası olan adaylar
-      // gerçek soru sayılır — yönergedeki kısa "1. ... 2. ..." gibi kopuk
+      // Sadece yeterince UZUN, artan bir dizinin parçası olan adaylar gerçek
+      // soru sayılır — yönergedeki kısa "1. ... 2. ..." gibi kopuk
       // numaralandırmalar burada elenir (bkz. kitapcikOcr.js açıklaması).
-      const guvenilirAdaylar = ardisikDiziyeGoreFiltrele(tumAdaylarSirali)
+      let guvenilirAdaylar = ardisikDiziyeGoreFiltrele(tumAdaylarSirali)
+      let siraFiltresiUygulanmadi = false
+      // Güvenlik: taramanın kalitesi düşükse bu filtre HER ŞEYİ eleyebilir —
+      // o zaman admin'i elle işaretlemeye tek başına bırakmak yerine,
+      // filtrelemeden önceki (daha ham ama en azından dolu) listeye geri
+      // dönüyoruz; admin zaten her adayı gözden geçirip yanlışları silecek.
+      if (guvenilirAdaylar.length === 0 && tumAdaylarSirali.length > 0) {
+        guvenilirAdaylar = tumAdaylarSirali
+        siraFiltresiUygulanmadi = true
+      }
       const guvenilirSet = new Set(guvenilirAdaylar)
 
       const tumSorular = []
@@ -210,6 +219,10 @@ export default function SinavKitapciklari() {
       setAnalizDurumu('')
       if (tumSorular.length === 0) {
         setHata('Hiç soru başlangıcı tespit edilemedi. Aşağıdan "Soru Ekle" ile elle işaretleyebilirsiniz.')
+      } else if (siraFiltresiUygulanmadi) {
+        setBasari(
+          `${tumSorular.length} olası soru tespit edildi. Bu taramanın kalitesi düşük olduğu için sıralama kontrolü hiçbir şey bulamadı, o yüzden TÜM adaylar (yönerge gibi yanlış olanlar dahil) gösteriliyor — her birini dikkatlice gözden geçirip yanlış olanları "Bu Soruyu Sil" ile çıkarın.`
+        )
       } else {
         setBasari(
           `${tumSorular.length} olası soru tespit edildi (yönerge gibi kısa/kopuk numaralar otomatik elendi). Bu bir İLK TAHMİN — şimdi her birinin ders adını/numarasını girip kutucuğu gerekirse düzeltin.`
