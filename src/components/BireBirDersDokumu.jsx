@@ -1,6 +1,13 @@
 import { useMemo, useState } from 'react'
 import { paraFormat, haftaBaslangici, haftaEtiketi, ayBaslangici, ayEtiketi } from '../lib/ekstreHesap'
 
+const GUNLER = ['', 'Pazartesi', 'Salı', 'Çarşamba', 'Perşembe', 'Cuma', 'Cumartesi', 'Pazar']
+
+function gunNumaraTarihten(tarihStr) {
+  const g = new Date(tarihStr + 'T12:00:00').getDay()
+  return g === 0 ? 7 : g
+}
+
 // Bir kişinin (öğrenci ya da öğretmen) tüm bire bir derslerini haftalık ya da
 // aylık gruplar halinde, yazdırılabilir/PDF alınabilir bir tablo olarak
 // gösterir. Hem Ekstre.jsx (öğrenci ekstresi) hem OgretmenEkstre.jsx (öğretmen
@@ -71,40 +78,68 @@ export default function BireBirDersDokumu({ dersler, karsiTarafBasligi, baslangi
 
       {gosterilenGruplar.map(([anahtar, grupDersleri]) => {
         const grupToplami = grupDersleri.reduce((t, d) => t + d.tutar, 0)
+        // Belirli bir HAFTA seçiliyse, o haftayı tek tabloda değil gün gün
+        // (Pazartesi, Salı...) ayrı ayrı gösteriyoruz.
+        const gunGunMu = periyot === 'hafta' && seciliDonem === anahtar
+        const gunGruplari = gunGunMu
+          ? Object.entries(
+              grupDersleri.reduce((acc, d) => {
+                if (!acc[d.tarih]) acc[d.tarih] = []
+                acc[d.tarih].push(d)
+                return acc
+              }, {})
+            ).sort((a, b) => (a[0] < b[0] ? -1 : 1))
+          : null
+
+        const tabloYaz = (dersListesi, toplam) => (
+          <table className="w-full text-xs sm:text-sm border border-gray-200 rounded-lg overflow-hidden">
+            <thead>
+              <tr className="bg-navy text-white text-left">
+                <th className="px-2 sm:px-3 py-2 font-semibold">Tarih</th>
+                <th className="px-2 sm:px-3 py-2 font-semibold">Saat</th>
+                <th className="px-2 sm:px-3 py-2 font-semibold">{karsiTarafBasligi}</th>
+                <th className="px-2 sm:px-3 py-2 font-semibold text-right">Tutar</th>
+              </tr>
+            </thead>
+            <tbody>
+              {dersListesi.map((d, i) => (
+                <tr key={d.id} className={i % 2 ? 'bg-gray-50' : ''}>
+                  <td className="px-2 sm:px-3 py-2">{new Date(d.tarih + 'T12:00:00').toLocaleDateString('tr-TR')}</td>
+                  <td className="px-2 sm:px-3 py-2 text-gray-500">
+                    {d.baslangicSaat ? `${d.baslangicSaat.slice(0, 5)}${d.bitisSaat ? '–' + d.bitisSaat.slice(0, 5) : ''}` : '—'}
+                  </td>
+                  <td className="px-2 sm:px-3 py-2">{d.karsiTarafAdi || '—'}</td>
+                  <td className="px-2 sm:px-3 py-2 text-right font-medium">{paraFormat(d.tutar)}</td>
+                </tr>
+              ))}
+            </tbody>
+            <tfoot>
+              <tr className="bg-gray-50 font-semibold">
+                <td colSpan={3} className="px-2 sm:px-3 py-2 text-right">Toplam</td>
+                <td className="px-2 sm:px-3 py-2 text-right">{paraFormat(toplam)}</td>
+              </tr>
+            </tfoot>
+          </table>
+        )
+
         return (
           <div key={anahtar} className="mb-4">
             <div className="flex justify-between items-center mb-1">
               <p className="font-semibold text-navy text-sm capitalize">{etiketUret(anahtar)}</p>
               <p className="text-xs text-gray-500">{grupDersleri.length} ders</p>
             </div>
-            <table className="w-full text-xs sm:text-sm border border-gray-200 rounded-lg overflow-hidden">
-              <thead>
-                <tr className="bg-navy text-white text-left">
-                  <th className="px-2 sm:px-3 py-2 font-semibold">Tarih</th>
-                  <th className="px-2 sm:px-3 py-2 font-semibold">Saat</th>
-                  <th className="px-2 sm:px-3 py-2 font-semibold">{karsiTarafBasligi}</th>
-                  <th className="px-2 sm:px-3 py-2 font-semibold text-right">Tutar</th>
-                </tr>
-              </thead>
-              <tbody>
-                {grupDersleri.map((d, i) => (
-                  <tr key={d.id} className={i % 2 ? 'bg-gray-50' : ''}>
-                    <td className="px-2 sm:px-3 py-2">{new Date(d.tarih + 'T12:00:00').toLocaleDateString('tr-TR')}</td>
-                    <td className="px-2 sm:px-3 py-2 text-gray-500">
-                      {d.baslangicSaat ? `${d.baslangicSaat.slice(0, 5)}${d.bitisSaat ? '–' + d.bitisSaat.slice(0, 5) : ''}` : '—'}
-                    </td>
-                    <td className="px-2 sm:px-3 py-2">{d.karsiTarafAdi || '—'}</td>
-                    <td className="px-2 sm:px-3 py-2 text-right font-medium">{paraFormat(d.tutar)}</td>
-                  </tr>
-                ))}
-              </tbody>
-              <tfoot>
-                <tr className="bg-gray-50 font-semibold">
-                  <td colSpan={3} className="px-2 sm:px-3 py-2 text-right">Toplam</td>
-                  <td className="px-2 sm:px-3 py-2 text-right">{paraFormat(grupToplami)}</td>
-                </tr>
-              </tfoot>
-            </table>
+            {gunGunMu ? (
+              gunGruplari.map(([tarih, gunDersleri]) => (
+                <div key={tarih} className="mb-3 last:mb-0">
+                  <p className="text-xs font-semibold text-navy bg-navy/5 rounded px-2 py-1 mb-1.5">
+                    {GUNLER[gunNumaraTarihten(tarih)]} — {new Date(tarih + 'T12:00:00').toLocaleDateString('tr-TR')}
+                  </p>
+                  {tabloYaz(gunDersleri, gunDersleri.reduce((t, d) => t + d.tutar, 0))}
+                </div>
+              ))
+            ) : (
+              tabloYaz(grupDersleri, grupToplami)
+            )}
           </div>
         )
       })}
