@@ -438,11 +438,26 @@ export default function SinavKitapciklari() {
 
       {sorular.length > 0 && seciliSoru && (
         <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5 mb-6">
+          <div className="bg-blue/5 border border-blue/20 rounded-lg p-3 mb-4 text-sm text-gray-700 space-y-1">
+            <p className="font-semibold text-navy">Nasıl kullanılır — her aday için tek tek:</p>
+            <p>1. Turuncu kutu sayfada GERÇEK bir soruyu mu gösteriyor bak. Değilse (logo, başlık, yönerge yazısı gibi bir yeri işaretlemişse) sağdan <b>"Bu Soruyu Sil"</b>e bas, sıradaki adaya geç.</p>
+            <p>2. Gerçek bir soruysa sağa <b>Ders Adı</b> (örn. Türkçe) ve <b>Soru No</b>'yu yaz.</p>
+            <p>3. Kutu soruyu tam kapsamıyorsa <b>"Kutuyu Yeniden Çiz"</b>e basıp sayfada soruyu fare ile sürükleyerek yeniden kutula.</p>
+            <p>4. <b>Sonraki →</b> ile devam et. Hepsini bitirince en alttaki <b>"Onayla ve Kaydet"</b>e bas.</p>
+          </div>
           <div className="flex items-center justify-between flex-wrap gap-3 mb-4">
             <p className="font-semibold text-gray-700">
               Soru {seciliIndex + 1} / {sorular.length} — {tamamlananSayisi} tanesi dolduruldu
             </p>
             <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={() => setSeciliIndex(0)}
+                disabled={seciliIndex === 0}
+                className="px-3 py-1.5 rounded-lg text-sm font-semibold bg-white border border-gray-200 text-gray-600 hover:bg-gray-100 disabled:opacity-40"
+              >
+                ⏮ Başa Dön
+              </button>
               <button
                 type="button"
                 onClick={() => setSeciliIndex((i) => Math.max(0, i - 1))}
