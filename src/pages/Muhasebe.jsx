@@ -489,11 +489,11 @@ export default function Muhasebe() {
       supabase.from('odemeler').select('*').eq('ogrenci_id', seciliId).order('tarih', { ascending: false }),
       // Öğretmen adını da (profiles join) çekiyoruz — döküm tablosunda "hangi
       // öğretmenden" görebilmek için.
-      supabase.from('bire_bir_atamalari').select('*, profiles:ogretmen_profile_id(ad_soyad)').eq('ogrenci_id', seciliId),
+      supabase.from('bire_bir_atamalari').select('*, profiles:ogretmen_profile_id(ad_soyad, brans)').eq('ogrenci_id', seciliId),
       // "Ek Ders" (atamaya bağlı olmayan, tek seferlik bire bir) kayıtları
       supabase
         .from('bire_bir_yoklama')
-        .select('*, profiles:ogretmen_profile_id(ad_soyad)')
+        .select('*, profiles:ogretmen_profile_id(ad_soyad, brans)')
         .eq('ogrenci_id', seciliId)
         .is('atama_id', null),
       supabase.from('kantin_alislar').select('*').eq('ogrenci_id', seciliId),
@@ -747,7 +747,10 @@ export default function Muhasebe() {
                                 <td className="px-2 py-1.5 text-gray-500">
                                   {d.baslangicSaat ? `${saatKisalt(d.baslangicSaat)}${d.bitisSaat ? '–' + saatKisalt(d.bitisSaat) : ''}` : '—'}
                                 </td>
-                                <td className="px-2 py-1.5">{d.ogretmenAdi}</td>
+                                <td className="px-2 py-1.5">
+                                  {d.ogretmenAdi}
+                                  {d.ogretmenBransi && <span className="text-xs text-gray-400"> ({d.ogretmenBransi})</span>}
+                                </td>
                                 <td className="px-2 py-1.5 text-gray-500">{d.kaynak}</td>
                                 <td className="px-2 py-1.5">{paraFormat(d.tutar)}</td>
                               </tr>

@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { useParams, Link } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../lib/AuthContext'
+import BireBirDersDokumu from '../components/BireBirDersDokumu'
 import {
   paraFormat,
   ogrenciSatirlariHesapla,
@@ -32,11 +33,11 @@ export default function Ekstre() {
       supabase.from('odemeler').select('*').eq('ogrenci_id', ogrenciId).order('tarih', { ascending: false }),
       // Öğretmen adını da (profiles join) çekiyoruz — "Bire Bir Ders Dökümü"nde
       // "hangi öğretmenden" görebilmek için.
-      supabase.from('bire_bir_atamalari').select('*, profiles:ogretmen_profile_id(ad_soyad)').eq('ogrenci_id', ogrenciId),
+      supabase.from('bire_bir_atamalari').select('*, profiles:ogretmen_profile_id(ad_soyad, brans)').eq('ogrenci_id', ogrenciId),
       // "Ek Ders" (atamaya bağlı olmayan, tek seferlik bire bir) kayıtları
       supabase
         .from('bire_bir_yoklama')
-        .select('*, profiles:ogretmen_profile_id(ad_soyad)')
+        .select('*, profiles:ogretmen_profile_id(ad_soyad, brans)')
         .eq('ogrenci_id', ogrenciId)
         .is('atama_id', null),
       supabase.from('kantin_alislar').select('*').eq('ogrenci_id', ogrenciId),
@@ -65,10 +66,6 @@ export default function Ekstre() {
   if (!ogrenci) return <p className="p-6 text-gray-400">Öğrenci bulunamadı.</p>
 
   const satirlar = ogrenciSatirlariHesapla(sozlesmeler, aylikBorclar, odemeler, seciliAy)
-
-  // Seçili aya ait, "Geldi" işaretlenmiş (gerçekleşmiş) bire bir dersler — veliye
-  // "bu ay şu tarihlerde şu dersler yapıldı" diye tek tek göstermek için.
-  const buAyBireBirDersleri = bireBirDersleri.filter((d) => d.tarih.slice(0, 7) === seciliAy)
 
   const buAyToplam = satirlar.reduce((t, x) => t + x.buAyTutar, 0)
   const gecmisBorcToplam = satirlar.reduce((t, x) => t + x.gecmisBorc, 0)
@@ -190,41 +187,13 @@ export default function Ekstre() {
               ödeme geldiğinde bu tutarlar kendiliğinden güncellenir.
             </p>
 
-            {buAyBireBirDersleri.length > 0 && (
+            {bireBirDersleri.length > 0 && (
               <div className="mt-6">
-                <p className="font-semibold text-navy mb-2">
-                  Bire Bir Ders Dökümü — {new Date(seciliAy + '-01').toLocaleDateString('tr-TR', { month: 'long', year: 'numeric' })}
-                </p>
-                <table className="w-full text-xs sm:text-sm border border-gray-200 rounded-lg overflow-hidden">
-                  <thead>
-                    <tr className="bg-navy text-white text-left">
-                      <th className="px-2 sm:px-3 py-2 font-semibold">Tarih</th>
-                      <th className="px-2 sm:px-3 py-2 font-semibold">Saat</th>
-                      <th className="px-2 sm:px-3 py-2 font-semibold">Öğretmen</th>
-                      <th className="px-2 sm:px-3 py-2 font-semibold text-right">Tutar</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {buAyBireBirDersleri.map((d, i) => (
-                      <tr key={d.id} className={i % 2 ? 'bg-gray-50' : ''}>
-                        <td className="px-2 sm:px-3 py-2">{new Date(d.tarih + 'T12:00:00').toLocaleDateString('tr-TR')}</td>
-                        <td className="px-2 sm:px-3 py-2 text-gray-500">
-                          {d.baslangicSaat ? `${d.baslangicSaat.slice(0, 5)}${d.bitisSaat ? '–' + d.bitisSaat.slice(0, 5) : ''}` : '—'}
-                        </td>
-                        <td className="px-2 sm:px-3 py-2">{d.ogretmenAdi}</td>
-                        <td className="px-2 sm:px-3 py-2 text-right font-medium">{paraFormat(d.tutar)}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                  <tfoot>
-                    <tr className="bg-gray-50 font-semibold">
-                      <td colSpan={3} className="px-2 sm:px-3 py-2 text-right">Toplam ({buAyBireBirDersleri.length} ders)</td>
-                      <td className="px-2 sm:px-3 py-2 text-right">
-                        {paraFormat(buAyBireBirDersleri.reduce((t, d) => t + d.tutar, 0))}
-                      </td>
-                    </tr>
-                  </tfoot>
-                </table>
+                <p className="font-semibold text-navy mb-2">Bire Bir Ders Dökümü</p>
+                <BireBirDersDokumu
+                  dersler={bireBirDersleri.map((d) => ({ ...d, karsiTarafAdi: d.ogretmenAdi, karsiTarafBransi: d.ogretmenBransi }))}
+                  karsiTarafBasligi="Öğretmen"
+                />
               </div>
             )}
 

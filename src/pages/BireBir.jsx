@@ -828,7 +828,10 @@ function AtamaListesi({ atamalar, ogretmenler, dersProgrami, onDegisti }) {
             ) : (
               <tr key={a.id} className="border-t border-gray-50">
                 <td className="px-4 py-2 font-medium text-gray-800">{a.ogrenci_adi}</td>
-                <td className="px-4 py-2">{a.ogretmen_adi}</td>
+                <td className="px-4 py-2">
+                  {a.ogretmen_adi}
+                  {a.ogretmen_bransi && <span className="text-xs text-gray-400"> ({a.ogretmen_bransi})</span>}
+                </td>
                 <td className="px-4 py-2">{GUNLER_KISA[a.gun]} {saatKisalt(a.baslangic_saat)}–{saatKisalt(a.bitis_saat)}</td>
                 <td className="px-4 py-2">{paraFormat(a.ders_ucreti)}</td>
                 <td className="px-4 py-2">
@@ -1022,6 +1025,7 @@ function TekSeferlikDerslerListesi({ yoklamalar, atamalar, onDegisti, sadeceOgre
           ...y,
           _ogrenciAdi: atama ? atama.ogrenci_adi : y.ogrenci_adi,
           _ogretmenAdi: atama ? atama.ogretmen_adi : y.ogretmen_adi,
+          _ogretmenBransi: atama ? atama.ogretmen_bransi : y.ogretmen_bransi,
           _ogretmenId: atama ? atama.ogretmen_profile_id : y.ogretmen_profile_id,
           _baslangic: y.baslangic_saat || atama?.baslangic_saat || null,
           _bitis: y.bitis_saat || atama?.bitis_saat || null,
@@ -1173,7 +1177,12 @@ function TekSeferlikDerslerListesi({ yoklamalar, atamalar, onDegisti, sadeceOgre
                       {y._baslangic ? `${saatKisalt(y._baslangic)}${y._bitis ? '–' + saatKisalt(y._bitis) : ''}` : '—'}
                     </td>
                     <td className="px-2 py-1.5 font-medium text-gray-800">{y._ogrenciAdi || '—'}</td>
-                    {!sadeceOgretmenId && <td className="px-2 py-1.5">{y._ogretmenAdi || '—'}</td>}
+                    {!sadeceOgretmenId && (
+                      <td className="px-2 py-1.5">
+                        {y._ogretmenAdi || '—'}
+                        {y._ogretmenBransi && <span className="text-xs text-gray-400"> ({y._ogretmenBransi})</span>}
+                      </td>
+                    )}
                     <td className="px-2 py-1.5 text-gray-500">{y._kaynak}</td>
                     {ucretGorunur && <td className="px-2 py-1.5">{paraFormat(y._tutar)}</td>}
                     <td className="px-2 py-1.5">
@@ -1285,14 +1294,14 @@ export default function BireBir() {
       isYonetici ? supabase.from('ders_programi').select('*') : Promise.resolve({ data: [] }),
       supabase
         .from('bire_bir_atamalari')
-        .select('*, ogrenciler(ad_soyad), profiles:ogretmen_profile_id(ad_soyad)')
+        .select('*, ogrenciler(ad_soyad), profiles:ogretmen_profile_id(ad_soyad, brans)')
         .order('gun')
         .order('baslangic_saat'),
       // Tek seferlik dersler için de öğrenci/öğretmen adını doğrudan sorguyla
       // birlikte çekiyoruz (atamalardaki gibi) — çünkü öğretmen rolünde tam
       // öğrenci/öğretmen listesi hiç çekilmiyor (yukarıdaki iki satır sadece
       // yönetici için), o zaman isim haritaları boş kalıp "—" görünürdü.
-      supabase.from('bire_bir_yoklama').select('*, ogrenciler(ad_soyad), profiles:ogretmen_profile_id(ad_soyad)'),
+      supabase.from('bire_bir_yoklama').select('*, ogrenciler(ad_soyad), profiles:ogretmen_profile_id(ad_soyad, brans)'),
     ]).then(([o, og, dp, a, y]) => {
       setOgrenciler(o.data || [])
       setOgretmenler(og.data || [])
@@ -1302,6 +1311,9 @@ export default function BireBir() {
           ...d,
           ogrenci_adi: d.ogrenciler?.ad_soyad,
           ogretmen_adi: d.profiles?.ad_soyad,
+          // Öğretmenin branşı — veli/yönetici hocayı isimden değil, hangi DERS
+          // için ders aldığından da tanısın diye listelerde adının yanında gösteriliyor.
+          ogretmen_bransi: d.profiles?.brans,
         }))
       )
       setYoklamalar(
@@ -1309,6 +1321,7 @@ export default function BireBir() {
           ...d,
           ogrenci_adi: d.ogrenciler?.ad_soyad,
           ogretmen_adi: d.profiles?.ad_soyad,
+          ogretmen_bransi: d.profiles?.brans,
         }))
       )
       ilkYuklemeTamamRef.current = true
