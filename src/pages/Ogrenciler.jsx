@@ -526,28 +526,36 @@ export default function Ogrenciler() {
                       {durum === 'aktif' ? 'Aktif' : 'Pasif'}
                     </span>
                   </td>
-                  <td className="px-4 py-3 text-right space-x-3 whitespace-nowrap">
-                    <button onClick={() => veliBaglamayaBasla(o)} className="text-purple-600 text-sm hover:underline">
-                      Veli Bağla
-                    </button>
-                    <button onClick={() => ogrenciHesabiBaglamayaBasla(o)} className="text-purple-600 text-sm hover:underline">
-                      Öğrenci Hesabı Bağla
-                    </button>
-                    <button onClick={() => duzenlemeyeBasla(o)} className="text-blue text-sm hover:underline">
-                      Düzenle
-                    </button>
-                    {durum === 'aktif' ? (
-                      <button onClick={() => durumDegistir(o.id, 'pasif')} className="text-gray-500 text-sm hover:underline">
-                        Pasif Yap
+                  <td className="px-4 py-3 text-right">
+                    {/* ÖNEMLİ: burada 5 ayrı işlem linki var — hepsini TEK SATIRDA
+                        (whitespace-nowrap) sıkıştırmak, dar ekranlarda/pencerelerde
+                        bazılarının (özellikle en yeni eklenen "Öğrenci Hesabı Bağla")
+                        görünür alanın dışına taşıp fark edilmeden kaybolmasına yol
+                        açıyordu. flex-wrap ile gerekirse 2. satıra sarıyoruz, hiçbir
+                        buton görünmez şekilde kesilmesin diye. */}
+                    <div className="flex flex-wrap justify-end gap-x-3 gap-y-1">
+                      <button onClick={() => veliBaglamayaBasla(o)} className="text-purple-600 text-sm hover:underline">
+                        Veli Bağla
                       </button>
-                    ) : (
-                      <button onClick={() => durumDegistir(o.id, 'aktif')} className="text-green-600 text-sm hover:underline">
-                        Aktif Yap
+                      <button onClick={() => ogrenciHesabiBaglamayaBasla(o)} className="text-purple-600 text-sm hover:underline">
+                        Öğrenci Hesabı Bağla
                       </button>
-                    )}
-                    <button onClick={() => ogrenciSil(o)} className="text-red-500 text-sm hover:underline">
-                      Sil
-                    </button>
+                      <button onClick={() => duzenlemeyeBasla(o)} className="text-blue text-sm hover:underline">
+                        Düzenle
+                      </button>
+                      {durum === 'aktif' ? (
+                        <button onClick={() => durumDegistir(o.id, 'pasif')} className="text-gray-500 text-sm hover:underline">
+                          Pasif Yap
+                        </button>
+                      ) : (
+                        <button onClick={() => durumDegistir(o.id, 'aktif')} className="text-green-600 text-sm hover:underline">
+                          Aktif Yap
+                        </button>
+                      )}
+                      <button onClick={() => ogrenciSil(o)} className="text-red-500 text-sm hover:underline">
+                        Sil
+                      </button>
+                    </div>
                   </td>
                 </tr>
               )
