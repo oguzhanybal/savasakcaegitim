@@ -72,69 +72,94 @@ export async function sayfayiGoruntuyeCevir(pdfBelge, sayfaNo, olcek = 3) {
   }
 }
 
+// Sayfa taramasından ÖNCE bir kez oluşturulup TÜM belge boyunca yeniden
+// kullanılan Tesseract işçisi (worker). ÖNCEDEN her sayfada `Tesseract.recognize()`
+// (tek seferlik kısayol) çağrılıyordu — bu hem her sayfada yeni bir worker
+// kurup yıktığı için YAVAŞTI, hem de sayfanın TAMAMINI normal bir belge gibi
+// (varsayılan otomatik sayfa/paragraf analiziyle) okumaya çalışıyordu. Çok
+// sütunlu, diyagram/tablo dolu kitapçıklarda bu analiz motoru soru
+// numaralarının çoğunu kaçırıyordu (160 soruda sadece 25-46 tespit).
+//
+// Burada worker'ı "dağınık metin" moduna (PSM 11 — sparse text: görüntüde
+// metnin belirli bir okuma sırası/paragraf yapısında OLMADIĞINI varsayar,
+// tek tek izole kelimeleri aramaya çalışır) ve SADECE rakam+nokta
+// karakterlerini tanıyacak şekilde (tessedit_char_whitelist) ayarlıyoruz.
+export async function soruNumarasiWorkerOlustur() {
+  const Tesseract = await tesseractYukle()
+  const worker = await Tesseract.createWorker('eng')
+  await worker.setParameters({
+    tessedit_pageseg_mode: '11', // PSM.SPARSE_TEXT
+    tessedit_char_whitelist: '0123456789.',
+  })
+  return worker
+}
+
+export async function soruNumarasiWorkerKapat(worker) {
+  if (worker) await worker.terminate()
+}
+
 // Bir sayfa görüntüsünde OLASI soru numarası konumlarını tahmin eder. Sadece
 // rakam+nokta desenini arıyoruz ("12.", "3" gibi) — konu/gövde metnini
 // anlamlandırmaya çalışmıyoruz, o yüzden Türkçe karakterler yanlış okunsa
 // bile bu tespiti etkilemez.
 //
-// Ham OCR çıktısında bu deseni gerçek soru numaraları DIŞINDA da eşleşen çok
-// sayıda "yanlış alarm" oluyor — özellikle sayfa altındaki SAYFA NUMARASI
-// ("1", "2"... tek başına, satırda başka hiçbir şey yokken) ve soru gövdesi
-// içindeki alt madde işaretleri ("I." "II." gibi Roma rakamlarının OCR
-// tarafından "1." "11." diye yanlış okunması, ya da metin içi "17. yüzyıl"
-// gibi ifadeler). Bu yüzden aşağıdaki filtreler uygulanıyor:
-//   1) Sayfanın en üst %6'sı (başlık/logo bandı) ve en alt %5'i (sayfa no
-//      bandı) tamamen dışarıda bırakılır — SAYFA NUMARASI bu bantta kalır.
-//   2) (KALDIRILDI) Daha önce "aday kendi satırında yalnızsa (yanında başka
-//      kelime yoksa) ele" kuralı da vardı — bu, soru numarasının hemen
-//      ardından bir DİYAGRAM/TABLO/DENKLEM geldiği (yanında aynı satırda
-//      metin OLMADIĞI) durumlarda GERÇEK soru numaralarını da yanlışlıkla
-//      eliyordu (bir kitapçıkta 160 sorudan sadece 25'i bulunabilmesinin
-//      başlıca nedeni buydu). Sayfa numarası zaten (1) numaralı üst/alt
-//      bant filtresiyle elendiği için bu ek kural artık gereksizdi, kaldırıldı.
-export async function sayfadaSoruNumaralariniTespitEt(canvas, sayfaGenisligi, sayfaYuksekligi, ilerlemeCallback) {
-  const Tesseract = await tesseractYukle()
-  const { data } = await Tesseract.recognize(canvas, 'eng', {
-    logger: (m) => {
-      if (ilerlemeCallback && m.status === 'recognizing text') {
-        ilerlemeCallback(m.progress || 0)
-      }
-    },
-  })
-  const tumKelimeler = (data.words || []).filter((w) => w.text && w.text.trim())
-
-  // Kelimeleri satırlara grupla (y merkezine göre yakınlık).
-  const YAKINLIK = 8
-  const satirlar = []
-  for (const w of tumKelimeler) {
-    const merkezY = (w.bbox.y0 + w.bbox.y1) / 2
-    let satir = satirlar.find((s) => Math.abs(s.y - merkezY) <= YAKINLIK)
-    if (!satir) {
-      satir = { y: merkezY, kelimeler: [] }
-      satirlar.push(satir)
-    }
-    satir.kelimeler.push(w)
-  }
-
+// ÖNEMLİ DEĞİŞİKLİK: OCR artık sayfanın TAMAMINA değil, her sütunun SADECE
+// SOL KENARINDAKİ dar bir şeride uygulanıyor. Soru numaraları zaten HER ZAMAN
+// sütunun soluna yaslanır (girintiliAdaylariEle filtresi de bu varsayıma
+// dayanıyor) — bu yüzden Tesseract'ın önüne artık diyagram/tablo/uzun
+// paragraf metni GELMİYOR, sadece izole rakamlar geliyor. Bu hem OCR'ın
+// kafasını karıştıran görsel karmaşıklığı ortadan kaldırıyor (bir soru
+// numarasının hemen ardından bir DİYAGRAM/TABLO/DENKLEM geldiği, yanında
+// aynı satırda metin OLMADIĞI durumları da artık sorunsuz okuyor) hem de
+// "17. yüzyıl" gibi gövde metni içi sahte eşleşmeleri baştan imkansız
+// kılıyor (o metin artık şeridin dışında, hiç taranmıyor).
+//
+// Sayfa NUMARASI (üst/alt bantta) hâlâ ustSinir/altSinir ile ayrıca elenir;
+// soru gövdesindeki girintili alt madde işaretleri (Roma rakamları vb.) ise
+// çağıran taraftaki girintiliAdaylariEle ile elenir.
+export async function sayfadaSoruNumaralariniTespitEt(worker, canvas, sayfaGenisligi, sayfaYuksekligi, ilerlemeCallback) {
+  const ortaX = sayfaGenisligi / 2
   const ustSinir = sayfaYuksekligi * 0.06
   const altSinir = sayfaYuksekligi * 0.95
 
+  // Şerit genişliği: yarı sütun genişliğinin %20'si. Soru numaraları normal
+  // sayfa kenar boşluğunun (%5-10) hemen bitişiğinde başlar; %20 payı, sayfa
+  // kenar boşluğu biraz farklı kitapçıklarda değişse bile numaraları
+  // kırpmadan yakalamak için yeterli güvenlik marjı bırakıyor.
+  const seritGenisligiOrani = 0.2
+  const seritler = [
+    { x0: 0, x1: ortaX * seritGenisligiOrani },
+    { x0: ortaX, x1: ortaX + ortaX * seritGenisligiOrani },
+  ]
+
   const adaylar = []
-  for (const satir of satirlar) {
-    const siraliKelimeler = [...satir.kelimeler].sort((a, b) => a.bbox.x0 - b.bbox.x0)
-    const ilk = siraliKelimeler[0]
-    if (!ilk) continue
-    const metin = ilk.text.trim()
-    if (!/^\d{1,3}\.?$/.test(metin)) continue
-    if (ilk.confidence < 30) continue
-    if (ilk.bbox.y0 < ustSinir || ilk.bbox.y0 > altSinir) continue
-    adaylar.push({
-      metin,
-      x: ilk.bbox.x0,
-      y: ilk.bbox.y0,
-      genislik: ilk.bbox.x1 - ilk.bbox.x0,
-      yukseklik: ilk.bbox.y1 - ilk.bbox.y0,
-    })
+  for (let i = 0; i < seritler.length; i++) {
+    const serit = seritler[i]
+    const seritGenislik = Math.max(1, Math.round(serit.x1 - serit.x0))
+    const seritCanvas = document.createElement('canvas')
+    seritCanvas.width = seritGenislik
+    seritCanvas.height = sayfaYuksekligi
+    const ctx = seritCanvas.getContext('2d')
+    ctx.drawImage(canvas, serit.x0, 0, seritGenislik, sayfaYuksekligi, 0, 0, seritGenislik, sayfaYuksekligi)
+
+    const { data } = await worker.recognize(seritCanvas)
+    if (ilerlemeCallback) ilerlemeCallback((i + 1) / seritler.length)
+
+    const kelimeler = (data.words || []).filter((w) => w.text && w.text.trim())
+    for (const w of kelimeler) {
+      const metin = w.text.trim()
+      if (!/^\d{1,3}\.?$/.test(metin)) continue
+      if (w.confidence < 30) continue
+      const gercekY = w.bbox.y0
+      if (gercekY < ustSinir || gercekY > altSinir) continue
+      adaylar.push({
+        metin,
+        x: serit.x0 + w.bbox.x0,
+        y: gercekY,
+        genislik: w.bbox.x1 - w.bbox.x0,
+        yukseklik: w.bbox.y1 - w.bbox.y0,
+      })
+    }
   }
   return adaylar
 }
