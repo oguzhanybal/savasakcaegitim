@@ -17,6 +17,7 @@ import BireBir from './pages/BireBir'
 import Ekstre from './pages/Ekstre'
 import OgretmenEkstre from './pages/OgretmenEkstre'
 import TopluEkstre from './pages/TopluEkstre'
+import GelirRaporu from './pages/GelirRaporu'
 import KullaniciOlustur from './pages/KullaniciOlustur'
 import Kantin from './pages/Kantin'
 import SinavKitapciklari from './pages/SinavKitapciklari'
@@ -167,6 +168,14 @@ function AnaUygulama() {
             element={
               <Korumali izinliRoller={['yonetici']}>
                 <TopluEkstre />
+              </Korumali>
+            }
+          />
+          <Route
+            path="gelir-raporu"
+            element={
+              <Korumali izinliRoller={['yonetici']}>
+                <GelirRaporu />
               </Korumali>
             }
           />
