@@ -5,6 +5,8 @@ import {
   pdfBelgesiAc,
   sayfayiGoruntuyeCevir,
   sayfadaSoruNumaralariniTespitEt,
+  soruNumarasiWorkerOlustur,
+  soruNumarasiWorkerKapat,
   girintiliAdaylariEle,
   sutunSiralaTahmini,
   ardisikDiziyeGoreFiltrele,
@@ -207,22 +209,30 @@ export default function SinavKitapciklari() {
       // kontrolünü SAYFA BAZINDA değil, TÜM belge üzerinde yapmamız gerekiyor.
       const sayfaVerileri = []
       const tumAdaylarSirali = []
-      for (let s = 1; s <= sayfaSayisi; s++) {
-        setAnalizDurumu(`Sayfa ${s}/${sayfaSayisi} görüntüye çevriliyor...`)
-        // olcek: 2 yerine 3 kullanılıyor — küçük puntolu/çok sütunlu (AYT
-        // matematik gibi) kitapçıklarda soru numaraları çok küçük kaldığı
-        // için Tesseract çoğunu okuyamıyordu (160 sorudan sadece 25'i
-        // bulunabilmişti). Daha yüksek çözünürlük tanıma oranını artırıyor.
-        const { dataUrl, genislik, yukseklik, canvas } = await sayfayiGoruntuyeCevir(belge, s, 3)
-        goruntuler.push({ sayfaNo: s, dataUrl, genislik, yukseklik })
-        setAnalizDurumu(`Sayfa ${s}/${sayfaSayisi} taranıyor (OCR)...`)
-        const adaylarHam = await sayfadaSoruNumaralariniTespitEt(canvas, genislik, yukseklik, (ilerleme) => {
-          setAnalizDurumu(`Sayfa ${s}/${sayfaSayisi} taranıyor (OCR) — %${Math.round(ilerleme * 100)}`)
-        })
-        const adaylar = girintiliAdaylariEle(adaylarHam, genislik)
-        const sutunlu = sutunSiralaTahmini(adaylar, genislik).map((a) => ({ ...a, sayfa_no: s }))
-        sayfaVerileri.push({ sayfaNo: s, genislik, yukseklik, sutunluAdaylar: sutunlu })
-        tumAdaylarSirali.push(...sutunlu)
+      // OCR işçisi (worker) TÜM belge için BİR KEZ kuruluyor ve her sayfada
+      // yeniden kullanılıyor (hem hızlı hem de sayfa başına ayarları tekrar
+      // kurma derdi yok) — bkz. kitapcikOcr.js açıklaması.
+      const ocrWorker = await soruNumarasiWorkerOlustur()
+      try {
+        for (let s = 1; s <= sayfaSayisi; s++) {
+          setAnalizDurumu(`Sayfa ${s}/${sayfaSayisi} görüntüye çevriliyor...`)
+          // olcek: 2 yerine 3 kullanılıyor — küçük puntolu/çok sütunlu (AYT
+          // matematik gibi) kitapçıklarda soru numaraları çok küçük kaldığı
+          // için Tesseract çoğunu okuyamıyordu (160 sorudan sadece 25'i
+          // bulunabilmişti). Daha yüksek çözünürlük tanıma oranını artırıyor.
+          const { dataUrl, genislik, yukseklik, canvas } = await sayfayiGoruntuyeCevir(belge, s, 3)
+          goruntuler.push({ sayfaNo: s, dataUrl, genislik, yukseklik })
+          setAnalizDurumu(`Sayfa ${s}/${sayfaSayisi} taranıyor (OCR)...`)
+          const adaylarHam = await sayfadaSoruNumaralariniTespitEt(ocrWorker, canvas, genislik, yukseklik, (ilerleme) => {
+            setAnalizDurumu(`Sayfa ${s}/${sayfaSayisi} taranıyor (OCR) — %${Math.round(ilerleme * 100)}`)
+          })
+          const adaylar = girintiliAdaylariEle(adaylarHam, genislik)
+          const sutunlu = sutunSiralaTahmini(adaylar, genislik).map((a) => ({ ...a, sayfa_no: s }))
+          sayfaVerileri.push({ sayfaNo: s, genislik, yukseklik, sutunluAdaylar: sutunlu })
+          tumAdaylarSirali.push(...sutunlu)
+        }
+      } finally {
+        await soruNumarasiWorkerKapat(ocrWorker)
       }
 
       // Sadece yeterince UZUN, artan bir dizinin parçası olan adaylar gerçek
