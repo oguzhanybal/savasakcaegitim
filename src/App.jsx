@@ -21,6 +21,7 @@ import KullaniciOlustur from './pages/KullaniciOlustur'
 import Kantin from './pages/Kantin'
 import SinavKitapciklari from './pages/SinavKitapciklari'
 import SinavYukle from './pages/SinavYukle'
+import Sozlesme from './pages/Sozlesme'
 
 function Yukleniyor() {
   return (
@@ -90,6 +91,14 @@ function AnaUygulama() {
           element={
             <Korumali izinliRoller={['yonetici', 'ogretmen']}>
               <OgretmenEkstre />
+            </Korumali>
+          }
+        />
+        <Route
+          path="/sozlesme/:sozlesmeId"
+          element={
+            <Korumali izinliRoller={['yonetici', 'veli']}>
+              <Sozlesme />
             </Korumali>
           }
         />
