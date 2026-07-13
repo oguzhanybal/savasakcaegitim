@@ -11,9 +11,14 @@ function paraFormat(n) {
 function MakbuzGovdesi({ nusha, odemeler, ogrenciAdi, tarihMetni, toplam }) {
   return (
     <div className="border border-gray-200 rounded-xl overflow-hidden">
-      <div className="bg-navy text-white text-center py-4">
-        <p className="font-bold text-lg tracking-wide">SAVAŞ AKÇA EĞİTİM</p>
-        <p className="text-sm text-white/80 mt-1">TAHSİLAT MAKBUZU</p>
+      <div className="bg-navy text-white py-4 px-5 flex items-center gap-3">
+        <div className="bg-white rounded-lg p-1 shrink-0">
+          <img src="/logo.png" alt="Savaş Akça Eğitim" className="w-10 h-10 object-contain" />
+        </div>
+        <div>
+          <p className="font-bold text-lg tracking-wide">SAVAŞ AKÇA EĞİTİM</p>
+          <p className="text-sm text-white/80 mt-0.5">TAHSİLAT MAKBUZU</p>
+        </div>
       </div>
       <div className="p-5">
         <p className="text-xs text-gray-400 mb-3">Nüsha: {nusha}</p>

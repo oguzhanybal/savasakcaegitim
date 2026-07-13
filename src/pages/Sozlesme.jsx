@@ -118,9 +118,14 @@ export default function Sozlesme() {
         {/* SAYFA 1 — Taraf bilgileri + mali hükümler */}
         <div className="sozlesme-sayfa bg-white rounded-2xl print:rounded-none shadow-sm print:shadow-none border border-gray-100 print:border-0 p-8 mb-6 print:mb-0">
           <div className="flex justify-between items-start mb-6">
-            <div>
-              <h1 className="text-2xl font-bold text-navy tracking-wide">SAVAŞ AKÇA EĞİTİM</h1>
-              <p className="text-lg font-semibold text-gray-700 mt-1">Öğrenci Sözleşmesi</p>
+            <div className="flex items-center gap-3">
+              <div className="bg-white border border-gray-100 rounded-xl p-1.5 shrink-0">
+                <img src="/logo.png" alt="Savaş Akça Eğitim" className="w-14 h-14 object-contain" />
+              </div>
+              <div>
+                <h1 className="text-2xl font-bold text-navy tracking-wide">SAVAŞ AKÇA EĞİTİM</h1>
+                <p className="text-lg font-semibold text-gray-700 mt-1">Öğrenci Sözleşmesi</p>
+              </div>
             </div>
             <div className="text-right text-sm text-gray-500">
               <p>Sözleşme Tarihi: <span className="font-medium text-gray-800">{sozlesmeTarihiMetni}</span></p>

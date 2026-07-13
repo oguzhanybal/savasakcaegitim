@@ -126,9 +126,14 @@ export default function Ekstre() {
         </div>
 
         <div className="bg-white rounded-2xl shadow-sm overflow-hidden border border-gray-100">
-          <div className="bg-navy text-white text-center py-5">
-            <p className="font-bold text-xl tracking-wide">SAVAŞ AKÇA EĞİTİM</p>
-            <p className="text-sm text-white/80 mt-1">AYLIK ÖĞRENCİ EKSTRESİ</p>
+          <div className="bg-navy text-white py-5 px-6 flex items-center gap-4">
+            <div className="bg-white rounded-xl p-1.5 shrink-0">
+              <img src="/logo.png" alt="Savaş Akça Eğitim" className="w-12 h-12 object-contain" />
+            </div>
+            <div>
+              <p className="font-bold text-xl tracking-wide">SAVAŞ AKÇA EĞİTİM</p>
+              <p className="text-sm text-white/80 mt-1">AYLIK ÖĞRENCİ EKSTRESİ</p>
+            </div>
           </div>
 
           <div className="p-6">
