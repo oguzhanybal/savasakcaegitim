@@ -2,7 +2,12 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../lib/AuthContext'
-import { paraFormat, bireBirHatirlaticiLinkOlustur } from '../lib/ekstreHesap'
+import {
+  paraFormat,
+  bireBirGunlukOzetMesajiOlustur,
+  bireBirHaftalikOzetMesajiOlustur,
+  bireBirOzetLinkOlustur,
+} from '../lib/ekstreHesap'
 import MusaitlikTablosu from '../components/MusaitlikTablosu'
 
 const GUNLER = ['', 'Pazartesi', 'Salı', 'Çarşamba', 'Perşembe', 'Cuma', 'Cumartesi', 'Pazar']
@@ -1277,57 +1282,108 @@ function TekSeferlikDerslerListesi({ yoklamalar, atamalar, onDegisti, sadeceOgre
 }
 
 // ============================================================================
-// DERS HATIRLATMASI GÖNDER — seçili bir gün (varsayılan bugün) için o günün
-// TÜM bire bir derslerini (haftalık atamalar + tek seferlik dersler) tek
-// listede gösterir; her ders için öğrenciye, anneye ya da babaya WhatsApp
-// üzerinden "bugün şu saatte dersiniz var" hatırlatması gönderilebilir.
+// DERS HATIRLATMASI GÖNDER — iki mod:
+//  - Günlük: seçili bir günün (varsayılan bugün) TÜM bire bir derslerini
+//    (haftalık atamalar + tek seferlik dersler) ÖĞRENCİ BAŞINA TEK mesajda
+//    toplar (aynı öğrencinin aynı gün birden fazla dersi olabiliyor — bkz.
+//    örnek: bir öğrenci günde 4-5 farklı öğretmenle ders alabiliyor, bunları
+//    tek tek değil TEK mesajla göndermek için).
+//  - Haftalık: öğrencinin her hafta tekrar eden (aktif) bire bir ders
+//    programının TAMAMINI (gün + saat) tek mesajda özetler.
+// Her iki modda da öğrenciye, anneye ya da babaya WhatsApp ile gönderilebilir.
 // Öğretmen sadece kendi derslerini görür (sadeceOgretmenId ile filtrelenir).
 // ============================================================================
-function BugununDersleriPaneli({ atamalar, yoklamalar, sadeceOgretmenId }) {
+function DersHatirlatmaPaneli({ atamalar, yoklamalar, sadeceOgretmenId }) {
+  const [mod, setMod] = useState('gun') // 'gun' | 'hafta'
   const [tarih, setTarih] = useState(() => yerelBugunTarihi())
 
-  const gun = gunNumaraTarihten(tarih)
   const bugun = yerelBugunTarihi()
   const yarin = gunEkle(bugun, 1)
+  const gun = gunNumaraTarihten(tarih)
 
-  const dersler = useMemo(() => {
-    const haftalik = atamalar
+  // GÜNLÜK MOD — seçili tarih için öğrenci bazında gruplanmış ders listesi.
+  const gunlukOgrenciler = useMemo(() => {
+    const map = new Map() // ogrenci_id -> { ogrenciAdi, ogrenciTelefon, anneTelefon, babaTelefon, dersler: [] }
+
+    const ekle = (kayit) => {
+      const id = kayit.ogrenci_id
+      if (!id) return
+      if (!map.has(id)) {
+        map.set(id, {
+          ogrenciAdi: kayit.ogrenci_adi || '—',
+          ogrenciTelefon: kayit.ogrenci_telefon,
+          anneTelefon: kayit.ogrenci_anne_telefon,
+          babaTelefon: kayit.ogrenci_baba_telefon,
+          dersler: [],
+        })
+      }
+      map.get(id).dersler.push({
+        baslangicSaat: saatKisalt(kayit.baslangic_saat),
+        bitisSaat: saatKisalt(kayit.bitis_saat),
+        ogretmenAdi: kayit.ogretmen_adi,
+      })
+    }
+
+    atamalar
       .filter((a) => a.aktif && a.gun === gun)
       .filter((a) => !sadeceOgretmenId || a.ogretmen_profile_id === sadeceOgretmenId)
-      .map((a) => ({
-        key: `atama-${a.id}`,
-        ogrenciAdi: a.ogrenci_adi || '—',
-        ogretmenAdi: a.ogretmen_adi || '—',
-        baslangicSaat: saatKisalt(a.baslangic_saat),
-        bitisSaat: saatKisalt(a.bitis_saat),
-        ogrenciTelefon: a.ogrenci_telefon,
-        anneTelefon: a.ogrenci_anne_telefon,
-        babaTelefon: a.ogrenci_baba_telefon,
-        tur: 'Haftalık',
-      }))
+      .forEach(ekle)
 
     // Tek seferlik dersler zaten belirli bir tarihe kayıtlı olduğu için haftanın
     // gününe değil, doğrudan seçili tarihe göre süzülür. "Gelmedi" işaretlenmiş
     // (iptal olmuş) dersler hatırlatma listesinde gösterilmez.
-    const tekSeferlik = yoklamalar
+    yoklamalar
       .filter((y) => !y.atama_id && y.tarih === tarih && y.durum !== 'gelmedi')
       .filter((y) => !sadeceOgretmenId || y.ogretmen_profile_id === sadeceOgretmenId)
-      .map((y) => ({
-        key: `yoklama-${y.id}`,
-        ogrenciAdi: y.ogrenci_adi || '—',
-        ogretmenAdi: y.ogretmen_adi || '—',
-        baslangicSaat: saatKisalt(y.baslangic_saat),
-        bitisSaat: saatKisalt(y.bitis_saat),
-        ogrenciTelefon: y.ogrenci_telefon,
-        anneTelefon: y.ogrenci_anne_telefon,
-        babaTelefon: y.ogrenci_baba_telefon,
-        tur: 'Tek Seferlik',
-      }))
+      .forEach(ekle)
 
-    return [...haftalik, ...tekSeferlik].sort((a, b) =>
-      (a.baslangicSaat || '').localeCompare(b.baslangicSaat || '')
-    )
+    return [...map.values()]
+      .map((o) => ({
+        ...o,
+        dersler: [...o.dersler].sort((a, b) => (a.baslangicSaat || '').localeCompare(b.baslangicSaat || '')),
+      }))
+      .sort((a, b) => a.ogrenciAdi.localeCompare(b.ogrenciAdi, 'tr'))
   }, [atamalar, yoklamalar, gun, tarih, sadeceOgretmenId])
+
+  // HAFTALIK MOD — her hafta tekrar eden (aktif) atamalar, öğrenci bazında,
+  // haftanın gününe göre sıralı.
+  const haftalikOgrenciler = useMemo(() => {
+    const map = new Map()
+    atamalar
+      .filter((a) => a.aktif)
+      .filter((a) => !sadeceOgretmenId || a.ogretmen_profile_id === sadeceOgretmenId)
+      .forEach((a) => {
+        const id = a.ogrenci_id
+        if (!id) return
+        if (!map.has(id)) {
+          map.set(id, {
+            ogrenciAdi: a.ogrenci_adi || '—',
+            ogrenciTelefon: a.ogrenci_telefon,
+            anneTelefon: a.ogrenci_anne_telefon,
+            babaTelefon: a.ogrenci_baba_telefon,
+            dersler: [],
+          })
+        }
+        map.get(id).dersler.push({
+          gun: a.gun,
+          gunAdi: GUNLER[a.gun],
+          baslangicSaat: saatKisalt(a.baslangic_saat),
+          bitisSaat: saatKisalt(a.bitis_saat),
+          ogretmenAdi: a.ogretmen_adi,
+        })
+      })
+
+    return [...map.values()]
+      .map((o) => ({
+        ...o,
+        dersler: [...o.dersler].sort(
+          (x, y) => x.gun - y.gun || (x.baslangicSaat || '').localeCompare(y.baslangicSaat || '')
+        ),
+      }))
+      .sort((a, b) => a.ogrenciAdi.localeCompare(b.ogrenciAdi, 'tr'))
+  }, [atamalar, sadeceOgretmenId])
+
+  const ogrenciler = mod === 'gun' ? gunlukOgrenciler : haftalikOgrenciler
 
   const tarihMetni = new Date(tarih + 'T12:00:00').toLocaleDateString('tr-TR', {
     weekday: 'long',
@@ -1342,62 +1398,96 @@ function BugununDersleriPaneli({ atamalar, yoklamalar, sadeceOgretmenId }) {
         <div>
           <h2 className="font-semibold text-gray-700">Ders Hatırlatması Gönder</h2>
           <p className="text-xs text-gray-400 mt-0.5">
-            Seçili günün bire bir derslerini WhatsApp ile öğrenciye, anneye ya da babaya hatırlatabilirsiniz.
+            Bir öğrencinin o günkü ya da haftalık TÜM derslerini TEK bir WhatsApp mesajında öğrenciye, anneye ya
+            da babaya gönderebilirsiniz.
           </p>
         </div>
         <div className="flex items-center gap-2 flex-wrap">
-          <button
-            type="button"
-            onClick={() => setTarih(bugun)}
-            className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
-              tarih === bugun ? 'bg-navy text-white' : 'bg-white border border-gray-200 text-gray-600 hover:bg-gray-100'
-            }`}
-          >
-            Bugün
-          </button>
-          <button
-            type="button"
-            onClick={() => setTarih(yarin)}
-            className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
-              tarih === yarin ? 'bg-navy text-white' : 'bg-white border border-gray-200 text-gray-600 hover:bg-gray-100'
-            }`}
-          >
-            Yarın
-          </button>
-          <input
-            type="date"
-            value={tarih}
-            onChange={(e) => setTarih(e.target.value)}
-            className="px-3 py-1.5 border border-gray-200 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue"
-          />
+          <div className="flex bg-white border border-gray-200 rounded-lg overflow-hidden text-sm shrink-0">
+            <button
+              type="button"
+              onClick={() => setMod('gun')}
+              className={`px-3 py-1.5 font-medium transition-colors ${
+                mod === 'gun' ? 'bg-navy text-white' : 'text-gray-600 hover:bg-gray-50'
+              }`}
+            >
+              Günlük
+            </button>
+            <button
+              type="button"
+              onClick={() => setMod('hafta')}
+              className={`px-3 py-1.5 font-medium transition-colors ${
+                mod === 'hafta' ? 'bg-navy text-white' : 'text-gray-600 hover:bg-gray-50'
+              }`}
+            >
+              Haftalık
+            </button>
+          </div>
+          {mod === 'gun' && (
+            <>
+              <button
+                type="button"
+                onClick={() => setTarih(bugun)}
+                className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+                  tarih === bugun ? 'bg-navy text-white' : 'bg-white border border-gray-200 text-gray-600 hover:bg-gray-100'
+                }`}
+              >
+                Bugün
+              </button>
+              <button
+                type="button"
+                onClick={() => setTarih(yarin)}
+                className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+                  tarih === yarin ? 'bg-navy text-white' : 'bg-white border border-gray-200 text-gray-600 hover:bg-gray-100'
+                }`}
+              >
+                Yarın
+              </button>
+              <input
+                type="date"
+                value={tarih}
+                onChange={(e) => setTarih(e.target.value)}
+                className="px-3 py-1.5 border border-gray-200 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue"
+              />
+            </>
+          )}
         </div>
       </div>
-      <p className="px-4 pt-3 text-xs text-gray-400 capitalize">{tarihMetni}</p>
+      {mod === 'gun' ? (
+        <p className="px-4 pt-3 text-xs text-gray-400 capitalize">{tarihMetni}</p>
+      ) : (
+        <p className="px-4 pt-3 text-xs text-gray-400">
+          Her hafta tekrar eden haftalık bire bir dersler (tek seferlik dersler bu görünüme dahil değildir).
+        </p>
+      )}
       <div className="divide-y divide-gray-50">
-        {dersler.length === 0 && (
-          <p className="px-4 py-6 text-center text-gray-400 text-sm">Bu gün için bire bir dersi bulunamadı.</p>
+        {ogrenciler.length === 0 && (
+          <p className="px-4 py-6 text-center text-gray-400 text-sm">
+            {mod === 'gun' ? 'Bu gün için bire bir dersi bulunamadı.' : 'Haftalık tekrar eden bire bir dersi bulunamadı.'}
+          </p>
         )}
-        {dersler.map((d) => {
-          const mesajBilgisi = {
-            ogrenciAdi: d.ogrenciAdi,
-            tarihStr: tarih,
-            baslangicSaat: d.baslangicSaat,
-            bitisSaat: d.bitisSaat,
-            ogretmenAdi: d.ogretmenAdi,
-          }
-          const ogrenciLink = bireBirHatirlaticiLinkOlustur(d.ogrenciTelefon, mesajBilgisi)
-          const anneLink = bireBirHatirlaticiLinkOlustur(d.anneTelefon, mesajBilgisi)
-          const babaLink = bireBirHatirlaticiLinkOlustur(d.babaTelefon, mesajBilgisi)
+        {ogrenciler.map((o) => {
+          const mesaj =
+            mod === 'gun'
+              ? bireBirGunlukOzetMesajiOlustur({ ogrenciAdi: o.ogrenciAdi, tarihStr: tarih, dersler: o.dersler })
+              : bireBirHaftalikOzetMesajiOlustur({ ogrenciAdi: o.ogrenciAdi, dersler: o.dersler })
+          const ogrenciLink = bireBirOzetLinkOlustur(o.ogrenciTelefon, mesaj)
+          const anneLink = bireBirOzetLinkOlustur(o.anneTelefon, mesaj)
+          const babaLink = bireBirOzetLinkOlustur(o.babaTelefon, mesaj)
           return (
-            <div key={d.key} className="px-4 py-3 flex items-center justify-between flex-wrap gap-2">
+            <div key={o.ogrenciAdi + (o.ogrenciTelefon || '')} className="px-4 py-3 flex items-center justify-between flex-wrap gap-2">
               <div>
-                <p className="font-medium text-gray-800">
-                  {d.ogrenciAdi}{' '}
-                  <span className="font-normal text-gray-400">
-                    — {d.baslangicSaat}{d.bitisSaat ? `–${d.bitisSaat}` : ''}
-                  </span>
+                <p className="font-medium text-gray-800">{o.ogrenciAdi}</p>
+                <p className="text-xs text-gray-400">
+                  {o.dersler.map((d, i) => (
+                    <span key={i}>
+                      {mod === 'hafta' ? `${d.gunAdi} ` : ''}
+                      {d.baslangicSaat}
+                      {d.bitisSaat ? `–${d.bitisSaat}` : ''}
+                      {i < o.dersler.length - 1 ? ' · ' : ''}
+                    </span>
+                  ))}
                 </p>
-                <p className="text-xs text-gray-400">{d.ogretmenAdi} · {d.tur}</p>
               </div>
               <div className="flex items-center gap-3 flex-wrap text-sm">
                 {ogrenciLink ? (
@@ -1536,7 +1626,7 @@ export default function BireBir() {
     <div>
       <h1 className="text-2xl font-bold text-navy mb-6">{isYonetici ? 'Bire Bir Dersler' : 'Bire Bir Derslerim'}</h1>
 
-      <BugununDersleriPaneli
+      <DersHatirlatmaPaneli
         atamalar={atamalar}
         yoklamalar={yoklamalar}
         sadeceOgretmenId={isYonetici ? null : profile?.id}
