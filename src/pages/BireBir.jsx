@@ -268,7 +268,7 @@ function BireBirDersEkleForm({ ogrenciler, ogretmenler, atamalar, dersProgrami, 
           y.ogretmen_profile_id === ogretmenIdParam &&
           y.tutar != null
       )
-      .sort((a, b) => (a.tarih < b.tarih ? 1 : -1))
+      .sort((a, b) => (a.tarih === b.tarih ? 0 : a.tarih < b.tarih ? 1 : -1))
     if (gecmisTekSeferlikler.length > 0) {
       setDersUcreti(String(gecmisTekSeferlikler[0].tutar))
     }
@@ -868,7 +868,7 @@ function YoklamaSatiri({ atama, yoklamalar, onDegisti, ucretGorunur }) {
   const mevcutKayit = yoklamalar.find((y) => y.atama_id === atama.id && y.tarih === tarih)
   const gecmis = yoklamalar
     .filter((y) => y.atama_id === atama.id)
-    .sort((a, b) => (a.tarih < b.tarih ? 1 : -1))
+    .sort((a, b) => (a.tarih === b.tarih ? 0 : a.tarih < b.tarih ? 1 : -1))
     .slice(0, 5)
 
   async function isaretle(durum) {
@@ -1034,7 +1034,17 @@ function TekSeferlikDerslerListesi({ yoklamalar, atamalar, onDegisti, sadeceOgre
         }
       })
       .filter((y) => !sadeceOgretmenId || y._ogretmenId === sadeceOgretmenId)
-      .sort((a, b) => (a.tarih < b.tarih ? 1 : -1))
+      // Tarihe göre YENİDEN ESKİYE sıralanır; AYNI GÜNDEKİ dersler ise saat
+      // bilgisiyle BAŞTAN SONA (erken saat önce) sıralanır — önceki halde eşit
+      // tarihli satırlarda karşılaştırıcı her zaman -1 döndürdüğü için (0 hiç
+      // dönmediği için) aynı güne ait dersler rastgele/ters görünebiliyordu.
+      .sort((a, b) => {
+        if (a.tarih !== b.tarih) return a.tarih < b.tarih ? 1 : -1
+        const saatA = a._baslangic || ''
+        const saatB = b._baslangic || ''
+        if (saatA === saatB) return 0
+        return saatA < saatB ? -1 : 1
+      })
   }, [yoklamalar, atamaMap, sadeceOgretmenId])
 
   // İçinde bulunduğumuz haftanın/ayın anahtarını döner — AMA sadece o dönemde
