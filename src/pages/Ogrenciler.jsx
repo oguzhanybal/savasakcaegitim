@@ -175,6 +175,7 @@ function KayitFormuAlanlari({ form, alanGuncelle, boyut = 'normal' }) {
 export default function Ogrenciler() {
   const [ogrenciler, setOgrenciler] = useState([])
   const [veliler, setVeliler] = useState([])
+  const [ogrenciHesaplari, setOgrenciHesaplari] = useState([])
   const [loading, setLoading] = useState(true)
   const [yeniForm, setYeniForm] = useState(BOS_FORM)
   const [ekleniyor, setEkleniyor] = useState(false)
@@ -183,15 +184,25 @@ export default function Ogrenciler() {
   const [duzenleForm, setDuzenleForm] = useState(BOS_FORM)
   const [veliBaglanan, setVeliBaglanan] = useState(null)
   const [seciliVeli, setSeciliVeli] = useState('')
+  const [ogrenciHesabiBaglanan, setOgrenciHesabiBaglanan] = useState(null)
+  const [seciliOgrenciHesabi, setSeciliOgrenciHesabi] = useState('')
 
   async function yukle() {
     setLoading(true)
-    const [o, v] = await Promise.all([
-      supabase.from('ogrenciler').select('*, veli:veli_profile_id(ad_soyad)').order('ad_soyad'),
+    const [o, v, oh] = await Promise.all([
+      supabase
+        .from('ogrenciler')
+        .select('*, veli:veli_profile_id(ad_soyad), ogrenci_hesabi:ogrenci_profile_id(ad_soyad)')
+        .order('ad_soyad'),
       supabase.from('profiles').select('*').eq('rol', 'veli').order('ad_soyad'),
+      // "Öğrenci" rolüyle giriş yapan hesaplar — bir öğrenci kaydına bağlanmazsa
+      // (ogrenci_profile_id boş kalırsa) o hesap giriş yapabilir ama kendi
+      // bilgilerinden hiçbirini göremez, bu yüzden bağlama arayüzü şart.
+      supabase.from('profiles').select('*').eq('rol', 'ogrenci').order('ad_soyad'),
     ])
     setOgrenciler(o.data || [])
     setVeliler(v.data || [])
+    setOgrenciHesaplari(oh.data || [])
     setLoading(false)
   }
 
@@ -307,6 +318,24 @@ export default function Ogrenciler() {
     }
   }
 
+  function ogrenciHesabiBaglamayaBasla(o) {
+    setOgrenciHesabiBaglanan(o.id)
+    setSeciliOgrenciHesabi(o.ogrenci_profile_id || '')
+  }
+
+  async function ogrenciHesabiBaglamayiKaydet(ogrenciId) {
+    const { error } = await supabase
+      .from('ogrenciler')
+      .update({ ogrenci_profile_id: seciliOgrenciHesabi || null })
+      .eq('id', ogrenciId)
+    if (!error) {
+      setOgrenciHesabiBaglanan(null)
+      yukle()
+    } else {
+      alert('Hata: ' + error.message)
+    }
+  }
+
   const gosterilecekler = ogrenciler.filter((o) => {
     if (filtre === 'tumu') return true
     return (o.durum || 'aktif') === filtre
@@ -377,26 +406,28 @@ export default function Ogrenciler() {
               <th className="px-4 py-3 font-semibold">Telefon</th>
               <th className="px-4 py-3 font-semibold">Sınıfı / Alanı</th>
               <th className="px-4 py-3 font-semibold">Veli</th>
+              <th className="px-4 py-3 font-semibold">Öğrenci Hesabı</th>
               <th className="px-4 py-3 font-semibold">Durum</th>
               <th className="px-4 py-3 font-semibold text-right">İşlemler</th>
             </tr>
           </thead>
           <tbody>
             {loading && (
-              <tr><td colSpan={6} className="px-4 py-6 text-center text-gray-400">Yükleniyor...</td></tr>
+              <tr><td colSpan={7} className="px-4 py-6 text-center text-gray-400">Yükleniyor...</td></tr>
             )}
             {!loading && gosterilecekler.length === 0 && (
-              <tr><td colSpan={6} className="px-4 py-6 text-center text-gray-400">Bu filtrede öğrenci bulunamadı.</td></tr>
+              <tr><td colSpan={7} className="px-4 py-6 text-center text-gray-400">Bu filtrede öğrenci bulunamadı.</td></tr>
             )}
             {gosterilecekler.map((o, i) => {
               const durum = o.durum || 'aktif'
               const duzenleniyor = duzenlenenId === o.id
               const veliBagli = veliBaglanan === o.id
+              const ogrenciHesabiBagli = ogrenciHesabiBaglanan === o.id
 
               if (duzenleniyor) {
                 return (
                   <tr key={o.id} className="bg-blue-50">
-                    <td colSpan={6} className="px-4 py-4">
+                    <td colSpan={7} className="px-4 py-4">
                       <KayitFormuAlanlari form={duzenleForm} alanGuncelle={duzenleAlanGuncelle} boyut="kucuk" />
                       <div className="space-x-3 whitespace-nowrap mt-3">
                         <button onClick={() => duzenlemeyiKaydet(o.id)} className="text-green-600 text-sm font-semibold hover:underline">
@@ -416,7 +447,7 @@ export default function Ogrenciler() {
                   <tr key={o.id} className="bg-purple-50">
                     <td className="px-4 py-3 font-medium text-gray-800">{o.ad_soyad}</td>
                     <td className="px-4 py-3 text-gray-500">{o.telefon || '—'}</td>
-                    <td className="px-4 py-2" colSpan={3}>
+                    <td className="px-4 py-2" colSpan={4}>
                       <select
                         value={seciliVeli}
                         onChange={(e) => setSeciliVeli(e.target.value)}
@@ -440,6 +471,35 @@ export default function Ogrenciler() {
                 )
               }
 
+              if (ogrenciHesabiBagli) {
+                return (
+                  <tr key={o.id} className="bg-purple-50">
+                    <td className="px-4 py-3 font-medium text-gray-800">{o.ad_soyad}</td>
+                    <td className="px-4 py-3 text-gray-500">{o.telefon || '—'}</td>
+                    <td className="px-4 py-2" colSpan={4}>
+                      <select
+                        value={seciliOgrenciHesabi}
+                        onChange={(e) => setSeciliOgrenciHesabi(e.target.value)}
+                        className="w-full px-2 py-1.5 border border-gray-300 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue"
+                      >
+                        <option value="">Bağlı öğrenci hesabı yok</option>
+                        {ogrenciHesaplari.map((h) => (
+                          <option key={h.id} value={h.id}>{h.ad_soyad}</option>
+                        ))}
+                      </select>
+                    </td>
+                    <td className="px-4 py-2 text-right space-x-3 whitespace-nowrap">
+                      <button onClick={() => ogrenciHesabiBaglamayiKaydet(o.id)} className="text-green-600 text-sm font-semibold hover:underline">
+                        Kaydet
+                      </button>
+                      <button onClick={() => setOgrenciHesabiBaglanan(null)} className="text-gray-500 text-sm hover:underline">
+                        Vazgeç
+                      </button>
+                    </td>
+                  </tr>
+                )
+              }
+
               return (
                 <tr key={o.id} className={i % 2 ? 'bg-gray-50' : ''}>
                   <td className="px-4 py-3 font-medium text-gray-800">{o.ad_soyad}</td>
@@ -448,6 +508,13 @@ export default function Ogrenciler() {
                   <td className="px-4 py-3">
                     {o.veli?.ad_soyad ? (
                       <span className="text-gray-700">{o.veli.ad_soyad}</span>
+                    ) : (
+                      <span className="text-gray-400 text-xs">Bağlı değil</span>
+                    )}
+                  </td>
+                  <td className="px-4 py-3">
+                    {o.ogrenci_hesabi?.ad_soyad ? (
+                      <span className="text-gray-700">{o.ogrenci_hesabi.ad_soyad}</span>
                     ) : (
                       <span className="text-gray-400 text-xs">Bağlı değil</span>
                     )}
@@ -462,6 +529,9 @@ export default function Ogrenciler() {
                   <td className="px-4 py-3 text-right space-x-3 whitespace-nowrap">
                     <button onClick={() => veliBaglamayaBasla(o)} className="text-purple-600 text-sm hover:underline">
                       Veli Bağla
+                    </button>
+                    <button onClick={() => ogrenciHesabiBaglamayaBasla(o)} className="text-purple-600 text-sm hover:underline">
+                      Öğrenci Hesabı Bağla
                     </button>
                     <button onClick={() => duzenlemeyeBasla(o)} className="text-blue text-sm hover:underline">
                       Düzenle
