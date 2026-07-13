@@ -14,6 +14,7 @@ function menuOlustur(rol) {
   if (rol === 'yonetici') {
     return [
       { tur: 'link', to: '/', label: 'Panel', end: true },
+      { tur: 'link', to: '/sifremi-degistir', label: 'Şifremi Değiştir' },
       {
         tur: 'grup',
         label: 'Kullanıcılar',
@@ -21,6 +22,7 @@ function menuOlustur(rol) {
           { to: '/ogrenciler', label: 'Öğrenciler' },
           { to: '/ogretmenler', label: 'Öğretmenler' },
           { to: '/kullanici-olustur', label: 'Kullanıcı Oluştur' },
+          { to: '/sifre-sifirla', label: 'Şifre Sıfırla' },
         ],
       },
       {
@@ -62,6 +64,7 @@ function menuOlustur(rol) {
   if (rol === 'kantin') {
     return [
       { tur: 'link', to: '/kantin', label: 'Kantin', end: true },
+      { tur: 'link', to: '/sifremi-degistir', label: 'Şifremi Değiştir' },
     ]
   }
   if (rol === 'ogretmen') {
@@ -71,6 +74,7 @@ function menuOlustur(rol) {
       { tur: 'link', to: '/bire-bir', label: 'Bire Bir Derslerim' },
       { tur: 'link', to: '/yoklama', label: 'Yoklama Al' },
       { tur: 'link', to: '/yoklama-raporu', label: 'Yoklama Raporu' },
+      { tur: 'link', to: '/sifremi-degistir', label: 'Şifremi Değiştir' },
     ]
   }
   if (rol === 'veli') {
@@ -78,12 +82,14 @@ function menuOlustur(rol) {
       { tur: 'link', to: '/', label: 'Panel', end: true },
       { tur: 'link', to: '/muhasebe', label: 'Ödeme Durumu' },
       { tur: 'link', to: '/program', label: 'Ders Programı' },
+      { tur: 'link', to: '/sifremi-degistir', label: 'Şifremi Değiştir' },
     ]
   }
   if (rol === 'ogrenci') {
     return [
       { tur: 'link', to: '/', label: 'Panel', end: true },
       { tur: 'link', to: '/program', label: 'Ders Programım' },
+      { tur: 'link', to: '/sifremi-degistir', label: 'Şifremi Değiştir' },
     ]
   }
   return []
