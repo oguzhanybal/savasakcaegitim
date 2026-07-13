@@ -102,6 +102,7 @@ export default function Ekstre() {
           .no-print { display: none !important; }
           body { background: white !important; }
           tr { break-inside: avoid; page-break-inside: avoid; }
+          .bire-bir-baslik-blok { break-inside: avoid; page-break-inside: avoid; }
         }
       `}</style>
       <div className="max-w-2xl mx-auto">
@@ -201,8 +202,11 @@ export default function Ekstre() {
             </p>
 
             {bireBirDersleri.length > 0 && (
-              <div className="mt-6">
-                <p className="font-semibold text-navy mb-2">Bire Bir Ders Dökümü</p>
+              <div className="mt-6 bire-bir-baslik-blok">
+                <p className="font-semibold text-navy mb-1">Bire Bir Ders Dökümü</p>
+                <p className="text-xs text-gray-400 mb-2">
+                  (Bu bölüm sayfaya sığmadıysa ayrıntılı ders listesine bir sonraki sayfadan ulaşabilirsiniz.)
+                </p>
                 <BireBirDersDokumu
                   dersler={bireBirDersleri.map((d) => ({ ...d, karsiTarafAdi: d.ogretmenAdi, karsiTarafBransi: d.ogretmenBransi }))}
                   karsiTarafBasligi="Öğretmen"
