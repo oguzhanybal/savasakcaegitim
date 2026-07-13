@@ -472,12 +472,26 @@ export default function Muhasebe() {
   const [odemeler, setOdemeler] = useState([])
   const [bireBirDersleri, setBireBirDersleri] = useState([])
   const [loading, setLoading] = useState(true)
+  // Herhangi bir öğrenci seçilmeden ÖNCE, giriş ekranında "en son kim ne
+  // ödedi" görülsün diye tüm öğrencilerin son ödemelerini ayrıca tutuyoruz
+  // (seçili öğrenciye özel odemeler state'inden bağımsız).
+  const [sonOdemeler, setSonOdemeler] = useState([])
+
+  function sonOdemeleriYukle() {
+    supabase
+      .from('odemeler')
+      .select('*, ogrenciler(ad_soyad)')
+      .order('tarih', { ascending: false })
+      .limit(15)
+      .then(({ data }) => setSonOdemeler(data || []))
+  }
 
   useEffect(() => {
     supabase.from('ogrenciler').select('*').order('ad_soyad').then(({ data }) => {
       setOgrenciler(data || [])
       setLoading(false)
     })
+    sonOdemeleriYukle()
   }, [])
 
   function veriyiYenile() {
@@ -513,6 +527,9 @@ export default function Muhasebe() {
         setOdemeler(o.data || [])
         setBireBirDersleri(bireBirDersDetaylariOlustur(atamalar, tumYoklamalar))
         setLoading(false)
+        // Bu öğrenciye yeni bir ödeme eklenmiş/silinmiş olabilir — giriş
+        // ekranındaki "Son Alınan Ödemeler" listesini de güncel tutalım.
+        sonOdemeleriYukle()
       })
     })
   }
@@ -572,7 +589,40 @@ export default function Muhasebe() {
       )}
 
       {isYonetici && !seciliId && ogrenciler.length > 0 && !loading && (
-        <p className="text-gray-400">Devam etmek için yukarıdan bir öğrenci seçin.</p>
+        <>
+          <p className="text-gray-400 mb-6">Devam etmek için yukarıdan bir öğrenci seçin.</p>
+          <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-x-auto">
+            <div className="px-4 py-3 border-b border-gray-100 bg-gray-50">
+              <h2 className="font-semibold text-gray-700">Son Alınan Ödemeler</h2>
+              <p className="text-xs text-gray-400 mt-0.5">
+                Kimin ne ödediğini unutmayasınız diye — en son alınan 15 ödeme, tüm öğrenciler dahil.
+              </p>
+            </div>
+            <table className="w-full text-sm min-w-[480px]">
+              <thead>
+                <tr className="text-left text-gray-500">
+                  <th className="px-4 py-2 font-medium">Tarih</th>
+                  <th className="px-4 py-2 font-medium">Öğrenci</th>
+                  <th className="px-4 py-2 font-medium">Kalem</th>
+                  <th className="px-4 py-2 font-medium">Tutar</th>
+                </tr>
+              </thead>
+              <tbody>
+                {sonOdemeler.length === 0 && (
+                  <tr><td colSpan={4} className="px-4 py-4 text-center text-gray-400">Henüz ödeme kaydı yok.</td></tr>
+                )}
+                {sonOdemeler.map((o) => (
+                  <tr key={o.id} className="border-t border-gray-50">
+                    <td className="px-4 py-2">{new Date(o.tarih).toLocaleDateString('tr-TR')}</td>
+                    <td className="px-4 py-2 font-medium text-gray-800">{o.ogrenciler?.ad_soyad || '—'}</td>
+                    <td className="px-4 py-2">{o.kalem || '—'}</td>
+                    <td className="px-4 py-2 font-medium text-green-600">{paraFormat(o.tutar)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </>
       )}
 
       {seciliOgrenci && (
