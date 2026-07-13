@@ -75,17 +75,27 @@ export function sozlesmeKalemHesapla(sozlesme, odemeler, seciliAy) {
   }
 
   const kalanToplam = Math.max(0, J - odenen)
+  // Veli, o ana kadar borçlanandan FAZLA ödeme yaptıysa (ör. taksitini önden
+  // ya da fazladan ödediyse), bu fazlalık burada hesaplanır. Kümülatif
+  // "J - odenen" karşılaştırması sayesinde bu fazlalık otomatik olarak bir
+  // sonraki ayın taksitinden düşülür (ayrıca bir işlem gerekmez) — burada
+  // sadece veli/yönetici görsün diye "+X Alacaklı" olarak da dışa veriyoruz.
+  const fazlaOdeme = Math.max(0, odenen - J)
   const buAyTutar = Math.max(0, J - L)
   const gecmisBorc = Math.max(0, kalanToplam - buAyTutar)
 
-  if (kalanToplam <= 0) return null
+  if (kalanToplam <= 0 && fazlaOdeme <= 0.01) return null
 
   return {
     label: `${sozlesme.kalem} - Taksit (${M}/${taksitSayisi})`,
-    durum: `Ödenmesi Gereken Vade: ${vade.toLocaleDateString('tr-TR', { day: '2-digit', month: 'long', year: 'numeric' })}`,
+    durum:
+      kalanToplam > 0
+        ? `Ödenmesi Gereken Vade: ${vade.toLocaleDateString('tr-TR', { day: '2-digit', month: 'long', year: 'numeric' })}`
+        : 'Fazla Ödeme (Alacaklı)',
     buAyTutar,
     gecmisBorc,
     toplamOdenecek: kalanToplam,
+    fazlaOdeme,
   }
 }
 
@@ -117,16 +127,22 @@ export function aylikKalemHesapla(kalemAdi, aylikBorclar, odemeler, seciliAy) {
     .reduce((t, a) => t + Number(a.tutar), 0)
 
   const kalanToplam = Math.max(0, J - odenen)
+  // Aynı mantık: veli bu kalemde borçtan fazla ödeme yaptıysa (ör. henüz Bire
+  // Bir dersi/kantin alışı olmadan önden para bıraktıysa), fazlalık burada
+  // hesaplanır ve otomatik olarak bir sonraki borçtan (yeni ders/alış
+  // kaydından) düşülür — kümülatif karşılaştırma sayesinde kendiliğinden olur.
+  const fazlaOdeme = Math.max(0, odenen - J)
   const gecmisBorc = Math.max(0, kalanToplam - buAyTutar)
 
-  if (kalanToplam <= 0) return null
+  if (kalanToplam <= 0 && fazlaOdeme <= 0.01) return null
 
   return {
     label: kalemAdi,
-    durum: 'Bakiye Borçlu',
+    durum: kalanToplam > 0 ? 'Bakiye Borçlu' : 'Fazla Ödeme (Alacaklı)',
     buAyTutar,
     gecmisBorc,
     toplamOdenecek: kalanToplam,
+    fazlaOdeme,
   }
 }
 
@@ -146,6 +162,25 @@ export function ogrenciSatirlariHesapla(sozlesmeler, aylikBorclar, odemeler, sec
     ...sozlesmeler.map((s) => sozlesmeKalemHesapla(s, odemeler, seciliAy)),
     ...['Bire Bir', 'Yemek', 'Kantin'].map((k) => aylikKalemHesapla(k, aylikBorclar, odemeler, seciliAy)),
   ].filter(Boolean)
+}
+
+// ============================================================================
+// FAZLA ÖDEME (ALACAK) ÖZETİ — bir öğrencinin "şu an itibarıyla" (bugünün
+// ayına göre) hangi kalemlerde borçtan fazla ödeme yapılmış olduğunu (yani
+// alacaklı olduğunu) özetler. Muhasebe sayfasında ay seçici olmadığı için bu
+// fonksiyon içeride bugünün ayını kullanır. Her satırdaki fazlalık, ilgili
+// kalemde bir sonraki borç doğduğunda (sonraki ay taksiti / sonraki Bire Bir
+// dersi / kantin alışı) otomatik olarak düşer — bu sadece GÖRÜNÜRLÜK sağlar.
+// ============================================================================
+export function fazlaOdemeleriHesapla(sozlesmeler, aylikBorclar, odemeler) {
+  const buAy = new Date().toISOString().slice(0, 7)
+  const satirlar = [
+    ...sozlesmeler.map((s) => sozlesmeKalemHesapla(s, odemeler, buAy)),
+    ...['Bire Bir', 'Yemek', 'Kantin'].map((k) => aylikKalemHesapla(k, aylikBorclar, odemeler, buAy)),
+  ].filter(Boolean)
+  return satirlar
+    .filter((s) => s.fazlaOdeme > 0.01 && s.toplamOdenecek <= 0.01)
+    .map((s) => ({ label: s.label, fazlaOdeme: s.fazlaOdeme }))
 }
 
 // Türkçe telefon numarasını wa.me linkinin istediği "90XXXXXXXXXX" formatına çevirir.
