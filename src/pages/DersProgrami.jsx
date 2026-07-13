@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../lib/AuthContext'
+import { ilkHarfleriBuyukYap } from '../lib/adSoyadFormat'
 import MusaitlikTablosu from '../components/MusaitlikTablosu'
 
 const GUNLER = ['', 'Pazartesi', 'Salı', 'Çarşamba', 'Perşembe', 'Cuma', 'Cumartesi', 'Pazar']
@@ -82,7 +83,7 @@ function DersEkleForm({ siniflar, ogretmenler, program, onEklendi }) {
       gun: Number(gun),
       baslangic_saat: baslangic,
       bitis_saat: bitis,
-      ders_adi: dersAdi.trim() || null,
+      ders_adi: dersAdi.trim() ? ilkHarfleriBuyukYap(dersAdi.trim()) : null,
       ogretmen_profile_id: ogretmenId || null,
     })
     setGonderiliyor(false)

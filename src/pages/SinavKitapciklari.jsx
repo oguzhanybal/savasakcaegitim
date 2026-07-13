@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { supabase } from '../lib/supabase'
+import { ilkHarfleriBuyukYap } from '../lib/adSoyadFormat'
 import {
   pdfBelgesiAc,
   sayfayiGoruntuyeCevir,
@@ -287,11 +288,27 @@ export default function SinavKitapciklari() {
       if (sinavId === '__yeni__') {
         const { data, error } = await supabase
           .from('sinavlar')
-          .insert({ sinav_adi: yeniSinavAdi.trim(), sinav_tarihi: yeniSinavTarihi || null })
+          .insert({ sinav_adi: ilkHarfleriBuyukYap(yeniSinavAdi.trim()), sinav_tarihi: yeniSinavTarihi || null })
           .select()
           .single()
-        if (error) throw error
-        sinavId = data.id
+        if (error && error.code === '23505') {
+          // Bu isimde bir sınav zaten var (muhtemelen A kitapçığını kaydederken
+          // oluşturulmuş, şimdi B kitapçığı için ya da yanlışlıkla "+ Yeni sınav
+          // ekle" ile aynı isim tekrar yazılmış olabilir). Hata vermek yerine
+          // var olan sınavı bulup ONA kaydediyoruz — admin'in dropdown'dan
+          // seçmesini beklemek yerine bunu otomatik toparlıyoruz.
+          const { data: mevcutSinav, error: bulmaHatasi } = await supabase
+            .from('sinavlar')
+            .select('id')
+            .eq('sinav_adi', yeniSinavAdi.trim())
+            .single()
+          if (bulmaHatasi || !mevcutSinav) throw error
+          sinavId = mevcutSinav.id
+        } else if (error) {
+          throw error
+        } else {
+          sinavId = data.id
+        }
       }
 
       const dosyaYolu = `${sinavId}/${kitapcikTuru}-${Date.now()}.pdf`
@@ -315,7 +332,7 @@ export default function SinavKitapciklari() {
 
       const satirlar = sorular.map((s) => ({
         kitapcik_id: kitapcikVerisi.id,
-        ders_adi: s.ders_adi.trim(),
+        ders_adi: ilkHarfleriBuyukYap(s.ders_adi.trim()),
         soru_no: Number(s.soru_no),
         sayfa_no: s.sayfa_no,
         x: s.x,

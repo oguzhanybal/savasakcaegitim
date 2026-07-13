@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../lib/AuthContext'
+import { ilkHarfleriBuyukYap } from '../lib/adSoyadFormat'
 import {
   taksitPlaniOlustur,
   aylikBorcDurumHesapla,
@@ -287,7 +288,7 @@ function SozlesmeEkleForm({ ogrenciId, onEklendi }) {
       taksit_sayisi: Number(taksitSayisi) || 1,
       ilk_taksit_tarihi: ilkTaksitTarihi || null,
       egitim_donemi: egitimDonemi.trim() || null,
-      sinif_metni: sinifMetni.trim() || null,
+      sinif_metni: sinifMetni.trim() ? ilkHarfleriBuyukYap(sinifMetni.trim()) : null,
       sozlesme_tarihi: sozlesmeTarihi || null,
     })
     setGonderiliyor(false)
@@ -654,7 +655,7 @@ export default function Muhasebe() {
         taksit_sayisi: Number(duzenleTaksitSayisi) || 1,
         ilk_taksit_tarihi: duzenleIlkTaksitTarihi || null,
         egitim_donemi: duzenleEgitimDonemi.trim() || null,
-        sinif_metni: duzenleSinifMetni.trim() || null,
+        sinif_metni: duzenleSinifMetni.trim() ? ilkHarfleriBuyukYap(duzenleSinifMetni.trim()) : null,
         sozlesme_tarihi: duzenleSozlesmeTarihi || null,
       })
       .eq('id', id)

@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
+import { ilkHarfleriBuyukYap } from '../lib/adSoyadFormat'
 
 const EGITIM_YILLARI = ['2026-2027', '2027-2028', '2028-2029']
 
@@ -39,7 +40,7 @@ export default function Siniflar() {
     e.preventDefault()
     if (!yeniAd.trim()) return
     const { error } = await supabase.from('siniflar').insert({
-      ad: yeniAd.trim(),
+      ad: ilkHarfleriBuyukYap(yeniAd.trim()),
       ogretmen_profile_id: yeniOgretmen || null,
       egitim_yili: seciliYil,
     })
@@ -66,7 +67,7 @@ export default function Siniflar() {
     if (!duzenleAd.trim()) return
     const { error } = await supabase
       .from('siniflar')
-      .update({ ad: duzenleAd.trim(), ogretmen_profile_id: duzenleOgretmen || null })
+      .update({ ad: ilkHarfleriBuyukYap(duzenleAd.trim()), ogretmen_profile_id: duzenleOgretmen || null })
       .eq('id', sinifId)
     if (!error) {
       setDuzenlenenId(null)

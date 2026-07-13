@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
-import { adSoyadDuzelt } from '../lib/adSoyadFormat'
+import { adSoyadDuzelt, ilkHarfleriBuyukYap } from '../lib/adSoyadFormat'
 
 // Okulun kendi kayıt formuyla (SAVAŞ AKÇA ÖĞRENCİ KAYIT FORMU) BİREBİR aynı
 // başlıklar — form her yeni öğrenci geldiğinde zaten dolduruluyor, burada da
@@ -216,13 +216,13 @@ export default function Ogrenciler() {
       tc_kimlik_no: yeniForm.tc_kimlik_no.trim() || null,
       dogum_tarihi: yeniForm.dogum_tarihi || null,
       telefon: yeniForm.telefon.trim() || null,
-      sinif_ve_alan: yeniForm.sinif_ve_alan.trim() || null,
-      okul: yeniForm.okul.trim() || null,
+      sinif_ve_alan: yeniForm.sinif_ve_alan.trim() ? ilkHarfleriBuyukYap(yeniForm.sinif_ve_alan.trim()) : null,
+      okul: yeniForm.okul.trim() ? ilkHarfleriBuyukYap(yeniForm.okul.trim()) : null,
       anne_adi_soyadi: yeniForm.anne_adi_soyadi.trim() ? adSoyadDuzelt(yeniForm.anne_adi_soyadi) : null,
       anne_telefon: yeniForm.anne_telefon.trim() || null,
       baba_adi_soyadi: yeniForm.baba_adi_soyadi.trim() ? adSoyadDuzelt(yeniForm.baba_adi_soyadi) : null,
       baba_telefon: yeniForm.baba_telefon.trim() || null,
-      adres: yeniForm.adres.trim() || null,
+      adres: yeniForm.adres.trim() ? ilkHarfleriBuyukYap(yeniForm.adres.trim()) : null,
       notlar: yeniForm.notlar.trim() || null,
     })
     setEkleniyor(false)
@@ -258,13 +258,13 @@ export default function Ogrenciler() {
         tc_kimlik_no: duzenleForm.tc_kimlik_no.trim() || null,
         dogum_tarihi: duzenleForm.dogum_tarihi || null,
         telefon: duzenleForm.telefon.trim() || null,
-        sinif_ve_alan: duzenleForm.sinif_ve_alan.trim() || null,
-        okul: duzenleForm.okul.trim() || null,
+        sinif_ve_alan: duzenleForm.sinif_ve_alan.trim() ? ilkHarfleriBuyukYap(duzenleForm.sinif_ve_alan.trim()) : null,
+        okul: duzenleForm.okul.trim() ? ilkHarfleriBuyukYap(duzenleForm.okul.trim()) : null,
         anne_adi_soyadi: duzenleForm.anne_adi_soyadi.trim() ? adSoyadDuzelt(duzenleForm.anne_adi_soyadi) : null,
         anne_telefon: duzenleForm.anne_telefon.trim() || null,
         baba_adi_soyadi: duzenleForm.baba_adi_soyadi.trim() ? adSoyadDuzelt(duzenleForm.baba_adi_soyadi) : null,
         baba_telefon: duzenleForm.baba_telefon.trim() || null,
-        adres: duzenleForm.adres.trim() || null,
+        adres: duzenleForm.adres.trim() ? ilkHarfleriBuyukYap(duzenleForm.adres.trim()) : null,
         notlar: duzenleForm.notlar.trim() || null,
       })
       .eq('id', ogrenciId)

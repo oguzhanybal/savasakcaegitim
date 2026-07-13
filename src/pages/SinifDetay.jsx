@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useParams, Link } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
+import { ilkHarfleriBuyukYap } from '../lib/adSoyadFormat'
 
 const GUNLER = ['', 'Pazartesi', 'Salı', 'Çarşamba', 'Perşembe', 'Cuma', 'Cumartesi', 'Pazar']
 const GUNLER_KISA = ['', 'Pzt', 'Sal', 'Çar', 'Per', 'Cum', 'Cmt', 'Paz']
@@ -135,7 +136,7 @@ export default function SinifDetay() {
       gun: g,
       baslangic_saat: baslangic,
       bitis_saat: bitis,
-      ders_adi: dersAdi.trim() || null,
+      ders_adi: dersAdi.trim() ? ilkHarfleriBuyukYap(dersAdi.trim()) : null,
       ogretmen_profile_id: dersOgretmen || null,
     }))
     const { error } = await supabase.from('ders_programi').insert(kayitlar)
