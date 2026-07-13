@@ -12,6 +12,7 @@ import {
   bireBirDersDetaylariOlustur,
   haftaBaslangici,
   haftaEtiketi,
+  fazlaOdemeleriHesapla,
 } from '../lib/ekstreHesap'
 
 function paraFormat(n) {
@@ -509,6 +510,40 @@ function AylikBorcEkleForm({ ogrenciId, onEklendi }) {
   )
 }
 
+// Bir kalemde borçtan FAZLA ödeme yapılmışsa (veli taksitini/borcunu önden ya
+// da fazladan ödediyse), bu paneli göster — tutar otomatik olarak o kalemde
+// bir sonraki borç doğduğunda (sonraki ay taksiti / yeni ders ya da alış)
+// kendiliğinden düşer, burada sadece bilgi amaçlı gösteriliyor.
+function FazlaOdemePaneli({ fazlaOdemeler }) {
+  if (!fazlaOdemeler || fazlaOdemeler.length === 0) return null
+  const toplam = fazlaOdemeler.reduce((t, f) => t + f.fazlaOdeme, 0)
+  return (
+    <div className="bg-white rounded-2xl border border-green-200 shadow-sm overflow-hidden mb-6">
+      <div className="px-4 py-3 border-b border-green-100 bg-green-50">
+        <h2 className="font-semibold text-green-700">Fazla Ödeme (Alacaklı)</h2>
+        <p className="text-xs text-gray-500 mt-0.5">
+          Bu kalemlerde borçtan fazla ödeme yapılmış. Ayrıca bir işlem gerekmez — tutar, o kalemde bir
+          sonraki borç doğduğunda (bir sonraki ay taksiti / yeni ders ya da alış) otomatik olarak düşer.
+        </p>
+      </div>
+      <div className="divide-y divide-gray-50">
+        {fazlaOdemeler.map((f, i) => (
+          <div key={i} className="flex items-center justify-between px-4 py-2.5">
+            <span className="font-medium text-gray-800">{f.label}</span>
+            <span className="font-semibold text-green-700">+ {paraFormat(f.fazlaOdeme)}</span>
+          </div>
+        ))}
+        {fazlaOdemeler.length > 1 && (
+          <div className="flex items-center justify-between px-4 py-2.5 bg-gray-50">
+            <span className="font-semibold text-gray-700">Toplam Alacak</span>
+            <span className="font-bold text-green-700">+ {paraFormat(toplam)}</span>
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
 export default function Muhasebe() {
   const { profile } = useAuth()
   const isYonetici = profile?.rol === 'yonetici'
@@ -677,6 +712,9 @@ export default function Muhasebe() {
   const toplamSozlesme = sozlesmeler.reduce((t, s) => t + Number(s.toplam_tutar), 0)
   const toplamAylikBorc = aylikBorclar.reduce((t, a) => t + Number(a.tutar), 0)
   const kalanBakiye = Math.max(0, toplamSozlesme + toplamAylikBorc - toplamOdenen)
+  // Hangi kalemlerde (varsa) borçtan fazla ödeme yapılmış — "Fazla Ödeme
+  // (Alacaklı)" paneli için.
+  const fazlaOdemeler = fazlaOdemeleriHesapla(sozlesmeler, aylikBorclar, odemeler)
 
   return (
     <div>
@@ -787,6 +825,8 @@ export default function Muhasebe() {
               <p className="text-2xl font-bold text-orange mt-1">{paraFormat(kalanBakiye)}</p>
             </div>
           </div>
+
+          <FazlaOdemePaneli fazlaOdemeler={fazlaOdemeler} />
 
           <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-x-auto mb-6">
             <div className="px-4 py-3 border-b border-gray-100 bg-gray-50">

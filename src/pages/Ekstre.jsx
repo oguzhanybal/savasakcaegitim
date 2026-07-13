@@ -82,6 +82,9 @@ export default function Ekstre() {
   const buAyToplam = satirlar.reduce((t, x) => t + x.buAyTutar, 0)
   const gecmisBorcToplam = satirlar.reduce((t, x) => t + x.gecmisBorc, 0)
   const buAyOdenmesiGereken = satirlar.reduce((t, x) => t + x.toplamOdenecek, 0)
+  // Bu dönemde herhangi bir kalemde fazla ödeme (alacak) var mı — açıklama
+  // notunun altında yeşil bir uyarı gösterebilmek için ayrıca toplanıyor.
+  const fazlaOdemeVarMi = satirlar.some((x) => x.fazlaOdeme > 0.01)
 
   // "Genel Kalan Bakiye" — tüm zamanların, tüm kalemlerin toplu bakiyesi (dönemden bağımsız)
   const toplamSozlesme = sozlesmeler.reduce((t, s) => t + Number(s.toplam_tutar), 0)
@@ -164,20 +167,31 @@ export default function Ekstre() {
                 {satirlar.length === 0 && (
                   <tr><td colSpan={5} className="px-3 py-4 text-center text-gray-400">Bu dönem için kayıt bulunamadı.</td></tr>
                 )}
-                {satirlar.map((s, i) => (
-                  <tr
-                    key={i}
-                    className={s.gecmisBorc > 0 ? 'bg-red-50' : i % 2 ? 'bg-gray-50' : ''}
-                  >
-                    <td className={`px-2 sm:px-3 py-2 ${s.gecmisBorc > 0 ? 'text-red-700 font-medium' : ''}`}>{s.label}</td>
-                    <td className={`px-2 sm:px-3 py-2 ${s.gecmisBorc > 0 ? 'text-red-700' : 'text-gray-500'}`}>{s.durum}</td>
-                    <td className={`px-2 sm:px-3 py-2 text-right font-medium ${s.gecmisBorc > 0 ? 'text-red-700' : ''}`}>{paraFormat(s.buAyTutar)}</td>
-                    <td className={`px-2 sm:px-3 py-2 text-right font-medium ${s.gecmisBorc > 0 ? 'text-red-700' : 'text-gray-400'}`}>
-                      {s.gecmisBorc > 0 ? paraFormat(s.gecmisBorc) : '—'}
-                    </td>
-                    <td className={`px-2 sm:px-3 py-2 text-right font-semibold ${s.gecmisBorc > 0 ? 'text-red-700' : ''}`}>{paraFormat(s.toplamOdenecek)}</td>
-                  </tr>
-                ))}
+                {satirlar.map((s, i) => {
+                  // Bu kalemde borçtan fazla ödeme yapılmışsa (alacaklı durumu),
+                  // satırı borç satırlarından ayrı, yeşil ve "+X" olarak gösteriyoruz.
+                  const alacakli = s.fazlaOdeme > 0.01 && s.toplamOdenecek <= 0.01
+                  return (
+                    <tr
+                      key={i}
+                      className={alacakli ? 'bg-green-50' : s.gecmisBorc > 0 ? 'bg-red-50' : i % 2 ? 'bg-gray-50' : ''}
+                    >
+                      <td className={`px-2 sm:px-3 py-2 ${s.gecmisBorc > 0 ? 'text-red-700 font-medium' : alacakli ? 'text-green-700 font-medium' : ''}`}>
+                        {s.label}
+                      </td>
+                      <td className={`px-2 sm:px-3 py-2 ${s.gecmisBorc > 0 ? 'text-red-700' : alacakli ? 'text-green-700' : 'text-gray-500'}`}>
+                        {s.durum}
+                      </td>
+                      <td className={`px-2 sm:px-3 py-2 text-right font-medium ${s.gecmisBorc > 0 ? 'text-red-700' : ''}`}>{paraFormat(s.buAyTutar)}</td>
+                      <td className={`px-2 sm:px-3 py-2 text-right font-medium ${s.gecmisBorc > 0 ? 'text-red-700' : 'text-gray-400'}`}>
+                        {s.gecmisBorc > 0 ? paraFormat(s.gecmisBorc) : '—'}
+                      </td>
+                      <td className={`px-2 sm:px-3 py-2 text-right font-semibold ${s.gecmisBorc > 0 ? 'text-red-700' : alacakli ? 'text-green-700' : ''}`}>
+                        {alacakli ? `+ ${paraFormat(s.fazlaOdeme)}` : paraFormat(s.toplamOdenecek)}
+                      </td>
+                    </tr>
+                  )
+                })}
               </tbody>
             </table>
 
@@ -205,6 +219,13 @@ export default function Ekstre() {
               otomatik olarak bir sonraki ayın ekstresinde de "Geçmiş Borç" olarak görünmeye devam eder;
               ödeme geldiğinde bu tutarlar kendiliğinden güncellenir.
             </p>
+            {fazlaOdemeVarMi && (
+              <p className="text-xs text-green-700 mt-1">
+                🟢 Yeşil satır = bu kalemde borçtan fazla ödeme yapılmış (alacaklısınız). Bu tutar ayrıca
+                bir işlem yapmanıza gerek kalmadan, o kalemde bir sonraki borç doğduğunda (bir sonraki ay
+                taksiti / yeni ders ya da alış) otomatik olarak düşülür.
+              </p>
+            )}
 
             {bireBirDersleri.length > 0 && (
               <div className="mt-6 bire-bir-baslik-blok">
