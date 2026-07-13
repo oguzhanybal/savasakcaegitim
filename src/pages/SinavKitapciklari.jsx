@@ -175,7 +175,11 @@ export default function SinavKitapciklari() {
       const tumAdaylarSirali = []
       for (let s = 1; s <= sayfaSayisi; s++) {
         setAnalizDurumu(`Sayfa ${s}/${sayfaSayisi} görüntüye çevriliyor...`)
-        const { dataUrl, genislik, yukseklik, canvas } = await sayfayiGoruntuyeCevir(belge, s, 2)
+        // olcek: 2 yerine 3 kullanılıyor — küçük puntolu/çok sütunlu (AYT
+        // matematik gibi) kitapçıklarda soru numaraları çok küçük kaldığı
+        // için Tesseract çoğunu okuyamıyordu (160 sorudan sadece 25'i
+        // bulunabilmişti). Daha yüksek çözünürlük tanıma oranını artırıyor.
+        const { dataUrl, genislik, yukseklik, canvas } = await sayfayiGoruntuyeCevir(belge, s, 3)
         goruntuler.push({ sayfaNo: s, dataUrl, genislik, yukseklik })
         setAnalizDurumu(`Sayfa ${s}/${sayfaSayisi} taranıyor (OCR)...`)
         const adaylarHam = await sayfadaSoruNumaralariniTespitEt(canvas, genislik, yukseklik, (ilerleme) => {
