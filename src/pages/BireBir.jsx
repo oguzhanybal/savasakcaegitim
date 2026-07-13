@@ -1320,7 +1320,10 @@ function DersHatirlatmaPaneli({ atamalar, yoklamalar, sadeceOgretmenId }) {
       map.get(id).dersler.push({
         baslangicSaat: saatKisalt(kayit.baslangic_saat),
         bitisSaat: saatKisalt(kayit.bitis_saat),
-        ogretmenAdi: kayit.ogretmen_adi,
+        // Mesajda kişi adı (öğretmen) yerine DERS adı (öğretmenin branşı,
+        // ör. "Matematik") gösterilsin diye — bire bir derslerin ayrı bir
+        // "ders adı" alanı olmadığı için en yakın karşılığı branş.
+        dersAdi: kayit.ogretmen_bransi || null,
       })
     }
 
@@ -1369,7 +1372,7 @@ function DersHatirlatmaPaneli({ atamalar, yoklamalar, sadeceOgretmenId }) {
           gunAdi: GUNLER[a.gun],
           baslangicSaat: saatKisalt(a.baslangic_saat),
           bitisSaat: saatKisalt(a.bitis_saat),
-          ogretmenAdi: a.ogretmen_adi,
+          dersAdi: a.ogretmen_bransi || null,
         })
       })
 
@@ -1467,13 +1470,20 @@ function DersHatirlatmaPaneli({ atamalar, yoklamalar, sadeceOgretmenId }) {
           </p>
         )}
         {ogrenciler.map((o) => {
-          const mesaj =
+          // Öğrenciye ve veliye (anne/baba) giden mesajların selamlama satırı
+          // farklı olduğu için ("Değerli Öğrencimiz," / "Değerli Velimiz,")
+          // iki ayrı mesaj üretiliyor — anne ve baba aynı "veli" mesajını kullanır.
+          const mesajOgrenci =
             mod === 'gun'
-              ? bireBirGunlukOzetMesajiOlustur({ ogrenciAdi: o.ogrenciAdi, tarihStr: tarih, dersler: o.dersler })
-              : bireBirHaftalikOzetMesajiOlustur({ ogrenciAdi: o.ogrenciAdi, dersler: o.dersler })
-          const ogrenciLink = bireBirOzetLinkOlustur(o.ogrenciTelefon, mesaj)
-          const anneLink = bireBirOzetLinkOlustur(o.anneTelefon, mesaj)
-          const babaLink = bireBirOzetLinkOlustur(o.babaTelefon, mesaj)
+              ? bireBirGunlukOzetMesajiOlustur({ kimeGonderiliyor: 'ogrenci', ogrenciAdi: o.ogrenciAdi, tarihStr: tarih, dersler: o.dersler })
+              : bireBirHaftalikOzetMesajiOlustur({ kimeGonderiliyor: 'ogrenci', ogrenciAdi: o.ogrenciAdi, dersler: o.dersler })
+          const mesajVeli =
+            mod === 'gun'
+              ? bireBirGunlukOzetMesajiOlustur({ kimeGonderiliyor: 'veli', ogrenciAdi: o.ogrenciAdi, tarihStr: tarih, dersler: o.dersler })
+              : bireBirHaftalikOzetMesajiOlustur({ kimeGonderiliyor: 'veli', ogrenciAdi: o.ogrenciAdi, dersler: o.dersler })
+          const ogrenciLink = bireBirOzetLinkOlustur(o.ogrenciTelefon, mesajOgrenci)
+          const anneLink = bireBirOzetLinkOlustur(o.anneTelefon, mesajVeli)
+          const babaLink = bireBirOzetLinkOlustur(o.babaTelefon, mesajVeli)
           return (
             <div key={o.ogrenciAdi + (o.ogrenciTelefon || '')} className="px-4 py-3 flex items-center justify-between flex-wrap gap-2">
               <div>
