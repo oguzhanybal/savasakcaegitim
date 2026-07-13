@@ -13,6 +13,7 @@ import {
   haftaBaslangici,
   haftaEtiketi,
   fazlaOdemeleriHesapla,
+  ogrenciSatirlariHesapla,
 } from '../lib/ekstreHesap'
 
 function paraFormat(n) {
@@ -715,6 +716,15 @@ export default function Muhasebe() {
   // Hangi kalemlerde (varsa) borçtan fazla ödeme yapılmış — "Fazla Ödeme
   // (Alacaklı)" paneli için.
   const fazlaOdemeler = fazlaOdemeleriHesapla(sozlesmeler, aylikBorclar, odemeler)
+  // "Toplam Aylık Borç" kartı ÖNCEDEN şimdiye kadar birikmiş TÜM zamanların
+  // brüt Bire Bir/Kantin borcunu gösteriyordu — veli bunu "bu ay ödeyeceğim
+  // miktar" sanıp kafası karışıyordu. Onun yerine, Ekstre'deki "BU AY
+  // ÖDENMESİ GEREKEN MİKTAR" ile AYNI mantıkla, güncel ayın gerçek ödenecek
+  // toplamını gösteriyoruz — yeni bir Bire Bir dersi/Kantin alışı eklendikçe
+  // bu da (veriyiYenile ile) otomatik güncellenir.
+  const buAy = new Date().toISOString().slice(0, 7)
+  const buAySatirlar = ogrenciSatirlariHesapla(sozlesmeler, aylikBorclar, odemeler, buAy)
+  const buAyOdenecek = buAySatirlar.reduce((t, x) => t + x.toplamOdenecek, 0)
 
   return (
     <div>
@@ -813,8 +823,8 @@ export default function Muhasebe() {
               <p className="text-2xl font-bold text-navy mt-1">{paraFormat(toplamSozlesme)}</p>
             </div>
             <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
-              <p className="text-sm text-gray-500 font-medium">Toplam Aylık Borç</p>
-              <p className="text-2xl font-bold text-navy mt-1">{paraFormat(toplamAylikBorc)}</p>
+              <p className="text-sm text-gray-500 font-medium">Bu Ay Ödenecek</p>
+              <p className="text-2xl font-bold text-orange mt-1">{paraFormat(buAyOdenecek)}</p>
             </div>
             <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
               <p className="text-sm text-gray-500 font-medium">Toplam Ödenen</p>
