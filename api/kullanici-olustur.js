@@ -6,16 +6,22 @@ import { createClient } from '@supabase/supabase-js'
 const GECERLI_ROLLER = ['yonetici', 'ogretmen', 'veli', 'ogrenci', 'kantin']
 
 // Ad-soyad'ı, nasıl girilirse girilsin "İlk Harfler Büyük, Diğerleri Küçük"
-// biçimine çevirir. Bu dosya src/lib'i import etmiyor (ayrı bir sunucu ortamı
-// olduğu için), bu yüzden aynı küçük fonksiyon burada da tutuluyor.
+// biçimine çevirir (bağlaçlar hariç, bkz. aşağı). Bu dosya src/lib'i import
+// etmiyor (ayrı bir sunucu ortamı olduğu için), bu yüzden src/lib/adSoyadFormat.js
+// ile birebir aynı küçük fonksiyon burada da tutuluyor.
+const BAGLAC_KUCUK_YAZILANLAR = new Set(['ve', 'ile', 'da', 'de', 'veya', 'ya', 'ki'])
+
 function adSoyadDuzelt(metin) {
   if (!metin) return metin
   return metin
     .trim()
     .replace(/\s+/g, ' ')
     .split(' ')
-    .map((kelime) => {
+    .map((kelime, index) => {
       if (!kelime) return kelime
+      if (index > 0 && BAGLAC_KUCUK_YAZILANLAR.has(kelime.toLocaleLowerCase('tr-TR'))) {
+        return kelime.toLocaleLowerCase('tr-TR')
+      }
       const ilkHarf = kelime.charAt(0).toLocaleUpperCase('tr-TR')
       const geriKalan = kelime.slice(1).toLocaleLowerCase('tr-TR')
       return ilkHarf + geriKalan
