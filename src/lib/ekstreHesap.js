@@ -226,9 +226,19 @@ export function bireBirHatirlaticiLinkOlustur(telefon, bilgiler) {
 // öğrenci başına TEK bir WhatsApp mesajında topluyoruz.
 // ============================================================================
 
+// Mesajın kime gittiğine göre selamlama satırını üretir — öğrencinin kendisine
+// "Değerli Öğrencimiz,", anneye/babaya (veli) "Değerli Velimiz," diye başlar,
+// devamı bir alt satırdan gelir (Toplu Ekstre'deki "Değerli Velimiz," ile
+// aynı üslup).
+function selamlamaSatiri(kimeGonderiliyor) {
+  return kimeGonderiliyor === 'veli' ? 'Değerli Velimiz,' : 'Değerli Öğrencimiz,'
+}
+
 // Seçili GÜNÜN (bugün/yarın/seçilen tarih) TÜM derslerini tek mesajda özetler.
-// dersler: [{ baslangicSaat, bitisSaat, ogretmenAdi }] — saate göre sıralı olmalı.
-export function bireBirGunlukOzetMesajiOlustur({ ogrenciAdi, tarihStr, dersler }) {
+// dersler: [{ baslangicSaat, bitisSaat, dersAdi }] — saate göre sıralı olmalı.
+// dersAdi, öğretmenin branşından gelir (ör. "Matematik") — kişi adı yerine
+// hangi DERS olduğu yazsın diye.
+export function bireBirGunlukOzetMesajiOlustur({ kimeGonderiliyor, ogrenciAdi, tarihStr, dersler }) {
   const tarihMetni = new Date(tarihStr + 'T12:00:00').toLocaleDateString('tr-TR', {
     day: '2-digit',
     month: 'long',
@@ -236,25 +246,25 @@ export function bireBirGunlukOzetMesajiOlustur({ ogrenciAdi, tarihStr, dersler }
     weekday: 'long',
   })
   const satirlar = dersler
-    .map((d) => `• ${d.bitisSaat ? `${d.baslangicSaat}–${d.bitisSaat}` : d.baslangicSaat}${d.ogretmenAdi ? ` (${d.ogretmenAdi})` : ''}`)
+    .map((d) => `• ${d.bitisSaat ? `${d.baslangicSaat}–${d.bitisSaat}` : d.baslangicSaat}${d.dersAdi ? ` (${d.dersAdi})` : ''}`)
     .join('\n')
   const derslerMetni = dersler.length > 1 ? 'aşağıdaki bire bir dersler bulunmaktadır' : 'aşağıdaki bire bir ders bulunmaktadır'
   return (
-    `Merhaba, ${ogrenciAdi} için ${tarihMetni} tarihinde ${derslerMetni}:\n` +
+    `${selamlamaSatiri(kimeGonderiliyor)}\n${ogrenciAdi} için ${tarihMetni} tarihinde ${derslerMetni}:\n` +
     `${satirlar}\n` +
     `İyi dersler dileriz.\nSavaş Akça Eğitim`
   )
 }
 
 // Öğrencinin HER HAFTA tekrar eden bire bir ders programını (gün + saat) tek
-// mesajda özetler. dersler: [{ gunAdi, baslangicSaat, bitisSaat, ogretmenAdi }]
+// mesajda özetler. dersler: [{ gunAdi, baslangicSaat, bitisSaat, dersAdi }]
 // — haftanın gününe göre sıralı olmalı (Pazartesi'den başlayarak).
-export function bireBirHaftalikOzetMesajiOlustur({ ogrenciAdi, dersler }) {
+export function bireBirHaftalikOzetMesajiOlustur({ kimeGonderiliyor, ogrenciAdi, dersler }) {
   const satirlar = dersler
-    .map((d) => `• ${d.gunAdi}: ${d.bitisSaat ? `${d.baslangicSaat}–${d.bitisSaat}` : d.baslangicSaat}${d.ogretmenAdi ? ` (${d.ogretmenAdi})` : ''}`)
+    .map((d) => `• ${d.gunAdi}: ${d.bitisSaat ? `${d.baslangicSaat}–${d.bitisSaat}` : d.baslangicSaat}${d.dersAdi ? ` (${d.dersAdi})` : ''}`)
     .join('\n')
   return (
-    `Merhaba, ${ogrenciAdi} için haftalık bire bir ders programı şu şekildedir:\n` +
+    `${selamlamaSatiri(kimeGonderiliyor)}\n${ogrenciAdi} için haftalık bire bir ders programı şu şekildedir:\n` +
     `${satirlar}\n` +
     `İyi dersler dileriz.\nSavaş Akça Eğitim`
   )
