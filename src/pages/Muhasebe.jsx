@@ -608,6 +608,13 @@ export default function Muhasebe() {
     else veriyiYenile()
   }
 
+  async function sozlesmeSil(s) {
+    if (!confirm(`"${s.kalem}" kalemi için ${paraFormat(s.toplam_tutar)} tutarındaki sözleşmeyi silmek istediğinize emin misiniz?\n\nBu işlem geri alınamaz. Öğrencinin kendisi SİLİNMEZ, sadece bu sözleşme kaydı ve ona bağlı ödeme planı kaldırılır.`)) return
+    const { error } = await supabase.from('sozlesmeler').delete().eq('id', s.id)
+    if (error) alert('Hata: ' + error.message)
+    else veriyiYenile()
+  }
+
   const seciliOgrenci = ogrenciler.find((o) => o.id === seciliId)
   // Veli birden fazla öğrenciye bağlıysa (kardeşler), yönetici olmasa da
   // aralarında geçiş yapabilsin diye seçiciyi ona da gösteriyoruz.
@@ -752,10 +759,15 @@ export default function Muhasebe() {
                     <td className="px-4 py-2">{paraFormat(s.toplam_tutar)}</td>
                     <td className="px-4 py-2">{s.taksit_sayisi}</td>
                     <td className="px-4 py-2">{s.ilk_taksit_tarihi ? new Date(s.ilk_taksit_tarihi).toLocaleDateString('tr-TR') : '—'}</td>
-                    <td className="px-4 py-2 text-right">
+                    <td className="px-4 py-2 text-right whitespace-nowrap space-x-3">
                       <Link to={`/sozlesme/${s.id}`} target="_blank" className="text-blue text-sm hover:underline">
                         Görüntüle / Yazdır
                       </Link>
+                      {isYonetici && (
+                        <button onClick={() => sozlesmeSil(s)} className="text-red-500 text-sm hover:underline">
+                          Sil
+                        </button>
+                      )}
                     </td>
                   </tr>
                 ))}
