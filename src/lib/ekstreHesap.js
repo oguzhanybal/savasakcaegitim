@@ -179,6 +179,46 @@ export function whatsappLinkOlustur(ogrenci, seciliAy, buAyTutar, kalanTutar) {
   return `https://wa.me/${telefon}?text=${encodeURIComponent(mesaj)}`
 }
 
+// whatsappLinkOlustur ile aynı mesaj mantığı, ama telefon numarasını dışarıdan
+// (anne/baba gibi FARKLI bir kişininkini) parametre olarak alır — Toplu
+// Ekstre'de anneye ve babaya AYRI AYRI mesaj gönderebilmek için kullanılır.
+export function whatsappLinkOlusturTelefonIcin(telefon, ogrenciAdi, ogrenciId, seciliAy, buAyTutar, kalanTutar) {
+  const t = telefonNormallestir(telefon)
+  if (!t) return null
+  const ayYil = new Date(seciliAy + '-01').toLocaleDateString('tr-TR', { month: 'long', year: 'numeric' })
+  const pdfLink = `${window.location.origin}/ekstre/${ogrenciId}`
+  const mesaj = whatsappMesajiOlustur({ ogrenciAdi, ayYil, buAyTutar, kalanTutar, pdfLink })
+  return `https://wa.me/${t}?text=${encodeURIComponent(mesaj)}`
+}
+
+// ============================================================================
+// BİRE BİR GÜNLÜK DERS HATIRLATMASI — belirli bir tarihteki bire bir dersi
+// için öğrenciye/anneye/babaya WhatsApp üzerinden "bugün şu saatte dersiniz
+// var" hatırlatması gönderebilmek için mesaj/link üretir (BireBir.jsx'teki
+// "Ders Hatırlatması Gönder" paneli kullanır).
+// ============================================================================
+export function bireBirHatirlaticiMesajiOlustur({ ogrenciAdi, tarihStr, baslangicSaat, bitisSaat, ogretmenAdi }) {
+  const tarihMetni = new Date(tarihStr + 'T12:00:00').toLocaleDateString('tr-TR', {
+    day: '2-digit',
+    month: 'long',
+    year: 'numeric',
+    weekday: 'long',
+  })
+  const saatMetni = bitisSaat ? `${baslangicSaat}–${bitisSaat}` : baslangicSaat
+  return (
+    `Merhaba, ${ogrenciAdi} için ${tarihMetni} tarihinde saat ${saatMetni} arasında bire bir dersi bulunmaktadır` +
+    (ogretmenAdi ? ` (Öğretmen: ${ogretmenAdi}).` : '.') +
+    `\nİyi dersler dileriz.\nSavaş Akça Eğitim`
+  )
+}
+
+export function bireBirHatirlaticiLinkOlustur(telefon, bilgiler) {
+  const t = telefonNormallestir(telefon)
+  if (!t) return null
+  const mesaj = bireBirHatirlaticiMesajiOlustur(bilgiler)
+  return `https://wa.me/${t}?text=${encodeURIComponent(mesaj)}`
+}
+
 // ============================================================================
 // TEK TEK ÖDEME PLANI — Bir sözleşmenin (Okul/Kurs/Kitap) TÜM taksitlerini,
 // her birinin vade tarihi ve durumuyla (ödendi / gecikti / bekliyor) birlikte
