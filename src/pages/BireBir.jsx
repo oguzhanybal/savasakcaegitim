@@ -1636,11 +1636,15 @@ export default function BireBir() {
     <div>
       <h1 className="text-2xl font-bold text-navy mb-6">{isYonetici ? 'Bire Bir Dersler' : 'Bire Bir Derslerim'}</h1>
 
-      <DersHatirlatmaPaneli
-        atamalar={atamalar}
-        yoklamalar={yoklamalar}
-        sadeceOgretmenId={isYonetici ? null : profile?.id}
-      />
+      {/* Ders hatırlatma (WhatsApp gönder) paneli sadece yöneticiye gösterilir —
+          öğretmen rolünde veli/öğrenciye mesaj gönderme yetkisi olmamalı. */}
+      {isYonetici && (
+        <DersHatirlatmaPaneli
+          atamalar={atamalar}
+          yoklamalar={yoklamalar}
+          sadeceOgretmenId={null}
+        />
+      )}
 
       {isYonetici && (
         <>
