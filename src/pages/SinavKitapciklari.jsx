@@ -112,6 +112,7 @@ function KutuKatmani({ sayfaGoruntusu, sorularBuSayfada, seciliGeciciId, cizimMo
 export default function SinavKitapciklari() {
   const [sinavlar, setSinavlar] = useState([])
   const [kitapciklar, setKitapciklar] = useState([])
+  const [silinenKitapcikId, setSilinenKitapcikId] = useState(null)
   const [seciliSinavId, setSeciliSinavId] = useState('')
   const [yeniSinavAdi, setYeniSinavAdi] = useState('')
   const [yeniSinavTarihi, setYeniSinavTarihi] = useState('')
@@ -138,6 +139,39 @@ export default function SinavKitapciklari() {
       .select('*, sinavlar(sinav_adi)')
       .order('created_at', { ascending: false })
       .then(({ data }) => setKitapciklar(data || []))
+  }
+
+  // Bir kitapçığı (ör. deneme amaçlı yüklenmiş, yanlış yüklenmiş vb.) kalıcı
+  // olarak siler: önce o kitapçığa bağlı soru haritasını (sinav_kitapcik_sorulari),
+  // sonra Storage'daki taranmış PDF dosyasını, en son da kitapçık satırının
+  // kendisini kaldırır. "Sınav" kaydının kendisi (ör. "1. TYT") silinmez —
+  // aynı sınava başka bir kitapçık (B gibi) daha sonra yüklenebilsin diye.
+  async function kitapcikSil(k) {
+    if (
+      !confirm(
+        `"${k.sinavlar?.sinav_adi || 'Bu sınav'}" — "${k.kitapcik}" kitapçığını kalıcı olarak silmek istediğinize emin misiniz?\n\n` +
+          `Bu kitapçığa ait soru işaretlemeleri de silinir. Bu işlem GERİ ALINAMAZ.`
+      )
+    )
+      return
+    setSilinenKitapcikId(k.id)
+    try {
+      const { error: soruHatasi } = await supabase.from('sinav_kitapcik_sorulari').delete().eq('kitapcik_id', k.id)
+      if (soruHatasi) throw soruHatasi
+      if (k.pdf_yolu) {
+        // Depolamadaki dosya silinemese bile (ör. zaten yoksa) kitapçık
+        // kaydının silinmesini engellemesin diye hatasını sadece konsola yazıyoruz.
+        const { error: dosyaHatasi } = await supabase.storage.from('sinav-kitapciklari').remove([k.pdf_yolu])
+        if (dosyaHatasi) console.error('PDF dosyası silinemedi:', dosyaHatasi.message)
+      }
+      const { error: kitapcikHatasi } = await supabase.from('sinav_kitapciklari').delete().eq('id', k.id)
+      if (kitapcikHatasi) throw kitapcikHatasi
+      veriyiYenile()
+    } catch (e) {
+      alert('Hata: ' + e.message)
+    } finally {
+      setSilinenKitapcikId(null)
+    }
   }
 
   useEffect(() => {
@@ -381,13 +415,14 @@ export default function SinavKitapciklari() {
           <div className="px-4 py-3 border-b border-gray-100 bg-gray-50">
             <h2 className="font-semibold text-gray-700">Kayıtlı Kitapçıklar</h2>
           </div>
-          <table className="w-full text-sm min-w-[420px]">
+          <table className="w-full text-sm min-w-[500px]">
             <thead>
               <tr className="text-left text-gray-500">
                 <th className="px-4 py-2 font-medium">Sınav</th>
                 <th className="px-4 py-2 font-medium">Kitapçık</th>
                 <th className="px-4 py-2 font-medium">Sayfa</th>
                 <th className="px-4 py-2 font-medium">Durum</th>
+                <th className="px-4 py-2 font-medium text-right">İşlemler</th>
               </tr>
             </thead>
             <tbody>
@@ -402,6 +437,15 @@ export default function SinavKitapciklari() {
                     ) : (
                       <span className="text-xs font-semibold bg-yellow-100 text-yellow-700 px-2 py-1 rounded-full">Onay bekliyor</span>
                     )}
+                  </td>
+                  <td className="px-4 py-2 text-right">
+                    <button
+                      onClick={() => kitapcikSil(k)}
+                      disabled={silinenKitapcikId === k.id}
+                      className="text-red-500 text-sm hover:underline disabled:opacity-50"
+                    >
+                      {silinenKitapcikId === k.id ? 'Siliniyor...' : 'Sil'}
+                    </button>
                   </td>
                 </tr>
               ))}
