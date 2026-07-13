@@ -50,8 +50,13 @@ export async function pdfBelgesiAc(dosya) {
 }
 
 // Bir sayfayı canvas'a çizip görüntü olarak döner. olcek arttıkça hem OCR
-// kalitesi hem de dosya boyutu artar — 2 makul bir denge.
-export async function sayfayiGoruntuyeCevir(pdfBelge, sayfaNo, olcek = 2) {
+// kalitesi hem de dosya boyutu artar. DAHA ÖNCE 2 kullanılıyordu; küçük
+// puntolu, çok sütunlu (matematik/AYT gibi) kitapçıklarda soru numaraları
+// çok küçük kaldığı için Tesseract çoğunu hiç okuyamıyordu (bir kitapçıkta
+// 160 sorudan sadece 25'i bulunabildi). 3'e çıkarmak metni belirgin şekilde
+// netleştirip tanıma oranını artırıyor — bedeli biraz daha yavaş analiz ve
+// biraz daha fazla bellek kullanımı, ama doğruluk için buna değer.
+export async function sayfayiGoruntuyeCevir(pdfBelge, sayfaNo, olcek = 3) {
   const sayfa = await pdfBelge.getPage(sayfaNo)
   const viewport = sayfa.getViewport({ scale: olcek })
   const canvas = document.createElement('canvas')
@@ -77,12 +82,16 @@ export async function sayfayiGoruntuyeCevir(pdfBelge, sayfaNo, olcek = 2) {
 // ("1", "2"... tek başına, satırda başka hiçbir şey yokken) ve soru gövdesi
 // içindeki alt madde işaretleri ("I." "II." gibi Roma rakamlarının OCR
 // tarafından "1." "11." diye yanlış okunması, ya da metin içi "17. yüzyıl"
-// gibi ifadeler). Bu yüzden iki ek filtre uyguluyoruz:
-//   1) Aday, kendi SATIRINDA YALNIZ değilse (yanında soru metninin devamı
-//      olacak başka kelime(ler) varsa) geçerli sayılır — sayfa numarası gibi
-//      satırda tek başına duran sayılar elenir.
-//   2) Sayfanın en üst %6'sı (başlık/logo bandı) ve en alt %5'i (sayfa no
-//      bandı) tamamen dışarıda bırakılır.
+// gibi ifadeler). Bu yüzden aşağıdaki filtreler uygulanıyor:
+//   1) Sayfanın en üst %6'sı (başlık/logo bandı) ve en alt %5'i (sayfa no
+//      bandı) tamamen dışarıda bırakılır — SAYFA NUMARASI bu bantta kalır.
+//   2) (KALDIRILDI) Daha önce "aday kendi satırında yalnızsa (yanında başka
+//      kelime yoksa) ele" kuralı da vardı — bu, soru numarasının hemen
+//      ardından bir DİYAGRAM/TABLO/DENKLEM geldiği (yanında aynı satırda
+//      metin OLMADIĞI) durumlarda GERÇEK soru numaralarını da yanlışlıkla
+//      eliyordu (bir kitapçıkta 160 sorudan sadece 25'i bulunabilmesinin
+//      başlıca nedeni buydu). Sayfa numarası zaten (1) numaralı üst/alt
+//      bant filtresiyle elendiği için bu ek kural artık gereksizdi, kaldırıldı.
 export async function sayfadaSoruNumaralariniTespitEt(canvas, sayfaGenisligi, sayfaYuksekligi, ilerlemeCallback) {
   const Tesseract = await tesseractYukle()
   const { data } = await Tesseract.recognize(canvas, 'eng', {
@@ -119,7 +128,6 @@ export async function sayfadaSoruNumaralariniTespitEt(canvas, sayfaGenisligi, sa
     if (!/^\d{1,3}\.?$/.test(metin)) continue
     if (ilk.confidence < 30) continue
     if (ilk.bbox.y0 < ustSinir || ilk.bbox.y0 > altSinir) continue
-    if (siraliKelimeler.length < 2) continue // satırda yalnızsa (sayfa no vb.) atla
     adaylar.push({
       metin,
       x: ilk.bbox.x0,
@@ -155,15 +163,17 @@ export function girintiliAdaylariEle(adaylar, sayfaGenisligi, tolerans = 25) {
 //
 // ÖNEMLİ: taranmış/fotoğraflanmış sayfalarda OCR bazı soru numaralarını hiç
 // OKUYAMAZ (atlar) — bu yüzden "tam +1" şartı koyarsak taramanın kalitesine
-// göre GERÇEK sorular da zincirden düşüp hepsi elenebilir (yaşanan bug tam
-// buydu: hiçbir soru tespit edilemedi). Bunun yerine aradaki birkaç
-// numaranın kaçırılmış olabileceğini kabul ediyoruz: bir sonraki aday,
-// öncekinden BÜYÜKSE ve makul bir sıçrama içindeyse (maksimumSicrama) aynı
-// diziye sayılır. Sadece yeterince UZUN (>= minDiziUzunlugu) artan diziler
-// gerçek soru akışı sayılır; kısa/aykırı diziler (yönerge vb.) elenir. Bir
-// dizi bozulup yeniden küçük bir sayıdan başlarsa bu yeni bir ders/test
-// bölümü sayılır (TYT'de Türkçe/Matematik/Sosyal/Fen ayrı ayrı 1'den başlar).
-export function ardisikDiziyeGoreFiltrele(siraliAdaylar, minDiziUzunlugu = 3, maksimumSicrama = 6) {
+// göre GERÇEK sorular da zincirden düşüp hepsi elenebilir. Bunun yerine
+// aradaki BİRKAÇ numaranın kaçırılmış olabileceğini kabul ediyoruz: bir
+// sonraki aday, öncekinden BÜYÜKSE ve makul bir sıçrama içindeyse
+// (maksimumSicrama) aynı diziye sayılır. maksimumSicrama DAHA ÖNCE 6'ydı;
+// yoğun/çok sütunlu kitapçıklarda OCR üst üste birkaç numarayı art arda
+// kaçırabildiği görüldüğü için (160 sorudan sadece 25'i tespit edilebilen
+// kitapçıkta olduğu gibi) 10'a çıkarıldı — gerçek soru zincirlerinin daha
+// fazla kopması engellensin diye. Sadece yeterince UZUN (>= minDiziUzunlugu)
+// artan diziler gerçek soru akışı sayılır; kısa/aykırı diziler (yönerge vb.)
+// yine elenir — bu güvenlik payı BİLEREK değiştirilmedi.
+export function ardisikDiziyeGoreFiltrele(siraliAdaylar, minDiziUzunlugu = 3, maksimumSicrama = 10) {
   const sonuc = []
   let mevcutDizi = []
 
