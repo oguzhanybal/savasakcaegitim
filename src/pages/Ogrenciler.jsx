@@ -8,11 +8,15 @@ export default function Ogrenciler() {
   const [loading, setLoading] = useState(true)
   const [yeniAd, setYeniAd] = useState('')
   const [yeniTelefon, setYeniTelefon] = useState('')
+  const [yeniTcKimlik, setYeniTcKimlik] = useState('')
+  const [yeniAdres, setYeniAdres] = useState('')
   const [ekleniyor, setEkleniyor] = useState(false)
   const [filtre, setFiltre] = useState('aktif') // aktif | pasif | tumu
   const [duzenlenenId, setDuzenlenenId] = useState(null)
   const [duzenleAd, setDuzenleAd] = useState('')
   const [duzenleTelefon, setDuzenleTelefon] = useState('')
+  const [duzenleTcKimlik, setDuzenleTcKimlik] = useState('')
+  const [duzenleAdres, setDuzenleAdres] = useState('')
   const [veliBaglanan, setVeliBaglanan] = useState(null)
   const [seciliVeli, setSeciliVeli] = useState('')
 
@@ -35,11 +39,18 @@ export default function Ogrenciler() {
     e.preventDefault()
     if (!yeniAd.trim()) return
     setEkleniyor(true)
-    const { error } = await supabase.from('ogrenciler').insert({ ad_soyad: adSoyadDuzelt(yeniAd), telefon: yeniTelefon.trim() || null })
+    const { error } = await supabase.from('ogrenciler').insert({
+      ad_soyad: adSoyadDuzelt(yeniAd),
+      telefon: yeniTelefon.trim() || null,
+      tc_kimlik_no: yeniTcKimlik.trim() || null,
+      adres: yeniAdres.trim() || null,
+    })
     setEkleniyor(false)
     if (!error) {
       setYeniAd('')
       setYeniTelefon('')
+      setYeniTcKimlik('')
+      setYeniAdres('')
       yukle()
     } else {
       alert('Hata: ' + error.message)
@@ -56,6 +67,8 @@ export default function Ogrenciler() {
     setDuzenlenenId(o.id)
     setDuzenleAd(o.ad_soyad)
     setDuzenleTelefon(o.telefon || '')
+    setDuzenleTcKimlik(o.tc_kimlik_no || '')
+    setDuzenleAdres(o.adres || '')
   }
 
   function duzenlemeyiVazgec() {
@@ -66,7 +79,12 @@ export default function Ogrenciler() {
     if (!duzenleAd.trim()) return
     const { error } = await supabase
       .from('ogrenciler')
-      .update({ ad_soyad: adSoyadDuzelt(duzenleAd), telefon: duzenleTelefon.trim() || null })
+      .update({
+        ad_soyad: adSoyadDuzelt(duzenleAd),
+        telefon: duzenleTelefon.trim() || null,
+        tc_kimlik_no: duzenleTcKimlik.trim() || null,
+        adres: duzenleAdres.trim() || null,
+      })
       .eq('id', ogrenciId)
     if (!error) {
       setDuzenlenenId(null)
@@ -138,6 +156,25 @@ export default function Ogrenciler() {
             placeholder="905XXXXXXXXX"
           />
         </div>
+        <div className="flex-1 min-w-[160px]">
+          <label className="block text-sm font-medium text-gray-700 mb-1">TC Kimlik No (opsiyonel)</label>
+          <input
+            value={yeniTcKimlik}
+            onChange={(e) => setYeniTcKimlik(e.target.value)}
+            className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue"
+            placeholder="11 haneli TC No"
+            maxLength={11}
+          />
+        </div>
+        <div className="flex-1 min-w-[220px]">
+          <label className="block text-sm font-medium text-gray-700 mb-1">Adres (opsiyonel)</label>
+          <input
+            value={yeniAdres}
+            onChange={(e) => setYeniAdres(e.target.value)}
+            className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue"
+            placeholder="Sözleşmede görünecek adres"
+          />
+        </div>
         <button
           type="submit"
           disabled={ekleniyor}
@@ -146,6 +183,9 @@ export default function Ogrenciler() {
           {ekleniyor ? 'Ekleniyor...' : 'Öğrenci Ekle'}
         </button>
       </form>
+      <p className="text-xs text-gray-400 -mt-4 mb-6">
+        TC Kimlik No ve Adres, sadece öğrenci sözleşmesi yazdırılırken kullanılır — girilmese de öğrenci kaydı yapılabilir.
+      </p>
 
       {veliler.length === 0 && (
         <div className="bg-yellow-50 border border-yellow-200 rounded-xl p-4 mb-4 text-sm text-yellow-800">
@@ -207,30 +247,52 @@ export default function Ogrenciler() {
               if (duzenleniyor) {
                 return (
                   <tr key={o.id} className="bg-blue-50">
-                    <td className="px-4 py-2">
-                      <input
-                        value={duzenleAd}
-                        onChange={(e) => setDuzenleAd(e.target.value)}
-                        className="w-full px-2 py-1.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue"
-                      />
-                    </td>
-                    <td className="px-4 py-2">
-                      <input
-                        value={duzenleTelefon}
-                        onChange={(e) => setDuzenleTelefon(e.target.value)}
-                        className="w-full px-2 py-1.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue"
-                        placeholder="905XXXXXXXXX"
-                      />
-                    </td>
-                    <td className="px-4 py-2 text-gray-400 text-xs">—</td>
-                    <td className="px-4 py-2 text-gray-400 text-xs">—</td>
-                    <td className="px-4 py-2 text-right space-x-3 whitespace-nowrap">
-                      <button onClick={() => duzenlemeyiKaydet(o.id)} className="text-green-600 text-sm font-semibold hover:underline">
-                        Kaydet
-                      </button>
-                      <button onClick={duzenlemeyiVazgec} className="text-gray-500 text-sm hover:underline">
-                        Vazgeç
-                      </button>
+                    <td colSpan={5} className="px-4 py-3">
+                      <div className="flex flex-wrap gap-3 items-end">
+                        <div className="flex-1 min-w-[160px]">
+                          <label className="block text-xs font-medium text-gray-500 mb-1">Ad Soyad</label>
+                          <input
+                            value={duzenleAd}
+                            onChange={(e) => setDuzenleAd(e.target.value)}
+                            className="w-full px-2 py-1.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue"
+                          />
+                        </div>
+                        <div className="flex-1 min-w-[140px]">
+                          <label className="block text-xs font-medium text-gray-500 mb-1">Telefon</label>
+                          <input
+                            value={duzenleTelefon}
+                            onChange={(e) => setDuzenleTelefon(e.target.value)}
+                            className="w-full px-2 py-1.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue"
+                            placeholder="905XXXXXXXXX"
+                          />
+                        </div>
+                        <div className="flex-1 min-w-[140px]">
+                          <label className="block text-xs font-medium text-gray-500 mb-1">TC Kimlik No</label>
+                          <input
+                            value={duzenleTcKimlik}
+                            onChange={(e) => setDuzenleTcKimlik(e.target.value)}
+                            className="w-full px-2 py-1.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue"
+                            placeholder="11 haneli TC No"
+                            maxLength={11}
+                          />
+                        </div>
+                        <div className="flex-1 min-w-[200px]">
+                          <label className="block text-xs font-medium text-gray-500 mb-1">Adres</label>
+                          <input
+                            value={duzenleAdres}
+                            onChange={(e) => setDuzenleAdres(e.target.value)}
+                            className="w-full px-2 py-1.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue"
+                          />
+                        </div>
+                        <div className="space-x-3 whitespace-nowrap pb-1.5">
+                          <button onClick={() => duzenlemeyiKaydet(o.id)} className="text-green-600 text-sm font-semibold hover:underline">
+                            Kaydet
+                          </button>
+                          <button onClick={duzenlemeyiVazgec} className="text-gray-500 text-sm hover:underline">
+                            Vazgeç
+                          </button>
+                        </div>
+                      </div>
                     </td>
                   </tr>
                 )

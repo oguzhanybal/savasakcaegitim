@@ -262,6 +262,17 @@ function SozlesmeEkleForm({ ogrenciId, onEklendi }) {
   const [toplamTutar, setToplamTutar] = useState('')
   const [taksitSayisi, setTaksitSayisi] = useState('1')
   const [ilkTaksitTarihi, setIlkTaksitTarihi] = useState('')
+  // Sözleşme yazdırılırken kullanılan ek bilgiler — öğrencinin o anki sınıf
+  // durumu sonradan değişse bile bu sözleşmede sabit kalsın diye ayrıca
+  // saklanıyor. Eğitim dönemi bir önceki sözleşmeden hatırlanabilsin diye
+  // basit bir varsayım (bugünün yılına göre) ile başlatılıyor.
+  const [egitimDonemi, setEgitimDonemi] = useState(() => {
+    const yil = new Date().getFullYear()
+    const ay = new Date().getMonth() + 1
+    return ay >= 6 ? `${yil}-${yil + 1}` : `${yil - 1}-${yil}`
+  })
+  const [sinifMetni, setSinifMetni] = useState('')
+  const [sozlesmeTarihi, setSozlesmeTarihi] = useState(() => new Date().toISOString().slice(0, 10))
   const [gonderiliyor, setGonderiliyor] = useState(false)
   const [acik, setAcik] = useState(false)
 
@@ -275,12 +286,16 @@ function SozlesmeEkleForm({ ogrenciId, onEklendi }) {
       toplam_tutar: Number(toplamTutar),
       taksit_sayisi: Number(taksitSayisi) || 1,
       ilk_taksit_tarihi: ilkTaksitTarihi || null,
+      egitim_donemi: egitimDonemi.trim() || null,
+      sinif_metni: sinifMetni.trim() || null,
+      sozlesme_tarihi: sozlesmeTarihi || null,
     })
     setGonderiliyor(false)
     if (!error) {
       setToplamTutar('')
       setTaksitSayisi('1')
       setIlkTaksitTarihi('')
+      setSinifMetni('')
       setAcik(false)
       onEklendi()
     } else {
@@ -345,6 +360,38 @@ function SozlesmeEkleForm({ ogrenciId, onEklendi }) {
           />
         </div>
       </div>
+      <div className="flex flex-wrap gap-3 items-end mt-3 pt-3 border-t border-gray-100">
+        <div className="flex-1 min-w-[130px]">
+          <label className="block text-sm font-medium text-gray-700 mb-1">Sözleşme Tarihi</label>
+          <input
+            type="date"
+            value={sozlesmeTarihi}
+            onChange={(e) => setSozlesmeTarihi(e.target.value)}
+            className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue"
+          />
+        </div>
+        <div className="flex-1 min-w-[130px]">
+          <label className="block text-sm font-medium text-gray-700 mb-1">Eğitim Dönemi</label>
+          <input
+            value={egitimDonemi}
+            onChange={(e) => setEgitimDonemi(e.target.value)}
+            placeholder="2026-2027"
+            className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue"
+          />
+        </div>
+        <div className="flex-1 min-w-[130px]">
+          <label className="block text-sm font-medium text-gray-700 mb-1">Sınıf (sözleşmede yazsın)</label>
+          <input
+            value={sinifMetni}
+            onChange={(e) => setSinifMetni(e.target.value)}
+            placeholder="örn. 9-A ya da Bire Bir"
+            className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue"
+          />
+        </div>
+      </div>
+      <p className="text-xs text-gray-400 mt-2">
+        Bu son üç alan sadece "Sözleşmeyi Görüntüle/Yazdır" çıktısında kullanılır, boş bırakılabilir.
+      </p>
       <div className="flex gap-2 mt-3">
         <button
           type="submit"
@@ -692,11 +739,12 @@ export default function Muhasebe() {
                   <th className="px-4 py-2 font-medium">Toplam Tutar</th>
                   <th className="px-4 py-2 font-medium">Taksit Sayısı</th>
                   <th className="px-4 py-2 font-medium">İlk Taksit</th>
+                  <th className="px-4 py-2 font-medium text-right">Sözleşme</th>
                 </tr>
               </thead>
               <tbody>
                 {sozlesmeler.length === 0 && (
-                  <tr><td colSpan={4} className="px-4 py-4 text-center text-gray-400">Sözleşme bulunamadı.</td></tr>
+                  <tr><td colSpan={5} className="px-4 py-4 text-center text-gray-400">Sözleşme bulunamadı.</td></tr>
                 )}
                 {sozlesmeler.map((s) => (
                   <tr key={s.id} className="border-t border-gray-50">
@@ -704,6 +752,11 @@ export default function Muhasebe() {
                     <td className="px-4 py-2">{paraFormat(s.toplam_tutar)}</td>
                     <td className="px-4 py-2">{s.taksit_sayisi}</td>
                     <td className="px-4 py-2">{s.ilk_taksit_tarihi ? new Date(s.ilk_taksit_tarihi).toLocaleDateString('tr-TR') : '—'}</td>
+                    <td className="px-4 py-2 text-right">
+                      <Link to={`/sozlesme/${s.id}`} target="_blank" className="text-blue text-sm hover:underline">
+                        Görüntüle / Yazdır
+                      </Link>
+                    </td>
                   </tr>
                 ))}
               </tbody>
