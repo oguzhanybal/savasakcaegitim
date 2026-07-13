@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { paraFormat, haftaBaslangici, haftaEtiketi, ayBaslangici, ayEtiketi } from '../lib/ekstreHesap'
 
 const GUNLER = ['', 'Pazartesi', 'Salı', 'Çarşamba', 'Perşembe', 'Cuma', 'Cumartesi', 'Pazar']
@@ -22,8 +22,14 @@ function yerelBugunTarihi() {
 // kim olduğu (öğretmen mi öğrenci mi) değişiyor.
 //
 // dersler: [{ id, tarih, baslangicSaat, bitisSaat, karsiTarafAdi, tutar }]
-export default function BireBirDersDokumu({ dersler, karsiTarafBasligi, baslangicPeriyot = 'ay' }) {
-  const [periyot, setPeriyot] = useState(baslangicPeriyot) // 'hafta' | 'ay'
+// hedefDonem (opsiyonel): "YYYY-MM-01" formatında bir ay başlangıcı — verilirse
+// (ör. Ekstre.jsx'teki üstteki "Dönem" seçicisiyle senkron kalsın diye) bu
+// bileşen İLK AÇILIŞTA ve hedefDonem her değiştiğinde otomatik o aya atlar.
+// Kullanıcı yine de Haftalık/Aylık butonları ya da dönem seçici ile İSTEDİĞİ
+// ANDA elle farklı bir döneme geçebilir — hedefDonem sadece "varsayılan/senkron"
+// değeri belirler, kilitlemez.
+export default function BireBirDersDokumu({ dersler, karsiTarafBasligi, baslangicPeriyot = 'ay', hedefDonem = null }) {
+  const [periyot, setPeriyot] = useState(hedefDonem ? 'ay' : baslangicPeriyot) // 'hafta' | 'ay'
   const [gosterilenSayisi, setGosterilenSayisi] = useState(6)
 
   // İçinde bulunduğumuz haftanın/ayın anahtarını döner — AMA sadece o dönemde
@@ -37,8 +43,23 @@ export default function BireBirDersDokumu({ dersler, karsiTarafBasligi, baslangi
   }
 
   // Boşsa en yeni dönemlerden sayfalanmış liste; doluysa (içinde bulunulan
-  // dönem ya da elle seçilen) sadece o tek dönem gösterilir.
-  const [seciliDonem, setSeciliDonem] = useState(() => icindeBulunulanDonem(baslangicPeriyot))
+  // dönem ya da elle seçilen) sadece o tek dönem gösterilir. hedefDonem
+  // verilmişse "içinde bulunulan dönem" bugünün ayı değil, dışarıdan gelen
+  // hedef ay olur.
+  const [seciliDonem, setSeciliDonem] = useState(() => {
+    if (hedefDonem) return dersler.some((d) => ayBaslangici(d.tarih) === hedefDonem) ? hedefDonem : ''
+    return icindeBulunulanDonem(baslangicPeriyot)
+  })
+
+  // hedefDonem sonradan değişirse (ör. Ekstre.jsx'te üstteki "Dönem" inputu
+  // değiştirildiyse) aşağıdaki dökümü de otomatik o aya taşı.
+  useEffect(() => {
+    if (!hedefDonem) return
+    setPeriyot('ay')
+    setGosterilenSayisi(6)
+    setSeciliDonem(dersler.some((d) => ayBaslangici(d.tarih) === hedefDonem) ? hedefDonem : '')
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [hedefDonem])
 
   const tumGruplar = useMemo(() => {
     const anahtarUret = periyot === 'ay' ? ayBaslangici : haftaBaslangici
@@ -62,6 +83,11 @@ export default function BireBirDersDokumu({ dersler, karsiTarafBasligi, baslangi
 
   return (
     <div>
+      <style>{`
+        @media print {
+          .bire-bir-donem-blok, .bire-bir-donem-blok table, tr { break-inside: avoid; page-break-inside: avoid; }
+        }
+      `}</style>
       <div className="no-print flex gap-1.5 mb-3 items-center flex-wrap">
         <button
           type="button"
@@ -143,14 +169,14 @@ export default function BireBirDersDokumu({ dersler, karsiTarafBasligi, baslangi
         )
 
         return (
-          <div key={anahtar} className="mb-4">
+          <div key={anahtar} className="mb-4 bire-bir-donem-blok">
             <div className="flex justify-between items-center mb-1">
               <p className="font-semibold text-navy text-sm capitalize">{etiketUret(anahtar)}</p>
               <p className="text-xs text-gray-500">{grupDersleri.length} ders</p>
             </div>
             {gunGunMu ? (
               gunGruplari.map(([tarih, gunDersleri]) => (
-                <div key={tarih} className="mb-3 last:mb-0">
+                <div key={tarih} className="mb-3 last:mb-0 bire-bir-donem-blok">
                   <p className="text-sm font-bold text-white bg-navy rounded-lg px-3 py-1.5 mb-2 tracking-wide">
                     {GUNLER[gunNumaraTarihten(tarih)]} — {new Date(tarih + 'T12:00:00').toLocaleDateString('tr-TR')}
                   </p>
