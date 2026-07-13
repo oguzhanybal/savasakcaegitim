@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
-import { paraFormat, ogrenciSatirlariHesapla, whatsappLinkOlustur, bireBirBorclariOlustur, kantinBorclariOlustur } from '../lib/ekstreHesap'
+import { paraFormat, ogrenciSatirlariHesapla, whatsappLinkOlusturTelefonIcin, bireBirBorclariOlustur, kantinBorclariOlustur } from '../lib/ekstreHesap'
 
 export default function TopluEkstre() {
   const [ogrenciler, setOgrenciler] = useState([])
@@ -52,7 +52,8 @@ export default function TopluEkstre() {
         kalanToplam,
         gecmisBorc,
         borcluMu: kalanToplam > 0,
-        whatsappLink: whatsappLinkOlustur(o, seciliAy, buAyToplam, kalanToplam),
+        anneWhatsappLink: whatsappLinkOlusturTelefonIcin(o.anne_telefon, o.ad_soyad, o.id, seciliAy, buAyToplam, kalanToplam),
+        babaWhatsappLink: whatsappLinkOlusturTelefonIcin(o.baba_telefon, o.ad_soyad, o.id, seciliAy, buAyToplam, kalanToplam),
       }
     })
     .filter((r) => r.ogrenci.ad_soyad.toLowerCase().includes(arama.toLowerCase()))
@@ -106,7 +107,7 @@ export default function TopluEkstre() {
       </div>
 
       <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-x-auto">
-        <table className="w-full text-sm min-w-[720px]">
+        <table className="w-full text-sm min-w-[860px]">
           <thead>
             <tr className="text-left text-gray-500 bg-gray-50">
               <th className="px-4 py-2 font-medium">Öğrenci</th>
@@ -138,17 +139,29 @@ export default function TopluEkstre() {
                   <Link to={`/ekstre/${r.ogrenci.id}`} target="_blank" className="text-blue text-sm hover:underline mr-3">
                     Ekstre
                   </Link>
-                  {r.whatsappLink ? (
+                  {r.anneWhatsappLink ? (
                     <a
-                      href={r.whatsappLink}
+                      href={r.anneWhatsappLink}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="text-green-600 text-sm font-medium hover:underline mr-3"
+                    >
+                      Anneye Gönder
+                    </a>
+                  ) : (
+                    <span className="text-xs text-gray-400 mr-3">Anne Telefonu Yok</span>
+                  )}
+                  {r.babaWhatsappLink ? (
+                    <a
+                      href={r.babaWhatsappLink}
                       target="_blank"
                       rel="noreferrer"
                       className="text-green-600 text-sm font-medium hover:underline"
                     >
-                      WhatsApp Gönder
+                      Babaya Gönder
                     </a>
                   ) : (
-                    <span className="text-xs text-gray-400">Telefon Girilmemiş</span>
+                    <span className="text-xs text-gray-400">Baba Telefonu Yok</span>
                   )}
                 </td>
               </tr>

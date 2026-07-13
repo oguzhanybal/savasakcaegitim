@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../lib/AuthContext'
-import { paraFormat } from '../lib/ekstreHesap'
+import { paraFormat, bireBirHatirlaticiLinkOlustur } from '../lib/ekstreHesap'
 import MusaitlikTablosu from '../components/MusaitlikTablosu'
 
 const GUNLER = ['', 'Pazartesi', 'Salı', 'Çarşamba', 'Perşembe', 'Cuma', 'Cumartesi', 'Pazar']
@@ -1276,6 +1276,160 @@ function TekSeferlikDerslerListesi({ yoklamalar, atamalar, onDegisti, sadeceOgre
   )
 }
 
+// ============================================================================
+// DERS HATIRLATMASI GÖNDER — seçili bir gün (varsayılan bugün) için o günün
+// TÜM bire bir derslerini (haftalık atamalar + tek seferlik dersler) tek
+// listede gösterir; her ders için öğrenciye, anneye ya da babaya WhatsApp
+// üzerinden "bugün şu saatte dersiniz var" hatırlatması gönderilebilir.
+// Öğretmen sadece kendi derslerini görür (sadeceOgretmenId ile filtrelenir).
+// ============================================================================
+function BugununDersleriPaneli({ atamalar, yoklamalar, sadeceOgretmenId }) {
+  const [tarih, setTarih] = useState(() => yerelBugunTarihi())
+
+  const gun = gunNumaraTarihten(tarih)
+  const bugun = yerelBugunTarihi()
+  const yarin = gunEkle(bugun, 1)
+
+  const dersler = useMemo(() => {
+    const haftalik = atamalar
+      .filter((a) => a.aktif && a.gun === gun)
+      .filter((a) => !sadeceOgretmenId || a.ogretmen_profile_id === sadeceOgretmenId)
+      .map((a) => ({
+        key: `atama-${a.id}`,
+        ogrenciAdi: a.ogrenci_adi || '—',
+        ogretmenAdi: a.ogretmen_adi || '—',
+        baslangicSaat: saatKisalt(a.baslangic_saat),
+        bitisSaat: saatKisalt(a.bitis_saat),
+        ogrenciTelefon: a.ogrenci_telefon,
+        anneTelefon: a.ogrenci_anne_telefon,
+        babaTelefon: a.ogrenci_baba_telefon,
+        tur: 'Haftalık',
+      }))
+
+    // Tek seferlik dersler zaten belirli bir tarihe kayıtlı olduğu için haftanın
+    // gününe değil, doğrudan seçili tarihe göre süzülür. "Gelmedi" işaretlenmiş
+    // (iptal olmuş) dersler hatırlatma listesinde gösterilmez.
+    const tekSeferlik = yoklamalar
+      .filter((y) => !y.atama_id && y.tarih === tarih && y.durum !== 'gelmedi')
+      .filter((y) => !sadeceOgretmenId || y.ogretmen_profile_id === sadeceOgretmenId)
+      .map((y) => ({
+        key: `yoklama-${y.id}`,
+        ogrenciAdi: y.ogrenci_adi || '—',
+        ogretmenAdi: y.ogretmen_adi || '—',
+        baslangicSaat: saatKisalt(y.baslangic_saat),
+        bitisSaat: saatKisalt(y.bitis_saat),
+        ogrenciTelefon: y.ogrenci_telefon,
+        anneTelefon: y.ogrenci_anne_telefon,
+        babaTelefon: y.ogrenci_baba_telefon,
+        tur: 'Tek Seferlik',
+      }))
+
+    return [...haftalik, ...tekSeferlik].sort((a, b) =>
+      (a.baslangicSaat || '').localeCompare(b.baslangicSaat || '')
+    )
+  }, [atamalar, yoklamalar, gun, tarih, sadeceOgretmenId])
+
+  const tarihMetni = new Date(tarih + 'T12:00:00').toLocaleDateString('tr-TR', {
+    weekday: 'long',
+    day: '2-digit',
+    month: 'long',
+    year: 'numeric',
+  })
+
+  return (
+    <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden mb-6">
+      <div className="px-4 py-3 border-b border-gray-100 bg-gray-50 flex items-center justify-between flex-wrap gap-3">
+        <div>
+          <h2 className="font-semibold text-gray-700">Ders Hatırlatması Gönder</h2>
+          <p className="text-xs text-gray-400 mt-0.5">
+            Seçili günün bire bir derslerini WhatsApp ile öğrenciye, anneye ya da babaya hatırlatabilirsiniz.
+          </p>
+        </div>
+        <div className="flex items-center gap-2 flex-wrap">
+          <button
+            type="button"
+            onClick={() => setTarih(bugun)}
+            className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+              tarih === bugun ? 'bg-navy text-white' : 'bg-white border border-gray-200 text-gray-600 hover:bg-gray-100'
+            }`}
+          >
+            Bugün
+          </button>
+          <button
+            type="button"
+            onClick={() => setTarih(yarin)}
+            className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+              tarih === yarin ? 'bg-navy text-white' : 'bg-white border border-gray-200 text-gray-600 hover:bg-gray-100'
+            }`}
+          >
+            Yarın
+          </button>
+          <input
+            type="date"
+            value={tarih}
+            onChange={(e) => setTarih(e.target.value)}
+            className="px-3 py-1.5 border border-gray-200 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue"
+          />
+        </div>
+      </div>
+      <p className="px-4 pt-3 text-xs text-gray-400 capitalize">{tarihMetni}</p>
+      <div className="divide-y divide-gray-50">
+        {dersler.length === 0 && (
+          <p className="px-4 py-6 text-center text-gray-400 text-sm">Bu gün için bire bir dersi bulunamadı.</p>
+        )}
+        {dersler.map((d) => {
+          const mesajBilgisi = {
+            ogrenciAdi: d.ogrenciAdi,
+            tarihStr: tarih,
+            baslangicSaat: d.baslangicSaat,
+            bitisSaat: d.bitisSaat,
+            ogretmenAdi: d.ogretmenAdi,
+          }
+          const ogrenciLink = bireBirHatirlaticiLinkOlustur(d.ogrenciTelefon, mesajBilgisi)
+          const anneLink = bireBirHatirlaticiLinkOlustur(d.anneTelefon, mesajBilgisi)
+          const babaLink = bireBirHatirlaticiLinkOlustur(d.babaTelefon, mesajBilgisi)
+          return (
+            <div key={d.key} className="px-4 py-3 flex items-center justify-between flex-wrap gap-2">
+              <div>
+                <p className="font-medium text-gray-800">
+                  {d.ogrenciAdi}{' '}
+                  <span className="font-normal text-gray-400">
+                    — {d.baslangicSaat}{d.bitisSaat ? `–${d.bitisSaat}` : ''}
+                  </span>
+                </p>
+                <p className="text-xs text-gray-400">{d.ogretmenAdi} · {d.tur}</p>
+              </div>
+              <div className="flex items-center gap-3 flex-wrap text-sm">
+                {ogrenciLink ? (
+                  <a href={ogrenciLink} target="_blank" rel="noreferrer" className="text-green-600 font-medium hover:underline">
+                    Öğrenciye Gönder
+                  </a>
+                ) : (
+                  <span className="text-xs text-gray-400">Öğrenci Telefonu Yok</span>
+                )}
+                {anneLink ? (
+                  <a href={anneLink} target="_blank" rel="noreferrer" className="text-green-600 font-medium hover:underline">
+                    Anneye Gönder
+                  </a>
+                ) : (
+                  <span className="text-xs text-gray-400">Anne Telefonu Yok</span>
+                )}
+                {babaLink ? (
+                  <a href={babaLink} target="_blank" rel="noreferrer" className="text-green-600 font-medium hover:underline">
+                    Babaya Gönder
+                  </a>
+                ) : (
+                  <span className="text-xs text-gray-400">Baba Telefonu Yok</span>
+                )}
+              </div>
+            </div>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
+
 export default function BireBir() {
   const { profile } = useAuth()
   const isYonetici = profile?.rol === 'yonetici'
@@ -1304,14 +1458,19 @@ export default function BireBir() {
       isYonetici ? supabase.from('ders_programi').select('*') : Promise.resolve({ data: [] }),
       supabase
         .from('bire_bir_atamalari')
-        .select('*, ogrenciler(ad_soyad), profiles:ogretmen_profile_id(ad_soyad, brans)')
+        // "Ders Hatırlatması Gönder" paneli için öğrencinin kendi telefonu ile
+        // anne/baba telefonu da bu join üzerinden çekiliyor (aşağıda ogrenci_telefon
+        // vb. alanlara açılıyor) — ayrı bir sorguya gerek kalmasın diye.
+        .select('*, ogrenciler(ad_soyad, telefon, anne_telefon, baba_telefon), profiles:ogretmen_profile_id(ad_soyad, brans)')
         .order('gun')
         .order('baslangic_saat'),
       // Tek seferlik dersler için de öğrenci/öğretmen adını doğrudan sorguyla
       // birlikte çekiyoruz (atamalardaki gibi) — çünkü öğretmen rolünde tam
       // öğrenci/öğretmen listesi hiç çekilmiyor (yukarıdaki iki satır sadece
       // yönetici için), o zaman isim haritaları boş kalıp "—" görünürdü.
-      supabase.from('bire_bir_yoklama').select('*, ogrenciler(ad_soyad), profiles:ogretmen_profile_id(ad_soyad, brans)'),
+      supabase
+        .from('bire_bir_yoklama')
+        .select('*, ogrenciler(ad_soyad, telefon, anne_telefon, baba_telefon), profiles:ogretmen_profile_id(ad_soyad, brans)'),
     ]).then(([o, og, dp, a, y]) => {
       setOgrenciler(o.data || [])
       setOgretmenler(og.data || [])
@@ -1324,6 +1483,9 @@ export default function BireBir() {
           // Öğretmenin branşı — veli/yönetici hocayı isimden değil, hangi DERS
           // için ders aldığından da tanısın diye listelerde adının yanında gösteriliyor.
           ogretmen_bransi: d.profiles?.brans,
+          ogrenci_telefon: d.ogrenciler?.telefon,
+          ogrenci_anne_telefon: d.ogrenciler?.anne_telefon,
+          ogrenci_baba_telefon: d.ogrenciler?.baba_telefon,
         }))
       )
       setYoklamalar(
@@ -1332,6 +1494,9 @@ export default function BireBir() {
           ogrenci_adi: d.ogrenciler?.ad_soyad,
           ogretmen_adi: d.profiles?.ad_soyad,
           ogretmen_bransi: d.profiles?.brans,
+          ogrenci_telefon: d.ogrenciler?.telefon,
+          ogrenci_anne_telefon: d.ogrenciler?.anne_telefon,
+          ogrenci_baba_telefon: d.ogrenciler?.baba_telefon,
         }))
       )
       ilkYuklemeTamamRef.current = true
@@ -1370,6 +1535,12 @@ export default function BireBir() {
   return (
     <div>
       <h1 className="text-2xl font-bold text-navy mb-6">{isYonetici ? 'Bire Bir Dersler' : 'Bire Bir Derslerim'}</h1>
+
+      <BugununDersleriPaneli
+        atamalar={atamalar}
+        yoklamalar={yoklamalar}
+        sadeceOgretmenId={isYonetici ? null : profile?.id}
+      />
 
       {isYonetici && (
         <>
