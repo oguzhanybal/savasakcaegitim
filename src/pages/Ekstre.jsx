@@ -203,10 +203,7 @@ export default function Ekstre() {
 
             {bireBirDersleri.length > 0 && (
               <div className="mt-6 bire-bir-baslik-blok">
-                <p className="font-semibold text-navy mb-1">Bire Bir Ders Dökümü</p>
-                <p className="text-xs text-gray-400 mb-2">
-                  (Bu bölüm sayfaya sığmadıysa ayrıntılı ders listesine bir sonraki sayfadan ulaşabilirsiniz.)
-                </p>
+                <p className="font-semibold text-navy mb-2">Bire Bir Ders Dökümü</p>
                 <BireBirDersDokumu
                   dersler={bireBirDersleri.map((d) => ({ ...d, karsiTarafAdi: d.ogretmenAdi, karsiTarafBransi: d.ogretmenBransi }))}
                   karsiTarafBasligi="Öğretmen"
