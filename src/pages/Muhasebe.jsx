@@ -523,6 +523,16 @@ export default function Muhasebe() {
   // ödedi" görülsün diye tüm öğrencilerin son ödemelerini ayrıca tutuyoruz
   // (seçili öğrenciye özel odemeler state'inden bağımsız).
   const [sonOdemeler, setSonOdemeler] = useState([])
+  // Sözleşme yanlış girildiyse silmeden düzeltebilmek için satır-içi düzenleme.
+  const [sozlesmeDuzenlenenId, setSozlesmeDuzenlenenId] = useState(null)
+  const [duzenleKalem, setDuzenleKalem] = useState('Okul')
+  const [duzenleToplamTutar, setDuzenleToplamTutar] = useState('')
+  const [duzenleTaksitSayisi, setDuzenleTaksitSayisi] = useState('1')
+  const [duzenleIlkTaksitTarihi, setDuzenleIlkTaksitTarihi] = useState('')
+  const [duzenleEgitimDonemi, setDuzenleEgitimDonemi] = useState('')
+  const [duzenleSinifMetni, setDuzenleSinifMetni] = useState('')
+  const [duzenleSozlesmeTarihi, setDuzenleSozlesmeTarihi] = useState('')
+  const [sozlesmeKaydediliyor, setSozlesmeKaydediliyor] = useState(false)
 
   function sonOdemeleriYukle() {
     supabase
@@ -613,6 +623,48 @@ export default function Muhasebe() {
     const { error } = await supabase.from('sozlesmeler').delete().eq('id', s.id)
     if (error) alert('Hata: ' + error.message)
     else veriyiYenile()
+  }
+
+  function sozlesmeDuzenlemeyeBasla(s) {
+    setSozlesmeDuzenlenenId(s.id)
+    setDuzenleKalem(s.kalem)
+    setDuzenleToplamTutar(String(s.toplam_tutar))
+    setDuzenleTaksitSayisi(String(s.taksit_sayisi || 1))
+    setDuzenleIlkTaksitTarihi(s.ilk_taksit_tarihi || '')
+    setDuzenleEgitimDonemi(s.egitim_donemi || '')
+    setDuzenleSinifMetni(s.sinif_metni || '')
+    setDuzenleSozlesmeTarihi(s.sozlesme_tarihi || '')
+  }
+
+  function sozlesmeDuzenlemeyiVazgec() {
+    setSozlesmeDuzenlenenId(null)
+  }
+
+  async function sozlesmeDuzenlemeyiKaydet(id) {
+    if (!duzenleToplamTutar || Number(duzenleToplamTutar) <= 0) {
+      alert('Toplam tutar 0\'dan büyük olmalı.')
+      return
+    }
+    setSozlesmeKaydediliyor(true)
+    const { error } = await supabase
+      .from('sozlesmeler')
+      .update({
+        kalem: duzenleKalem,
+        toplam_tutar: Number(duzenleToplamTutar),
+        taksit_sayisi: Number(duzenleTaksitSayisi) || 1,
+        ilk_taksit_tarihi: duzenleIlkTaksitTarihi || null,
+        egitim_donemi: duzenleEgitimDonemi.trim() || null,
+        sinif_metni: duzenleSinifMetni.trim() || null,
+        sozlesme_tarihi: duzenleSozlesmeTarihi || null,
+      })
+      .eq('id', id)
+    setSozlesmeKaydediliyor(false)
+    if (error) {
+      alert('Hata: ' + error.message)
+    } else {
+      setSozlesmeDuzenlenenId(null)
+      veriyiYenile()
+    }
   }
 
   const seciliOgrenci = ogrenciler.find((o) => o.id === seciliId)
@@ -753,24 +805,124 @@ export default function Muhasebe() {
                 {sozlesmeler.length === 0 && (
                   <tr><td colSpan={5} className="px-4 py-4 text-center text-gray-400">Sözleşme bulunamadı.</td></tr>
                 )}
-                {sozlesmeler.map((s) => (
-                  <tr key={s.id} className="border-t border-gray-50">
-                    <td className="px-4 py-2 font-medium text-gray-800">{s.kalem}</td>
-                    <td className="px-4 py-2">{paraFormat(s.toplam_tutar)}</td>
-                    <td className="px-4 py-2">{s.taksit_sayisi}</td>
-                    <td className="px-4 py-2">{s.ilk_taksit_tarihi ? new Date(s.ilk_taksit_tarihi).toLocaleDateString('tr-TR') : '—'}</td>
-                    <td className="px-4 py-2 text-right whitespace-nowrap space-x-3">
-                      <Link to={`/sozlesme/${s.id}`} target="_blank" className="text-blue text-sm hover:underline">
-                        Görüntüle / Yazdır
-                      </Link>
-                      {isYonetici && (
-                        <button onClick={() => sozlesmeSil(s)} className="text-red-500 text-sm hover:underline">
-                          Sil
-                        </button>
-                      )}
-                    </td>
-                  </tr>
-                ))}
+                {sozlesmeler.map((s) => {
+                  if (sozlesmeDuzenlenenId === s.id) {
+                    return (
+                      <tr key={s.id} className="bg-blue-50 border-t border-gray-50">
+                        <td colSpan={5} className="px-4 py-3">
+                          <div className="flex flex-wrap gap-3 items-end mb-3">
+                            <div className="flex-1 min-w-[110px]">
+                              <label className="block text-xs font-medium text-gray-500 mb-1">Kalem</label>
+                              <select
+                                value={duzenleKalem}
+                                onChange={(e) => setDuzenleKalem(e.target.value)}
+                                className="w-full px-2 py-1.5 border border-gray-300 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue"
+                              >
+                                <option>Okul</option>
+                                <option>Kurs</option>
+                                <option>Kitap</option>
+                              </select>
+                            </div>
+                            <div className="flex-1 min-w-[130px]">
+                              <label className="block text-xs font-medium text-gray-500 mb-1">Toplam Tutar (₺)</label>
+                              <input
+                                type="number"
+                                min="0"
+                                step="0.01"
+                                value={duzenleToplamTutar}
+                                onChange={(e) => setDuzenleToplamTutar(e.target.value)}
+                                className="w-full px-2 py-1.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue"
+                              />
+                            </div>
+                            <div className="flex-1 min-w-[100px]">
+                              <label className="block text-xs font-medium text-gray-500 mb-1">Taksit Sayısı</label>
+                              <input
+                                type="number"
+                                min="1"
+                                value={duzenleTaksitSayisi}
+                                onChange={(e) => setDuzenleTaksitSayisi(e.target.value)}
+                                className="w-full px-2 py-1.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue"
+                              />
+                            </div>
+                            <div className="flex-1 min-w-[140px]">
+                              <label className="block text-xs font-medium text-gray-500 mb-1">İlk Taksit Tarihi</label>
+                              <input
+                                type="date"
+                                value={duzenleIlkTaksitTarihi}
+                                onChange={(e) => setDuzenleIlkTaksitTarihi(e.target.value)}
+                                className="w-full px-2 py-1.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue"
+                              />
+                            </div>
+                          </div>
+                          <div className="flex flex-wrap gap-3 items-end mb-3">
+                            <div className="flex-1 min-w-[120px]">
+                              <label className="block text-xs font-medium text-gray-500 mb-1">Sözleşme Tarihi</label>
+                              <input
+                                type="date"
+                                value={duzenleSozlesmeTarihi}
+                                onChange={(e) => setDuzenleSozlesmeTarihi(e.target.value)}
+                                className="w-full px-2 py-1.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue"
+                              />
+                            </div>
+                            <div className="flex-1 min-w-[120px]">
+                              <label className="block text-xs font-medium text-gray-500 mb-1">Eğitim Dönemi</label>
+                              <input
+                                value={duzenleEgitimDonemi}
+                                onChange={(e) => setDuzenleEgitimDonemi(e.target.value)}
+                                placeholder="2026-2027"
+                                className="w-full px-2 py-1.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue"
+                              />
+                            </div>
+                            <div className="flex-1 min-w-[120px]">
+                              <label className="block text-xs font-medium text-gray-500 mb-1">Sınıf (sözleşmede)</label>
+                              <input
+                                value={duzenleSinifMetni}
+                                onChange={(e) => setDuzenleSinifMetni(e.target.value)}
+                                placeholder="örn. 9-A ya da Bire Bir"
+                                className="w-full px-2 py-1.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue"
+                              />
+                            </div>
+                          </div>
+                          <div className="space-x-3">
+                            <button
+                              onClick={() => sozlesmeDuzenlemeyiKaydet(s.id)}
+                              disabled={sozlesmeKaydediliyor}
+                              className="text-green-600 text-sm font-semibold hover:underline disabled:opacity-50"
+                            >
+                              {sozlesmeKaydediliyor ? 'Kaydediliyor...' : 'Kaydet'}
+                            </button>
+                            <button onClick={sozlesmeDuzenlemeyiVazgec} className="text-gray-500 text-sm hover:underline">
+                              Vazgeç
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    )
+                  }
+                  return (
+                    <tr key={s.id} className="border-t border-gray-50">
+                      <td className="px-4 py-2 font-medium text-gray-800">{s.kalem}</td>
+                      <td className="px-4 py-2">{paraFormat(s.toplam_tutar)}</td>
+                      <td className="px-4 py-2">{s.taksit_sayisi}</td>
+                      <td className="px-4 py-2">{s.ilk_taksit_tarihi ? new Date(s.ilk_taksit_tarihi).toLocaleDateString('tr-TR') : '—'}</td>
+                      <td className="px-4 py-2 text-right whitespace-nowrap space-x-3">
+                        <Link to={`/sozlesme/${s.id}`} target="_blank" className="text-blue text-sm hover:underline">
+                          Görüntüle / Yazdır
+                        </Link>
+                        {isYonetici && (
+                          <>
+                            <button onClick={() => sozlesmeDuzenlemeyeBasla(s)} className="text-navy text-sm hover:underline">
+                              Düzenle
+                            </button>
+                            <button onClick={() => sozlesmeSil(s)} className="text-red-500 text-sm hover:underline">
+                              Sil
+                            </button>
+                          </>
+                        )}
+                      </td>
+                    </tr>
+                  )
+                })}
               </tbody>
             </table>
           </div>
