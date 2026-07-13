@@ -522,6 +522,13 @@ export default function Muhasebe() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [seciliId])
 
+  async function odemeSil(o) {
+    if (!confirm(`${new Date(o.tarih).toLocaleDateString('tr-TR')} tarihli "${o.kalem || 'ödeme'}" (${paraFormat(o.tutar)}) kaydını silmek istediğinize emin misiniz? Bu işlem geri alınamaz, öğrencinin bakiyesi otomatik olarak yeniden hesaplanır.`)) return
+    const { error } = await supabase.from('odemeler').delete().eq('id', o.id)
+    if (error) alert('Hata: ' + error.message)
+    else veriyiYenile()
+  }
+
   const seciliOgrenci = ogrenciler.find((o) => o.id === seciliId)
 
   const toplamOdenen = odemeler.reduce((t, o) => t + Number(o.tutar), 0)
@@ -792,7 +799,7 @@ export default function Muhasebe() {
                     <td className="px-4 py-2">{o.kalem || '—'}</td>
                     <td className="px-4 py-2 font-medium">{paraFormat(o.tutar)}</td>
                     {isYonetici && (
-                      <td className="px-4 py-2 text-right">
+                      <td className="px-4 py-2 text-right whitespace-nowrap space-x-3">
                         <Link
                           to={`/makbuz-gun/${seciliId}/${gunAnahtari(o.tarih)}`}
                           target="_blank"
@@ -800,6 +807,9 @@ export default function Muhasebe() {
                         >
                           Makbuz Yazdır
                         </Link>
+                        <button onClick={() => odemeSil(o)} className="text-red-500 text-sm hover:underline">
+                          Sil
+                        </button>
                       </td>
                     )}
                   </tr>
