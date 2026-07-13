@@ -62,6 +62,18 @@ export default function Ekstre() {
     })
   }, [ogrenciId])
 
+  // İndirilen PDF/yazdırma çıktısının dosya adı (ve tarayıcı sekme başlığı)
+  // öğrenci adı ve dönemi göstersin diye — "Savaş Akça Eğitim - Sistem" gibi
+  // genel bir isimle kaydedilmesin. Sayfadan ayrılınca eski başlığa dönüyoruz.
+  useEffect(() => {
+    if (!ogrenci) return
+    const ayMetni = new Date(seciliAy + '-01').toLocaleDateString('tr-TR', { month: 'long', year: 'numeric' })
+    document.title = `${ogrenci.ad_soyad} Aylık Muhasebe - ${ayMetni}`
+    return () => {
+      document.title = 'Savaş Akça Eğitim - Sistem'
+    }
+  }, [ogrenci, seciliAy])
+
   if (loading) return <p className="p-6 text-gray-400">Yükleniyor...</p>
   if (!ogrenci) return <p className="p-6 text-gray-400">Öğrenci bulunamadı.</p>
 
@@ -89,6 +101,7 @@ export default function Ekstre() {
         @media print {
           .no-print { display: none !important; }
           body { background: white !important; }
+          tr { break-inside: avoid; page-break-inside: avoid; }
         }
       `}</style>
       <div className="max-w-2xl mx-auto">
@@ -193,6 +206,7 @@ export default function Ekstre() {
                 <BireBirDersDokumu
                   dersler={bireBirDersleri.map((d) => ({ ...d, karsiTarafAdi: d.ogretmenAdi, karsiTarafBransi: d.ogretmenBransi }))}
                   karsiTarafBasligi="Öğretmen"
+                  hedefDonem={`${seciliAy}-01`}
                 />
               </div>
             )}
