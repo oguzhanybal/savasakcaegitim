@@ -22,9 +22,17 @@ function adSoyadDuzelt(metin) {
       if (index > 0 && BAGLAC_KUCUK_YAZILANLAR.has(kelime.toLocaleLowerCase('tr-TR'))) {
         return kelime.toLocaleLowerCase('tr-TR')
       }
-      const ilkHarf = kelime.charAt(0).toLocaleUpperCase('tr-TR')
-      const geriKalan = kelime.slice(1).toLocaleLowerCase('tr-TR')
-      return ilkHarf + geriKalan
+      // Kelimenin içinde tire varsa (ör. "11-sayısal", "Ali-Rıza"), tireden
+      // sonraki harf de büyük başlasın diye kelimeyi tire etrafında ayrıca bölüyoruz.
+      return kelime
+        .split('-')
+        .map((parca) => {
+          if (!parca) return parca
+          const ilkHarf = parca.charAt(0).toLocaleUpperCase('tr-TR')
+          const geriKalan = parca.slice(1).toLocaleLowerCase('tr-TR')
+          return ilkHarf + geriKalan
+        })
+        .join('-')
     })
     .join(' ')
 }
