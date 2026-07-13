@@ -487,12 +487,27 @@ export default function Muhasebe() {
   }
 
   useEffect(() => {
+    if (!profile) return
     supabase.from('ogrenciler').select('*').order('ad_soyad').then(({ data }) => {
-      setOgrenciler(data || [])
+      const tumu = data || []
+      // GÜVENLİK: veli için listeyi burada, İSTEMCİ TARAFINDA da kendi bağlı
+      // olduğu öğrenci(ler)e göre filtreliyoruz — sunucudaki RLS kuralına
+      // körü körüne güvenmek yerine, veli_profile_id kendi profiliyle
+      // eşleşmeyen HİÇBİR öğrenci bu listeye/otomatik seçime girmesin diye.
+      const liste = profile.rol === 'yonetici' ? tumu : tumu.filter((o) => o.veli_profile_id === profile.id)
+      setOgrenciler(liste)
       setLoading(false)
+      // Aşağıdaki tüm içerik seciliId dolu olmadan HİÇ görünmüyor (yönetici
+      // elle seçim yapsın diye böyle tasarlandı) — veli için bunu bekletmeden
+      // otomatik ilk (genelde tek) çocuğunu seçili getiriyoruz, sayfa boş
+      // görünmesin.
+      if (profile.rol !== 'yonetici' && liste.length > 0) {
+        setSeciliId(liste[0].id)
+      }
     })
-    sonOdemeleriYukle()
-  }, [])
+    if (profile.rol === 'yonetici') sonOdemeleriYukle()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [profile?.rol, profile?.id])
 
   function veriyiYenile() {
     if (!seciliId) return
@@ -547,6 +562,9 @@ export default function Muhasebe() {
   }
 
   const seciliOgrenci = ogrenciler.find((o) => o.id === seciliId)
+  // Veli birden fazla öğrenciye bağlıysa (kardeşler), yönetici olmasa da
+  // aralarında geçiş yapabilsin diye seçiciyi ona da gösteriyoruz.
+  const seciciGoster = (isYonetici || ogrenciler.length > 1) && ogrenciler.length > 0
 
   const toplamOdenen = odemeler.reduce((t, o) => t + Number(o.tutar), 0)
   const toplamSozlesme = sozlesmeler.reduce((t, s) => t + Number(s.toplam_tutar), 0)
@@ -568,9 +586,11 @@ export default function Muhasebe() {
         )}
       </div>
 
-      {isYonetici && ogrenciler.length > 0 && (
+      {seciciGoster && (
         <div className="mb-6">
-          <label className="block text-sm font-medium text-gray-700 mb-1">Öğrenci Seç</label>
+          <label className="block text-sm font-medium text-gray-700 mb-1">
+            {isYonetici ? 'Öğrenci Seç' : 'Çocuğunuzu Seçin'}
+          </label>
           <select
             value={seciliId}
             onChange={(e) => setSeciliId(e.target.value)}
@@ -585,7 +605,11 @@ export default function Muhasebe() {
       )}
 
       {ogrenciler.length === 0 && !loading && (
-        <p className="text-gray-400">Görüntülenecek öğrenci kaydı bulunamadı.</p>
+        <p className="text-gray-400">
+          {isYonetici
+            ? 'Görüntülenecek öğrenci kaydı bulunamadı.'
+            : 'Size bağlı bir öğrenci bulunamadı. Lütfen okul yönetimiyle iletişime geçin.'}
+        </p>
       )}
 
       {isYonetici && !seciliId && ogrenciler.length > 0 && !loading && (
