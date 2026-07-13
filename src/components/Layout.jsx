@@ -54,6 +54,7 @@ function menuOlustur(rol) {
         label: 'Sınavlar',
         ogeler: [
           { to: '/sinav-kitapciklari', label: 'Sınav Kitapçıkları' },
+          { to: '/sinav-yukle', label: 'Sınav Sonucu Yükle' },
         ],
       },
     ]
