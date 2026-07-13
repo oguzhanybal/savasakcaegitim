@@ -22,6 +22,8 @@ import Kantin from './pages/Kantin'
 import SinavKitapciklari from './pages/SinavKitapciklari'
 import SinavYukle from './pages/SinavYukle'
 import Sozlesme from './pages/Sozlesme'
+import SifreSifirla from './pages/SifreSifirla'
+import SifremiDegistir from './pages/SifremiDegistir'
 
 function Yukleniyor() {
   return (
@@ -145,6 +147,14 @@ function AnaUygulama() {
             }
           />
           <Route
+            path="sifre-sifirla"
+            element={
+              <Korumali izinliRoller={['yonetici']}>
+                <SifreSifirla />
+              </Korumali>
+            }
+          />
+          <Route
             path="muhasebe"
             element={
               <Korumali izinliRoller={['yonetici', 'veli']}>
@@ -177,6 +187,7 @@ function AnaUygulama() {
             }
           />
           <Route path="program" element={<DersProgrami />} />
+          <Route path="sifremi-degistir" element={<SifremiDegistir />} />
           <Route
             path="bire-bir"
             element={
