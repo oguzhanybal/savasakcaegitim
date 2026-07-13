@@ -183,9 +183,58 @@ function DersEkleForm({ siniflar, ogretmenler, program, onEklendi }) {
   )
 }
 
+// Veli ("çocuğumun") ya da öğrenci ("benim") rolüyle giriş yapan kullanıcıya,
+// sınıf ders programının YANINDA, çocuğun/kendisinin HAFTALIK BİRE BİR ders
+// atamalarını (öğretmen + gün + saat) gösterir. ÖNCEDEN bu bilgi hiçbir yerde
+// veliye/öğrenciye gösterilmiyordu — Bire Bir dersleri sadece Ekstre'de,
+// ders GERÇEKLEŞİP faturalandıktan SONRA (geçmişe dönük, mali bir kayıt
+// olarak) görünüyordu. Burası ise "bu hafta hangi gün/saat dersim var"
+// sorusuna cevap veren, ileriye dönük bir program görünümü.
+function BireBirDerslerimBolumu({ dersler, birdenFazlaCocukMu }) {
+  if (!dersler || dersler.length === 0) return null
+  const gunlereGore = GUNLER.map((_, gun) => dersler.filter((d) => d.gun === gun)).slice(1)
+
+  return (
+    <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden mb-6">
+      <div className="px-4 py-3 bg-navy text-white font-semibold">
+        {birdenFazlaCocukMu ? 'Bire Bir Dersleri (Haftalık)' : 'Bire Bir Derslerim (Haftalık)'}
+      </div>
+      <div className="divide-y divide-gray-50">
+        {gunlereGore.map((gunDersleri, i) =>
+          gunDersleri.length === 0 ? null : (
+            <div key={i} className="px-4 py-3">
+              <p className="text-xs font-semibold text-gray-400 mb-1.5 uppercase tracking-wide">{GUNLER[i + 1]}</p>
+              <div className="space-y-1.5">
+                {gunDersleri.map((d) => (
+                  <div
+                    key={d.id}
+                    className="flex items-center justify-between gap-2 bg-blue-50 border border-blue-100 rounded-lg px-3 py-2 flex-wrap"
+                  >
+                    <div>
+                      <p className="font-medium text-navy text-sm">
+                        {d.ogretmen_adi}
+                        {d.ogretmen_brans && <span className="text-gray-400 font-normal"> — {d.ogretmen_brans}</span>}
+                      </p>
+                      {birdenFazlaCocukMu && <p className="text-xs text-gray-400">{d.ogrenci_adi}</p>}
+                    </div>
+                    <p className="text-sm text-gray-500 whitespace-nowrap">
+                      {saatKisalt(d.baslangic_saat)}–{saatKisalt(d.bitis_saat)}
+                    </p>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )
+        )}
+      </div>
+    </div>
+  )
+}
+
 export default function DersProgrami() {
   const { profile } = useAuth()
   const isYonetici = profile?.rol === 'yonetici'
+  const isVeliYaDaOgrenci = profile?.rol === 'veli' || profile?.rol === 'ogrenci'
 
   const [program, setProgram] = useState([])
   const [siniflar, setSiniflar] = useState([])
@@ -193,6 +242,8 @@ export default function DersProgrami() {
   const [bireBirAtamalar, setBireBirAtamalar] = useState([])
   const [bireBirYoklamalar, setBireBirYoklamalar] = useState([])
   const [ogrenciler, setOgrenciler] = useState([])
+  const [bireBirDerslerim, setBireBirDerslerim] = useState([])
+  const [birdenFazlaCocukMu, setBirdenFazlaCocukMu] = useState(false)
   const [loading, setLoading] = useState(true)
   const [gorunum, setGorunum] = useState('tablo')
   const ilkYuklemeTamamRef = useRef(false)
@@ -212,7 +263,15 @@ export default function DersProgrami() {
       isYonetici ? supabase.from('bire_bir_atamalari').select('*, ogrenciler(ad_soyad)') : Promise.resolve({ data: [] }),
       isYonetici ? supabase.from('bire_bir_yoklama').select('*') : Promise.resolve({ data: [] }),
       isYonetici ? supabase.from('ogrenciler').select('id, ad_soyad') : Promise.resolve({ data: [] }),
-    ]).then(([p, s, og, ba, by, o]) => {
+      // Veli/öğrenci için: kendi çocuğu/kendisi hangi öğrenci kaydına bağlı —
+      // bire bir atamalarını bu öğrenci id'si üzerinden çekeceğiz. Muhasebe.jsx
+      // ile AYNI, kanıtlanmış yöntem: filtreyi sunucu tarafında ".or()" ile
+      // değil, tüm kaydı çekip İSTEMCİ TARAFINDA veli_profile_id/ogrenci_profile_id
+      // eşleşmesine göre süzerek yapıyoruz (RLS zaten satırları kısıtlıyor).
+      isVeliYaDaOgrenci
+        ? supabase.from('ogrenciler').select('id, ad_soyad, veli_profile_id, ogrenci_profile_id')
+        : Promise.resolve({ data: [] }),
+    ]).then(([p, s, og, ba, by, o, kendiCocuklarSonuc]) => {
       setProgram(
         (p.data || []).map((d) => ({
           ...d,
@@ -227,8 +286,36 @@ export default function DersProgrami() {
       )
       setBireBirYoklamalar(by.data || [])
       setOgrenciler(o.data || [])
-      ilkYuklemeTamamRef.current = true
-      setLoading(false)
+
+      if (kendiCocuklarSonuc.error) console.error('Kendi çocuk sorgusu hatası:', kendiCocuklarSonuc.error.message)
+      const cocukListesi = (kendiCocuklarSonuc.data || []).filter(
+        (c) => c.veli_profile_id === profile.id || c.ogrenci_profile_id === profile.id
+      )
+      const cocukIdleri = cocukListesi.map((c) => c.id)
+      if (isVeliYaDaOgrenci && cocukIdleri.length > 0) {
+        setBirdenFazlaCocukMu(cocukIdleri.length > 1)
+        const cocukAdMap = new Map(cocukListesi.map((c) => [c.id, c.ad_soyad]))
+        supabase
+          .from('bire_bir_atamalari')
+          .select('*, profiles:ogretmen_profile_id(ad_soyad, brans)')
+          .in('ogrenci_id', cocukIdleri)
+          .then(({ data, error }) => {
+            if (error) console.error('Bire bir atamaları sorgusu hatası:', error.message)
+            setBireBirDerslerim(
+              (data || []).map((a) => ({
+                ...a,
+                ogretmen_adi: a.profiles?.ad_soyad,
+                ogretmen_brans: a.profiles?.brans,
+                ogrenci_adi: cocukAdMap.get(a.ogrenci_id),
+              }))
+            )
+            ilkYuklemeTamamRef.current = true
+            setLoading(false)
+          })
+      } else {
+        ilkYuklemeTamamRef.current = true
+        setLoading(false)
+      }
     })
   }
 
@@ -286,6 +373,10 @@ export default function DersProgrami() {
           />
           <DersEkleForm siniflar={siniflar} ogretmenler={ogretmenler} program={program} onEklendi={veriyiYenile} />
         </>
+      )}
+
+      {isVeliYaDaOgrenci && (
+        <BireBirDerslerimBolumu dersler={bireBirDerslerim} birdenFazlaCocukMu={birdenFazlaCocukMu} />
       )}
 
       {loading && <p className="text-gray-400">Yükleniyor...</p>}
