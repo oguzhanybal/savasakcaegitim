@@ -2,21 +2,185 @@ import { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { adSoyadDuzelt } from '../lib/adSoyadFormat'
 
+// Okulun kendi kayıt formuyla (SAVAŞ AKÇA ÖĞRENCİ KAYIT FORMU) BİREBİR aynı
+// başlıklar — form her yeni öğrenci geldiğinde zaten dolduruluyor, burada da
+// aynı alanlar bulunsun diye.
+const BOS_FORM = {
+  ad_soyad: '',
+  tc_kimlik_no: '',
+  dogum_tarihi: '',
+  telefon: '',
+  sinif_ve_alan: '',
+  okul: '',
+  anne_adi_soyadi: '',
+  anne_telefon: '',
+  baba_adi_soyadi: '',
+  baba_telefon: '',
+  adres: '',
+  notlar: '',
+}
+
+function ogrenciyiFormaCevir(o) {
+  return {
+    ad_soyad: o.ad_soyad || '',
+    tc_kimlik_no: o.tc_kimlik_no || '',
+    dogum_tarihi: o.dogum_tarihi || '',
+    telefon: o.telefon || '',
+    sinif_ve_alan: o.sinif_ve_alan || '',
+    okul: o.okul || '',
+    anne_adi_soyadi: o.anne_adi_soyadi || '',
+    anne_telefon: o.anne_telefon || '',
+    baba_adi_soyadi: o.baba_adi_soyadi || '',
+    baba_telefon: o.baba_telefon || '',
+    adres: o.adres || '',
+    notlar: o.notlar || '',
+  }
+}
+
+// Hem "Öğrenci Ekle" formunda hem "Düzenle" satırında AYNI alan setini
+// tekrar tekrar yazmamak için ortak bir alan grubu — kayıt formundaki
+// sırayla: öğrenci bilgileri, veli (anne/baba) bilgileri, notlar.
+function KayitFormuAlanlari({ form, alanGuncelle, boyut = 'normal' }) {
+  const girdiSinifi =
+    boyut === 'kucuk'
+      ? 'w-full px-2 py-1.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue'
+      : 'w-full px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue'
+  const etiketSinifi = boyut === 'kucuk' ? 'block text-xs font-medium text-gray-500 mb-1' : 'block text-sm font-medium text-gray-700 mb-1'
+
+  return (
+    <div className="space-y-4">
+      <div>
+        <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">Öğrenci Bilgileri</p>
+        <div className="flex flex-wrap gap-3">
+          <div className="flex-1 min-w-[180px]">
+            <label className={etiketSinifi}>Öğrenci Adı Soyadı</label>
+            <input
+              value={form.ad_soyad}
+              onChange={(e) => alanGuncelle('ad_soyad', e.target.value)}
+              className={girdiSinifi}
+              placeholder="Ad Soyad"
+            />
+          </div>
+          <div className="flex-1 min-w-[150px]">
+            <label className={etiketSinifi}>T.C. Kimlik No</label>
+            <input
+              value={form.tc_kimlik_no}
+              onChange={(e) => alanGuncelle('tc_kimlik_no', e.target.value)}
+              className={girdiSinifi}
+              placeholder="11 haneli TC No"
+              maxLength={11}
+            />
+          </div>
+          <div className="flex-1 min-w-[150px]">
+            <label className={etiketSinifi}>Doğum Tarihi</label>
+            <input
+              type="date"
+              value={form.dogum_tarihi}
+              onChange={(e) => alanGuncelle('dogum_tarihi', e.target.value)}
+              className={girdiSinifi}
+            />
+          </div>
+          <div className="flex-1 min-w-[150px]">
+            <label className={etiketSinifi}>Öğrenci Telefonu</label>
+            <input
+              value={form.telefon}
+              onChange={(e) => alanGuncelle('telefon', e.target.value)}
+              className={girdiSinifi}
+              placeholder="905XXXXXXXXX"
+            />
+          </div>
+          <div className="flex-1 min-w-[150px]">
+            <label className={etiketSinifi}>Sınıfı ve Alanı</label>
+            <input
+              value={form.sinif_ve_alan}
+              onChange={(e) => alanGuncelle('sinif_ve_alan', e.target.value)}
+              className={girdiSinifi}
+              placeholder="örn. 11-Sayısal"
+            />
+          </div>
+          <div className="flex-1 min-w-[150px]">
+            <label className={etiketSinifi}>Okulu</label>
+            <input
+              value={form.okul}
+              onChange={(e) => alanGuncelle('okul', e.target.value)}
+              className={girdiSinifi}
+              placeholder="örn. ODTÜ Koleji"
+            />
+          </div>
+        </div>
+      </div>
+
+      <div>
+        <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">Veli Bilgileri</p>
+        <div className="flex flex-wrap gap-3">
+          <div className="flex-1 min-w-[180px]">
+            <label className={etiketSinifi}>Anne Adı Soyadı</label>
+            <input
+              value={form.anne_adi_soyadi}
+              onChange={(e) => alanGuncelle('anne_adi_soyadi', e.target.value)}
+              className={girdiSinifi}
+            />
+          </div>
+          <div className="flex-1 min-w-[150px]">
+            <label className={etiketSinifi}>Anne Telefonu</label>
+            <input
+              value={form.anne_telefon}
+              onChange={(e) => alanGuncelle('anne_telefon', e.target.value)}
+              className={girdiSinifi}
+              placeholder="905XXXXXXXXX"
+            />
+          </div>
+          <div className="flex-1 min-w-[180px]">
+            <label className={etiketSinifi}>Baba Adı Soyadı</label>
+            <input
+              value={form.baba_adi_soyadi}
+              onChange={(e) => alanGuncelle('baba_adi_soyadi', e.target.value)}
+              className={girdiSinifi}
+            />
+          </div>
+          <div className="flex-1 min-w-[150px]">
+            <label className={etiketSinifi}>Baba Telefonu</label>
+            <input
+              value={form.baba_telefon}
+              onChange={(e) => alanGuncelle('baba_telefon', e.target.value)}
+              className={girdiSinifi}
+              placeholder="905XXXXXXXXX"
+            />
+          </div>
+          <div className="flex-[2] min-w-[220px]">
+            <label className={etiketSinifi}>Adres</label>
+            <input
+              value={form.adres}
+              onChange={(e) => alanGuncelle('adres', e.target.value)}
+              className={girdiSinifi}
+            />
+          </div>
+        </div>
+      </div>
+
+      <div>
+        <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">Notlar</p>
+        <textarea
+          value={form.notlar}
+          onChange={(e) => alanGuncelle('notlar', e.target.value)}
+          rows={2}
+          placeholder="Görüş, öneri veya eklemek istediğiniz diğer hususlar (opsiyonel)"
+          className={girdiSinifi}
+        />
+      </div>
+    </div>
+  )
+}
+
 export default function Ogrenciler() {
   const [ogrenciler, setOgrenciler] = useState([])
   const [veliler, setVeliler] = useState([])
   const [loading, setLoading] = useState(true)
-  const [yeniAd, setYeniAd] = useState('')
-  const [yeniTelefon, setYeniTelefon] = useState('')
-  const [yeniTcKimlik, setYeniTcKimlik] = useState('')
-  const [yeniAdres, setYeniAdres] = useState('')
+  const [yeniForm, setYeniForm] = useState(BOS_FORM)
   const [ekleniyor, setEkleniyor] = useState(false)
   const [filtre, setFiltre] = useState('aktif') // aktif | pasif | tumu
   const [duzenlenenId, setDuzenlenenId] = useState(null)
-  const [duzenleAd, setDuzenleAd] = useState('')
-  const [duzenleTelefon, setDuzenleTelefon] = useState('')
-  const [duzenleTcKimlik, setDuzenleTcKimlik] = useState('')
-  const [duzenleAdres, setDuzenleAdres] = useState('')
+  const [duzenleForm, setDuzenleForm] = useState(BOS_FORM)
   const [veliBaglanan, setVeliBaglanan] = useState(null)
   const [seciliVeli, setSeciliVeli] = useState('')
 
@@ -35,22 +199,35 @@ export default function Ogrenciler() {
     yukle()
   }, [])
 
+  function yeniAlanGuncelle(alan, deger) {
+    setYeniForm((f) => ({ ...f, [alan]: deger }))
+  }
+
+  function duzenleAlanGuncelle(alan, deger) {
+    setDuzenleForm((f) => ({ ...f, [alan]: deger }))
+  }
+
   async function ogrenciEkle(e) {
     e.preventDefault()
-    if (!yeniAd.trim()) return
+    if (!yeniForm.ad_soyad.trim()) return
     setEkleniyor(true)
     const { error } = await supabase.from('ogrenciler').insert({
-      ad_soyad: adSoyadDuzelt(yeniAd),
-      telefon: yeniTelefon.trim() || null,
-      tc_kimlik_no: yeniTcKimlik.trim() || null,
-      adres: yeniAdres.trim() || null,
+      ad_soyad: adSoyadDuzelt(yeniForm.ad_soyad),
+      tc_kimlik_no: yeniForm.tc_kimlik_no.trim() || null,
+      dogum_tarihi: yeniForm.dogum_tarihi || null,
+      telefon: yeniForm.telefon.trim() || null,
+      sinif_ve_alan: yeniForm.sinif_ve_alan.trim() || null,
+      okul: yeniForm.okul.trim() || null,
+      anne_adi_soyadi: yeniForm.anne_adi_soyadi.trim() ? adSoyadDuzelt(yeniForm.anne_adi_soyadi) : null,
+      anne_telefon: yeniForm.anne_telefon.trim() || null,
+      baba_adi_soyadi: yeniForm.baba_adi_soyadi.trim() ? adSoyadDuzelt(yeniForm.baba_adi_soyadi) : null,
+      baba_telefon: yeniForm.baba_telefon.trim() || null,
+      adres: yeniForm.adres.trim() || null,
+      notlar: yeniForm.notlar.trim() || null,
     })
     setEkleniyor(false)
     if (!error) {
-      setYeniAd('')
-      setYeniTelefon('')
-      setYeniTcKimlik('')
-      setYeniAdres('')
+      setYeniForm(BOS_FORM)
       yukle()
     } else {
       alert('Hata: ' + error.message)
@@ -65,10 +242,7 @@ export default function Ogrenciler() {
 
   function duzenlemeyeBasla(o) {
     setDuzenlenenId(o.id)
-    setDuzenleAd(o.ad_soyad)
-    setDuzenleTelefon(o.telefon || '')
-    setDuzenleTcKimlik(o.tc_kimlik_no || '')
-    setDuzenleAdres(o.adres || '')
+    setDuzenleForm(ogrenciyiFormaCevir(o))
   }
 
   function duzenlemeyiVazgec() {
@@ -76,14 +250,22 @@ export default function Ogrenciler() {
   }
 
   async function duzenlemeyiKaydet(ogrenciId) {
-    if (!duzenleAd.trim()) return
+    if (!duzenleForm.ad_soyad.trim()) return
     const { error } = await supabase
       .from('ogrenciler')
       .update({
-        ad_soyad: adSoyadDuzelt(duzenleAd),
-        telefon: duzenleTelefon.trim() || null,
-        tc_kimlik_no: duzenleTcKimlik.trim() || null,
-        adres: duzenleAdres.trim() || null,
+        ad_soyad: adSoyadDuzelt(duzenleForm.ad_soyad),
+        tc_kimlik_no: duzenleForm.tc_kimlik_no.trim() || null,
+        dogum_tarihi: duzenleForm.dogum_tarihi || null,
+        telefon: duzenleForm.telefon.trim() || null,
+        sinif_ve_alan: duzenleForm.sinif_ve_alan.trim() || null,
+        okul: duzenleForm.okul.trim() || null,
+        anne_adi_soyadi: duzenleForm.anne_adi_soyadi.trim() ? adSoyadDuzelt(duzenleForm.anne_adi_soyadi) : null,
+        anne_telefon: duzenleForm.anne_telefon.trim() || null,
+        baba_adi_soyadi: duzenleForm.baba_adi_soyadi.trim() ? adSoyadDuzelt(duzenleForm.baba_adi_soyadi) : null,
+        baba_telefon: duzenleForm.baba_telefon.trim() || null,
+        adres: duzenleForm.adres.trim() || null,
+        notlar: duzenleForm.notlar.trim() || null,
       })
       .eq('id', ogrenciId)
     if (!error) {
@@ -137,55 +319,21 @@ export default function Ogrenciler() {
     <div>
       <h1 className="text-2xl font-bold text-navy mb-6">Öğrenciler</h1>
 
-      <form onSubmit={ogrenciEkle} className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5 mb-6 flex flex-wrap gap-3 items-end">
-        <div className="flex-1 min-w-[180px]">
-          <label className="block text-sm font-medium text-gray-700 mb-1">Öğrenci Adı Soyadı</label>
-          <input
-            value={yeniAd}
-            onChange={(e) => setYeniAd(e.target.value)}
-            className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue"
-            placeholder="Ad Soyad"
-          />
-        </div>
-        <div className="flex-1 min-w-[180px]">
-          <label className="block text-sm font-medium text-gray-700 mb-1">Telefon (opsiyonel)</label>
-          <input
-            value={yeniTelefon}
-            onChange={(e) => setYeniTelefon(e.target.value)}
-            className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue"
-            placeholder="905XXXXXXXXX"
-          />
-        </div>
-        <div className="flex-1 min-w-[160px]">
-          <label className="block text-sm font-medium text-gray-700 mb-1">TC Kimlik No (opsiyonel)</label>
-          <input
-            value={yeniTcKimlik}
-            onChange={(e) => setYeniTcKimlik(e.target.value)}
-            className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue"
-            placeholder="11 haneli TC No"
-            maxLength={11}
-          />
-        </div>
-        <div className="flex-1 min-w-[220px]">
-          <label className="block text-sm font-medium text-gray-700 mb-1">Adres (opsiyonel)</label>
-          <input
-            value={yeniAdres}
-            onChange={(e) => setYeniAdres(e.target.value)}
-            className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue"
-            placeholder="Sözleşmede görünecek adres"
-          />
-        </div>
+      <form onSubmit={ogrenciEkle} className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5 mb-6">
+        <p className="font-semibold text-gray-700 mb-3">Öğrenci Ekle</p>
+        <KayitFormuAlanlari form={yeniForm} alanGuncelle={yeniAlanGuncelle} />
         <button
           type="submit"
           disabled={ekleniyor}
-          className="bg-orange text-white font-semibold px-5 py-2 rounded-lg hover:opacity-90 transition-opacity disabled:opacity-50"
+          className="mt-4 bg-orange text-white font-semibold px-5 py-2 rounded-lg hover:opacity-90 transition-opacity disabled:opacity-50"
         >
           {ekleniyor ? 'Ekleniyor...' : 'Öğrenci Ekle'}
         </button>
+        <p className="text-xs text-gray-400 mt-2">
+          Ad Soyad dışındaki alanlar opsiyoneldir — "SAVAŞ AKÇA ÖĞRENCİ KAYIT FORMU"ndaki başlıklarla aynıdır,
+          sözleşme yazdırırken ve öğrenciyi tanırken kullanılır.
+        </p>
       </form>
-      <p className="text-xs text-gray-400 -mt-4 mb-6">
-        TC Kimlik No ve Adres, sadece öğrenci sözleşmesi yazdırılırken kullanılır — girilmese de öğrenci kaydı yapılabilir.
-      </p>
 
       {veliler.length === 0 && (
         <div className="bg-yellow-50 border border-yellow-200 rounded-xl p-4 mb-4 text-sm text-yellow-800">
@@ -221,12 +369,13 @@ export default function Ogrenciler() {
         </button>
       </div>
 
-      <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
-        <table className="w-full text-sm">
+      <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-x-auto">
+        <table className="w-full text-sm min-w-[720px]">
           <thead>
             <tr className="bg-navy text-white text-left">
               <th className="px-4 py-3 font-semibold">Ad Soyad</th>
               <th className="px-4 py-3 font-semibold">Telefon</th>
+              <th className="px-4 py-3 font-semibold">Sınıfı / Alanı</th>
               <th className="px-4 py-3 font-semibold">Veli</th>
               <th className="px-4 py-3 font-semibold">Durum</th>
               <th className="px-4 py-3 font-semibold text-right">İşlemler</th>
@@ -234,10 +383,10 @@ export default function Ogrenciler() {
           </thead>
           <tbody>
             {loading && (
-              <tr><td colSpan={5} className="px-4 py-6 text-center text-gray-400">Yükleniyor...</td></tr>
+              <tr><td colSpan={6} className="px-4 py-6 text-center text-gray-400">Yükleniyor...</td></tr>
             )}
             {!loading && gosterilecekler.length === 0 && (
-              <tr><td colSpan={5} className="px-4 py-6 text-center text-gray-400">Bu filtrede öğrenci bulunamadı.</td></tr>
+              <tr><td colSpan={6} className="px-4 py-6 text-center text-gray-400">Bu filtrede öğrenci bulunamadı.</td></tr>
             )}
             {gosterilecekler.map((o, i) => {
               const durum = o.durum || 'aktif'
@@ -247,51 +396,15 @@ export default function Ogrenciler() {
               if (duzenleniyor) {
                 return (
                   <tr key={o.id} className="bg-blue-50">
-                    <td colSpan={5} className="px-4 py-3">
-                      <div className="flex flex-wrap gap-3 items-end">
-                        <div className="flex-1 min-w-[160px]">
-                          <label className="block text-xs font-medium text-gray-500 mb-1">Ad Soyad</label>
-                          <input
-                            value={duzenleAd}
-                            onChange={(e) => setDuzenleAd(e.target.value)}
-                            className="w-full px-2 py-1.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue"
-                          />
-                        </div>
-                        <div className="flex-1 min-w-[140px]">
-                          <label className="block text-xs font-medium text-gray-500 mb-1">Telefon</label>
-                          <input
-                            value={duzenleTelefon}
-                            onChange={(e) => setDuzenleTelefon(e.target.value)}
-                            className="w-full px-2 py-1.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue"
-                            placeholder="905XXXXXXXXX"
-                          />
-                        </div>
-                        <div className="flex-1 min-w-[140px]">
-                          <label className="block text-xs font-medium text-gray-500 mb-1">TC Kimlik No</label>
-                          <input
-                            value={duzenleTcKimlik}
-                            onChange={(e) => setDuzenleTcKimlik(e.target.value)}
-                            className="w-full px-2 py-1.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue"
-                            placeholder="11 haneli TC No"
-                            maxLength={11}
-                          />
-                        </div>
-                        <div className="flex-1 min-w-[200px]">
-                          <label className="block text-xs font-medium text-gray-500 mb-1">Adres</label>
-                          <input
-                            value={duzenleAdres}
-                            onChange={(e) => setDuzenleAdres(e.target.value)}
-                            className="w-full px-2 py-1.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue"
-                          />
-                        </div>
-                        <div className="space-x-3 whitespace-nowrap pb-1.5">
-                          <button onClick={() => duzenlemeyiKaydet(o.id)} className="text-green-600 text-sm font-semibold hover:underline">
-                            Kaydet
-                          </button>
-                          <button onClick={duzenlemeyiVazgec} className="text-gray-500 text-sm hover:underline">
-                            Vazgeç
-                          </button>
-                        </div>
+                    <td colSpan={6} className="px-4 py-4">
+                      <KayitFormuAlanlari form={duzenleForm} alanGuncelle={duzenleAlanGuncelle} boyut="kucuk" />
+                      <div className="space-x-3 whitespace-nowrap mt-3">
+                        <button onClick={() => duzenlemeyiKaydet(o.id)} className="text-green-600 text-sm font-semibold hover:underline">
+                          Kaydet
+                        </button>
+                        <button onClick={duzenlemeyiVazgec} className="text-gray-500 text-sm hover:underline">
+                          Vazgeç
+                        </button>
                       </div>
                     </td>
                   </tr>
@@ -303,7 +416,7 @@ export default function Ogrenciler() {
                   <tr key={o.id} className="bg-purple-50">
                     <td className="px-4 py-3 font-medium text-gray-800">{o.ad_soyad}</td>
                     <td className="px-4 py-3 text-gray-500">{o.telefon || '—'}</td>
-                    <td className="px-4 py-2" colSpan={2}>
+                    <td className="px-4 py-2" colSpan={3}>
                       <select
                         value={seciliVeli}
                         onChange={(e) => setSeciliVeli(e.target.value)}
@@ -331,6 +444,7 @@ export default function Ogrenciler() {
                 <tr key={o.id} className={i % 2 ? 'bg-gray-50' : ''}>
                   <td className="px-4 py-3 font-medium text-gray-800">{o.ad_soyad}</td>
                   <td className="px-4 py-3 text-gray-500">{o.telefon || '—'}</td>
+                  <td className="px-4 py-3 text-gray-500">{o.sinif_ve_alan || '—'}</td>
                   <td className="px-4 py-3">
                     {o.veli?.ad_soyad ? (
                       <span className="text-gray-700">{o.veli.ad_soyad}</span>
