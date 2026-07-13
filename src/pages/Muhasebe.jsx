@@ -947,11 +947,11 @@ export default function Muhasebe() {
                       <td className="px-4 py-2">{s.taksit_sayisi}</td>
                       <td className="px-4 py-2">{s.ilk_taksit_tarihi ? new Date(s.ilk_taksit_tarihi).toLocaleDateString('tr-TR') : '—'}</td>
                       <td className="px-4 py-2 text-right whitespace-nowrap space-x-3">
-                        <Link to={`/sozlesme/${s.id}`} target="_blank" className="text-blue text-sm hover:underline">
-                          Görüntüle / Yazdır
-                        </Link>
-                        {isYonetici && (
+                        {isYonetici ? (
                           <>
+                            <Link to={`/sozlesme/${s.id}`} target="_blank" className="text-blue text-sm hover:underline">
+                              Görüntüle / Yazdır
+                            </Link>
                             <button onClick={() => sozlesmeDuzenlemeyeBasla(s)} className="text-navy text-sm hover:underline">
                               Düzenle
                             </button>
@@ -959,6 +959,8 @@ export default function Muhasebe() {
                               Sil
                             </button>
                           </>
+                        ) : (
+                          <span className="text-gray-300 text-sm">—</span>
                         )}
                       </td>
                     </tr>
