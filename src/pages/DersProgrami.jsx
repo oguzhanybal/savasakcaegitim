@@ -15,6 +15,14 @@ function saatKisalt(s) {
   return s ? s.slice(0, 5) : s
 }
 
+// Bugünün tarihini "YYYY-MM-DD" olarak YEREL saate göre üretir (toISOString
+// KULLANMIYORUZ — Türkiye UTC+3 gece yarısına yakın saatlerde bir gün geriye
+// kayabiliyor). Aynı desen BireBirDersDokumu.jsx'te de kullanılıyor.
+function yerelBugunTarihi() {
+  const n = new Date()
+  return `${n.getFullYear()}-${String(n.getMonth() + 1).padStart(2, '0')}-${String(n.getDate()).padStart(2, '0')}`
+}
+
 function araliklarCakisiyorMu(b1, s1, b2, s2) {
   return saatKisalt(b1) < saatKisalt(s2) && saatKisalt(b2) < saatKisalt(s1)
 }
@@ -190,43 +198,81 @@ function DersEkleForm({ siniflar, ogretmenler, program, onEklendi }) {
 // ders GERÇEKLEŞİP faturalandıktan SONRA (geçmişe dönük, mali bir kayıt
 // olarak) görünüyordu. Burası ise "bu hafta hangi gün/saat dersim var"
 // sorusuna cevap veren, ileriye dönük bir program görünümü.
-function BireBirDerslerimBolumu({ dersler, birdenFazlaCocukMu }) {
-  if (!dersler || dersler.length === 0) return null
-  const gunlereGore = GUNLER.map((_, gun) => dersler.filter((d) => d.gun === gun)).slice(1)
+// ÖNEMLİ: bu okulda bire bir derslerin ÇOĞU "Hayır, sadece bu sefer" (tek
+// seferlik) olarak giriliyor — yani sabit haftalık bir atama (bire_bir_atamalari)
+// DEĞİL, belirli bir TARİHE bağlı tek kayıt (bire_bir_yoklama, atama_id boş)
+// olarak kaydediliyor. İlk sürümde bu bölüm SADECE haftalık sabit atamalara
+// bakıyordu — tek seferlik dersi olan (ki çoğunluk bu) öğrenciler/veliler
+// hiçbir şey göremiyordu. Şimdi ikisini de ayrı ayrı gösteriyoruz.
+function BireBirDerslerimBolumu({ haftalikDersler, tekSeferlikDersler, birdenFazlaCocukMu }) {
+  const hicBirSeyYok = (!haftalikDersler || haftalikDersler.length === 0) && (!tekSeferlikDersler || tekSeferlikDersler.length === 0)
+  if (hicBirSeyYok) return null
+  const gunlereGore = GUNLER.map((_, gun) => (haftalikDersler || []).filter((d) => d.gun === gun)).slice(1)
 
   return (
-    <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden mb-6">
-      <div className="px-4 py-3 bg-navy text-white font-semibold">
-        {birdenFazlaCocukMu ? 'Bire Bir Dersleri (Haftalık)' : 'Bire Bir Derslerim (Haftalık)'}
-      </div>
-      <div className="divide-y divide-gray-50">
-        {gunlereGore.map((gunDersleri, i) =>
-          gunDersleri.length === 0 ? null : (
-            <div key={i} className="px-4 py-3">
-              <p className="text-xs font-semibold text-gray-400 mb-1.5 uppercase tracking-wide">{GUNLER[i + 1]}</p>
-              <div className="space-y-1.5">
-                {gunDersleri.map((d) => (
-                  <div
-                    key={d.id}
-                    className="flex items-center justify-between gap-2 bg-blue-50 border border-blue-100 rounded-lg px-3 py-2 flex-wrap"
-                  >
-                    <div>
-                      <p className="font-medium text-navy text-sm">
-                        {d.ogretmen_adi}
-                        {d.ogretmen_brans && <span className="text-gray-400 font-normal"> — {d.ogretmen_brans}</span>}
-                      </p>
-                      {birdenFazlaCocukMu && <p className="text-xs text-gray-400">{d.ogrenci_adi}</p>}
-                    </div>
-                    <p className="text-sm text-gray-500 whitespace-nowrap">
-                      {saatKisalt(d.baslangic_saat)}–{saatKisalt(d.bitis_saat)}
-                    </p>
+    <div className="space-y-4 mb-6">
+      {haftalikDersler && haftalikDersler.length > 0 && (
+        <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+          <div className="px-4 py-3 bg-navy text-white font-semibold">
+            {birdenFazlaCocukMu ? 'Bire Bir Dersleri (Her Hafta Tekrarlanan)' : 'Bire Bir Derslerim (Her Hafta Tekrarlanan)'}
+          </div>
+          <div className="divide-y divide-gray-50">
+            {gunlereGore.map((gunDersleri, i) =>
+              gunDersleri.length === 0 ? null : (
+                <div key={i} className="px-4 py-3">
+                  <p className="text-xs font-semibold text-gray-400 mb-1.5 uppercase tracking-wide">{GUNLER[i + 1]}</p>
+                  <div className="space-y-1.5">
+                    {gunDersleri.map((d) => (
+                      <div
+                        key={d.id}
+                        className="flex items-center justify-between gap-2 bg-blue-50 border border-blue-100 rounded-lg px-3 py-2 flex-wrap"
+                      >
+                        <div>
+                          <p className="font-medium text-navy text-sm">
+                            {d.ogretmen_adi}
+                            {d.ogretmen_brans && <span className="text-gray-400 font-normal"> — {d.ogretmen_brans}</span>}
+                          </p>
+                          {birdenFazlaCocukMu && <p className="text-xs text-gray-400">{d.ogrenci_adi}</p>}
+                        </div>
+                        <p className="text-sm text-gray-500 whitespace-nowrap">
+                          {saatKisalt(d.baslangic_saat)}–{saatKisalt(d.bitis_saat)}
+                        </p>
+                      </div>
+                    ))}
                   </div>
-                ))}
+                </div>
+              )
+            )}
+          </div>
+        </div>
+      )}
+
+      {tekSeferlikDersler && tekSeferlikDersler.length > 0 && (
+        <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+          <div className="px-4 py-3 bg-navy text-white font-semibold">
+            {birdenFazlaCocukMu ? 'Yaklaşan Bire Bir Dersleri (Tek Seferlik)' : 'Yaklaşan Bire Bir Derslerim (Tek Seferlik)'}
+          </div>
+          <div className="divide-y divide-gray-50">
+            {tekSeferlikDersler.map((d) => (
+              <div key={d.id} className="flex items-center justify-between gap-2 px-4 py-2.5 flex-wrap">
+                <div>
+                  <p className="font-medium text-gray-800 text-sm">
+                    {new Date(d.tarih + 'T12:00:00').toLocaleDateString('tr-TR', { weekday: 'long', day: 'numeric', month: 'long' })}
+                  </p>
+                  <p className="text-xs text-gray-400">
+                    {d.ogretmen_adi}
+                    {d.ogretmen_brans ? ` — ${d.ogretmen_brans}` : ''}
+                    {birdenFazlaCocukMu ? ` · ${d.ogrenci_adi}` : ''}
+                  </p>
+                </div>
+                <p className="text-sm text-gray-500 whitespace-nowrap">
+                  {d.baslangic_saat ? `${saatKisalt(d.baslangic_saat)}${d.bitis_saat ? '–' + saatKisalt(d.bitis_saat) : ''}` : 'Saat belirtilmemiş'}
+                </p>
               </div>
-            </div>
-          )
-        )}
-      </div>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   )
 }
@@ -243,6 +289,7 @@ export default function DersProgrami() {
   const [bireBirYoklamalar, setBireBirYoklamalar] = useState([])
   const [ogrenciler, setOgrenciler] = useState([])
   const [bireBirDerslerim, setBireBirDerslerim] = useState([])
+  const [tekSeferlikDerslerim, setTekSeferlikDerslerim] = useState([])
   const [birdenFazlaCocukMu, setBirdenFazlaCocukMu] = useState(false)
   const [loading, setLoading] = useState(true)
   const [gorunum, setGorunum] = useState('tablo')
@@ -295,23 +342,46 @@ export default function DersProgrami() {
       if (isVeliYaDaOgrenci && cocukIdleri.length > 0) {
         setBirdenFazlaCocukMu(cocukIdleri.length > 1)
         const cocukAdMap = new Map(cocukListesi.map((c) => [c.id, c.ad_soyad]))
-        supabase
-          .from('bire_bir_atamalari')
-          .select('*, profiles:ogretmen_profile_id(ad_soyad, brans)')
-          .in('ogrenci_id', cocukIdleri)
-          .then(({ data, error }) => {
-            if (error) console.error('Bire bir atamaları sorgusu hatası:', error.message)
-            setBireBirDerslerim(
-              (data || []).map((a) => ({
-                ...a,
-                ogretmen_adi: a.profiles?.ad_soyad,
-                ogretmen_brans: a.profiles?.brans,
-                ogrenci_adi: cocukAdMap.get(a.ogrenci_id),
-              }))
-            )
-            ilkYuklemeTamamRef.current = true
-            setLoading(false)
-          })
+        Promise.all([
+          supabase
+            .from('bire_bir_atamalari')
+            .select('*, profiles:ogretmen_profile_id(ad_soyad, brans)')
+            .in('ogrenci_id', cocukIdleri)
+            .eq('aktif', true),
+          // ÖNEMLİ: bu okulda bire bir derslerin ÇOĞU "tek seferlik" olarak
+          // (atama_id BOŞ, belirli bir tarihe bağlı) bire_bir_yoklama tablosuna
+          // giriliyor — sadece yukarıdaki sabit haftalık atamalara bakmak
+          // yetmiyordu. Bugünden itibaren (geçmiş dersler zaten Ekstre'de
+          // görünüyor) yaklaşan tek seferlik dersleri de ayrıca çekiyoruz.
+          supabase
+            .from('bire_bir_yoklama')
+            .select('*, profiles:ogretmen_profile_id(ad_soyad, brans)')
+            .in('ogrenci_id', cocukIdleri)
+            .is('atama_id', null)
+            .gte('tarih', yerelBugunTarihi())
+            .order('tarih'),
+        ]).then(([atamaSonuc, yoklamaSonuc]) => {
+          if (atamaSonuc.error) console.error('Bire bir atamaları sorgusu hatası:', atamaSonuc.error.message)
+          if (yoklamaSonuc.error) console.error('Tek seferlik bire bir sorgusu hatası:', yoklamaSonuc.error.message)
+          setBireBirDerslerim(
+            (atamaSonuc.data || []).map((a) => ({
+              ...a,
+              ogretmen_adi: a.profiles?.ad_soyad,
+              ogretmen_brans: a.profiles?.brans,
+              ogrenci_adi: cocukAdMap.get(a.ogrenci_id),
+            }))
+          )
+          setTekSeferlikDerslerim(
+            (yoklamaSonuc.data || []).map((a) => ({
+              ...a,
+              ogretmen_adi: a.profiles?.ad_soyad,
+              ogretmen_brans: a.profiles?.brans,
+              ogrenci_adi: cocukAdMap.get(a.ogrenci_id),
+            }))
+          )
+          ilkYuklemeTamamRef.current = true
+          setLoading(false)
+        })
       } else {
         ilkYuklemeTamamRef.current = true
         setLoading(false)
@@ -376,7 +446,11 @@ export default function DersProgrami() {
       )}
 
       {isVeliYaDaOgrenci && (
-        <BireBirDerslerimBolumu dersler={bireBirDerslerim} birdenFazlaCocukMu={birdenFazlaCocukMu} />
+        <BireBirDerslerimBolumu
+          haftalikDersler={bireBirDerslerim}
+          tekSeferlikDersler={tekSeferlikDerslerim}
+          birdenFazlaCocukMu={birdenFazlaCocukMu}
+        />
       )}
 
       {loading && <p className="text-gray-400">Yükleniyor...</p>}
