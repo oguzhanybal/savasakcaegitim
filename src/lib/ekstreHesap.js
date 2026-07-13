@@ -220,6 +220,54 @@ export function bireBirHatirlaticiLinkOlustur(telefon, bilgiler) {
 }
 
 // ============================================================================
+// TOPLU DERS HATIRLATMASI — Aynı öğrencinin aynı gün (ya da haftada) BİRDEN
+// FAZLA bire bir dersi olabiliyor (ör. bir öğrenci, farklı öğretmenlerle günde
+// 3-4 kez ders alabiliyor). Bunları tek tek ayrı mesajlarla göndermek yerine,
+// öğrenci başına TEK bir WhatsApp mesajında topluyoruz.
+// ============================================================================
+
+// Seçili GÜNÜN (bugün/yarın/seçilen tarih) TÜM derslerini tek mesajda özetler.
+// dersler: [{ baslangicSaat, bitisSaat, ogretmenAdi }] — saate göre sıralı olmalı.
+export function bireBirGunlukOzetMesajiOlustur({ ogrenciAdi, tarihStr, dersler }) {
+  const tarihMetni = new Date(tarihStr + 'T12:00:00').toLocaleDateString('tr-TR', {
+    day: '2-digit',
+    month: 'long',
+    year: 'numeric',
+    weekday: 'long',
+  })
+  const satirlar = dersler
+    .map((d) => `• ${d.bitisSaat ? `${d.baslangicSaat}–${d.bitisSaat}` : d.baslangicSaat}${d.ogretmenAdi ? ` (${d.ogretmenAdi})` : ''}`)
+    .join('\n')
+  const derslerMetni = dersler.length > 1 ? 'aşağıdaki bire bir dersler bulunmaktadır' : 'aşağıdaki bire bir ders bulunmaktadır'
+  return (
+    `Merhaba, ${ogrenciAdi} için ${tarihMetni} tarihinde ${derslerMetni}:\n` +
+    `${satirlar}\n` +
+    `İyi dersler dileriz.\nSavaş Akça Eğitim`
+  )
+}
+
+// Öğrencinin HER HAFTA tekrar eden bire bir ders programını (gün + saat) tek
+// mesajda özetler. dersler: [{ gunAdi, baslangicSaat, bitisSaat, ogretmenAdi }]
+// — haftanın gününe göre sıralı olmalı (Pazartesi'den başlayarak).
+export function bireBirHaftalikOzetMesajiOlustur({ ogrenciAdi, dersler }) {
+  const satirlar = dersler
+    .map((d) => `• ${d.gunAdi}: ${d.bitisSaat ? `${d.baslangicSaat}–${d.bitisSaat}` : d.baslangicSaat}${d.ogretmenAdi ? ` (${d.ogretmenAdi})` : ''}`)
+    .join('\n')
+  return (
+    `Merhaba, ${ogrenciAdi} için haftalık bire bir ders programı şu şekildedir:\n` +
+    `${satirlar}\n` +
+    `İyi dersler dileriz.\nSavaş Akça Eğitim`
+  )
+}
+
+// Yukarıdaki iki özet fonksiyonundan çıkan HAZIR mesaj metnini alıp wa.me linkine çevirir.
+export function bireBirOzetLinkOlustur(telefon, mesaj) {
+  const t = telefonNormallestir(telefon)
+  if (!t) return null
+  return `https://wa.me/${t}?text=${encodeURIComponent(mesaj)}`
+}
+
+// ============================================================================
 // TEK TEK ÖDEME PLANI — Bir sözleşmenin (Okul/Kurs/Kitap) TÜM taksitlerini,
 // her birinin vade tarihi ve durumuyla (ödendi / gecikti / bekliyor) birlikte
 // listeler. Hem veli hem yönetici bunu görebilir (Muhasebe sayfasında).
