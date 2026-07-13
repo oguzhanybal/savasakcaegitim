@@ -98,6 +98,71 @@ export async function soruNumarasiWorkerKapat(worker) {
   if (worker) await worker.terminate()
 }
 
+// Taranmış sayfalar genelde SOLUK/gri tonlamalı çıkar (yazıcı/tarayıcı/fotokopi
+// kalitesine göre değişir) — Tesseract, yazının SİYAH, zeminin BEYAZ net
+// olduğu yüksek kontrastlı görüntülerde çok daha iyi çalışır. Aşağıdaki
+// fonksiyon Otsu yöntemiyle (görüntünün KENDİ histogramına bakıp en uygun
+// eşik değerini otomatik bulan, klasik bir yöntem — sabit bir eşik değeri
+// kullanmadığı için taramadan taramaya değişen soluklukta da işe yarar)
+// görüntüyü gri tonlamaya çevirip siyah-beyaza (binarize) dönüştürür. Bu
+// SADECE OCR'a verilen kopya için yapılır — sayfa önizlemesinde adminin
+// gördüğü orijinal (renkli/gri tonlamalı) görüntüye hiç dokunulmaz.
+function otsuEsikDegeriBul(griHistogram, toplamPiksel) {
+  let toplam = 0
+  for (let i = 0; i < 256; i++) toplam += i * griHistogram[i]
+  let arkaToplam = 0
+  let arkaSayisi = 0
+  let enIyiEsik = 0
+  let enIyiVaryans = 0
+  for (let esik = 0; esik < 256; esik++) {
+    arkaSayisi += griHistogram[esik]
+    if (arkaSayisi === 0) continue
+    const onSayisi = toplamPiksel - arkaSayisi
+    if (onSayisi === 0) break
+    arkaToplam += esik * griHistogram[esik]
+    const arkaOrt = arkaToplam / arkaSayisi
+    const onOrt = (toplam - arkaToplam) / onSayisi
+    const araVaryans = arkaSayisi * onSayisi * (arkaOrt - onOrt) * (arkaOrt - onOrt)
+    if (araVaryans > enIyiVaryans) {
+      enIyiVaryans = araVaryans
+      enIyiEsik = esik
+    }
+  }
+  return enIyiEsik
+}
+
+export function ocrIcinGriVeKontrastliCanvasUret(kaynakCanvas) {
+  const genislik = kaynakCanvas.width
+  const yukseklik = kaynakCanvas.height
+  const kaynakCtx = kaynakCanvas.getContext('2d')
+  const goruntuVerisi = kaynakCtx.getImageData(0, 0, genislik, yukseklik)
+  const piksel = goruntuVerisi.data
+
+  const gri = new Uint8ClampedArray(genislik * yukseklik)
+  const histogram = new Array(256).fill(0)
+  for (let p = 0, g = 0; p < piksel.length; p += 4, g++) {
+    const griDeger = Math.round(0.299 * piksel[p] + 0.587 * piksel[p + 1] + 0.114 * piksel[p + 2])
+    gri[g] = griDeger
+    histogram[griDeger]++
+  }
+
+  const esik = otsuEsikDegeriBul(histogram, genislik * yukseklik)
+
+  for (let p = 0, g = 0; p < piksel.length; p += 4, g++) {
+    const deger = gri[g] > esik ? 255 : 0
+    piksel[p] = deger
+    piksel[p + 1] = deger
+    piksel[p + 2] = deger
+    // piksel[p + 3] (alfa) olduğu gibi kalır
+  }
+
+  const yeniCanvas = document.createElement('canvas')
+  yeniCanvas.width = genislik
+  yeniCanvas.height = yukseklik
+  yeniCanvas.getContext('2d').putImageData(goruntuVerisi, 0, 0)
+  return yeniCanvas
+}
+
 // Bir sayfa görüntüsünde OLASI soru numarası konumlarını tahmin eder. Sadece
 // rakam+nokta desenini arıyoruz ("12.", "3" gibi) — konu/gövde metnini
 // anlamlandırmaya çalışmıyoruz, o yüzden Türkçe karakterler yanlış okunsa
@@ -136,11 +201,16 @@ export async function sayfadaSoruNumaralariniTespitEt(worker, canvas, sayfaGenis
   for (let i = 0; i < seritler.length; i++) {
     const serit = seritler[i]
     const seritGenislik = Math.max(1, Math.round(serit.x1 - serit.x0))
-    const seritCanvas = document.createElement('canvas')
-    seritCanvas.width = seritGenislik
-    seritCanvas.height = sayfaYuksekligi
-    const ctx = seritCanvas.getContext('2d')
-    ctx.drawImage(canvas, serit.x0, 0, seritGenislik, sayfaYuksekligi, 0, 0, seritGenislik, sayfaYuksekligi)
+    const seritCanvasHam = document.createElement('canvas')
+    seritCanvasHam.width = seritGenislik
+    seritCanvasHam.height = sayfaYuksekligi
+    const ctxHam = seritCanvasHam.getContext('2d')
+    ctxHam.drawImage(canvas, serit.x0, 0, seritGenislik, sayfaYuksekligi, 0, 0, seritGenislik, sayfaYuksekligi)
+
+    // OCR'a HAM (soluk/gri tonlamalı olabilen) şerit yerine, Otsu eşiklemesiyle
+    // siyah-beyaza çevrilmiş yüksek kontrastlı hâlini veriyoruz — bkz.
+    // ocrIcinGriVeKontrastliCanvasUret açıklaması.
+    const seritCanvas = ocrIcinGriVeKontrastliCanvasUret(seritCanvasHam)
 
     const { data } = await worker.recognize(seritCanvas)
     if (ilerlemeCallback) ilerlemeCallback((i + 1) / seritler.length)
