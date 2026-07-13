@@ -1062,7 +1062,7 @@ export default function Muhasebe() {
                   .map(([hafta, dersler]) => {
                     const haftaToplami = dersler.reduce((t, d) => t + d.tutar, 0)
                     return (
-                      <div key={hafta} className="p-4">
+                      <div key={hafta} className="p-4 overflow-x-auto">
                         <div className="flex items-center justify-between mb-2">
                           <p className="font-semibold text-gray-700 text-sm">{haftaEtiketi(hafta)}</p>
                           <p className="text-sm text-gray-500">

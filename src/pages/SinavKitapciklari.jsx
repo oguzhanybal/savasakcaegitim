@@ -373,11 +373,11 @@ export default function SinavKitapciklari() {
       </p>
 
       {kitapciklar.length > 0 && (
-        <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden mb-6">
+        <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-x-auto mb-6">
           <div className="px-4 py-3 border-b border-gray-100 bg-gray-50">
             <h2 className="font-semibold text-gray-700">Kayıtlı Kitapçıklar</h2>
           </div>
-          <table className="w-full text-sm">
+          <table className="w-full text-sm min-w-[420px]">
             <thead>
               <tr className="text-left text-gray-500">
                 <th className="px-4 py-2 font-medium">Sınav</th>

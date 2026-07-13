@@ -135,8 +135,8 @@ export default function Siniflar() {
         </button>
       </form>
 
-      <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
-        <table className="w-full text-sm">
+      <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-x-auto">
+        <table className="w-full text-sm min-w-[520px]">
           <thead>
             <tr className="bg-navy text-white text-left">
               <th className="px-4 py-3 font-semibold">Sınıf Adı</th>
