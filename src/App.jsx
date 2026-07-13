@@ -100,7 +100,7 @@ function AnaUygulama() {
         <Route
           path="/sozlesme/:sozlesmeId"
           element={
-            <Korumali izinliRoller={['yonetici', 'veli']}>
+            <Korumali izinliRoller={['yonetici']}>
               <Sozlesme />
             </Korumali>
           }
