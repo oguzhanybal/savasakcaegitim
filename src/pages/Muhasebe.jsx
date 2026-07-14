@@ -754,7 +754,7 @@ export default function Muhasebe() {
     <div>
       <div className="flex items-center justify-between mb-6 flex-wrap gap-3">
         <h1 className="text-2xl font-bold text-navy">{isYonetici ? 'Muhasebe' : 'Ödeme Durumu'}</h1>
-        {seciliId && (
+        {isYonetici && seciliId && (
           <Link
             to={`/ekstre/${seciliId}`}
             target="_blank"
