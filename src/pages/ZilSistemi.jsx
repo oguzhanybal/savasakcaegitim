@@ -1,35 +1,33 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../lib/AuthContext'
-import { sesSisteminiEtkinlestir, zilSesiCal } from '../lib/zilSesiCal'
+import { sesSisteminiEtkinlestir, zilSesiCal, cikisZiliCal } from '../lib/zilSesiCal'
 
 // ============================================================================
 // ZİL SİSTEMİ — kurumun bilgisayarının saati kayıyor (eski donanım), bu yüzden
 // zil yanlış saatte çalıyordu. Çözüm: bu sayfa, bilgisayarın kendi saatine
 // DEĞİL, Supabase sunucusundan alınan gerçek saate göre çalışır — bilgisayarın
-// saati yanlış olsa bile zil doğru saatte çalar. Sayfa açık kaldığı sürece
-// arka planda saat kontrolü yapılır, planlanan saat gelince Web Audio API ile
-// zil sesi çalınır (harici bir ses dosyasına ihtiyaç yok).
+// saati (hatta saat dilimi ayarı) yanlış olsa bile zil doğru saatte çalar.
+//
+// Yapı, kurumun kullandığı "Supper Zill" tarzı programlara benziyor: her ders
+// için üç ayrı zil — Öğrenci (derse girme), Öğretmen (öğretmenin başlaması,
+// varsayılan öğrenci+1dk) ve Çıkış (ders bitişi, varsayılan öğretmen+45dk).
+// Öğrenci/Öğretmen zilleri standart "ding-dong" sesini, Çıkış zili farklı,
+// özel bir ses kullanır (bkz. zilSesiCal.js — cikisZiliCal).
 //
 // Bu sayfa hep açık bir sekmede, herkesin ulaşabileceği bir bilgisayarda
 // duracağı için, yönetici hesabı o bilgisayarda açık bırakılmasın diye SADECE
 // bu sayfayı görebilen ayrı bir "zil" rolü var (bkz. Layout.jsx, App.jsx).
-// Yönetici olarak giren biri hem saatleri düzenleyebilir hem zili çalıştırır;
-// "zil" rolüyle giren biri sadece çalıştırma/izleme ekranını görür.
 // ============================================================================
+
+// ÖNEMLİ: Saat dilimi burada "Europe/Istanbul" olarak SABİTLENMİŞTİR —
+// bilgisayarın kendi saat dilimi ayarı ne olursa olsun, zil her zaman
+// Türkiye saatine göre hesaplanır.
+const TURKIYE_SAAT_DILIMI = 'Europe/Istanbul'
 
 function saatKisalt(s) {
   return s ? s.slice(0, 5) : s
 }
-
-// ÖNEMLİ: Saat dilimi burada "Europe/Istanbul" olarak SABİTLENMİŞTİR — bir
-// Date nesnesinin saat/dakika/saniyesini okurken JavaScript'in varsayılan
-// davranışı BİLGİSAYARIN AYARLI OLDUĞU saat dilimini kullanmaktır. Sunucudan
-// doğru ANI (zamanı) almış olsak bile, eğer bilgisayarın saat dilimi ayarı da
-// yanlışsa (Türkiye değilse), yine yanlış saatte zil çalabilirdi. Bu yüzden
-// aşağıdaki fonksiyonlar bilgisayarın ayarına HİÇ bakmadan, her zaman
-// Türkiye saatini (Europe/Istanbul, UTC+3, DST yok) hesaplar.
-const TURKIYE_SAAT_DILIMI = 'Europe/Istanbul'
 
 function turkiyeSaatBilesenleri(d) {
   const parcalar = new Intl.DateTimeFormat('en-GB', {
@@ -58,24 +56,34 @@ function saatMetni(d) {
   return `${saat}:${dakika}:${saniye}`
 }
 
-// "YYYY-MM-DD" formatında Türkiye'ye göre bugünün tarih anahtarı (aynı zil
-// aynı gün 2 kez çalmasın diye).
 function turkiyeTarihAnahtari(d) {
   const { yil, ay, gun } = turkiyeSaatBilesenleri(d)
   return `${yil}-${ay}-${gun}`
 }
 
+// "HH:MM" formatındaki bir saate dakika ekler/çıkarır, gün sınırını sarar
+// (ör. 23:50 + 20dk = 00:10).
+function saateDakikaEkle(saatStr, dakika) {
+  if (!saatStr) return ''
+  const [h, m] = saatStr.split(':').map(Number)
+  let toplam = h * 60 + m + dakika
+  toplam = ((toplam % 1440) + 1440) % 1440
+  const yeniH = Math.floor(toplam / 60)
+  const yeniM = toplam % 60
+  return `${String(yeniH).padStart(2, '0')}:${String(yeniM).padStart(2, '0')}`
+}
+
+const BOS_FORM = { devre: '', dersNo: '', ogrenci: '', ogretmen: '', cikis: '' }
+
 export default function ZilSistemi() {
   const { profile } = useAuth()
   const isYonetici = profile?.rol === 'yonetici'
 
-  const [zilSaatleri, setZilSaatleri] = useState([])
+  const [dersler, setDersler] = useState([])
   const [loading, setLoading] = useState(true)
   const [hata, setHata] = useState('')
 
   // ---- Sunucu saatiyle senkronizasyon ----
-  // sunucuFarki: sunucu saati ile bu bilgisayarın saati arasındaki fark (ms).
-  // Gösterilen/kontrol edilen saat her zaman Date.now() + sunucuFarki'dir.
   const [sunucuFarki, setSunucuFarki] = useState(0)
   const [senkronDurumu, setSenkronDurumu] = useState('bekliyor') // 'bekliyor' | 'tamam' | 'hata'
   const [sonSenkronZamani, setSonSenkronZamani] = useState(null)
@@ -85,23 +93,24 @@ export default function ZilSistemi() {
   const [sonCalanlar, setSonCalanlar] = useState([])
   const calinanlarRef = useRef(new Set())
 
-  const [yeniEtiket, setYeniEtiket] = useState('')
-  const [yeniSaat, setYeniSaat] = useState('')
+  // ---- Yeni ders ekleme formu — Öğrenci girilince Öğretmen (+1dk),
+  // Öğretmen (elle ya da otomatik) belli olunca Çıkış (+45dk) öneriliyor.
+  // Kullanıcı öneriyi elle değiştirirse, bir sonraki otomatik öneri onu ezmez.
+  const [form, setForm] = useState(BOS_FORM)
+  const [ogretmenOtomatikMi, setOgretmenOtomatikMi] = useState(true)
+  const [cikisOtomatikMi, setCikisOtomatikMi] = useState(true)
   const [ekleniyor, setEkleniyor] = useState(false)
 
-  async function zilSaatleriniYukle() {
+  async function derslerYukle() {
     const { data, error } = await supabase
-      .from('zil_saatleri')
+      .from('zil_dersleri')
       .select('*')
-      .order('saat', { ascending: true })
+      .order('sira', { ascending: true })
     if (error) setHata(error.message)
-    else setZilSaatleri(data || [])
+    else setDersler(data || [])
     setLoading(false)
   }
 
-  // Sunucudan gerçek saati alıp, bu bilgisayarın saatiyle arasındaki farkı
-  // hesaplar. İstek gidip gelirken geçen süreyi (gecikme) kabaca telafi etmek
-  // için, isteğin başlangıç ve bitiş anlarının ortasını referans alıyoruz.
   async function senkronizeEt() {
     const oncekiAn = Date.now()
     const { data, error } = await supabase.rpc('simdiki_zaman')
@@ -119,10 +128,8 @@ export default function ZilSistemi() {
   }
 
   useEffect(() => {
-    zilSaatleriniYukle()
+    derslerYukle()
     senkronizeEt()
-    // Bilgisayarın saati zamanla daha da kayabileceği ihtimaline karşı, her
-    // 10 dakikada bir sunucuyla yeniden senkronize ediyoruz.
     const senkronId = setInterval(senkronizeEt, 10 * 60 * 1000)
     return () => clearInterval(senkronId)
   }, [])
@@ -133,34 +140,57 @@ export default function ZilSistemi() {
       const suanki = new Date(Date.now() + sunucuFarki)
       setGosterilenSaat(suanki)
       if (!etkinMi) return
-      const bilesenler = turkiyeSaatBilesenleri(suanki)
-      const suankiHHMM = `${bilesenler.saat}:${bilesenler.dakika}`
-      const suankiSaniye = Number(bilesenler.saniye)
-      // Sadece dakikanın İLK saniyesinde kontrol etmek de yeterli olurdu ama
-      // saniye 0-2 arasında kontrol ederek, olası küçük gecikmelerde de zilin
-      // kaçırılmamasını garantiliyoruz.
+      const b = turkiyeSaatBilesenleri(suanki)
+      const suankiHHMM = `${b.saat}:${b.dakika}`
+      const suankiSaniye = Number(b.saniye)
       if (suankiSaniye > 2) return
       const bugunAnahtari = turkiyeTarihAnahtari(suanki)
-      zilSaatleri.forEach((z) => {
-        if (!z.aktif) return
-        if (saatKisalt(z.saat) !== suankiHHMM) return
-        const anahtar = `${z.id}_${bugunAnahtari}`
-        if (calinanlarRef.current.has(anahtar)) return
-        calinanlarRef.current.add(anahtar)
-        zilSesiCal()
-        setSonCalanlar((liste) => [{ ...z, zaman: suanki }, ...liste].slice(0, 15))
+
+      dersler.forEach((d) => {
+        if (!d.aktif) return
+        ;[
+          { alan: 'ogrenci_saat', tur: 'Öğrenci', sesFonksiyonu: zilSesiCal },
+          { alan: 'ogretmen_saat', tur: 'Öğretmen', sesFonksiyonu: zilSesiCal },
+          { alan: 'cikis_saat', tur: 'Çıkış', sesFonksiyonu: cikisZiliCal },
+        ].forEach(({ alan, tur, sesFonksiyonu }) => {
+          const saat = d[alan]
+          if (!saat || saatKisalt(saat) !== suankiHHMM) return
+          const anahtar = `${d.id}_${alan}_${bugunAnahtari}`
+          if (calinanlarRef.current.has(anahtar)) return
+          calinanlarRef.current.add(anahtar)
+          sesFonksiyonu()
+          setSonCalanlar((liste) =>
+            [{ etiket: `${d.devre ? d.devre + ' — ' : ''}${d.ders_no}. Ders (${tur})`, zaman: suanki }, ...liste].slice(0, 20)
+          )
+        })
       })
     }, 1000)
     return () => clearInterval(id)
-  }, [sunucuFarki, etkinMi, zilSaatleri])
+  }, [sunucuFarki, etkinMi, dersler])
 
   const siradakiZil = useMemo(() => {
     const b = turkiyeSaatBilesenleri(gosterilenSaat)
-    const suankiHHMM = `${b.saat}:${b.dakika}:${b.saniye}`
-    const aktifler = zilSaatleri.filter((z) => z.aktif).sort((a, b) => saatKisalt(a.saat).localeCompare(saatKisalt(b.saat)))
-    const bugunkuSonraki = aktifler.find((z) => `${saatKisalt(z.saat)}:00` > suankiHHMM)
-    return bugunkuSonraki || aktifler[0] || null
-  }, [zilSaatleri, gosterilenSaat])
+    const suankiHHMMSS = `${b.saat}:${b.dakika}:${b.saniye}`
+    const tumZiller = []
+    dersler
+      .filter((d) => d.aktif)
+      .forEach((d) => {
+        ;[
+          { alan: 'ogrenci_saat', tur: 'Öğrenci' },
+          { alan: 'ogretmen_saat', tur: 'Öğretmen' },
+          { alan: 'cikis_saat', tur: 'Çıkış' },
+        ].forEach(({ alan, tur }) => {
+          if (!d[alan]) return
+          tumZiller.push({
+            saat: saatKisalt(d[alan]),
+            etiket: `${d.devre ? d.devre + ' — ' : ''}${d.ders_no}. Ders (${tur})`,
+          })
+        })
+      })
+    tumZiller.sort((a, b2) => a.saat.localeCompare(b2.saat))
+    const sonraki = tumZiller.find((z) => `${z.saat}:00` > suankiHHMMSS)
+    return sonraki || tumZiller[0] || null
+  }, [dersler, gosterilenSaat])
 
   function zilBaslat() {
     sesSisteminiEtkinlestir()
@@ -171,47 +201,88 @@ export default function ZilSistemi() {
     setEtkinMi(false)
   }
 
-  async function zilEkle(e) {
+  function formuSifirla() {
+    setForm(BOS_FORM)
+    setOgretmenOtomatikMi(true)
+    setCikisOtomatikMi(true)
+  }
+
+  function ogrenciDegisti(v) {
+    setForm((f) => {
+      const yeni = { ...f, ogrenci: v }
+      if (ogretmenOtomatikMi) {
+        yeni.ogretmen = saateDakikaEkle(v, 1)
+        if (cikisOtomatikMi) yeni.cikis = saateDakikaEkle(yeni.ogretmen, 45)
+      }
+      return yeni
+    })
+  }
+
+  function ogretmenDegisti(v) {
+    setOgretmenOtomatikMi(false)
+    setForm((f) => {
+      const yeni = { ...f, ogretmen: v }
+      if (cikisOtomatikMi) yeni.cikis = saateDakikaEkle(v, 45)
+      return yeni
+    })
+  }
+
+  function cikisDegisti(v) {
+    setCikisOtomatikMi(false)
+    setForm((f) => ({ ...f, cikis: v }))
+  }
+
+  async function dersEkle(e) {
     e.preventDefault()
-    if (!yeniEtiket.trim() || !yeniSaat) return
+    if (!form.dersNo || !form.ogrenci) return
     setEkleniyor(true)
-    const { error } = await supabase.from('zil_saatleri').insert({
-      etiket: yeniEtiket.trim(),
-      saat: yeniSaat,
-      sira: zilSaatleri.length,
+    const { error } = await supabase.from('zil_dersleri').insert({
+      devre: form.devre.trim() || null,
+      ders_no: Number(form.dersNo),
+      ogrenci_saat: form.ogrenci,
+      ogretmen_saat: form.ogretmen || null,
+      cikis_saat: form.cikis || null,
+      sira: dersler.length,
     })
     setEkleniyor(false)
     if (error) {
       alert('Hata: ' + error.message)
       return
     }
-    setYeniEtiket('')
-    setYeniSaat('')
-    zilSaatleriniYukle()
+    formuSifirla()
+    derslerYukle()
   }
 
-  async function zilAktifDegistir(z) {
-    const { error } = await supabase.from('zil_saatleri').update({ aktif: !z.aktif }).eq('id', z.id)
+  async function dersGuncelle(d, alan, deger) {
+    const { error } = await supabase
+      .from('zil_dersleri')
+      .update({ [alan]: deger || null })
+      .eq('id', d.id)
     if (error) alert('Hata: ' + error.message)
-    else zilSaatleriniYukle()
+    else derslerYukle()
   }
 
-  async function zilSil(z) {
-    if (!confirm(`"${z.etiket}" (${saatKisalt(z.saat)}) saatini silmek istediğinize emin misiniz?`)) return
-    const { error } = await supabase.from('zil_saatleri').delete().eq('id', z.id)
+  async function dersAktifDegistir(d) {
+    const { error } = await supabase.from('zil_dersleri').update({ aktif: !d.aktif }).eq('id', d.id)
     if (error) alert('Hata: ' + error.message)
-    else zilSaatleriniYukle()
+    else derslerYukle()
+  }
+
+  async function dersSil(d) {
+    if (!confirm(`"${d.ders_no}. Ders" satırını silmek istediğinize emin misiniz?`)) return
+    const { error } = await supabase.from('zil_dersleri').delete().eq('id', d.id)
+    if (error) alert('Hata: ' + error.message)
+    else derslerYukle()
   }
 
   if (loading) return <p className="text-gray-400">Yükleniyor...</p>
 
   return (
-    <div className="max-w-3xl mx-auto">
+    <div className="max-w-4xl mx-auto">
       <h1 className="text-2xl font-bold text-navy mb-1">Zil Sistemi</h1>
       <p className="text-sm text-gray-500 mb-6">
         Bu sayfa açık kaldığı sürece, bilgisayarın kendi saati (hatta saat dilimi ayarı) yanlış olsa bile zil doğru
-        saatte çalar — hem saat sunucudan (internetten) alınıyor, hem de her zaman Türkiye saatine (İstanbul, UTC+3)
-        göre hesaplanıyor; bilgisayarın kendi saat dilimi ayarına hiç bakılmıyor.
+        saatte çalar — saat hem sunucudan alınıyor hem her zaman Türkiye saatine göre hesaplanıyor.
       </p>
 
       {hata && <p className="bg-red-50 text-red-600 text-sm rounded-lg p-3 mb-4">{hata}</p>}
@@ -232,8 +303,7 @@ export default function ZilSistemi() {
 
         {siradakiZil && (
           <p className="text-sm text-gray-600 mt-3">
-            Sıradaki zil: <span className="font-semibold text-navy">{saatKisalt(siradakiZil.saat)}</span> —{' '}
-            {siradakiZil.etiket}
+            Sıradaki zil: <span className="font-semibold text-navy">{siradakiZil.saat}</span> — {siradakiZil.etiket}
           </p>
         )}
 
@@ -269,42 +339,64 @@ export default function ZilSistemi() {
       <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden mb-6">
         <div className="px-4 py-3 border-b border-gray-100 bg-gray-50">
           <h2 className="font-semibold text-gray-700">Zil Saatleri</h2>
+          <p className="text-xs text-gray-400 mt-0.5">
+            Her ders için Öğrenci, Öğretmen (öğrenci+1dk) ve Çıkış (öğretmen+45dk) zilleri.
+          </p>
         </div>
-        {zilSaatleri.length === 0 ? (
+        {dersler.length === 0 ? (
           <p className="px-4 py-6 text-center text-gray-400 text-sm">
-            {isYonetici ? 'Henüz zil saati eklenmedi, aşağıdan ekleyebilirsiniz.' : 'Henüz zil saati eklenmedi.'}
+            {isYonetici ? 'Henüz ders/zil eklenmedi, aşağıdan ekleyebilirsiniz.' : 'Henüz ders/zil eklenmedi.'}
           </p>
         ) : (
           <table className="w-full text-sm">
             <thead>
               <tr className="text-left text-gray-500">
-                <th className="px-4 py-2 font-medium">Saat</th>
-                <th className="px-4 py-2 font-medium">Etiket</th>
-                <th className="px-4 py-2 font-medium">Durum</th>
-                {isYonetici && <th className="px-4 py-2 font-medium text-right">İşlemler</th>}
+                <th className="px-3 py-2 font-medium">Devre</th>
+                <th className="px-3 py-2 font-medium">Ders</th>
+                <th className="px-3 py-2 font-medium">Öğrenci</th>
+                <th className="px-3 py-2 font-medium">Öğretmen</th>
+                <th className="px-3 py-2 font-medium">Çıkış</th>
+                <th className="px-3 py-2 font-medium">Durum</th>
+                {isYonetici && <th className="px-3 py-2 font-medium text-right">İşlemler</th>}
               </tr>
             </thead>
             <tbody>
-              {zilSaatleri.map((z) => (
-                <tr key={z.id} className={`border-t border-gray-50 ${!z.aktif ? 'opacity-40' : ''}`}>
-                  <td className="px-4 py-2 font-semibold text-navy">{saatKisalt(z.saat)}</td>
-                  <td className="px-4 py-2">{z.etiket}</td>
-                  <td className="px-4 py-2">
-                    {z.aktif ? (
+              {dersler.map((d) => (
+                <tr key={d.id} className={`border-t border-gray-50 ${!d.aktif ? 'opacity-40' : ''}`}>
+                  <td className="px-3 py-2 text-gray-500">{d.devre || '—'}</td>
+                  <td className="px-3 py-2 font-semibold text-navy whitespace-nowrap">{d.ders_no}. Ders</td>
+                  {['ogrenci_saat', 'ogretmen_saat', 'cikis_saat'].map((alan) => (
+                    <td key={alan} className="px-3 py-2">
+                      {isYonetici ? (
+                        <input
+                          type="time"
+                          defaultValue={saatKisalt(d[alan]) || ''}
+                          onBlur={(e) => {
+                            if (e.target.value !== (saatKisalt(d[alan]) || '')) dersGuncelle(d, alan, e.target.value)
+                          }}
+                          className="px-2 py-1 border border-gray-200 rounded-lg text-sm w-[100px] focus:outline-none focus:ring-2 focus:ring-blue"
+                        />
+                      ) : (
+                        saatKisalt(d[alan]) || '—'
+                      )}
+                    </td>
+                  ))}
+                  <td className="px-3 py-2">
+                    {d.aktif ? (
                       <span className="text-xs font-semibold bg-green-100 text-green-700 px-2 py-1 rounded-full">Aktif</span>
                     ) : (
                       <span className="text-xs font-semibold bg-gray-100 text-gray-500 px-2 py-1 rounded-full">Pasif</span>
                     )}
                   </td>
                   {isYonetici && (
-                    <td className="px-4 py-2 text-right whitespace-nowrap space-x-3">
+                    <td className="px-3 py-2 text-right whitespace-nowrap space-x-3">
                       <button onClick={() => zilSesiCal()} className="text-blue text-sm hover:underline">
-                        Test Et
+                        Test
                       </button>
-                      <button onClick={() => zilAktifDegistir(z)} className="text-navy text-sm hover:underline">
-                        {z.aktif ? 'Pasif Yap' : 'Aktif Yap'}
+                      <button onClick={() => dersAktifDegistir(d)} className="text-navy text-sm hover:underline">
+                        {d.aktif ? 'Pasif Yap' : 'Aktif Yap'}
                       </button>
-                      <button onClick={() => zilSil(z)} className="text-red-500 text-sm hover:underline">
+                      <button onClick={() => dersSil(d)} className="text-red-500 text-sm hover:underline">
                         Sil
                       </button>
                     </td>
@@ -315,26 +407,54 @@ export default function ZilSistemi() {
           </table>
         )}
         {isYonetici && (
-          <form onSubmit={zilEkle} className="p-4 border-t border-gray-100 flex items-end gap-3 flex-wrap">
+          <form onSubmit={dersEkle} className="p-4 border-t border-gray-100 flex items-end gap-3 flex-wrap">
             <div>
-              <label className="block text-xs font-medium text-gray-500 mb-1">Saat</label>
+              <label className="block text-xs font-medium text-gray-500 mb-1">Devre (opsiyonel)</label>
+              <input
+                type="text"
+                value={form.devre}
+                onChange={(e) => setForm((f) => ({ ...f, devre: e.target.value }))}
+                placeholder="ör. Sabahçı Devre"
+                className="px-3 py-2 border border-gray-200 rounded-lg text-sm w-[150px] focus:outline-none focus:ring-2 focus:ring-blue"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-gray-500 mb-1">Ders No</label>
+              <input
+                type="number"
+                min="1"
+                value={form.dersNo}
+                onChange={(e) => setForm((f) => ({ ...f, dersNo: e.target.value }))}
+                required
+                className="px-3 py-2 border border-gray-200 rounded-lg text-sm w-[80px] focus:outline-none focus:ring-2 focus:ring-blue"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-gray-500 mb-1">Öğrenci</label>
               <input
                 type="time"
-                value={yeniSaat}
-                onChange={(e) => setYeniSaat(e.target.value)}
+                value={form.ogrenci}
+                onChange={(e) => ogrenciDegisti(e.target.value)}
                 required
                 className="px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue"
               />
             </div>
-            <div className="flex-1 min-w-[180px]">
-              <label className="block text-xs font-medium text-gray-500 mb-1">Etiket</label>
+            <div>
+              <label className="block text-xs font-medium text-gray-500 mb-1">Öğretmen</label>
               <input
-                type="text"
-                value={yeniEtiket}
-                onChange={(e) => setYeniEtiket(e.target.value)}
-                placeholder="ör. 1. Ders Başlangıç"
-                required
-                className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue"
+                type="time"
+                value={form.ogretmen}
+                onChange={(e) => ogretmenDegisti(e.target.value)}
+                className="px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-gray-500 mb-1">Çıkış</label>
+              <input
+                type="time"
+                value={form.cikis}
+                onChange={(e) => cikisDegisti(e.target.value)}
+                className="px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue"
               />
             </div>
             <button

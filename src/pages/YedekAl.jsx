@@ -39,7 +39,7 @@ const TABLOLAR = [
   'ogrenci_sinav_sonuclari',
   'sinav_ders_sonuclari',
   'sinav_soru_sonuclari',
-  'zil_saatleri',
+  'zil_dersleri',
 ]
 
 // Bir felaket sonrası kullanıcılar "Kullanıcı Oluştur" sayfasından YENİDEN
