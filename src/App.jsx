@@ -26,6 +26,7 @@ import SinavYukle from './pages/SinavYukle'
 import Sozlesme from './pages/Sozlesme'
 import SifreSifirla from './pages/SifreSifirla'
 import SifremiDegistir from './pages/SifremiDegistir'
+import Odev from './pages/Odev'
 
 function Yukleniyor() {
   return (
@@ -95,6 +96,14 @@ function AnaUygulama() {
           element={
             <Korumali izinliRoller={['yonetici', 'ogretmen']}>
               <OgretmenEkstre />
+            </Korumali>
+          }
+        />
+        <Route
+          path="/odev"
+          element={
+            <Korumali izinliRoller={['yonetici', 'ogretmen', 'veli', 'ogrenci']}>
+              <Odev />
             </Korumali>
           }
         />
