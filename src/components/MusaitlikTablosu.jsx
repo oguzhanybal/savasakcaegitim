@@ -87,6 +87,33 @@ export default function MusaitlikTablosu({ ogretmenler, dersProgrami, atamalar, 
     return mesguliyetler.find((m) => araliklarCakisiyorMu(dilim.baslangic, dilim.bitis, m.baslangic, m.bitis))
   }
 
+  // Aynı ders/atama, 30 dakikalık birden fazla sütuna yayılıyorsa (ör. 2 saatlik
+  // bire bir ders 4 sütunü kaplıyorsa), her sütunda ismi tekrar tekrar basmak
+  // yerine ardışık sütunları TEK hücrede birleştiriyoruz (colSpan) ve o hücrede
+  // dersin gerçek başlangıç-bitiş saatini yazıyoruz. Böylece bir ders 45 dakika
+  // sürüp bir sonraki 30'luk süturu tam doldurmasa bile, gerçek bitiş saati
+  // hücrenin içinde açıkça görünür.
+  function satirHucreleriniOlustur(ogretmenId) {
+    const hucreler = []
+    let i = 0
+    while (i < SAAT_DILIMLERI.length) {
+      const dilim = SAAT_DILIMLERI[i]
+      const dolu = hucreDurumu(ogretmenId, dilim)
+      let span = 1
+      if (dolu) {
+        while (
+          i + span < SAAT_DILIMLERI.length &&
+          hucreDurumu(ogretmenId, SAAT_DILIMLERI[i + span]) === dolu
+        ) {
+          span++
+        }
+      }
+      hucreler.push({ baslangic: dilim.baslangic, span, dolu })
+      i += span
+    }
+    return hucreler
+  }
+
   return (
     <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden mb-6">
       <div className="px-4 py-3 border-b border-gray-100 bg-gray-50 flex items-center justify-between flex-wrap gap-3">
@@ -125,27 +152,37 @@ export default function MusaitlikTablosu({ ogretmenler, dersProgrami, atamalar, 
             </tr>
           </thead>
           <tbody>
-            {ogretmenler.map((o, i) => (
-              <tr key={o.id} className={i % 2 ? 'bg-gray-50/60' : ''}>
-                <td className="sticky left-0 z-10 bg-white px-3 py-1.5 font-semibold text-gray-700 border-t border-gray-100 whitespace-nowrap">
-                  {o.ad_soyad}
-                </td>
-                {SAAT_DILIMLERI.map((d) => {
-                  const dolu = hucreDurumu(o.id, d)
-                  return (
+            {ogretmenler.map((o, i) => {
+              const hucreler = satirHucreleriniOlustur(o.id)
+              return (
+                <tr key={o.id} className={i % 2 ? 'bg-gray-50/60' : ''}>
+                  <td className="sticky left-0 z-10 bg-white px-3 py-1.5 font-semibold text-gray-700 border-t border-gray-100 whitespace-nowrap">
+                    {o.ad_soyad}
+                  </td>
+                  {hucreler.map((h) => (
                     <td
-                      key={d.baslangic}
-                      title={dolu ? `${dolu.etiket} (${saatKisalt(dolu.baslangic)}–${saatKisalt(dolu.bitis)})` : 'Boş'}
-                      className={`border-t border-l border-gray-100 text-center align-middle h-8 ${
-                        dolu ? dolu.renk : 'bg-green-50'
+                      key={h.baslangic}
+                      colSpan={h.span}
+                      title={h.dolu ? `${h.dolu.etiket} (${saatKisalt(h.dolu.baslangic)}–${saatKisalt(h.dolu.bitis)})` : 'Boş'}
+                      className={`border-t border-l border-gray-100 text-center align-middle py-1 ${
+                        h.dolu ? h.dolu.renk : 'bg-green-50 h-8'
                       }`}
                     >
-                      {dolu ? <span className="text-[9px] leading-none block truncate px-0.5">{dolu.etiket}</span> : ''}
+                      {h.dolu ? (
+                        <span className="leading-none block px-0.5">
+                          <span className="block truncate text-[9px] font-medium">{h.dolu.etiket}</span>
+                          <span className="block text-[8px] opacity-70 whitespace-nowrap">
+                            {saatKisalt(h.dolu.baslangic)}–{saatKisalt(h.dolu.bitis)}
+                          </span>
+                        </span>
+                      ) : (
+                        ''
+                      )}
                     </td>
-                  )
-                })}
-              </tr>
-            ))}
+                  ))}
+                </tr>
+              )
+            })}
             {ogretmenler.length === 0 && (
               <tr>
                 <td colSpan={SAAT_DILIMLERI.length + 1} className="px-4 py-4 text-center text-gray-400">
