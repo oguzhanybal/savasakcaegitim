@@ -1274,14 +1274,28 @@ function TekSeferlikDerslerListesi({ yoklamalar, atamalar, onDegisti, sadeceOgre
                 </p>
               </div>
               {gunGunMu ? (
-                gunGruplari.map(([tarih, gunDersleri]) => (
-                  <div key={tarih} className="mb-4 last:mb-0">
-                    <p className="text-sm font-bold text-white bg-navy rounded-lg px-3 py-1.5 mb-2 tracking-wide">
-                      {GUNLER[gunNumaraTarihten(tarih)]} — {new Date(tarih + 'T12:00:00').toLocaleDateString('tr-TR')}
-                    </p>
-                    {tabloYaz(gunDersleri)}
-                  </div>
-                ))
+                gunGruplari.map(([tarih, gunDersleri]) => {
+                  const buGunMu = tarih === yerelBugunTarihi()
+                  return (
+                    <div key={tarih} className="mb-4 last:mb-0">
+                      <p
+                        className={`text-sm font-bold text-white rounded-lg px-3 py-1.5 mb-2 tracking-wide flex items-center gap-2 ${
+                          buGunMu ? 'bg-orange-500' : 'bg-navy'
+                        }`}
+                      >
+                        <span>
+                          {GUNLER[gunNumaraTarihten(tarih)]} — {new Date(tarih + 'T12:00:00').toLocaleDateString('tr-TR')}
+                        </span>
+                        {buGunMu && (
+                          <span className="text-[10px] font-semibold bg-white/25 px-2 py-0.5 rounded-full tracking-normal">
+                            Bugün
+                          </span>
+                        )}
+                      </p>
+                      {tabloYaz(gunDersleri)}
+                    </div>
+                  )
+                })
               ) : (
                 tabloYaz(grupDersleri)
               )}
