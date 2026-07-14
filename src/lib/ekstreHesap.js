@@ -313,6 +313,26 @@ export function bireBirOzetLinkOlustur(telefon, mesaj) {
 }
 
 // ============================================================================
+// ÖDEV BİLDİRİMİ — Odev.jsx'te yeni bir ödev girildiğinde, öğrenciye/veliye
+// WhatsApp üzerinden "yeni ödevin var" bildirimi gönderebilmek için mesaj
+// üretir. Link üretimi için AYNI bireBirOzetLinkOlustur fonksiyonu kullanılır
+// (telefon + hazır metin alıp wa.me linkine çeviren genel fonksiyon).
+// ============================================================================
+export function odevBildirimMesajiOlustur({ kimeGonderiliyor, ogrenciAdi, ders, baslik, aciklama, sonTarih }) {
+  const sonTarihMetni = sonTarih
+    ? new Date(sonTarih + 'T12:00:00').toLocaleDateString('tr-TR', { day: '2-digit', month: 'long', year: 'numeric' })
+    : null
+  return (
+    `${selamlamaSatiri(kimeGonderiliyor)}\n${ogrenciAdi} için yeni bir ödev girildi` +
+    `${ders ? ` (${ders})` : ''}:\n` +
+    `*${baslik}*\n` +
+    (aciklama ? `${aciklama}\n` : '') +
+    (sonTarihMetni ? `Son tarih: ${sonTarihMetni}\n` : '') +
+    `İyi çalışmalar dileriz.\nSavaş Akça Eğitim`
+  )
+}
+
+// ============================================================================
 // TEK TEK ÖDEME PLANI — Bir sözleşmenin (Okul/Kurs/Kitap) TÜM taksitlerini,
 // her birinin vade tarihi ve durumuyla (ödendi / gecikti / bekliyor) birlikte
 // listeler. Hem veli hem yönetici bunu görebilir (Muhasebe sayfasında).
