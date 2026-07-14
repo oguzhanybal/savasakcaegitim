@@ -416,14 +416,15 @@ function VerilenOdevlerListesi({ odevler, isYonetici, onDegisti }) {
     else onDegisti()
   }
 
-  // "Tamamlandı" durumunu BİLEREK sadece burada (öğretmen/yönetici tarafında)
-  // değiştirilebilir yaptık — öğrenci/veli sadece görüntüler (Odev.jsx'te
-  // OdevlerimListesi salt-okunur). Ödevi kontrol edip "yapıldı" diyecek olan
-  // öğretmenin kendisi.
-  async function tamamlandiIsaretle(o, yeniDurum) {
+  // "Durum" değiştirmeyi BİLEREK sadece burada (öğretmen/yönetici tarafında)
+  // yapılabilir kıldık — öğrenci/veli sadece görüntüler (OdevlerimListesi
+  // salt-okunur). Ödevi kontrol edip "yaptı/yapmadı" diyecek olan öğretmenin
+  // kendisi. Üç durum var: 'bekliyor' (henüz kontrol edilmedi), 'yapti',
+  // 'yapmadi' — bire bir yoklamadaki Geldi/Gelmedi/Bekliyor ile AYNI mantık.
+  async function durumDegistir(o, yeniDurum) {
     const { error } = await supabase
       .from('odevler')
-      .update({ tamamlandi: yeniDurum, tamamlanma_tarihi: yeniDurum ? new Date().toISOString() : null })
+      .update({ durum: yeniDurum, tamamlanma_tarihi: yeniDurum === 'yapti' ? new Date().toISOString() : null })
       .eq('id', o.id)
     if (error) alert('Hata: ' + error.message)
     else onDegisti()
@@ -476,18 +477,36 @@ function VerilenOdevlerListesi({ odevler, isYonetici, onDegisti }) {
                   {o.son_tarih ? new Date(o.son_tarih + 'T12:00:00').toLocaleDateString('tr-TR') : '—'}
                 </td>
                 <td className="px-4 py-2">
-                  <button
-                    type="button"
-                    onClick={() => tamamlandiIsaretle(o, !o.tamamlandi)}
-                    className={`inline-block px-2 py-0.5 rounded-full text-xs font-semibold transition-colors ${
-                      o.tamamlandi
-                        ? 'bg-green-100 text-green-700 hover:bg-green-200'
-                        : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
-                    }`}
-                    title="Tamamlandı durumunu değiştirmek için tıklayın"
-                  >
-                    {o.tamamlandi ? '✓ Tamamlandı' : 'Bekliyor'}
-                  </button>
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    <button
+                      type="button"
+                      onClick={() => durumDegistir(o, 'yapti')}
+                      className={`px-2 py-1 rounded-lg text-xs font-semibold transition-colors ${
+                        o.durum === 'yapti' ? 'bg-green-600 text-white' : 'bg-green-100 text-green-700 hover:bg-green-200'
+                      }`}
+                    >
+                      Yaptı
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => durumDegistir(o, 'yapmadi')}
+                      className={`px-2 py-1 rounded-lg text-xs font-semibold transition-colors ${
+                        o.durum === 'yapmadi' ? 'bg-red-600 text-white' : 'bg-red-100 text-red-700 hover:bg-red-200'
+                      }`}
+                    >
+                      Yapmadı
+                    </button>
+                    {o.durum !== 'bekliyor' && (
+                      <button
+                        type="button"
+                        onClick={() => durumDegistir(o, 'bekliyor')}
+                        title="Bekliyor durumuna geri al"
+                        className="text-gray-400 text-xs hover:underline"
+                      >
+                        Sıfırla
+                      </button>
+                    )}
+                  </div>
                 </td>
                 <td className="px-4 py-2">
                   <button onClick={() => sil(o)} className="text-red-500 text-sm hover:underline">
@@ -509,13 +528,35 @@ function VerilenOdevlerListesi({ odevler, isYonetici, onDegisti }) {
 // kendine "yaptım" deyip geçmesi güvenilir olmadığı için, ödevi kontrol edip
 // tamamlandı diyecek olan ÖĞRETMEN (bkz. VerilenOdevlerListesi).
 // ============================================================================
+function OdevDurumRozeti({ durum }) {
+  if (durum === 'yapti') {
+    return (
+      <span className="px-3 py-1.5 rounded-lg text-sm font-semibold whitespace-nowrap bg-green-100 text-green-700">
+        ✓ Yaptı
+      </span>
+    )
+  }
+  if (durum === 'yapmadi') {
+    return (
+      <span className="px-3 py-1.5 rounded-lg text-sm font-semibold whitespace-nowrap bg-red-100 text-red-600">
+        ✗ Yapmadı
+      </span>
+    )
+  }
+  return (
+    <span className="px-3 py-1.5 rounded-lg text-sm font-semibold whitespace-nowrap bg-gray-100 text-gray-500">
+      Bekliyor
+    </span>
+  )
+}
+
 function OdevlerimListesi({ odevler, birdenFazlaCocukMu }) {
-  const bekleyenler = odevler.filter((o) => !o.tamamlandi)
-  const tamamlananlar = odevler.filter((o) => o.tamamlandi)
+  const bekleyenler = odevler.filter((o) => o.durum === 'bekliyor')
+  const sonuclananlar = odevler.filter((o) => o.durum !== 'bekliyor')
 
   function OdevKarti({ o }) {
     const link = dosyaGoruntuleLinki(o.dosya_yolu)
-    const bugundenSonraMi = o.son_tarih && o.son_tarih < yerelBugunTarihi() && !o.tamamlandi
+    const bugundenSonraMi = o.son_tarih && o.son_tarih < yerelBugunTarihi() && o.durum === 'bekliyor'
     return (
       <div className={`px-4 py-3 flex items-start justify-between gap-3 flex-wrap ${bugundenSonraMi ? 'bg-red-50' : ''}`}>
         <div>
@@ -538,13 +579,7 @@ function OdevlerimListesi({ odevler, birdenFazlaCocukMu }) {
             </a>
           )}
         </div>
-        <span
-          className={`px-3 py-1.5 rounded-lg text-sm font-semibold whitespace-nowrap ${
-            o.tamamlandi ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'
-          }`}
-        >
-          {o.tamamlandi ? '✓ Tamamlandı' : 'Bekliyor'}
-        </span>
+        <OdevDurumRozeti durum={o.durum} />
       </div>
     )
   }
@@ -560,13 +595,13 @@ function OdevlerimListesi({ odevler, birdenFazlaCocukMu }) {
           <OdevKarti key={o.id} o={o} />
         ))}
       </div>
-      {tamamlananlar.length > 0 && (
+      {sonuclananlar.length > 0 && (
         <>
           <div className="px-4 py-3 border-b border-t border-gray-100 bg-gray-50">
-            <h2 className="font-semibold text-gray-700">Tamamlanan Ödevler ({tamamlananlar.length})</h2>
+            <h2 className="font-semibold text-gray-700">Sonuçlanan Ödevler ({sonuclananlar.length})</h2>
           </div>
           <div className="divide-y divide-gray-50">
-            {tamamlananlar.map((o) => (
+            {sonuclananlar.map((o) => (
               <OdevKarti key={o.id} o={o} />
             ))}
           </div>
