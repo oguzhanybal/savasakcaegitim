@@ -381,7 +381,7 @@ function BireBirDersEkleForm({ ogrenciler, ogretmenler, atamalar, dersProgrami, 
         // bitişi + 10 dakika ara" olarak öneriliyor (bitiş de +45dk ile hesaplanıyor).
         // Bu sadece formu ÖNCEDEN dolduruyor — kaydetmek için yine "Ekle"ye basmak gerekiyor.
         const bekliyorNotu = ileriTarihli
-          ? ' İleri tarihli olduğu için "Bekliyor" olarak eklendi, henüz borç eklenmedi — ders yapıldıktan sonra "Son Tek Seferlik Dersler" listesinden Geldi/Gelmedi işaretleyin.'
+          ? ' İleri tarihli olduğu için "Bekliyor" olarak eklendi, henüz borç eklenmedi — ders yapıldıktan sonra "Tüm Bire Bir Dersler" listesinden Geldi/Gelmedi işaretleyin.'
           : ''
         if (tekBitis) {
           const yeniBaslangic = saateDakikaEkle(tekBitis, 10)
@@ -1068,7 +1068,7 @@ function TekSeferlikDerslerListesi({ yoklamalar, atamalar, onDegisti, sadeceOgre
           _ogretmenId: atama ? atama.ogretmen_profile_id : y.ogretmen_profile_id,
           _baslangic: y.baslangic_saat || atama?.baslangic_saat || null,
           _bitis: y.bitis_saat || atama?.bitis_saat || null,
-          _kaynak: y.atama_id ? 'Haftalık' : 'Tek Seferlik',
+          _kaynak: y.atama_id ? 'Haftalık' : 'Tekil',
           _tutar: tutar,
         }
       })
@@ -1153,8 +1153,8 @@ function TekSeferlikDerslerListesi({ yoklamalar, atamalar, onDegisti, sadeceOgre
           </h2>
           <p className="text-xs text-gray-400 mt-0.5">
             {sadeceOgretmenId
-              ? 'Hem haftalık tekrarlanan atamalardan işaretlenen dersler hem tek seferlik dersler burada bir arada. "Bekliyor" ileri tarihli, henüz kesinleşmemiş tek seferlik dersler içindir.'
-              : 'Hem haftalık tekrarlanan atamalardan işaretlenen dersler hem tek seferlik dersler burada bir arada. "Bekliyor" ileri tarihli, henüz borç eklenmemiş tek seferlik dersler içindir.'}
+              ? 'Hem haftalık tekrarlanan atamalardan işaretlenen dersler hem tekil dersler burada bir arada. "Bekliyor" ileri tarihli, henüz kesinleşmemiş tekil dersler içindir.'
+              : 'Hem haftalık tekrarlanan atamalardan işaretlenen dersler hem tekil dersler burada bir arada. "Bekliyor" ileri tarihli, henüz borç eklenmemiş tekil dersler içindir.'}
           </p>
         </div>
         <div className="flex gap-1.5 shrink-0 items-center flex-wrap">
@@ -1523,7 +1523,7 @@ function DersHatirlatmaPaneli({ atamalar, yoklamalar, sadeceOgretmenId }) {
         <p className="px-4 pt-3 text-xs text-gray-400">
           Seçili tarihten ({new Date(tarih + 'T12:00:00').toLocaleDateString('tr-TR')}) bu haftanın Pazar gününe (
           {new Date(haftaSonuTarih + 'T12:00:00').toLocaleDateString('tr-TR')}) kadar olan TÜM bire bir dersler — hem
-          her hafta tekrar edenler hem de tek seferlik olanlar. Geçmiş günler dahil edilmez.
+          her hafta tekrar edenler hem de tekil olanlar. Geçmiş günler dahil edilmez.
         </p>
       )}
       <div className="divide-y divide-gray-50">

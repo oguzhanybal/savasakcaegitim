@@ -250,7 +250,7 @@ function BireBirDerslerimBolumu({ haftalikDersler, tekSeferlikDersler, birdenFaz
       {tekSeferlikDersler && tekSeferlikDersler.length > 0 && (
         <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
           <div className="px-4 py-3 bg-navy text-white font-semibold">
-            {birdenFazlaCocukMu ? 'Yaklaşan Bire Bir Dersleri (Tek Seferlik)' : 'Yaklaşan Bire Bir Derslerim (Tek Seferlik)'}
+            {birdenFazlaCocukMu ? 'Yaklaşan Bire Bir Dersleri (Tekil)' : 'Yaklaşan Bire Bir Derslerim (Tekil)'}
           </div>
           <div className="divide-y divide-gray-50">
             {tekSeferlikDersler.map((d) => (
