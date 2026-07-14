@@ -516,7 +516,7 @@ export function bireBirDersDetaylariOlustur(atamalar, yoklamalar) {
         ogretmenBransi: ogretmenBransi || null,
         ogrenciAdi: ogrenciAdi || '—',
         tutar: y.tutar != null ? Number(y.tutar) : Number(atama?.ders_ucreti) || 0,
-        kaynak: y.atama_id ? 'Haftalık' : 'Tek Seferlik',
+        kaynak: y.atama_id ? 'Haftalık' : 'Tekil',
       }
     })
     .sort((a, b) => (a.tarih < b.tarih ? 1 : -1))
