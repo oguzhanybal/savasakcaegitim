@@ -365,20 +365,36 @@ export default function ZilSistemi() {
                 <tr key={d.id} className={`border-t border-gray-50 ${!d.aktif ? 'opacity-40' : ''}`}>
                   <td className="px-3 py-2 text-gray-500">{d.devre || '—'}</td>
                   <td className="px-3 py-2 font-semibold text-navy whitespace-nowrap">{d.ders_no}. Ders</td>
-                  {['ogrenci_saat', 'ogretmen_saat', 'cikis_saat'].map((alan) => (
+                  {[
+                    { alan: 'ogrenci_saat', sesFonksiyonu: zilSesiCal },
+                    { alan: 'ogretmen_saat', sesFonksiyonu: zilSesiCal },
+                    { alan: 'cikis_saat', sesFonksiyonu: cikisZiliCal },
+                  ].map(({ alan, sesFonksiyonu }) => (
                     <td key={alan} className="px-3 py-2">
-                      {isYonetici ? (
-                        <input
-                          type="time"
-                          defaultValue={saatKisalt(d[alan]) || ''}
-                          onBlur={(e) => {
-                            if (e.target.value !== (saatKisalt(d[alan]) || '')) dersGuncelle(d, alan, e.target.value)
-                          }}
-                          className="px-2 py-1 border border-gray-200 rounded-lg text-sm w-[100px] focus:outline-none focus:ring-2 focus:ring-blue"
-                        />
-                      ) : (
-                        saatKisalt(d[alan]) || '—'
-                      )}
+                      <div className="flex items-center gap-1.5">
+                        {isYonetici ? (
+                          <input
+                            type="time"
+                            defaultValue={saatKisalt(d[alan]) || ''}
+                            onBlur={(e) => {
+                              if (e.target.value !== (saatKisalt(d[alan]) || '')) dersGuncelle(d, alan, e.target.value)
+                            }}
+                            className="px-2 py-1 border border-gray-200 rounded-lg text-sm w-[100px] focus:outline-none focus:ring-2 focus:ring-blue"
+                          />
+                        ) : (
+                          <span>{saatKisalt(d[alan]) || '—'}</span>
+                        )}
+                        {isYonetici && (
+                          <button
+                            type="button"
+                            onClick={() => sesFonksiyonu()}
+                            title="Bu sütunun sesini dinle"
+                            className="text-blue text-xs hover:underline shrink-0"
+                          >
+                            Dinle
+                          </button>
+                        )}
+                      </div>
                     </td>
                   ))}
                   <td className="px-3 py-2">
@@ -390,9 +406,6 @@ export default function ZilSistemi() {
                   </td>
                   {isYonetici && (
                     <td className="px-3 py-2 text-right whitespace-nowrap space-x-3">
-                      <button onClick={() => zilSesiCal()} className="text-blue text-sm hover:underline">
-                        Test
-                      </button>
                       <button onClick={() => dersAktifDegistir(d)} className="text-navy text-sm hover:underline">
                         {d.aktif ? 'Pasif Yap' : 'Aktif Yap'}
                       </button>
