@@ -40,7 +40,10 @@ function buHaftaGunTarihi(hedefGun) {
   const fark = hedefGun - bugunGun
   const tarih = new Date(bugun)
   tarih.setDate(bugun.getDate() + fark)
-  return tarih.toISOString().slice(0, 10)
+  // NOT: toISOString() KULLANMIYORUZ — gece yarısına yakın saatlerde (ör. 00:30)
+  // UTC'ye çevirince bir önceki güne kayabiliyor. Yerel tarih parçalarını
+  // (yıl/ay/gün) doğrudan okuyup string'e çeviriyoruz.
+  return `${tarih.getFullYear()}-${String(tarih.getMonth() + 1).padStart(2, '0')}-${String(tarih.getDate()).padStart(2, '0')}`
 }
 
 // "YYYY-MM-DD" formatındaki bir tarihe gün ekler/çıkarır — tarih kutusunun
@@ -215,7 +218,7 @@ function BireBirDersEkleForm({ ogrenciler, ogretmenler, atamalar, dersProgrami, 
 
   // Tek seferlik (Hayır) alanları — saat opsiyonel: girilirse kayda saat de damgalanır,
   // girilmezse boş bırakılabilir.
-  const [tarih, setTarih] = useState(() => new Date().toISOString().slice(0, 10))
+  const [tarih, setTarih] = useState(() => yerelBugunTarihi())
   const [tekBaslangic, setTekBaslangic] = useState('')
   const [tekBitis, setTekBitis] = useState('')
 
@@ -887,6 +890,18 @@ function YoklamaSatiri({ atama, yoklamalar, onDegisti, ucretGorunur }) {
           : 'Bu kaydın durumunu değiştirmek istediğinize emin misiniz?'
       if (!confirm(mesaj)) return
     }
+    // GÜVENLİK KONTROLÜ: Seçili tarih bugünden ileriyse (ör. "Sonraki hafta ▶"
+    // butonuna fazladan basılıp yanlışlıkla ileri bir haftaya/aya geçilmişse),
+    // "Geldi" işaretlemek HENÜZ YAPILMAMIŞ bir derse hemen borç ekler. Bunu
+    // önlemek için ekstra onay istiyoruz. (Tek seferlik ders ekleme formunda
+    // aynı durum otomatik "Bekliyor" yapılıyor; burada "Geldi/Gelmedi" sadece
+    // iki seçenek olduğu için otomatik çeviremiyoruz, bu yüzden açık onay şart.)
+    if (durum === 'geldi' && tarih > yerelBugunTarihi()) {
+      const okundu = confirm(
+        `DİKKAT: ${tarih} tarihi henüz gelmedi (ileri tarihli). Bu tarih için "Geldi" işaretlerseniz, ders henüz yapılmamış olsa bile öğrenciye HEMEN borç eklenecek. Doğru tarihi seçtiğinizden emin misiniz? Devam etmek için "Tamam"a basın.`
+      )
+      if (!okundu) return
+    }
     setGonderiliyor(true)
     // O anki ders ücretini de kayda "damgalıyoruz" (tutar alanı) — ileride ücret
     // zam görürse, geçmişte zaten "Geldi" işaretlenmiş kayıtların borcu değişmesin,
@@ -940,8 +955,16 @@ function YoklamaSatiri({ atama, yoklamalar, onDegisti, ucretGorunur }) {
             type="date"
             value={tarih}
             onChange={(e) => setTarih(e.target.value)}
-            className="px-2 py-1.5 border border-gray-200 rounded-lg text-sm"
+            className={`px-2 py-1.5 border rounded-lg text-sm ${
+              tarih > yerelBugunTarihi() ? 'border-orange-400 bg-orange-50 text-orange-700' : 'border-gray-200'
+            }`}
+            title={tarih > yerelBugunTarihi() ? 'Dikkat: bu tarih henüz gelmedi (ileri tarihli)' : undefined}
           />
+          {tarih > yerelBugunTarihi() && (
+            <span className="text-[11px] text-orange-600 font-medium whitespace-nowrap" title="Bu tarih henüz gelmedi">
+              ⚠️ ileri tarih
+            </span>
+          )}
           <button
             type="button"
             onClick={() => setTarih((t) => gunEkle(t, 7))}
