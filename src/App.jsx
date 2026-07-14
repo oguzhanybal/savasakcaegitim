@@ -27,6 +27,7 @@ import Sozlesme from './pages/Sozlesme'
 import SifreSifirla from './pages/SifreSifirla'
 import SifremiDegistir from './pages/SifremiDegistir'
 import Odev from './pages/Odev'
+import OgrenciZamanCizelgesi from './pages/OgrenciZamanCizelgesi'
 
 function Yukleniyor() {
   return (
@@ -138,6 +139,14 @@ function AnaUygulama() {
             element={
               <Korumali izinliRoller={['yonetici']}>
                 <Ogrenciler />
+              </Korumali>
+            }
+          />
+          <Route
+            path="ogrenci/:ogrenciId"
+            element={
+              <Korumali izinliRoller={['yonetici']}>
+                <OgrenciZamanCizelgesi />
               </Korumali>
             }
           />
