@@ -1068,19 +1068,29 @@ export default function Muhasebe() {
                   <th className="px-4 py-2 font-medium">Dönem</th>
                   <th className="px-4 py-2 font-medium">Tutar</th>
                   <th className="px-4 py-2 font-medium">Durum</th>
+                  <th className="px-4 py-2 font-medium">Kalan</th>
                   {isYonetici && <th className="px-4 py-2 font-medium">İşlemler</th>}
                 </tr>
               </thead>
               <tbody>
                 {aylikBorclar.length === 0 && (
-                  <tr><td colSpan={isYonetici ? 5 : 4} className="px-4 py-4 text-center text-gray-400">Aylık kalem borcu bulunamadı.</td></tr>
+                  <tr><td colSpan={isYonetici ? 6 : 5} className="px-4 py-4 text-center text-gray-400">Aylık kalem borcu bulunamadı.</td></tr>
                 )}
-                {aylikBorclar.map((a) => (
-                  <tr key={a.id} className={`border-t border-gray-50 ${aylikBorcDurumHesapla(a, aylikBorclar, odemeler) === 'gecikti' ? 'bg-red-50' : ''}`}>
+                {aylikBorclar.map((a) => {
+                  const d = aylikBorcDurumHesapla(a, aylikBorclar, odemeler)
+                  return (
+                  <tr key={a.id} className={`border-t border-gray-50 ${d.durum === 'gecikti' ? 'bg-red-50' : d.durum === 'kismi' ? 'bg-amber-50' : ''}`}>
                     <td className="px-4 py-2 font-medium text-gray-800">{a.kalem}</td>
                     <td className="px-4 py-2">{new Date(a.donem).toLocaleDateString('tr-TR', { month: 'long', year: 'numeric' })}</td>
                     <td className="px-4 py-2">{paraFormat(a.tutar)}</td>
-                    <td className="px-4 py-2"><DurumRozeti durum={aylikBorcDurumHesapla(a, aylikBorclar, odemeler)} /></td>
+                    <td className="px-4 py-2"><DurumRozeti durum={d.durum} /></td>
+                    <td className="px-4 py-2">
+                      {d.durum === 'kismi' ? (
+                        <span className="text-amber-700 font-semibold">{paraFormat(d.kalanTutar)}</span>
+                      ) : (
+                        <span className="text-gray-300">—</span>
+                      )}
+                    </td>
                     {isYonetici && (
                       <td className="px-4 py-2">
                         {aylikBorcGercekMi(a) ? (
@@ -1098,7 +1108,8 @@ export default function Muhasebe() {
                       </td>
                     )}
                   </tr>
-                ))}
+                  )
+                })}
               </tbody>
             </table>
           </div>
