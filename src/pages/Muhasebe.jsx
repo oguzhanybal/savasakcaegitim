@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../lib/AuthContext'
 import { ilkHarfleriBuyukYap } from '../lib/adSoyadFormat'
+import BireBirDersDokumu from '../components/BireBirDersDokumu'
 import {
   taksitPlaniOlustur,
   aylikBorcDurumHesapla,
@@ -10,8 +11,6 @@ import {
   bireBirBorclariOlustur,
   kantinBorclariOlustur,
   bireBirDersDetaylariOlustur,
-  haftaBaslangici,
-  haftaEtiketi,
   fazlaOdemeleriHesapla,
   ogrenciSatirlariHesapla,
 } from '../lib/ekstreHesap'
@@ -1055,62 +1054,18 @@ export default function Muhasebe() {
           {bireBirDersleri.length > 0 && (
             <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden mb-6">
               <div className="px-4 py-3 border-b border-gray-100 bg-gray-50">
-                <h2 className="font-semibold text-gray-700">Bire Bir Ders Dökümü (Haftalık)</h2>
+                <h2 className="font-semibold text-gray-700">Bire Bir Ders Dökümü</h2>
                 <p className="text-xs text-gray-400 mt-0.5">
                   Yukarıdaki "Bire Bir" toplamının ARKASINDAKİ tek tek dersler — hangi tarihte, hangi
                   öğretmenden, ne kadara. Sadece "Geldi" (faturalanmış) dersler burada görünür.
+                  "Aylık" ile ay ay, "Haftalık" ile hafta hafta görebilirsiniz.
                 </p>
               </div>
-              <div className="divide-y divide-gray-100">
-                {Object.entries(
-                  bireBirDersleri.reduce((gruplar, d) => {
-                    const hafta = haftaBaslangici(d.tarih)
-                    if (!gruplar[hafta]) gruplar[hafta] = []
-                    gruplar[hafta].push(d)
-                    return gruplar
-                  }, {})
-                )
-                  .sort((a, b) => (a[0] < b[0] ? 1 : -1))
-                  .map(([hafta, dersler]) => {
-                    const haftaToplami = dersler.reduce((t, d) => t + d.tutar, 0)
-                    return (
-                      <div key={hafta} className="p-4 overflow-x-auto">
-                        <div className="flex items-center justify-between mb-2">
-                          <p className="font-semibold text-gray-700 text-sm">{haftaEtiketi(hafta)}</p>
-                          <p className="text-sm text-gray-500">
-                            {dersler.length} ders · <span className="font-semibold text-navy">{paraFormat(haftaToplami)}</span>
-                          </p>
-                        </div>
-                        <table className="w-full text-sm min-w-[440px]">
-                          <thead>
-                            <tr className="text-left text-gray-400">
-                              <th className="px-2 py-1 font-medium">Tarih</th>
-                              <th className="px-2 py-1 font-medium">Saat</th>
-                              <th className="px-2 py-1 font-medium">Öğretmen</th>
-                              <th className="px-2 py-1 font-medium">Tür</th>
-                              <th className="px-2 py-1 font-medium">Tutar</th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {dersler.map((d) => (
-                              <tr key={d.id} className="border-t border-gray-50">
-                                <td className="px-2 py-1.5">{new Date(d.tarih + 'T12:00:00').toLocaleDateString('tr-TR')}</td>
-                                <td className="px-2 py-1.5 text-gray-500">
-                                  {d.baslangicSaat ? `${saatKisalt(d.baslangicSaat)}${d.bitisSaat ? '–' + saatKisalt(d.bitisSaat) : ''}` : '—'}
-                                </td>
-                                <td className="px-2 py-1.5">
-                                  {d.ogretmenAdi}
-                                  {d.ogretmenBransi && <span className="text-xs text-gray-400"> ({d.ogretmenBransi})</span>}
-                                </td>
-                                <td className="px-2 py-1.5 text-gray-500">{d.kaynak}</td>
-                                <td className="px-2 py-1.5">{paraFormat(d.tutar)}</td>
-                              </tr>
-                            ))}
-                          </tbody>
-                        </table>
-                      </div>
-                    )
-                  })}
+              <div className="p-4 overflow-x-auto">
+                <BireBirDersDokumu
+                  dersler={bireBirDersleri.map((d) => ({ ...d, karsiTarafAdi: d.ogretmenAdi, karsiTarafBransi: d.ogretmenBransi }))}
+                  karsiTarafBasligi="Öğretmen"
+                />
               </div>
             </div>
           )}
