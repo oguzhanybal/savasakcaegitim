@@ -7,6 +7,7 @@ const ROLLER = [
   { value: 'ogretmen', label: 'Öğretmen' },
   { value: 'yonetici', label: 'Yönetici' },
   { value: 'kantin', label: 'Kantin Görevlisi' },
+  { value: 'zil', label: 'Zil Ekranı' },
 ]
 
 // Ogretmenler.jsx'teki listeyle aynı — öğretmen oluştururken de branş
