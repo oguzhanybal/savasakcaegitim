@@ -68,12 +68,29 @@ function OdevVerForm({ ogrenciler, ogretmenProfileId, varsayilanDers, onEklendi 
     )
   }, [ogrenciler, arama])
 
+  // Ogrenciler.jsx'te girilen "sinif_ve_alan" (ör. "9-A") alanına göre, sistemde
+  // kayıtlı BENZERSİZ sınıf adlarının listesi — hoca tek tek öğrenci aramak
+  // yerine doğrudan "9-A" seçip o sınıftaki TÜM öğrencileri tek tıkla ekleyebilsin.
+  const siniflar = useMemo(() => {
+    const set = new Set(ogrenciler.map((o) => o.sinif_ve_alan).filter(Boolean))
+    return Array.from(set).sort((a, b) => a.localeCompare(b, 'tr'))
+  }, [ogrenciler])
+
   function ogrenciSecimiDegistir(id) {
     setSeciliOgrenciler((s) => (s.includes(id) ? s.filter((x) => x !== id) : [...s, id]))
   }
 
   function tumunuSecFiltrelenen() {
     setSeciliOgrenciler((s) => Array.from(new Set([...s, ...filtreliOgrenciler.map((o) => o.id)])))
+  }
+
+  // Seçilen sınıftaki TÜM öğrencileri, o ana kadar seçilmiş olanlara EKLER
+  // (var olan seçimi silmez) — başka bir sınıftan da öğrenci eklemek isterse
+  // ikinci bir sınıf daha seçebilsin diye.
+  function sinifSec(sinif) {
+    if (!sinif) return
+    const idler = ogrenciler.filter((o) => o.sinif_ve_alan === sinif).map((o) => o.id)
+    setSeciliOgrenciler((s) => Array.from(new Set([...s, ...idler])))
   }
 
   function secimiTemizle() {
@@ -221,13 +238,30 @@ function OdevVerForm({ ogrenciler, ogretmenProfileId, varsayilanDers, onEklendi 
           <label className="block text-sm font-medium text-gray-700 mb-1">
             Öğrenciler ({seciliOgrenciler.length} seçili)
           </label>
-          <input
-            type="text"
-            value={arama}
-            onChange={(e) => setArama(e.target.value)}
-            placeholder="İsim ya da sınıfa göre filtrele (ör. 9-A)..."
-            className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue mb-2"
-          />
+          <div className="flex flex-wrap gap-2 mb-2">
+            <select
+              value=""
+              onChange={(e) => {
+                sinifSec(e.target.value)
+                e.target.value = ''
+              }}
+              className="px-3 py-2 border border-gray-200 rounded-lg bg-white text-sm focus:outline-none focus:ring-2 focus:ring-blue"
+            >
+              <option value="">Sınıfa göre ekle (tüm sınıf tek tıkla)...</option>
+              {siniflar.map((s) => (
+                <option key={s} value={s}>
+                  {s}
+                </option>
+              ))}
+            </select>
+            <input
+              type="text"
+              value={arama}
+              onChange={(e) => setArama(e.target.value)}
+              placeholder="Ya da isme göre tek tek ara..."
+              className="flex-1 min-w-[180px] px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue"
+            />
+          </div>
           <div className="flex gap-3 mb-2 text-xs">
             <button type="button" onClick={tumunuSecFiltrelenen} className="text-navy font-semibold hover:underline">
               Filtredekilerin Tümünü Seç
@@ -382,6 +416,19 @@ function VerilenOdevlerListesi({ odevler, isYonetici, onDegisti }) {
     else onDegisti()
   }
 
+  // "Tamamlandı" durumunu BİLEREK sadece burada (öğretmen/yönetici tarafında)
+  // değiştirilebilir yaptık — öğrenci/veli sadece görüntüler (Odev.jsx'te
+  // OdevlerimListesi salt-okunur). Ödevi kontrol edip "yapıldı" diyecek olan
+  // öğretmenin kendisi.
+  async function tamamlandiIsaretle(o, yeniDurum) {
+    const { error } = await supabase
+      .from('odevler')
+      .update({ tamamlandi: yeniDurum, tamamlanma_tarihi: yeniDurum ? new Date().toISOString() : null })
+      .eq('id', o.id)
+    if (error) alert('Hata: ' + error.message)
+    else onDegisti()
+  }
+
   return (
     <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-x-auto mb-6">
       <div className="px-4 py-3 border-b border-gray-100 bg-gray-50">
@@ -429,15 +476,18 @@ function VerilenOdevlerListesi({ odevler, isYonetici, onDegisti }) {
                   {o.son_tarih ? new Date(o.son_tarih + 'T12:00:00').toLocaleDateString('tr-TR') : '—'}
                 </td>
                 <td className="px-4 py-2">
-                  {o.tamamlandi ? (
-                    <span className="inline-block px-2 py-0.5 rounded-full text-xs font-semibold bg-green-100 text-green-700">
-                      Tamamlandı
-                    </span>
-                  ) : (
-                    <span className="inline-block px-2 py-0.5 rounded-full text-xs font-semibold bg-gray-100 text-gray-500">
-                      Bekliyor
-                    </span>
-                  )}
+                  <button
+                    type="button"
+                    onClick={() => tamamlandiIsaretle(o, !o.tamamlandi)}
+                    className={`inline-block px-2 py-0.5 rounded-full text-xs font-semibold transition-colors ${
+                      o.tamamlandi
+                        ? 'bg-green-100 text-green-700 hover:bg-green-200'
+                        : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
+                    }`}
+                    title="Tamamlandı durumunu değiştirmek için tıklayın"
+                  >
+                    {o.tamamlandi ? '✓ Tamamlandı' : 'Bekliyor'}
+                  </button>
                 </td>
                 <td className="px-4 py-2">
                   <button onClick={() => sil(o)} className="text-red-500 text-sm hover:underline">
@@ -454,18 +504,12 @@ function VerilenOdevlerListesi({ odevler, isYonetici, onDegisti }) {
 }
 
 // ============================================================================
-// VELİ / ÖĞRENCİ — kendi (ya da çocuğunun) ödevlerini görme + tamamlandı işaretleme.
+// VELİ / ÖĞRENCİ — kendi (ya da çocuğunun) ödevlerini SADECE GÖRÜNTÜLER.
+// "Tamamlandı" işaretlemesi BİLEREK burada YOK — bunu öğrencinin/velinin kendi
+// kendine "yaptım" deyip geçmesi güvenilir olmadığı için, ödevi kontrol edip
+// tamamlandı diyecek olan ÖĞRETMEN (bkz. VerilenOdevlerListesi).
 // ============================================================================
-function OdevlerimListesi({ odevler, birdenFazlaCocukMu, onDegisti }) {
-  async function tamamlandiIsaretle(o, yeniDurum) {
-    const { error } = await supabase
-      .from('odevler')
-      .update({ tamamlandi: yeniDurum, tamamlanma_tarihi: yeniDurum ? new Date().toISOString() : null })
-      .eq('id', o.id)
-    if (error) alert('Hata: ' + error.message)
-    else onDegisti()
-  }
-
+function OdevlerimListesi({ odevler, birdenFazlaCocukMu }) {
   const bekleyenler = odevler.filter((o) => !o.tamamlandi)
   const tamamlananlar = odevler.filter((o) => o.tamamlandi)
 
@@ -494,17 +538,13 @@ function OdevlerimListesi({ odevler, birdenFazlaCocukMu, onDegisti }) {
             </a>
           )}
         </div>
-        <button
-          type="button"
-          onClick={() => tamamlandiIsaretle(o, !o.tamamlandi)}
-          className={`px-3 py-1.5 rounded-lg text-sm font-semibold transition-colors whitespace-nowrap ${
-            o.tamamlandi
-              ? 'bg-green-100 text-green-700 hover:bg-green-200'
-              : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+        <span
+          className={`px-3 py-1.5 rounded-lg text-sm font-semibold whitespace-nowrap ${
+            o.tamamlandi ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'
           }`}
         >
-          {o.tamamlandi ? '✓ Tamamlandı' : 'Tamamlandı Olarak İşaretle'}
-        </button>
+          {o.tamamlandi ? '✓ Tamamlandı' : 'Bekliyor'}
+        </span>
       </div>
     )
   }
@@ -621,7 +661,7 @@ export default function Odev() {
       )}
 
       {isVeliYaDaOgrenci && (
-        <OdevlerimListesi odevler={odevler} birdenFazlaCocukMu={birdenFazlaCocukMu} onDegisti={veriyiYenile} />
+        <OdevlerimListesi odevler={odevler} birdenFazlaCocukMu={birdenFazlaCocukMu} />
       )}
     </div>
   )
