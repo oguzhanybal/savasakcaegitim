@@ -42,6 +42,7 @@ function menuOlustur(rol) {
           { to: '/siniflar', label: 'Sınıf Listesi' },
           { to: '/program', label: 'Ders Programı' },
           { to: '/bire-bir', label: 'Bire Bir' },
+          { to: '/odev', label: 'Ödevler' },
         ],
       },
       {
@@ -73,6 +74,7 @@ function menuOlustur(rol) {
       { tur: 'link', to: '/', label: 'Panel', end: true },
       { tur: 'link', to: '/program', label: 'Ders Programım' },
       { tur: 'link', to: '/bire-bir', label: 'Bire Bir Derslerim' },
+      { tur: 'link', to: '/odev', label: 'Ödevler' },
       { tur: 'link', to: '/yoklama', label: 'Yoklama Al' },
       { tur: 'link', to: '/yoklama-raporu', label: 'Yoklama Raporu' },
       { tur: 'link', to: '/sifremi-degistir', label: 'Şifremi Değiştir' },
@@ -83,6 +85,7 @@ function menuOlustur(rol) {
       { tur: 'link', to: '/', label: 'Panel', end: true },
       { tur: 'link', to: '/muhasebe', label: 'Ödeme Durumu' },
       { tur: 'link', to: '/program', label: 'Ders Programı' },
+      { tur: 'link', to: '/odev', label: 'Ödevler' },
       { tur: 'link', to: '/sifremi-degistir', label: 'Şifremi Değiştir' },
     ]
   }
@@ -90,6 +93,7 @@ function menuOlustur(rol) {
     return [
       { tur: 'link', to: '/', label: 'Panel', end: true },
       { tur: 'link', to: '/program', label: 'Ders Programım' },
+      { tur: 'link', to: '/odev', label: 'Ödevler' },
       { tur: 'link', to: '/sifremi-degistir', label: 'Şifremi Değiştir' },
     ]
   }
