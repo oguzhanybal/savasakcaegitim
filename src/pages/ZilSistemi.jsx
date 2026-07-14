@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../lib/AuthContext'
-import { sesSisteminiEtkinlestir, zilSesiCal, cikisZiliCal } from '../lib/zilSesiCal'
+import { sesSisteminiEtkinlestir, cikisZiliCal } from '../lib/zilSesiCal'
 
 // ============================================================================
 // ZİL SİSTEMİ — kurumun bilgisayarının saati kayıyor (eski donanım), bu yüzden
@@ -12,8 +12,9 @@ import { sesSisteminiEtkinlestir, zilSesiCal, cikisZiliCal } from '../lib/zilSes
 // Yapı, kurumun kullandığı "Supper Zill" tarzı programlara benziyor: her ders
 // için üç ayrı zil — Öğrenci (derse girme), Öğretmen (öğretmenin başlaması,
 // varsayılan öğrenci+1dk) ve Çıkış (ders bitişi, varsayılan öğretmen+45dk).
-// Öğrenci/Öğretmen zilleri standart "ding-dong" sesini, Çıkış zili farklı,
-// özel bir ses kullanır (bkz. zilSesiCal.js — cikisZiliCal).
+// Üç zil de aynı özel sesi kullanır (bkz. zilSesiCal.js — cikisZiliCal); bu
+// dosya bulunamazsa/çalınamazsa otomatik olarak standart sentetik "ding-dong"
+// sesine (zilSesiCal) geri döner.
 //
 // Bu sayfa hep açık bir sekmede, herkesin ulaşabileceği bir bilgisayarda
 // duracağı için, yönetici hesabı o bilgisayarda açık bırakılmasın diye SADECE
@@ -149,8 +150,8 @@ export default function ZilSistemi() {
       dersler.forEach((d) => {
         if (!d.aktif) return
         ;[
-          { alan: 'ogrenci_saat', tur: 'Öğrenci', sesFonksiyonu: zilSesiCal },
-          { alan: 'ogretmen_saat', tur: 'Öğretmen', sesFonksiyonu: zilSesiCal },
+          { alan: 'ogrenci_saat', tur: 'Öğrenci', sesFonksiyonu: cikisZiliCal },
+          { alan: 'ogretmen_saat', tur: 'Öğretmen', sesFonksiyonu: cikisZiliCal },
           { alan: 'cikis_saat', tur: 'Çıkış', sesFonksiyonu: cikisZiliCal },
         ].forEach(({ alan, tur, sesFonksiyonu }) => {
           const saat = d[alan]
@@ -366,8 +367,8 @@ export default function ZilSistemi() {
                   <td className="px-3 py-2 text-gray-500">{d.devre || '—'}</td>
                   <td className="px-3 py-2 font-semibold text-navy whitespace-nowrap">{d.ders_no}. Ders</td>
                   {[
-                    { alan: 'ogrenci_saat', sesFonksiyonu: zilSesiCal },
-                    { alan: 'ogretmen_saat', sesFonksiyonu: zilSesiCal },
+                    { alan: 'ogrenci_saat', sesFonksiyonu: cikisZiliCal },
+                    { alan: 'ogretmen_saat', sesFonksiyonu: cikisZiliCal },
                     { alan: 'cikis_saat', sesFonksiyonu: cikisZiliCal },
                   ].map(({ alan, sesFonksiyonu }) => (
                     <td key={alan} className="px-3 py-2">
