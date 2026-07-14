@@ -25,6 +25,7 @@ export default function SinifDetay() {
   const [tumOgrenciler, setTumOgrenciler] = useState([])
   const [program, setProgram] = useState([])
   const [tumProgram, setTumProgram] = useState([]) // çakışma kontrolü için tüm sınıfların programı
+  const [bireBirAtamalari, setBireBirAtamalari] = useState([]) // çakışma kontrolü için haftalık bire bir dersleri
   const [ogretmenler, setOgretmenler] = useState([])
   const [seciliOgrenciler, setSeciliOgrenciler] = useState([])
   const [ogrenciArama, setOgrenciArama] = useState('')
@@ -40,7 +41,7 @@ export default function SinifDetay() {
 
   async function yukle() {
     setLoading(true)
-    const [s, so, o, p, tp, og] = await Promise.all([
+    const [s, so, o, p, tp, og, bb] = await Promise.all([
       supabase.from('siniflar').select('*').eq('id', sinifId).single(),
       supabase.from('sinif_ogrenciler').select('ogrenciler(id, ad_soyad)').eq('sinif_id', sinifId),
       supabase.from('ogrenciler').select('*').order('ad_soyad'),
@@ -52,6 +53,10 @@ export default function SinifDetay() {
         .order('baslangic_saat'),
       supabase.from('ders_programi').select('*').order('gun'),
       supabase.from('profiles').select('*').eq('rol', 'ogretmen').order('ad_soyad'),
+      // Ders saati eklerken öğretmenin haftalık bire bir dersleriyle de çakışma
+      // kontrolü yapılabilsin diye (aksi halde bir öğretmene, zaten bire bir dersi
+      // olan bir saatte sınıf dersi de atanabiliyordu).
+      supabase.from('bire_bir_atamalari').select('*, ogrenciler(ad_soyad)'),
     ])
     setSinif(s.data)
     setKayitliOgrenciler((so.data || []).map((r) => r.ogrenciler).filter(Boolean))
@@ -59,6 +64,9 @@ export default function SinifDetay() {
     setProgram(p.data || [])
     setTumProgram(tp.data || [])
     setOgretmenler(og.data || [])
+    setBireBirAtamalari(
+      (bb.data || []).map((a) => ({ ...a, ogrenci_adi: a.ogrenciler?.ad_soyad }))
+    )
     setLoading(false)
   }
 
@@ -113,7 +121,8 @@ export default function SinifDetay() {
     setSeciliGunler((prev) => (prev.includes(g) ? prev.filter((x) => x !== g) : [...prev, g]))
   }
 
-  // Seçilen her gün için: aynı sınıfta ya da aynı öğretmende çakışma var mı?
+  // Seçilen her gün için: aynı sınıfta, aynı öğretmende BAŞKA bir sınıf dersinde
+  // ya da öğretmenin haftalık bire bir dersinde çakışma var mı?
   function cakismaBul(gun) {
     for (const p of tumProgram) {
       if (p.gun !== gun) continue
@@ -122,6 +131,13 @@ export default function SinifDetay() {
       if (!ayniSinif && !ayniOgretmen) continue
       if (!araliklarCakisiyorMu(baslangic, bitis, p.baslangic_saat, p.bitis_saat)) continue
       return { tur: ayniSinif ? 'sinif' : 'ogretmen', gun }
+    }
+    if (dersOgretmen) {
+      for (const a of bireBirAtamalari) {
+        if (!a.aktif || a.gun !== gun || a.ogretmen_profile_id !== dersOgretmen) continue
+        if (!araliklarCakisiyorMu(baslangic, bitis, a.baslangic_saat, a.bitis_saat)) continue
+        return { tur: 'birebir', gun, ogrenciAdi: a.ogrenci_adi }
+      }
     }
     return null
   }
@@ -144,6 +160,8 @@ export default function SinifDetay() {
         setHata(
           cakisma.tur === 'ogretmen'
             ? `Çakışma var: bu öğretmenin ${GUNLER[g]} günü ${saatKisalt(baslangic)}–${saatKisalt(bitis)} arasında zaten başka bir dersi var.`
+            : cakisma.tur === 'birebir'
+            ? `Çakışma var: bu öğretmenin ${GUNLER[g]} günü ${saatKisalt(baslangic)}–${saatKisalt(bitis)} arasında "${cakisma.ogrenciAdi || 'bir öğrenci'}" ile haftalık bire bir dersi var.`
             : `Çakışma var: bu sınıfın ${GUNLER[g]} günü ${saatKisalt(baslangic)}–${saatKisalt(bitis)} arasında zaten başka bir dersi var.`
         )
         return
