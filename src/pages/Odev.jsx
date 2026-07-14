@@ -644,9 +644,12 @@ function OdevlerimListesi({ odevler, birdenFazlaCocukMu }) {
 // modda seçilen aydaki hangi günlerde ödev girildiğinin listesi gösterilir.
 // ============================================================================
 function OgretmenOdevTakibi({ odevler, ogretmenler }) {
-  const [periyot, setPeriyot] = useState('hafta') // 'hafta' | 'ay'
+  const [periyot, setPeriyot] = useState('gun') // 'gun' | 'hafta' | 'ay'
+  const [seciliGun, setSeciliGun] = useState(() => yerelBugunTarihi())
   const [haftaBaslangicTarihi, setHaftaBaslangicTarihi] = useState(() => haftaBaslangici(yerelBugunTarihi()))
   const [seciliAy, setSeciliAy] = useState(() => yerelBugunTarihi().slice(0, 7)) // "YYYY-MM"
+  const bugun = yerelBugunTarihi()
+  const yarin = gunEkleTarih(bugun, 1)
 
   // ogretmen_profile_id -> Set("YYYY-MM-DD") — o öğretmenin ödev GİRDİĞİ günler.
   const gunlerMap = useMemo(() => {
@@ -677,6 +680,15 @@ function OgretmenOdevTakibi({ odevler, ogretmenler }) {
           <div className="inline-flex rounded-lg border border-gray-200 overflow-hidden">
             <button
               type="button"
+              onClick={() => setPeriyot('gun')}
+              className={`px-3 py-1.5 text-xs font-semibold transition-colors ${
+                periyot === 'gun' ? 'bg-navy text-white' : 'bg-white text-gray-600 hover:bg-gray-50'
+              }`}
+            >
+              Günlük
+            </button>
+            <button
+              type="button"
               onClick={() => setPeriyot('hafta')}
               className={`px-3 py-1.5 text-xs font-semibold transition-colors ${
                 periyot === 'hafta' ? 'bg-navy text-white' : 'bg-white text-gray-600 hover:bg-gray-50'
@@ -694,7 +706,34 @@ function OgretmenOdevTakibi({ odevler, ogretmenler }) {
               Aylık
             </button>
           </div>
-          {periyot === 'hafta' ? (
+          {periyot === 'gun' ? (
+            <div className="flex items-center gap-1.5">
+              <button
+                type="button"
+                onClick={() => setSeciliGun(bugun)}
+                className={`px-2.5 py-1.5 rounded-lg text-xs font-semibold transition-colors ${
+                  seciliGun === bugun ? 'bg-navy text-white' : 'bg-white border border-gray-200 text-gray-600 hover:bg-gray-100'
+                }`}
+              >
+                Bugün
+              </button>
+              <button
+                type="button"
+                onClick={() => setSeciliGun(yarin)}
+                className={`px-2.5 py-1.5 rounded-lg text-xs font-semibold transition-colors ${
+                  seciliGun === yarin ? 'bg-navy text-white' : 'bg-white border border-gray-200 text-gray-600 hover:bg-gray-100'
+                }`}
+              >
+                Yarın
+              </button>
+              <input
+                type="date"
+                value={seciliGun}
+                onChange={(e) => setSeciliGun(e.target.value)}
+                className="px-2.5 py-1.5 border border-gray-200 rounded-lg text-xs bg-white focus:outline-none focus:ring-2 focus:ring-blue"
+              />
+            </div>
+          ) : periyot === 'hafta' ? (
             <div className="flex items-center gap-1.5">
               <button
                 type="button"
@@ -729,6 +768,27 @@ function OgretmenOdevTakibi({ odevler, ogretmenler }) {
 
       {ogretmenler.length === 0 ? (
         <p className="px-4 py-6 text-center text-gray-400 text-sm">Kayıtlı öğretmen bulunamadı.</p>
+      ) : periyot === 'gun' ? (
+        <div className="divide-y divide-gray-50">
+          {ogretmenler.map((o) => {
+            const gunSeti = gunlerMap.get(o.id) || new Set()
+            const verdiMi = gunSeti.has(seciliGun)
+            return (
+              <div key={o.id} className="px-4 py-2.5 flex items-center justify-between gap-3">
+                <p className="font-medium text-gray-800">{o.ad_soyad}</p>
+                {verdiMi ? (
+                  <span className="px-2 py-0.5 rounded-full text-xs font-semibold bg-green-100 text-green-700">
+                    ✓ Verdi
+                  </span>
+                ) : (
+                  <span className="px-2 py-0.5 rounded-full text-xs font-semibold bg-gray-100 text-gray-500">
+                    Vermedi
+                  </span>
+                )}
+              </div>
+            )
+          })}
+        </div>
       ) : periyot === 'hafta' ? (
         <div className="overflow-x-auto">
           <table className="w-full text-sm min-w-[520px]">
