@@ -379,29 +379,47 @@ export function taksitPlaniOlustur(sozlesme, odemeler) {
 }
 
 // Aylık kalem borçları (Bire Bir / Yemek / Kantin) için tek tek satır bazında
-// durum hesaplar (ödendi / gecikti / bekliyor) — taksit yapısı olmadığı için
-// kümülatif borç/ödeme karşılaştırması üzerinden gider.
+// durum hesaplar (ödendi / kısmi ödendi / gecikti / bekliyor) — taksit yapısı
+// olmadığı için kümülatif borç/ödeme karşılaştırması üzerinden gider. Ödemeler
+// bu kalemin borçlarını, en eskisinden başlayarak sırayla kapatır — bu yüzden
+// "bu borca düşen ödeme" hesabı, taksit planındaki AYNI mantıkla (bir önceki
+// borçlar tamamen kapandıktan sonra arta kalan ödeme, bu borcun tutarını
+// aşmayacak şekilde) yapılır. Kısmi ödeme yapılmışsa (ör. 37.750 borcun sadece
+// 19.887'si ödendiyse) bu satırda görünsün diye geriye {durum, odenenTutar,
+// kalanTutar} objesi döner.
 export function aylikBorcDurumHesapla(borc, tumAylikBorclar, odemeler) {
   const kalemAdi = borc.kalem
   const borcTarihi = new Date(borc.donem)
   const bugun = new Date()
+  const tutar = Number(borc.tutar) || 0
 
-  const kumulatifBorc = tumAylikBorclar
+  const kumulatifOncekiBorc = tumAylikBorclar
     .filter((a) => a.kalem === kalemAdi)
-    .filter((a) => new Date(a.donem) <= borcTarihi)
+    .filter((a) => new Date(a.donem) < borcTarihi)
     .reduce((t, a) => t + Number(a.tutar), 0)
+  const kumulatifBorc = kumulatifOncekiBorc + tutar
 
   const odenenToplam = odemeToplamKalem(odemeler, kalemAdi, { yil: 9999, ay: 12 })
 
-  if (odenenToplam >= kumulatifBorc - 0.01) return 'odendi'
+  const buBorcaDusenOdenen = Math.min(Math.max(odenenToplam - kumulatifOncekiBorc, 0), tutar)
+  const kalanTutar = Math.max(tutar - buBorcaDusenOdenen, 0)
 
-  // "Gecikti" sadece borcun ait olduğu AY geçtiyse (ör. Haziran borcu, Temmuz'a
-  // girildiğinde) verilir — bu kalemler ay sonunda ekstre ile faturalandığı için,
-  // içinde bulunduğumuz ayın borcu henüz "gecikmiş" sayılmaz, "bekliyor" kalır.
-  const borcAyIndex = ayIndexOf({ yil: borcTarihi.getFullYear(), ay: borcTarihi.getMonth() + 1 })
-  const simdiAyIndex = ayIndexOf({ yil: bugun.getFullYear(), ay: bugun.getMonth() + 1 })
-  if (borcAyIndex < simdiAyIndex) return 'gecikti'
-  return 'bekliyor'
+  let durum
+  if (odenenToplam >= kumulatifBorc - 0.01) {
+    durum = 'odendi'
+  } else if (buBorcaDusenOdenen > 0.01) {
+    durum = 'kismi'
+  } else {
+    // "Gecikti" sadece borcun ait olduğu AY geçtiyse (ör. Haziran borcu,
+    // Temmuz'a girildiğinde) verilir — bu kalemler ay sonunda ekstre ile
+    // faturalandığı için, içinde bulunduğumuz ayın borcu henüz "gecikmiş"
+    // sayılmaz, "bekliyor" kalır.
+    const borcAyIndex = ayIndexOf({ yil: borcTarihi.getFullYear(), ay: borcTarihi.getMonth() + 1 })
+    const simdiAyIndex = ayIndexOf({ yil: bugun.getFullYear(), ay: bugun.getMonth() + 1 })
+    durum = borcAyIndex < simdiAyIndex ? 'gecikti' : 'bekliyor'
+  }
+
+  return { durum, odenenTutar: buBorcaDusenOdenen, kalanTutar }
 }
 
 // ============================================================================
