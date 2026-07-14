@@ -59,12 +59,12 @@ export function zilSesiCal() {
 }
 
 // ============================================================================
-// ÇIKIŞ ZİLİ — Öğrenci/Öğretmen zillerinden FARKLI, özel bir ses kullanır.
-// Bu özel ses dosyasını YouTube'dan indirip buraya gömmek telif/kullanım
-// şartları nedeniyle yapılamıyor — bunun yerine, "public" klasörüne
-// "cikis-zili.mp3" adıyla bir ses dosyası eklenirse (kullanıcı kendi
-// istediği klibi kendisi indirip eklemeli) bu dosya çalınır. Dosya henüz
-// eklenmemişse veya çalınamazsa standart zil sesine (zilSesiCal) geri döner.
+// ÖZEL ZİL SESİ — Öğrenci, Öğretmen VE Çıkış zillerinin ÜÇÜ DE bu aynı özel
+// sesi kullanır ("cikis-zili.mp3" — kurumun kendi MEB zil sesi kesiti).
+// Dosya, projenin KÖK dizinindeki (src'nin içi DEĞİL) "public" klasörüne
+// "cikis-zili.mp3" adıyla eklenmiş olmalı. Dosya henüz eklenmemişse veya
+// tarayıcı çalıştıramazsa, otomatik olarak standart sentetik zil sesine
+// (zilSesiCal) geri döner.
 // ============================================================================
 export function cikisZiliCal() {
   let geriDonuldu = false
