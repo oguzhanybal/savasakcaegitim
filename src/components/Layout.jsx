@@ -8,6 +8,7 @@ const ROL_ETIKET = {
   veli: 'Veli',
   ogrenci: 'Öğrenci',
   kantin: 'Kantin Görevlisi',
+  zil: 'Zil Ekranı',
 }
 
 function menuOlustur(rol) {
@@ -23,6 +24,8 @@ function menuOlustur(rol) {
           { to: '/ogretmenler', label: 'Öğretmenler' },
           { to: '/kullanici-olustur', label: 'Kullanıcı Oluştur' },
           { to: '/sifre-sifirla', label: 'Şifre Sıfırla' },
+          { to: '/yedek-al', label: 'Yedek Al' },
+          { to: '/zil-sistemi', label: 'Zil Sistemi' },
         ],
       },
       {
@@ -66,6 +69,15 @@ function menuOlustur(rol) {
   if (rol === 'kantin') {
     return [
       { tur: 'link', to: '/kantin', label: 'Kantin', end: true },
+      { tur: 'link', to: '/sifremi-degistir', label: 'Şifremi Değiştir' },
+    ]
+  }
+  // "zil" rolü SADECE Zil Sistemi'ni görebilir — bu hesap, kurumdaki herkesin
+  // ulaşabileceği bir bilgisayarda hep açık bırakılacağı için, yönetici
+  // hesabının o bilgisayarda açık kalmaması adına kasıtlı olarak bu kadar kısıtlı.
+  if (rol === 'zil') {
+    return [
+      { tur: 'link', to: '/zil-sistemi', label: 'Zil Sistemi', end: true },
       { tur: 'link', to: '/sifremi-degistir', label: 'Şifremi Değiştir' },
     ]
   }
