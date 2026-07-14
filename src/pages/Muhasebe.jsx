@@ -21,6 +21,7 @@ function paraFormat(n) {
 
 const DURUM_ETIKET = {
   odendi: { text: 'Ödendi', cls: 'bg-green-100 text-green-700' },
+  kismi: { text: 'Kısmi Ödendi', cls: 'bg-amber-100 text-amber-700' },
   gecikti: { text: 'Gecikti', cls: 'bg-red-100 text-red-700' },
   bekliyor: { text: 'Bekliyor', cls: 'bg-gray-100 text-gray-600' },
 }
@@ -1023,18 +1024,28 @@ export default function Muhasebe() {
                             <th className="px-2 py-1 font-medium">Vade Tarihi</th>
                             <th className="px-2 py-1 font-medium">Tutar</th>
                             <th className="px-2 py-1 font-medium">Durum</th>
+                            <th className="px-2 py-1 font-medium">Kalan</th>
                           </tr>
                         </thead>
                         <tbody>
                           {taksitler.map((t) => (
                             <tr
                               key={t.taksitNo}
-                              className={`border-t border-gray-50 ${t.durum === 'gecikti' ? 'bg-red-50' : ''}`}
+                              className={`border-t border-gray-50 ${
+                                t.durum === 'gecikti' ? 'bg-red-50' : t.durum === 'kismi' ? 'bg-amber-50' : ''
+                              }`}
                             >
                               <td className="px-2 py-1.5">{t.taksitNo}/{s.taksit_sayisi}</td>
                               <td className="px-2 py-1.5">{t.vade.toLocaleDateString('tr-TR', { day: '2-digit', month: 'long', year: 'numeric' })}</td>
                               <td className="px-2 py-1.5">{paraFormat(t.tutar)}</td>
                               <td className="px-2 py-1.5"><DurumRozeti durum={t.durum} /></td>
+                              <td className="px-2 py-1.5">
+                                {t.durum === 'kismi' ? (
+                                  <span className="text-amber-700 font-semibold">{paraFormat(t.kalanTutar)}</span>
+                                ) : (
+                                  <span className="text-gray-300">—</span>
+                                )}
+                              </td>
                             </tr>
                           ))}
                         </tbody>
