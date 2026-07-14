@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { Link } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { adSoyadDuzelt, ilkHarfleriBuyukYap } from '../lib/adSoyadFormat'
 
@@ -502,7 +503,11 @@ export default function Ogrenciler() {
 
               return (
                 <tr key={o.id} className={i % 2 ? 'bg-gray-50' : ''}>
-                  <td className="px-4 py-3 font-medium text-gray-800">{o.ad_soyad}</td>
+                  <td className="px-4 py-3 font-medium">
+                    <Link to={`/ogrenci/${o.id}`} className="text-blue hover:underline" title="Zaman çizelgesini görüntüle">
+                      {o.ad_soyad}
+                    </Link>
+                  </td>
                   <td className="px-4 py-3 text-gray-500">{o.telefon || '—'}</td>
                   <td className="px-4 py-3 text-gray-500">{o.sinif_ve_alan || '—'}</td>
                   <td className="px-4 py-3">
