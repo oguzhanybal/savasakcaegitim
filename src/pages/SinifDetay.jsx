@@ -26,7 +26,9 @@ export default function SinifDetay() {
   const [program, setProgram] = useState([])
   const [tumProgram, setTumProgram] = useState([]) // çakışma kontrolü için tüm sınıfların programı
   const [ogretmenler, setOgretmenler] = useState([])
-  const [seciliOgrenci, setSeciliOgrenci] = useState('')
+  const [seciliOgrenciler, setSeciliOgrenciler] = useState([])
+  const [ogrenciArama, setOgrenciArama] = useState('')
+  const [ogrenciEkleniyor, setOgrenciEkleniyor] = useState(false)
   const [seciliGunler, setSeciliGunler] = useState([])
   const [baslangic, setBaslangic] = useState('09:00')
   const [bitis, setBitis] = useState('10:00')
@@ -69,13 +71,31 @@ export default function SinifDetay() {
   const eklenebilirOgrenciler = tumOgrenciler.filter(
     (o) => !kayitliIdler.has(o.id) && (o.durum || 'aktif') === 'aktif'
   )
+  const filtreliEklenebilirOgrenciler = eklenebilirOgrenciler.filter((o) =>
+    o.ad_soyad.toLocaleLowerCase('tr-TR').includes(ogrenciArama.toLocaleLowerCase('tr-TR'))
+  )
 
-  async function ogrenciEkle(e) {
-    e.preventDefault()
-    if (!seciliOgrenci) return
-    const { error } = await supabase.from('sinif_ogrenciler').insert({ sinif_id: sinifId, ogrenci_id: seciliOgrenci })
+  function ogrenciSecimiDegistir(id) {
+    setSeciliOgrenciler((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]))
+  }
+
+  function ogrenciTumunuSecFiltrelenen() {
+    setSeciliOgrenciler((prev) => Array.from(new Set([...prev, ...filtreliEklenebilirOgrenciler.map((o) => o.id)])))
+  }
+
+  function ogrenciSeciminiTemizle() {
+    setSeciliOgrenciler([])
+  }
+
+  async function ogrencileriEkle() {
+    if (seciliOgrenciler.length === 0) return
+    setOgrenciEkleniyor(true)
+    const kayitlar = seciliOgrenciler.map((id) => ({ sinif_id: sinifId, ogrenci_id: id }))
+    const { error } = await supabase.from('sinif_ogrenciler').insert(kayitlar)
+    setOgrenciEkleniyor(false)
     if (!error) {
-      setSeciliOgrenci('')
+      setSeciliOgrenciler([])
+      setOgrenciArama('')
       yukle()
     } else {
       alert('Hata: ' + error.message)
@@ -169,21 +189,52 @@ export default function SinifDetay() {
         <div>
           <h2 className="font-semibold text-gray-700 mb-3">Öğrenciler ({kayitliOgrenciler.length})</h2>
 
-          <form onSubmit={ogrenciEkle} className="bg-white rounded-2xl border border-gray-100 shadow-sm p-4 mb-4 flex gap-2">
-            <select
-              value={seciliOgrenci}
-              onChange={(e) => setSeciliOgrenci(e.target.value)}
-              className="flex-1 px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue bg-white"
-            >
-              <option value="">Öğrenci seçin...</option>
-              {eklenebilirOgrenciler.map((o) => (
-                <option key={o.id} value={o.id}>{o.ad_soyad}</option>
+          <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-4 mb-4">
+            <input
+              type="text"
+              value={ogrenciArama}
+              onChange={(e) => setOgrenciArama(e.target.value)}
+              placeholder="Öğrenci ara..."
+              className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue text-sm mb-2"
+            />
+            <div className="flex items-center justify-between mb-2">
+              <button type="button" onClick={ogrenciTumunuSecFiltrelenen} className="text-xs text-blue hover:underline">
+                Filtredekilerin Tümünü Seç
+              </button>
+              {seciliOgrenciler.length > 0 && (
+                <button type="button" onClick={ogrenciSeciminiTemizle} className="text-xs text-gray-400 hover:underline">
+                  Seçimi Temizle
+                </button>
+              )}
+            </div>
+            <div className="max-h-56 overflow-y-auto border border-gray-100 rounded-lg divide-y divide-gray-100 mb-3">
+              {filtreliEklenebilirOgrenciler.length === 0 && (
+                <p className="px-3 py-4 text-center text-gray-400 text-sm">Eklenebilecek öğrenci bulunamadı.</p>
+              )}
+              {filtreliEklenebilirOgrenciler.map((o) => (
+                <label key={o.id} className="flex items-center gap-2 px-3 py-2 text-sm cursor-pointer hover:bg-gray-50">
+                  <input
+                    type="checkbox"
+                    checked={seciliOgrenciler.includes(o.id)}
+                    onChange={() => ogrenciSecimiDegistir(o.id)}
+                  />
+                  <span className="text-gray-800">{o.ad_soyad}</span>
+                </label>
               ))}
-            </select>
-            <button type="submit" className="bg-orange text-white font-semibold px-4 py-2 rounded-lg hover:opacity-90 transition-opacity whitespace-nowrap">
-              Ekle
+            </div>
+            <button
+              type="button"
+              onClick={ogrencileriEkle}
+              disabled={seciliOgrenciler.length === 0 || ogrenciEkleniyor}
+              className="w-full bg-orange text-white font-semibold px-4 py-2 rounded-lg hover:opacity-90 transition-opacity disabled:opacity-50"
+            >
+              {ogrenciEkleniyor
+                ? 'Ekleniyor...'
+                : seciliOgrenciler.length > 1
+                ? `${seciliOgrenciler.length} Öğrenciyi Ekle`
+                : 'Seçileni Ekle'}
             </button>
-          </form>
+          </div>
 
           <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
             {kayitliOgrenciler.length === 0 && (
