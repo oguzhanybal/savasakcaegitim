@@ -647,6 +647,30 @@ export default function Muhasebe() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [seciliId])
 
+  // "aylikBorclar" listesi HEM gerçek "aylik_borclar" tablosundaki satırları
+  // (id düz bir uuid) HEM DE Bire Bir/Kantin sayfalarından otomatik üretilen
+  // sentetik satırları (id "bb-..."/"kt-..." önekiyle başlar, gerçek tabloda
+  // karşılığı yok) içeriyor. Sentetik satırlar buradan silinemez — onlar
+  // Bire Bir/Kantin sayfasındaki asıl kaydı (ders/alışveriş) silince otomatik
+  // kalkar. Bu yüzden sadece GERÇEK (önek taşımayan) satırlar için "Sil"
+  // gösteriyoruz; bu genelde elle (aylık borç ekle formuyla) girilmiş, hatalı
+  // veya eskimiş bir kaydı düzeltmek için kullanılır.
+  function aylikBorcGercekMi(a) {
+    return !String(a.id).startsWith('bb-') && !String(a.id).startsWith('kt-')
+  }
+
+  async function aylikBorcSil(a) {
+    if (
+      !confirm(
+        `"${a.kalem}" kalemi için ${new Date(a.donem).toLocaleDateString('tr-TR', { month: 'long', year: 'numeric' })} dönemine ait ${paraFormat(a.tutar)} tutarındaki elle girilmiş borç kaydını silmek istediğinize emin misiniz? Bu işlem geri alınamaz.`
+      )
+    )
+      return
+    const { error } = await supabase.from('aylik_borclar').delete().eq('id', a.id)
+    if (error) alert('Hata: ' + error.message)
+    else veriyiYenile()
+  }
+
   async function odemeSil(o) {
     if (!confirm(`${new Date(o.tarih).toLocaleDateString('tr-TR')} tarihli "${o.kalem || 'ödeme'}" (${paraFormat(o.tutar)}) kaydını silmek istediğinize emin misiniz? Bu işlem geri alınamaz, öğrencinin bakiyesi otomatik olarak yeniden hesaplanır.`)) return
     const { error } = await supabase.from('odemeler').delete().eq('id', o.id)
@@ -1033,11 +1057,12 @@ export default function Muhasebe() {
                   <th className="px-4 py-2 font-medium">Dönem</th>
                   <th className="px-4 py-2 font-medium">Tutar</th>
                   <th className="px-4 py-2 font-medium">Durum</th>
+                  {isYonetici && <th className="px-4 py-2 font-medium">İşlemler</th>}
                 </tr>
               </thead>
               <tbody>
                 {aylikBorclar.length === 0 && (
-                  <tr><td colSpan={4} className="px-4 py-4 text-center text-gray-400">Aylık kalem borcu bulunamadı.</td></tr>
+                  <tr><td colSpan={isYonetici ? 5 : 4} className="px-4 py-4 text-center text-gray-400">Aylık kalem borcu bulunamadı.</td></tr>
                 )}
                 {aylikBorclar.map((a) => (
                   <tr key={a.id} className={`border-t border-gray-50 ${aylikBorcDurumHesapla(a, aylikBorclar, odemeler) === 'gecikti' ? 'bg-red-50' : ''}`}>
@@ -1045,6 +1070,22 @@ export default function Muhasebe() {
                     <td className="px-4 py-2">{new Date(a.donem).toLocaleDateString('tr-TR', { month: 'long', year: 'numeric' })}</td>
                     <td className="px-4 py-2">{paraFormat(a.tutar)}</td>
                     <td className="px-4 py-2"><DurumRozeti durum={aylikBorcDurumHesapla(a, aylikBorclar, odemeler)} /></td>
+                    {isYonetici && (
+                      <td className="px-4 py-2">
+                        {aylikBorcGercekMi(a) ? (
+                          <button onClick={() => aylikBorcSil(a)} className="text-red-500 text-sm hover:underline">
+                            Sil
+                          </button>
+                        ) : (
+                          <span
+                            className="text-gray-300 text-xs"
+                            title="Bu satır Bire Bir/Kantin sayfasındaki bir kayıttan otomatik oluşturuluyor — silmek için o sayfadaki asıl kaydı silin."
+                          >
+                            —
+                          </span>
+                        )}
+                      </td>
+                    )}
                   </tr>
                 ))}
               </tbody>
