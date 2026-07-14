@@ -75,11 +75,10 @@ function menuOlustur(rol) {
   // "zil" rolü SADECE Zil Sistemi'ni görebilir — bu hesap, kurumdaki herkesin
   // ulaşabileceği bir bilgisayarda hep açık bırakılacağı için, yönetici
   // hesabının o bilgisayarda açık kalmaması adına kasıtlı olarak bu kadar kısıtlı.
+  // "Şifremi Değiştir" bilerek YOK — bu hesabın şifresini sadece yönetici,
+  // kendi oturumundan "Şifre Sıfırla" ile değiştirebilsin diye.
   if (rol === 'zil') {
-    return [
-      { tur: 'link', to: '/zil-sistemi', label: 'Zil Sistemi', end: true },
-      { tur: 'link', to: '/sifremi-degistir', label: 'Şifremi Değiştir' },
-    ]
+    return [{ tur: 'link', to: '/zil-sistemi', label: 'Zil Sistemi', end: true }]
   }
   if (rol === 'ogretmen') {
     return [
