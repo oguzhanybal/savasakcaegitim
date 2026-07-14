@@ -291,15 +291,16 @@ export function bireBirGunlukOzetMesajiOlustur({ kimeGonderiliyor, ogrenciAdi, t
   )
 }
 
-// Öğrencinin HER HAFTA tekrar eden bire bir ders programını (gün + saat) tek
-// mesajda özetler. dersler: [{ gunAdi, baslangicSaat, bitisSaat, dersAdi }]
-// — haftanın gününe göre sıralı olmalı (Pazartesi'den başlayarak).
+// Öğrencinin o haftanın (seçili günden Pazar'a kadar) TÜM bire bir derslerini
+// özetler — hem her hafta tekrar eden atamalar hem de o haftaya özel tek
+// seferlik dersler dahildir. dersler: [{ gunAdi, baslangicSaat, bitisSaat, dersAdi }]
+// — haftanın gününe göre sıralı olmalı.
 export function bireBirHaftalikOzetMesajiOlustur({ kimeGonderiliyor, ogrenciAdi, dersler }) {
   const satirlar = dersler
     .map((d) => `• ${d.gunAdi}: ${d.bitisSaat ? `${d.baslangicSaat}–${d.bitisSaat}` : d.baslangicSaat}${d.dersAdi ? ` (${d.dersAdi})` : ''}`)
     .join('\n')
   return (
-    `${selamlamaSatiri(kimeGonderiliyor)}\n${ogrenciAdi} için haftalık bire bir ders programı şu şekildedir:\n` +
+    `${selamlamaSatiri(kimeGonderiliyor)}\n${ogrenciAdi} için bu hafta bire bir ders programı şu şekildedir:\n` +
     `${satirlar}\n` +
     `İyi dersler dileriz.\nSavaş Akça Eğitim`
   )
