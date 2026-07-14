@@ -1280,8 +1280,13 @@ function TekSeferlikDerslerListesi({ yoklamalar, atamalar, onDegisti, sadeceOgre
                     <div key={tarih} className="mb-4 last:mb-0">
                       <p
                         className={`text-sm font-bold text-white rounded-lg px-3 py-1.5 mb-2 tracking-wide flex items-center gap-2 ${
-                          buGunMu ? 'bg-orange-500' : 'bg-navy'
+                          buGunMu ? '' : 'bg-navy'
                         }`}
+                        // Tailwind'in derleme aşamasında bu rengi kaçırma ihtimaline karşı
+                        // (dinamik/koşullu class isimleri bazı kurulumlarda taranmayabiliyor)
+                        // "bugün" rengini doğrudan satır-içi stil ile veriyoruz — böylece
+                        // CSS derlemesinden bağımsız, her zaman garanti turuncu görünür.
+                        style={buGunMu ? { backgroundColor: '#f97316' } : undefined}
                       >
                         <span>
                           {GUNLER[gunNumaraTarihten(tarih)]} — {new Date(tarih + 'T12:00:00').toLocaleDateString('tr-TR')}
