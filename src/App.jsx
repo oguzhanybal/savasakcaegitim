@@ -100,14 +100,6 @@ function AnaUygulama() {
           }
         />
         <Route
-          path="/odev"
-          element={
-            <Korumali izinliRoller={['yonetici', 'ogretmen', 'veli', 'ogrenci']}>
-              <Odev />
-            </Korumali>
-          }
-        />
-        <Route
           path="/bire-bir-genel-ekstre"
           element={
             <Korumali izinliRoller={['yonetici']}>
@@ -220,6 +212,14 @@ function AnaUygulama() {
             element={
               <Korumali izinliRoller={['yonetici', 'ogretmen']}>
                 <BireBir />
+              </Korumali>
+            }
+          />
+          <Route
+            path="odev"
+            element={
+              <Korumali izinliRoller={['yonetici', 'ogretmen', 'veli', 'ogrenci']}>
+                <Odev />
               </Korumali>
             }
           />
