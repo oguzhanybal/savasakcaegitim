@@ -600,10 +600,21 @@ function OgrenciOgretmenEkstreSecici({ ogrenciler, ogretmenler }) {
 
   return (
     <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5 mb-6">
-      <p className="font-semibold text-gray-700 mb-1">Öğrenci / Öğretmen Bazında Ekstre</p>
+      <div className="flex items-start justify-between gap-3 flex-wrap mb-1">
+        <p className="font-semibold text-gray-700">Öğrenci / Öğretmen Bazında Ekstre</p>
+        <Link
+          to="/bire-bir-genel-ekstre"
+          target="_blank"
+          className="text-navy text-sm font-semibold hover:underline whitespace-nowrap"
+        >
+          Genel Ekstre (Herkes Bir Arada) →
+        </Link>
+      </div>
       <p className="text-xs text-gray-400 mb-3">
         Belirli bir öğrenci ya da öğretmen seçip, sadece ona ait haftalık/aylık dökümü yeni sekmede
-        görüntüleyin — buradan yazdırabilir ya da PDF olarak kaydedebilirsiniz.
+        görüntüleyin — buradan yazdırabilir ya da PDF olarak kaydedebilirsiniz. Öğrenci/öğretmene göre
+        AYIRMADAN, seçtiğiniz hafta/ayda okulda verilen TÜM bire bir dersleri tek listede görmek
+        isterseniz sağ üstteki "Genel Ekstre" linkini kullanın.
       </p>
       <div className="flex flex-wrap gap-4">
         <div className="flex-1 min-w-[220px]">
