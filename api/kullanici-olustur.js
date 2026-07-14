@@ -3,7 +3,7 @@
 // güvenle kullanılabilir (tarayıcıya asla gönderilmez).
 import { createClient } from '@supabase/supabase-js'
 
-const GECERLI_ROLLER = ['yonetici', 'ogretmen', 'veli', 'ogrenci', 'kantin']
+const GECERLI_ROLLER = ['yonetici', 'ogretmen', 'veli', 'ogrenci', 'kantin', 'zil']
 
 // Ad-soyad'ı, nasıl girilirse girilsin "İlk Harfler Büyük, Diğerleri Küçük"
 // biçimine çevirir (bağlaçlar hariç, bkz. aşağı). Bu dosya src/lib'i import
