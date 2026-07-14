@@ -353,14 +353,27 @@ export function taksitPlaniOlustur(sozlesme, odemeler) {
   for (let n = 1; n <= taksitSayisi; n++) {
     const vade = new Date(ilkTarih)
     vade.setMonth(vade.getMonth() + (n - 1))
+    const kumulatifOncekiGereken = taksitTutari * (n - 1)
     const kumulatifGereken = taksitTutari * n
+
+    // Ödemeler kümülatif olarak sırayla taksitleri kapatır (önce en eski taksit).
+    // Bu taksite düşen kısım: bir önceki taksitlere kadar olan borç tamamen
+    // kapandıktan SONRA arta kalan ödeme, bu taksitin tutarını aşmayacak şekilde.
+    // Kısmi ödeme yapıldıysa (ör. 22.000 taksitin sadece 10.000'i ödendiyse) bu
+    // değer 10.000 çıkar ve kalanTutar 12.000 olur.
+    const buTaksiteDusenOdenen = Math.min(
+      Math.max(odenenToplam - kumulatifOncekiGereken, 0),
+      taksitTutari
+    )
+    const kalanTutar = Math.max(taksitTutari - buTaksiteDusenOdenen, 0)
 
     let durum
     if (odenenToplam >= kumulatifGereken - 0.01) durum = 'odendi'
+    else if (buTaksiteDusenOdenen > 0.01) durum = 'kismi'
     else if (vade < bugun) durum = 'gecikti'
     else durum = 'bekliyor'
 
-    taksitler.push({ taksitNo: n, vade, tutar: taksitTutari, durum })
+    taksitler.push({ taksitNo: n, vade, tutar: taksitTutari, odenenTutar: buTaksiteDusenOdenen, kalanTutar, durum })
   }
   return taksitler
 }
