@@ -1382,33 +1382,50 @@ function DersHatirlatmaPaneli({ atamalar, yoklamalar, sadeceOgretmenId }) {
       .sort((a, b) => a.ogrenciAdi.localeCompare(b.ogrenciAdi, 'tr'))
   }, [atamalar, yoklamalar, gun, tarih, sadeceOgretmenId])
 
-  // HAFTALIK MOD — her hafta tekrar eden (aktif) atamalar, öğrenci bazında,
-  // haftanın gününe göre sıralı.
+  // HAFTALIK MOD — seçili tarihten (bu haftanın kalan günleri) Pazar'a kadar
+  // olan TÜM bire bir dersler: hem her hafta tekrar eden atamalar hem de o
+  // haftaya özel tek seferlik dersler. Ör. Çarşamba günü gönderiliyorsa,
+  // Pazartesi-Salı hariç, Çarşamba-Pazar arası dahil edilir — geçmiş/o an
+  // için anlamsız günler mesaja karışmasın diye.
+  const haftaSonuTarih = useMemo(() => gunEkle(tarih, 7 - gun), [tarih, gun])
+
   const haftalikOgrenciler = useMemo(() => {
     const map = new Map()
-    atamalar
-      .filter((a) => a.aktif)
-      .filter((a) => !sadeceOgretmenId || a.ogretmen_profile_id === sadeceOgretmenId)
-      .forEach((a) => {
-        const id = a.ogrenci_id
-        if (!id) return
-        if (!map.has(id)) {
-          map.set(id, {
-            ogrenciAdi: a.ogrenci_adi || '—',
-            ogrenciTelefon: a.ogrenci_telefon,
-            anneTelefon: a.ogrenci_anne_telefon,
-            babaTelefon: a.ogrenci_baba_telefon,
-            dersler: [],
-          })
-        }
-        map.get(id).dersler.push({
-          gun: a.gun,
-          gunAdi: GUNLER[a.gun],
-          baslangicSaat: saatKisalt(a.baslangic_saat),
-          bitisSaat: saatKisalt(a.bitis_saat),
-          dersAdi: a.ogretmen_bransi || null,
+
+    const ekle = (kayit, gunNo) => {
+      const id = kayit.ogrenci_id
+      if (!id) return
+      if (!map.has(id)) {
+        map.set(id, {
+          ogrenciAdi: kayit.ogrenci_adi || '—',
+          ogrenciTelefon: kayit.ogrenci_telefon,
+          anneTelefon: kayit.ogrenci_anne_telefon,
+          babaTelefon: kayit.ogrenci_baba_telefon,
+          dersler: [],
         })
+      }
+      map.get(id).dersler.push({
+        gun: gunNo,
+        gunAdi: GUNLER[gunNo],
+        baslangicSaat: saatKisalt(kayit.baslangic_saat),
+        bitisSaat: saatKisalt(kayit.bitis_saat),
+        dersAdi: kayit.ogretmen_bransi || null,
       })
+    }
+
+    // Her hafta tekrar eden atamalar — sadece bugünden (seçili tarihten)
+    // Pazar'a kadar kalan günler.
+    atamalar
+      .filter((a) => a.aktif && a.gun >= gun)
+      .filter((a) => !sadeceOgretmenId || a.ogretmen_profile_id === sadeceOgretmenId)
+      .forEach((a) => ekle(a, a.gun))
+
+    // Tek seferlik dersler — gerçek tarihi seçili tarih ile o haftanın Pazar
+    // günü arasına denk gelenler.
+    yoklamalar
+      .filter((y) => !y.atama_id && y.tarih >= tarih && y.tarih <= haftaSonuTarih && y.durum !== 'gelmedi')
+      .filter((y) => !sadeceOgretmenId || y.ogretmen_profile_id === sadeceOgretmenId)
+      .forEach((y) => ekle(y, gunNumaraTarihten(y.tarih)))
 
     return [...map.values()]
       .map((o) => ({
@@ -1418,7 +1435,7 @@ function DersHatirlatmaPaneli({ atamalar, yoklamalar, sadeceOgretmenId }) {
         ),
       }))
       .sort((a, b) => a.ogrenciAdi.localeCompare(b.ogrenciAdi, 'tr'))
-  }, [atamalar, sadeceOgretmenId])
+  }, [atamalar, yoklamalar, gun, tarih, haftaSonuTarih, sadeceOgretmenId])
 
   const ogrenciler = mod === 'gun' ? gunlukOgrenciler : haftalikOgrenciler
 
@@ -1460,47 +1477,45 @@ function DersHatirlatmaPaneli({ atamalar, yoklamalar, sadeceOgretmenId }) {
               Haftalık
             </button>
           </div>
-          {mod === 'gun' && (
-            <>
-              <button
-                type="button"
-                onClick={() => setTarih(bugun)}
-                className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
-                  tarih === bugun ? 'bg-navy text-white' : 'bg-white border border-gray-200 text-gray-600 hover:bg-gray-100'
-                }`}
-              >
-                Bugün
-              </button>
-              <button
-                type="button"
-                onClick={() => setTarih(yarin)}
-                className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
-                  tarih === yarin ? 'bg-navy text-white' : 'bg-white border border-gray-200 text-gray-600 hover:bg-gray-100'
-                }`}
-              >
-                Yarın
-              </button>
-              <input
-                type="date"
-                value={tarih}
-                onChange={(e) => setTarih(e.target.value)}
-                className="px-3 py-1.5 border border-gray-200 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue"
-              />
-            </>
-          )}
+          <button
+            type="button"
+            onClick={() => setTarih(bugun)}
+            className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+              tarih === bugun ? 'bg-navy text-white' : 'bg-white border border-gray-200 text-gray-600 hover:bg-gray-100'
+            }`}
+          >
+            Bugün
+          </button>
+          <button
+            type="button"
+            onClick={() => setTarih(yarin)}
+            className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+              tarih === yarin ? 'bg-navy text-white' : 'bg-white border border-gray-200 text-gray-600 hover:bg-gray-100'
+            }`}
+          >
+            Yarın
+          </button>
+          <input
+            type="date"
+            value={tarih}
+            onChange={(e) => setTarih(e.target.value)}
+            className="px-3 py-1.5 border border-gray-200 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue"
+          />
         </div>
       </div>
       {mod === 'gun' ? (
         <p className="px-4 pt-3 text-xs text-gray-400 capitalize">{tarihMetni}</p>
       ) : (
         <p className="px-4 pt-3 text-xs text-gray-400">
-          Her hafta tekrar eden haftalık bire bir dersler (tek seferlik dersler bu görünüme dahil değildir).
+          Seçili tarihten ({new Date(tarih + 'T12:00:00').toLocaleDateString('tr-TR')}) bu haftanın Pazar gününe (
+          {new Date(haftaSonuTarih + 'T12:00:00').toLocaleDateString('tr-TR')}) kadar olan TÜM bire bir dersler — hem
+          her hafta tekrar edenler hem de tek seferlik olanlar. Geçmiş günler dahil edilmez.
         </p>
       )}
       <div className="divide-y divide-gray-50">
         {ogrenciler.length === 0 && (
           <p className="px-4 py-6 text-center text-gray-400 text-sm">
-            {mod === 'gun' ? 'Bu gün için bire bir dersi bulunamadı.' : 'Haftalık tekrar eden bire bir dersi bulunamadı.'}
+            {mod === 'gun' ? 'Bu gün için bire bir dersi bulunamadı.' : 'Bu hafta için bire bir dersi bulunamadı.'}
           </p>
         )}
         {ogrenciler.map((o) => {
