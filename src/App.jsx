@@ -28,6 +28,8 @@ import SifreSifirla from './pages/SifreSifirla'
 import SifremiDegistir from './pages/SifremiDegistir'
 import Odev from './pages/Odev'
 import OgrenciZamanCizelgesi from './pages/OgrenciZamanCizelgesi'
+import YedekAl from './pages/YedekAl'
+import ZilSistemi from './pages/ZilSistemi'
 
 function Yukleniyor() {
   return (
@@ -55,9 +57,12 @@ function GirisSayfasi() {
 // Kantin görevlisi giriş yapınca doğrudan Kantin sayfasına gitsin — Panel'de
 // onunla ilgisi olmayan öğrenci/ödeme bilgileri var, o yüzden "/" onun için
 // hiç gösterilmiyor.
+// "zil" rolü de kantin gibi tek-amaçlı bir hesap — Panel'de onunla ilgisi
+// olmayan bilgiler var, o yüzden doğrudan Zil Sistemi'ne yönlendiriliyor.
 function AnaSayfa() {
   const { profile } = useAuth()
   if (profile?.rol === 'kantin') return <Navigate to="/kantin" replace />
+  if (profile?.rol === 'zil') return <Navigate to="/zil-sistemi" replace />
   return <Dashboard />
 }
 
@@ -171,6 +176,22 @@ function AnaUygulama() {
             element={
               <Korumali izinliRoller={['yonetici']}>
                 <SifreSifirla />
+              </Korumali>
+            }
+          />
+          <Route
+            path="yedek-al"
+            element={
+              <Korumali izinliRoller={['yonetici']}>
+                <YedekAl />
+              </Korumali>
+            }
+          />
+          <Route
+            path="zil-sistemi"
+            element={
+              <Korumali izinliRoller={['yonetici', 'zil']}>
+                <ZilSistemi />
               </Korumali>
             }
           />
