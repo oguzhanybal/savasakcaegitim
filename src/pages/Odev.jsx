@@ -1,8 +1,15 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../lib/AuthContext'
-import { odevBildirimMesajiOlustur, bireBirOzetLinkOlustur } from '../lib/ekstreHesap'
+import {
+  odevBildirimMesajiOlustur,
+  bireBirOzetLinkOlustur,
+  haftaBaslangici,
+  haftaEtiketi,
+} from '../lib/ekstreHesap'
 import { resmiSikistir } from '../lib/resimSikistir'
+
+const GUNLER_KISA = ['', 'Pzt', 'Sal', 'Çar', 'Per', 'Cum', 'Cmt', 'Paz']
 
 // Bugünün tarihini "YYYY-MM-DD" olarak YEREL saate göre üretir (toISOString
 // KULLANMIYORUZ — Türkiye UTC+3 gece yarısına yakın saatlerde bir gün geriye
@@ -10,6 +17,23 @@ import { resmiSikistir } from '../lib/resimSikistir'
 function yerelBugunTarihi() {
   const n = new Date()
   return `${n.getFullYear()}-${String(n.getMonth() + 1).padStart(2, '0')}-${String(n.getDate()).padStart(2, '0')}`
+}
+
+// Bir "timestamptz" (ör. olusturma_tarihi, veritabanında UTC saklanır) alanını
+// YEREL tarihe (YYYY-MM-DD) çevirir — Öğretmen Ödev Takibi raporunda "hangi
+// GÜN girildi" sorusu Türkiye saatine göre cevaplanmalı, UTC'ye göre değil.
+function yerelTarihStrTimestamptan(ts) {
+  if (!ts) return null
+  const d = new Date(ts)
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+}
+
+// "YYYY-MM-DD" formatındaki bir tarihe gün ekler/çıkarır (T12:00:00 ile
+// oluşturup Türkiye'de gün kaymasını önlüyoruz — bkz. BireBir.jsx'teki gunEkle).
+function gunEkleTarih(tarihStr, n) {
+  const d = new Date(tarihStr + 'T12:00:00')
+  d.setDate(d.getDate() + n)
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
 }
 
 function dosyaGoruntuleLinki(dosyaYolu) {
@@ -611,6 +635,170 @@ function OdevlerimListesi({ odevler, birdenFazlaCocukMu }) {
   )
 }
 
+// ============================================================================
+// YÖNETİCİ — hangi öğretmenin hangi GÜN ödev girdiğini (girmediğini) görme.
+// "Ödev girdi" ölçütü: o gün, o öğretmenin adına en az bir ödev kaydının
+// OLUŞTURULMUŞ olması (toplu/sınıfa verilen bir ödev tek bir öğrenciye
+// verilmiş gibi TEK GÜN sayılır — kaç öğrenciye verildiği değil, kaç FARKLI
+// güne ödev girildiği önemli). Haftalık modda 7 günlük ✓/— tablosu, aylık
+// modda seçilen aydaki hangi günlerde ödev girildiğinin listesi gösterilir.
+// ============================================================================
+function OgretmenOdevTakibi({ odevler, ogretmenler }) {
+  const [periyot, setPeriyot] = useState('hafta') // 'hafta' | 'ay'
+  const [haftaBaslangicTarihi, setHaftaBaslangicTarihi] = useState(() => haftaBaslangici(yerelBugunTarihi()))
+  const [seciliAy, setSeciliAy] = useState(() => yerelBugunTarihi().slice(0, 7)) // "YYYY-MM"
+
+  // ogretmen_profile_id -> Set("YYYY-MM-DD") — o öğretmenin ödev GİRDİĞİ günler.
+  const gunlerMap = useMemo(() => {
+    const map = new Map()
+    for (const o of odevler) {
+      if (!o.ogretmen_profile_id) continue
+      const gun = yerelTarihStrTimestamptan(o.olusturma_tarihi)
+      if (!gun) continue
+      if (!map.has(o.ogretmen_profile_id)) map.set(o.ogretmen_profile_id, new Set())
+      map.get(o.ogretmen_profile_id).add(gun)
+    }
+    return map
+  }, [odevler])
+
+  const haftaGunleri = useMemo(
+    () => Array.from({ length: 7 }, (_, i) => gunEkleTarih(haftaBaslangicTarihi, i)),
+    [haftaBaslangicTarihi]
+  )
+
+  return (
+    <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden mb-6">
+      <div className="px-4 py-3 border-b border-gray-100 bg-gray-50 flex items-center justify-between flex-wrap gap-3">
+        <div>
+          <h2 className="font-semibold text-gray-700">Öğretmen Ödev Takibi</h2>
+          <p className="text-xs text-gray-400 mt-0.5">Hangi öğretmen hangi gün ödev girmiş, hangi gün girmemiş.</p>
+        </div>
+        <div className="flex items-center gap-2 flex-wrap">
+          <div className="inline-flex rounded-lg border border-gray-200 overflow-hidden">
+            <button
+              type="button"
+              onClick={() => setPeriyot('hafta')}
+              className={`px-3 py-1.5 text-xs font-semibold transition-colors ${
+                periyot === 'hafta' ? 'bg-navy text-white' : 'bg-white text-gray-600 hover:bg-gray-50'
+              }`}
+            >
+              Haftalık
+            </button>
+            <button
+              type="button"
+              onClick={() => setPeriyot('ay')}
+              className={`px-3 py-1.5 text-xs font-semibold transition-colors ${
+                periyot === 'ay' ? 'bg-navy text-white' : 'bg-white text-gray-600 hover:bg-gray-50'
+              }`}
+            >
+              Aylık
+            </button>
+          </div>
+          {periyot === 'hafta' ? (
+            <div className="flex items-center gap-1.5">
+              <button
+                type="button"
+                onClick={() => setHaftaBaslangicTarihi((t) => gunEkleTarih(t, -7))}
+                className="px-2 py-1 rounded-lg text-sm text-gray-500 hover:bg-gray-100"
+                title="Önceki hafta"
+              >
+                ◀
+              </button>
+              <span className="text-xs font-semibold text-gray-600 whitespace-nowrap">
+                {haftaEtiketi(haftaBaslangicTarihi)}
+              </span>
+              <button
+                type="button"
+                onClick={() => setHaftaBaslangicTarihi((t) => gunEkleTarih(t, 7))}
+                className="px-2 py-1 rounded-lg text-sm text-gray-500 hover:bg-gray-100"
+                title="Sonraki hafta"
+              >
+                ▶
+              </button>
+            </div>
+          ) : (
+            <input
+              type="month"
+              value={seciliAy}
+              onChange={(e) => setSeciliAy(e.target.value)}
+              className="px-2.5 py-1.5 border border-gray-200 rounded-lg text-xs bg-white focus:outline-none focus:ring-2 focus:ring-blue"
+            />
+          )}
+        </div>
+      </div>
+
+      {ogretmenler.length === 0 ? (
+        <p className="px-4 py-6 text-center text-gray-400 text-sm">Kayıtlı öğretmen bulunamadı.</p>
+      ) : periyot === 'hafta' ? (
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm min-w-[520px]">
+            <thead>
+              <tr className="text-left text-gray-500 bg-gray-50">
+                <th className="px-4 py-2 font-medium">Öğretmen</th>
+                {haftaGunleri.map((g, i) => (
+                  <th key={g} className="px-2 py-2 font-medium text-center">
+                    {GUNLER_KISA[i + 1]}
+                    <br />
+                    <span className="text-[10px] text-gray-400 font-normal">
+                      {new Date(g + 'T12:00:00').toLocaleDateString('tr-TR', { day: '2-digit', month: '2-digit' })}
+                    </span>
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {ogretmenler.map((o) => {
+                const gunSeti = gunlerMap.get(o.id) || new Set()
+                return (
+                  <tr key={o.id} className="border-t border-gray-50">
+                    <td className="px-4 py-2 font-medium text-gray-800">{o.ad_soyad}</td>
+                    {haftaGunleri.map((g) => (
+                      <td key={g} className="px-2 py-2 text-center">
+                        {gunSeti.has(g) ? (
+                          <span className="text-green-600 font-bold">✓</span>
+                        ) : (
+                          <span className="text-gray-300">—</span>
+                        )}
+                      </td>
+                    ))}
+                  </tr>
+                )
+              })}
+            </tbody>
+          </table>
+        </div>
+      ) : (
+        <div className="divide-y divide-gray-50">
+          {ogretmenler.map((o) => {
+            const gunSeti = gunlerMap.get(o.id) || new Set()
+            const ayGunleri = Array.from(gunSeti)
+              .filter((g) => g.slice(0, 7) === seciliAy)
+              .sort()
+            return (
+              <div key={o.id} className="px-4 py-3 flex items-start justify-between gap-3 flex-wrap">
+                <div>
+                  <p className="font-medium text-gray-800">{o.ad_soyad}</p>
+                  <div className="flex flex-wrap gap-1 mt-1">
+                    {ayGunleri.length === 0 && (
+                      <span className="text-xs text-gray-400">Bu ay hiç ödev girmemiş.</span>
+                    )}
+                    {ayGunleri.map((g) => (
+                      <span key={g} className="text-xs px-1.5 py-0.5 rounded bg-green-50 text-green-700">
+                        {new Date(g + 'T12:00:00').toLocaleDateString('tr-TR', { day: '2-digit', month: '2-digit' })}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+                <span className="text-sm font-semibold text-gray-500 whitespace-nowrap">{ayGunleri.length} gün</span>
+              </div>
+            )
+          })}
+        </div>
+      )}
+    </div>
+  )
+}
+
 export default function Odev() {
   const { profile } = useAuth()
   const isYonetici = profile?.rol === 'yonetici'
@@ -618,6 +806,7 @@ export default function Odev() {
   const isVeliYaDaOgrenci = profile?.rol === 'veli' || profile?.rol === 'ogrenci'
 
   const [ogrenciler, setOgrenciler] = useState([])
+  const [ogretmenler, setOgretmenler] = useState([])
   const [odevler, setOdevler] = useState([])
   const [birdenFazlaCocukMu, setBirdenFazlaCocukMu] = useState(false)
   const [loading, setLoading] = useState(true)
@@ -652,7 +841,12 @@ export default function Odev() {
       isVeliYaDaOgrenci
         ? supabase.from('ogrenciler').select('id, veli_profile_id, ogrenci_profile_id')
         : Promise.resolve({ data: [] }),
-    ]).then(([o, od, kendiCocuklarSonuc]) => {
+      // Sadece yönetici için: "Öğretmen Ödev Takibi" raporunda satır başına
+      // gösterilecek öğretmen listesi.
+      isYonetici
+        ? supabase.from('profiles').select('id, ad_soyad').eq('rol', 'ogretmen').order('ad_soyad')
+        : Promise.resolve({ data: [] }),
+    ]).then(([o, od, kendiCocuklarSonuc, ogr]) => {
       setOgrenciler(o.data || [])
       setOdevler(
         (od.data || []).map((d) => ({
@@ -661,6 +855,7 @@ export default function Odev() {
           ogretmen_adi: d.profiles?.ad_soyad,
         }))
       )
+      setOgretmenler(ogr.data || [])
       if (isVeliYaDaOgrenci) {
         const cocukSayisi = (kendiCocuklarSonuc.data || []).filter(
           (c) => c.veli_profile_id === profile.id || c.ogrenci_profile_id === profile.id
@@ -691,6 +886,7 @@ export default function Odev() {
             varsayilanDers={isOgretmen ? profile?.brans || '' : ''}
             onEklendi={veriyiYenile}
           />
+          {isYonetici && <OgretmenOdevTakibi odevler={odevler} ogretmenler={ogretmenler} />}
           <VerilenOdevlerListesi odevler={odevler} isYonetici={isYonetici} onDegisti={veriyiYenile} />
         </>
       )}
