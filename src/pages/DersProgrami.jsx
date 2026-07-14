@@ -359,7 +359,12 @@ export default function DersProgrami() {
             .in('ogrenci_id', cocukIdleri)
             .is('atama_id', null)
             .gte('tarih', yerelBugunTarihi())
-            .order('tarih'),
+            // Sadece tarihe göre sıralamak yetmiyor — aynı gün içindeki dersler
+            // saat sırasına göre değil, veritabanının döndürdüğü rastgele sırayla
+            // geliyordu (ör. 14:55'lik ders 12:00'lik dersten önce görünüyordu).
+            // Saati de ikinci sıralama ölçütü olarak eklemek gerekiyor.
+            .order('tarih')
+            .order('baslangic_saat'),
         ]).then(([atamaSonuc, yoklamaSonuc]) => {
           if (atamaSonuc.error) console.error('Bire bir atamaları sorgusu hatası:', atamaSonuc.error.message)
           if (yoklamaSonuc.error) console.error('Tek seferlik bire bir sorgusu hatası:', yoklamaSonuc.error.message)
@@ -372,12 +377,20 @@ export default function DersProgrami() {
             }))
           )
           setTekSeferlikDerslerim(
-            (yoklamaSonuc.data || []).map((a) => ({
-              ...a,
-              ogretmen_adi: a.profiles?.ad_soyad,
-              ogretmen_brans: a.profiles?.brans,
-              ogrenci_adi: cocukAdMap.get(a.ogrenci_id),
-            }))
+            (yoklamaSonuc.data || [])
+              .map((a) => ({
+                ...a,
+                ogretmen_adi: a.profiles?.ad_soyad,
+                ogretmen_brans: a.profiles?.brans,
+                ogrenci_adi: cocukAdMap.get(a.ogrenci_id),
+              }))
+              // Sunucudan gelen sıralamaya güvenmek yerine burada da garanti
+              // altına alıyoruz: önce tarih, sonra saat.
+              .sort(
+                (x, y) =>
+                  (x.tarih || '').localeCompare(y.tarih || '') ||
+                  (x.baslangic_saat || '').localeCompare(y.baslangic_saat || '')
+              )
           )
           ilkYuklemeTamamRef.current = true
           setLoading(false)
