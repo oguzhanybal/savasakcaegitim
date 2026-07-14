@@ -28,7 +28,19 @@ function yerelBugunTarihi() {
 // Kullanıcı yine de Haftalık/Aylık butonları ya da dönem seçici ile İSTEDİĞİ
 // ANDA elle farklı bir döneme geçebilir — hedefDonem sadece "varsayılan/senkron"
 // değeri belirler, kilitlemez.
-export default function BireBirDersDokumu({ dersler, karsiTarafBasligi, baslangicPeriyot = 'ay', hedefDonem = null }) {
+//
+// ikinciTarafBasligi (opsiyonel): verilirse tabloya İKİNCİ bir kişi sütunu daha
+// eklenir (ör. GenelBireBirEkstre.jsx'te hem "Öğrenci" hem "Öğretmen" aynı anda
+// görünsün diye — herkesin bir arada olduğu, kişiye göre AYRILMAMIŞ genel bir
+// dökümde ikisi de gerekiyor). O durumda her ders öğesinde ayrıca
+// ikinciTarafAdi (ve opsiyonel ikinciTarafBransi) alanları beklenir.
+export default function BireBirDersDokumu({
+  dersler,
+  karsiTarafBasligi,
+  baslangicPeriyot = 'ay',
+  hedefDonem = null,
+  ikinciTarafBasligi = null,
+}) {
   const [periyot, setPeriyot] = useState(hedefDonem ? 'ay' : baslangicPeriyot) // 'hafta' | 'ay'
   const [gosterilenSayisi, setGosterilenSayisi] = useState(6)
 
@@ -134,6 +146,8 @@ export default function BireBirDersDokumu({ dersler, karsiTarafBasligi, baslangi
             ).sort((a, b) => (a[0] < b[0] ? -1 : 1))
           : null
 
+        const sutunSayisi = ikinciTarafBasligi ? 5 : 4
+
         const tabloYaz = (dersListesi, toplam) => (
           <table className="w-full text-xs sm:text-sm border border-gray-200 rounded-lg overflow-hidden">
             <thead>
@@ -141,6 +155,7 @@ export default function BireBirDersDokumu({ dersler, karsiTarafBasligi, baslangi
                 <th className="px-2 sm:px-3 py-2 font-semibold">Tarih</th>
                 <th className="px-2 sm:px-3 py-2 font-semibold">Saat</th>
                 <th className="px-2 sm:px-3 py-2 font-semibold">{karsiTarafBasligi}</th>
+                {ikinciTarafBasligi && <th className="px-2 sm:px-3 py-2 font-semibold">{ikinciTarafBasligi}</th>}
                 <th className="px-2 sm:px-3 py-2 font-semibold text-right">Tutar</th>
               </tr>
             </thead>
@@ -155,13 +170,19 @@ export default function BireBirDersDokumu({ dersler, karsiTarafBasligi, baslangi
                     {d.karsiTarafAdi || '—'}
                     {d.karsiTarafBransi && <span className="text-gray-400"> ({d.karsiTarafBransi})</span>}
                   </td>
+                  {ikinciTarafBasligi && (
+                    <td className="px-2 sm:px-3 py-2">
+                      {d.ikinciTarafAdi || '—'}
+                      {d.ikinciTarafBransi && <span className="text-gray-400"> ({d.ikinciTarafBransi})</span>}
+                    </td>
+                  )}
                   <td className="px-2 sm:px-3 py-2 text-right font-medium">{paraFormat(d.tutar)}</td>
                 </tr>
               ))}
             </tbody>
             <tfoot>
               <tr className="bg-gray-50 font-semibold">
-                <td colSpan={3} className="px-2 sm:px-3 py-2 text-right">Toplam</td>
+                <td colSpan={sutunSayisi - 1} className="px-2 sm:px-3 py-2 text-right">Toplam</td>
                 <td className="px-2 sm:px-3 py-2 text-right">{paraFormat(toplam)}</td>
               </tr>
             </tfoot>
