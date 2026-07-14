@@ -57,3 +57,30 @@ export function zilSesiCal() {
   // açık tutmak isteyenler için dışa aktarılıyor.
   return tekrarSayisi * birTekrarSuresi
 }
+
+// ============================================================================
+// ÇIKIŞ ZİLİ — Öğrenci/Öğretmen zillerinden FARKLI, özel bir ses kullanır.
+// Bu özel ses dosyasını YouTube'dan indirip buraya gömmek telif/kullanım
+// şartları nedeniyle yapılamıyor — bunun yerine, "public" klasörüne
+// "cikis-zili.mp3" adıyla bir ses dosyası eklenirse (kullanıcı kendi
+// istediği klibi kendisi indirip eklemeli) bu dosya çalınır. Dosya henüz
+// eklenmemişse veya çalınamazsa standart zil sesine (zilSesiCal) geri döner.
+// ============================================================================
+export function cikisZiliCal() {
+  let geriDonuldu = false
+  const geriDon = () => {
+    if (geriDonuldu) return
+    geriDonuldu = true
+    zilSesiCal()
+  }
+  try {
+    const ses = new Audio('/cikis-zili.mp3')
+    ses.addEventListener('error', geriDon)
+    const calmaSonucu = ses.play()
+    if (calmaSonucu && typeof calmaSonucu.catch === 'function') {
+      calmaSonucu.catch(geriDon)
+    }
+  } catch {
+    geriDon()
+  }
+}
