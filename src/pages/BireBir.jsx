@@ -1370,10 +1370,14 @@ function TekSeferlikDerslerListesi({ yoklamalar, atamalar, onDegisti, sadeceOgre
                             Gelmedi
                           </button>
                         )}
-                        <button onClick={() => setDuzenlenenYoklamaId(y.id)} className="text-navy text-sm hover:underline">
-                          Düzenle
-                        </button>
-                        <button onClick={() => sil(y.id)} className="text-gray-400 text-sm hover:underline">Sil</button>
+                        {ucretGorunur && (
+                          <button onClick={() => setDuzenlenenYoklamaId(y.id)} className="text-navy text-sm hover:underline">
+                            Düzenle
+                          </button>
+                        )}
+                        {ucretGorunur && (
+                          <button onClick={() => sil(y.id)} className="text-gray-400 text-sm hover:underline">Sil</button>
+                        )}
                       </td>
                     </tr>
                   )
