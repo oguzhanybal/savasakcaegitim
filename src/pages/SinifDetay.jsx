@@ -14,6 +14,21 @@ function saatKisalt(s) {
   return s ? s.slice(0, 5) : s
 }
 
+// Okulda dersler genelde 45 dakika + 10 dakika teneffüs şeklinde işliyor.
+// Başlangıç saati girilince bitiş otomatik +45 dakika olsun; bir ders
+// eklendikten sonra da bir sonraki dersin başlangıcı otomatik olarak
+// "az önce eklenenin bitişi + 10 dakika" olsun diye kullanılıyor —
+// böylece art arda birkaç ders eklerken her seferinde saatleri elle
+// hesaplamaya gerek kalmıyor.
+function saateDakikaEkle(saat, dakika) {
+  if (!saat) return ''
+  const [h, m] = saat.split(':').map(Number)
+  const toplamDakika = (((h * 60 + m + dakika) % (24 * 60)) + 24 * 60) % (24 * 60)
+  const yeniSaat = Math.floor(toplamDakika / 60)
+  const yeniDakika = toplamDakika % 60
+  return `${String(yeniSaat).padStart(2, '0')}:${String(yeniDakika).padStart(2, '0')}`
+}
+
 function araliklarCakisiyorMu(b1, s1, b2, s2) {
   return saatKisalt(b1) < saatKisalt(s2) && saatKisalt(b2) < saatKisalt(s1)
 }
@@ -181,6 +196,12 @@ export default function SinifDetay() {
     setEkleniyor(false)
     if (!error) {
       setSeciliGunler([])
+      // Art arda birkaç ders eklerken (ör. aynı sınıfa peş peşe farklı dersler)
+      // bir sonraki dersin başlangıcı otomatik olarak "az önce eklenenin
+      // bitişi + 10 dakika teneffüs" olsun diye ayarlanıyor — 45+10 kuralı.
+      const sonrakiBaslangic = saateDakikaEkle(bitis, 10)
+      setBaslangic(sonrakiBaslangic)
+      setBitis(saateDakikaEkle(sonrakiBaslangic, 45))
       yukle()
     } else {
       setHata('Hata: ' + error.message)
@@ -332,7 +353,11 @@ export default function SinifDetay() {
                 <input
                   type="time"
                   value={baslangic}
-                  onChange={(e) => setBaslangic(e.target.value)}
+                  onChange={(e) => {
+                    const yeniBaslangic = e.target.value
+                    setBaslangic(yeniBaslangic)
+                    setBitis(saateDakikaEkle(yeniBaslangic, 45))
+                  }}
                   className="w-full px-2 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue text-sm"
                 />
               </div>
