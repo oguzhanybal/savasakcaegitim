@@ -443,7 +443,7 @@ function BireBirDerslerimBolumu({ haftalikDersler, tekSeferlikDersler, birdenFaz
                     {gunDersleri.map((d) => (
                       <div
                         key={d.id}
-                        className="flex items-center justify-between gap-2 bg-blue-50 border border-blue-100 rounded-lg px-3 py-2 flex-wrap"
+                        className="flex items-start justify-between gap-2 bg-blue-50 border border-blue-100 rounded-lg px-3 py-2"
                       >
                         <div>
                           <p className="font-medium text-navy text-sm">
@@ -452,7 +452,7 @@ function BireBirDerslerimBolumu({ haftalikDersler, tekSeferlikDersler, birdenFaz
                           </p>
                           {birdenFazlaCocukMu && <p className="text-xs text-gray-400">{d.ogrenci_adi}</p>}
                         </div>
-                        <p className="text-sm text-gray-500 whitespace-nowrap">
+                        <p className="text-sm font-bold text-navy whitespace-nowrap shrink-0">
                           {saatKisalt(d.baslangic_saat)}–{saatKisalt(d.bitis_saat)}
                         </p>
                       </div>
@@ -484,22 +484,22 @@ function BireBirDerslerimBolumu({ haftalikDersler, tekSeferlikDersler, birdenFaz
                 </div>
                 <div className="divide-y divide-gray-50">
                   {grup.dersler.map((d) => (
-                    // min-w-0 + truncate: öğretmen adı/branşı uzun olsa bile satır
-                    // TAŞMAZ/ALTA KAYMAZ — saat her zaman aynı hizada, sağda kalır.
-                    // Önceki sürümde flex-wrap + sabit olmayan genişlik yüzünden,
-                    // isim uzun olduğunda saat alt satıra düşüyor, kısa olduğunda
-                    // yanında kalıyordu — tutarsız görünüyordu.
-                    <div key={d.id} className="flex items-center justify-between gap-3 px-4 py-2.5">
-                      <div className="min-w-0">
-                        <p className="font-medium text-gray-800 text-sm truncate">
+                    // Ad/branş kesilmesin diye truncate KULLANMIYORUZ — gerekirse
+                    // alt satıra sarabilir. Ama saat HER ZAMAN satırın sağ üstünde,
+                    // ilk satırda sabit kalsın diye "items-start" + saat için
+                    // "shrink-0 whitespace-nowrap" kullanılıyor — isim ister tek
+                    // satıra sığsın ister sarsın, saatin yeri hiç değişmiyor.
+                    <div key={d.id} className="px-4 py-2.5">
+                      <div className="flex items-start justify-between gap-3">
+                        <p className="font-medium text-gray-800 text-sm">
                           {d.ogretmen_adi}
                           {d.ogretmen_brans ? ` — ${d.ogretmen_brans}` : ''}
                         </p>
-                        {birdenFazlaCocukMu && <p className="text-xs text-gray-400 truncate">{d.ogrenci_adi}</p>}
+                        <p className="text-base font-bold text-navy whitespace-nowrap shrink-0">
+                          {d.baslangic_saat ? `${saatKisalt(d.baslangic_saat)}${d.bitis_saat ? '–' + saatKisalt(d.bitis_saat) : ''}` : 'Saat belirtilmemiş'}
+                        </p>
                       </div>
-                      <p className="text-base font-bold text-navy whitespace-nowrap shrink-0">
-                        {d.baslangic_saat ? `${saatKisalt(d.baslangic_saat)}${d.bitis_saat ? '–' + saatKisalt(d.bitis_saat) : ''}` : 'Saat belirtilmemiş'}
-                      </p>
+                      {birdenFazlaCocukMu && <p className="text-xs text-gray-400 mt-0.5">{d.ogrenci_adi}</p>}
                     </div>
                   ))}
                 </div>
@@ -529,6 +529,11 @@ export default function DersProgrami() {
   const [taslaklar, setTaslaklar] = useState([])
   const [loading, setLoading] = useState(true)
   const [gorunum, setGorunum] = useState('tablo')
+  // Veli/öğrenci için: "Bire Bir" ve "Ders Programı" bölümleri alt alta uzun
+  // uzun sıralanmak yerine, sekme (tab) ile geçilerek gösterilir — tıklayınca
+  // Bire Bir'e, tıklayınca Ders Programı'na geçer. Sadece veli/öğrenci
+  // rolünde anlamlı; yönetici/öğretmen için ikisi zaten ayrı gösteriliyor.
+  const [veliSekme, setVeliSekme] = useState('program') // 'birebir' | 'program'
   // Müsaitlik tablosunda boş bir hücreye tıklanınca buraya { ogretmenId, gun,
   // baslangic, bitis } yazılır; DersEkleForm bunu izleyip kendini otomatik doldurur.
   const [doldurBilgisi, setDoldurBilgisi] = useState(null)
@@ -702,23 +707,47 @@ export default function DersProgrami() {
     return program.filter((p) => p.gun === gun && saatKisalt(p.baslangic_saat) === saat)
   }
 
+  // Veli/öğrenci için sınıf ders programı (tablo/liste) sadece bu sekme
+  // seçiliyken gösterilir; yönetici/öğretmen için sekme hiç yok, her zaman gösterilir.
+  const sinifProgramiGoster = !isVeliYaDaOgrenci || veliSekme === 'program'
+
   return (
     <div>
       <div className="flex items-center justify-between mb-6 flex-wrap gap-3">
         <h1 className="text-2xl font-bold text-navy">Ders Programı</h1>
-        <div className="flex bg-white border border-gray-200 rounded-lg overflow-hidden text-sm">
-          <button
-            onClick={() => setGorunum('tablo')}
-            className={`px-3 py-1.5 font-medium transition-colors ${gorunum === 'tablo' ? 'bg-navy text-white' : 'text-gray-600 hover:bg-gray-50'}`}
-          >
-            Tablo
-          </button>
-          <button
-            onClick={() => setGorunum('liste')}
-            className={`px-3 py-1.5 font-medium transition-colors ${gorunum === 'liste' ? 'bg-navy text-white' : 'text-gray-600 hover:bg-gray-50'}`}
-          >
-            Liste
-          </button>
+        <div className="flex items-center gap-3 flex-wrap">
+          {isVeliYaDaOgrenci && (
+            <div className="flex bg-white border border-gray-200 rounded-lg overflow-hidden text-sm">
+              <button
+                onClick={() => setVeliSekme('birebir')}
+                className={`px-3 py-1.5 font-medium transition-colors ${veliSekme === 'birebir' ? 'bg-navy text-white' : 'text-gray-600 hover:bg-gray-50'}`}
+              >
+                Bire Bir
+              </button>
+              <button
+                onClick={() => setVeliSekme('program')}
+                className={`px-3 py-1.5 font-medium transition-colors ${veliSekme === 'program' ? 'bg-navy text-white' : 'text-gray-600 hover:bg-gray-50'}`}
+              >
+                Ders Programı
+              </button>
+            </div>
+          )}
+          {sinifProgramiGoster && (
+            <div className="flex bg-white border border-gray-200 rounded-lg overflow-hidden text-sm">
+              <button
+                onClick={() => setGorunum('tablo')}
+                className={`px-3 py-1.5 font-medium transition-colors ${gorunum === 'tablo' ? 'bg-navy text-white' : 'text-gray-600 hover:bg-gray-50'}`}
+              >
+                Tablo
+              </button>
+              <button
+                onClick={() => setGorunum('liste')}
+                className={`px-3 py-1.5 font-medium transition-colors ${gorunum === 'liste' ? 'bg-navy text-white' : 'text-gray-600 hover:bg-gray-50'}`}
+              >
+                Liste
+              </button>
+            </div>
+          )}
         </div>
       </div>
 
@@ -750,7 +779,7 @@ export default function DersProgrami() {
         </>
       )}
 
-      {isVeliYaDaOgrenci && (
+      {isVeliYaDaOgrenci && veliSekme === 'birebir' && (
         <BireBirDerslerimBolumu
           haftalikDersler={bireBirDerslerim}
           tekSeferlikDersler={tekSeferlikDerslerim}
@@ -760,13 +789,13 @@ export default function DersProgrami() {
 
       {loading && <p className="text-gray-400">Yükleniyor...</p>}
 
-      {!loading && program.length === 0 && (
+      {sinifProgramiGoster && !loading && program.length === 0 && (
         <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6">
           <p className="text-gray-400">Görüntülenecek ders programı bulunamadı.</p>
         </div>
       )}
 
-      {!loading && program.length > 0 && gorunum === 'tablo' && (
+      {sinifProgramiGoster && !loading && program.length > 0 && gorunum === 'tablo' && (
         // touch-pan-x + overscroll-x-contain: mobil tarayıcılarda sayfa dikey
         // kaydırılabilirken bu tablonun YATAY kaydırılabilir olduğunu tarayıcıya
         // açıkça belirtiyoruz. Bazı mobil tarayıcılarda iç içe bir yatay kaydırma
@@ -825,7 +854,7 @@ export default function DersProgrami() {
         </div>
       )}
 
-      {!loading && program.length > 0 && gorunum === 'liste' && (
+      {sinifProgramiGoster && !loading && program.length > 0 && gorunum === 'liste' && (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {gunlereGore.map((dersler, i) =>
             dersler.length === 0 ? null : (
