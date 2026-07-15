@@ -620,8 +620,23 @@ export default function DersProgrami() {
   // Müsaitlik tablosunda boş bir hücreye tıklanınca çağrılır: hücrenin
   // öğretmen/gün/saat bilgisini forma iletir ve forma doğru yumuşak kaydırır.
   function hucreTiklandi(bilgi) {
-    setDoldurBilgisi({ ...bilgi })
-    setSeciliHucre({ ogretmenId: bilgi.ogretmenId, tarih: bilgi.tarih, baslangic: bilgi.baslangic })
+    // Aynı öğretmen/tarih için, az önce seçilen hücrenin HEMEN YANINDAKİ
+    // (bir sonraki 30dk'lık) sütuna tıklanırsa, bunu "arka arkaya bir ders daha"
+    // isteği olarak yorumluyoruz: yeni dersin başlangıcını, önceki dersin
+    // bitişinden (başlangıç+45dk) 10 dakika sonrasına otomatik ayarlıyoruz —
+    // Bire Bir sayfasındaki "45 dakika ders + 10 dakika ara" düzeniyle tutarlı
+    // olsun diye. Art arda (3., 4. kutu...) tıklanırsa da aynı mantık zincirlenir.
+    const ardisikMi =
+      seciliHucre &&
+      seciliHucre.ogretmenId === bilgi.ogretmenId &&
+      seciliHucre.tarih === bilgi.tarih &&
+      bilgi.baslangic === saateDakikaEkle(seciliHucre.baslangic, 30)
+    const formBaslangic = ardisikMi ? saateDakikaEkle(seciliHucre.hesaplananBaslangic, 45 + 10) : bilgi.baslangic
+
+    setDoldurBilgisi({ ...bilgi, baslangic: formBaslangic })
+    // "baslangic" burada tıklanan GERÇEK kutu (vurgu/işaretleme için),
+    // "hesaplananBaslangic" ise forma yazılan (bir sonraki zincirleme hesap için).
+    setSeciliHucre({ ogretmenId: bilgi.ogretmenId, tarih: bilgi.tarih, baslangic: bilgi.baslangic, hesaplananBaslangic: formBaslangic })
     requestAnimationFrame(() => {
       document.getElementById('ders-ekle-formu')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
     })
