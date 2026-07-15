@@ -10,6 +10,11 @@ import { useMemo, useState } from 'react'
 // sayfaya { ogretmenId, ogretmenAdi, tarih, gun, baslangic, bitis } bilgisini
 // iletir. Dolu hücrelere tıklama hiçbir zaman bir şey yapmaz (yanlışlıkla
 // üzerine yazmayı önlemek için).
+//
+// secili verilirse (opsiyonel, { ogretmenId, tarih, baslangic }), o hücre koyu
+// renkle işaretlenir — kullanıcı tıkladıktan sonra "hangi saate ekliyordum"
+// sorusuna cevap versin diye. Üstteki sayfa, ders eklenene/taslağa kaydedilene
+// kadar bu bilgiyi tutar.
 
 const GUNLER = ['', 'Pazartesi', 'Salı', 'Çarşamba', 'Perşembe', 'Cuma', 'Cumartesi', 'Pazar']
 
@@ -45,7 +50,7 @@ const SAAT_DILIMLERI = (() => {
   return dilimler
 })()
 
-export default function MusaitlikTablosu({ ogretmenler, dersProgrami, atamalar, yoklamalar, ogrenciAdMap, onHucreTikla }) {
+export default function MusaitlikTablosu({ ogretmenler, dersProgrami, atamalar, yoklamalar, ogrenciAdMap, onHucreTikla, secili }) {
   const [tarih, setTarih] = useState(() => new Date().toISOString().slice(0, 10))
   const gun = gunNumaraTarihten(tarih)
 
@@ -169,18 +174,38 @@ export default function MusaitlikTablosu({ ogretmenler, dersProgrami, atamalar, 
                   </td>
                   {hucreler.map((h) => {
                     const tiklanabilir = !h.dolu && !!onHucreTikla
+                    const seciliMi =
+                      !h.dolu &&
+                      secili &&
+                      secili.ogretmenId === o.id &&
+                      secili.tarih === tarih &&
+                      secili.baslangic === h.baslangic
                     return (
                       <td
                         key={h.baslangic}
                         colSpan={h.span}
-                        title={h.dolu ? `${h.dolu.etiket} (${saatKisalt(h.dolu.baslangic)}–${saatKisalt(h.dolu.bitis)})` : tiklanabilir ? 'Boş — tıklayarak ders ekle' : 'Boş'}
+                        title={
+                          h.dolu
+                            ? `${h.dolu.etiket} (${saatKisalt(h.dolu.baslangic)}–${saatKisalt(h.dolu.bitis)})`
+                            : seciliMi
+                            ? 'Şu an bunu ekliyorsunuz'
+                            : tiklanabilir
+                            ? 'Boş — tıklayarak ders ekle'
+                            : 'Boş'
+                        }
                         onClick={
                           tiklanabilir
                             ? () => onHucreTikla({ ogretmenId: o.id, ogretmenAdi: o.ad_soyad, tarih, gun, baslangic: h.baslangic, bitis: h.bitis })
                             : undefined
                         }
                         className={`border-t border-l border-gray-100 text-center align-middle py-1 ${
-                          h.dolu ? h.dolu.renk : tiklanabilir ? 'bg-green-50 h-8 cursor-pointer hover:bg-green-200 transition-colors' : 'bg-green-50 h-8'
+                          h.dolu
+                            ? h.dolu.renk
+                            : seciliMi
+                            ? 'bg-navy text-white h-8 cursor-pointer ring-2 ring-inset ring-orange-400'
+                            : tiklanabilir
+                            ? 'bg-green-50 h-8 cursor-pointer hover:bg-green-200 transition-colors'
+                            : 'bg-green-50 h-8'
                         }`}
                       >
                         {h.dolu ? (
@@ -190,6 +215,8 @@ export default function MusaitlikTablosu({ ogretmenler, dersProgrami, atamalar, 
                               {saatKisalt(h.dolu.baslangic)}–{saatKisalt(h.dolu.bitis)}
                             </span>
                           </span>
+                        ) : seciliMi ? (
+                          <span className="text-[9px] font-semibold">●</span>
                         ) : (
                           ''
                         )}
