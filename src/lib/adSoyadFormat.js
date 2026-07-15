@@ -19,19 +19,23 @@ export function adSoyadDuzelt(metin) {
       if (index > 0 && BAGLAC_KUCUK_YAZILANLAR.has(kelime.toLocaleLowerCase('tr-TR'))) {
         return kelime.toLocaleLowerCase('tr-TR')
       }
-      // Kelimenin içinde tire varsa (ör. "11-sayısal", "Ali-Rıza"), sadece
-      // kelimenin ilk harfini değil, TİREDEN SONRAKİ harfi de büyütmemiz
-      // gerekiyor — yoksa "11-Eşit Ağırlık" gibi bir metin "11-eşit Ağırlık"
-      // olarak (tireye bitişik harf küçük kalarak) yanlış görünüyordu.
+      // Kelimenin içinde tire ("11-sayısal", "Ali-Rıza") ya da eğik çizgi
+      // ("Türkçe/edebiyat" gibi ders adlarında) varsa, sadece kelimenin ilk
+      // harfini değil, ayraçtan SONRAKİ harfi de büyütmemiz gerekiyor —
+      // yoksa "11-Eşit Ağırlık" "11-eşit Ağırlık" olarak, ya da
+      // "Türkçe/Edebiyat" "Türkçe/edebiyat" olarak (ayraca bitişik harf
+      // küçük kalarak) yanlış görünüyordu. split ile ayraçları (- ve /)
+      // yakalayıp (capturing group) aralarındaki her parçayı ayrı ayrı
+      // büyütüyoruz, ayraçların kendisini olduğu gibi koruyoruz.
       return kelime
-        .split('-')
+        .split(/([-/])/)
         .map((parca) => {
-          if (!parca) return parca
+          if (parca === '-' || parca === '/' || !parca) return parca
           const ilkHarf = parca.charAt(0).toLocaleUpperCase('tr-TR')
           const geriKalan = parca.slice(1).toLocaleLowerCase('tr-TR')
           return ilkHarf + geriKalan
         })
-        .join('-')
+        .join('')
     })
     .join(' ')
 }
