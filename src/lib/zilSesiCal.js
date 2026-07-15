@@ -84,3 +84,63 @@ export function cikisZiliCal() {
     geriDon()
   }
 }
+
+// ============================================================================
+// MANUEL ÇAL (başlat/durdur) — "Manuel Çal"a basınca zil BİR KERE çalar;
+// bitene kadar buton "Durdur"a döner. Ses tam bitmeden ikinci kez tetiklenmek
+// istenirse (ör. çift tıklama) önceki çalma sessizce temizlenip yeniden
+// başlatılır — asla üst üste binmez. Ses doğal olarak bittiğinde
+// "bittiginde" callback'i çağrılır ki arayüz butonu kendiliğinden
+// "Manuel Çal"a geri döndürebilsin. Elle "Durdur" çağrılırsa bu callback
+// ÇAĞRILMAZ (arayüz zaten kendi tarafında durumu güncelliyor).
+// ============================================================================
+let manuelSesElemani = null
+let manuelZamanlayiciId = null
+let manuelBittiCallback = null
+
+function manuelTemizle() {
+  if (manuelSesElemani) {
+    manuelSesElemani.pause()
+    manuelSesElemani.currentTime = 0
+    manuelSesElemani = null
+  }
+  if (manuelZamanlayiciId) {
+    clearTimeout(manuelZamanlayiciId)
+    manuelZamanlayiciId = null
+  }
+}
+
+function manuelDogalBitis() {
+  manuelTemizle()
+  const geriCagir = manuelBittiCallback
+  manuelBittiCallback = null
+  if (typeof geriCagir === 'function') geriCagir()
+}
+
+export function manuelZilCalBaslat(bittiginde) {
+  manuelTemizle() // önceki bir çalma varsa (callback tetiklemeden) sessizce temizle
+  manuelBittiCallback = bittiginde || null
+
+  const yedegeGec = () => {
+    const sure = zilSesiCal()
+    manuelZamanlayiciId = setTimeout(manuelDogalBitis, sure * 1000)
+  }
+
+  try {
+    const ses = new Audio('/cikis-zili.mp3')
+    ses.addEventListener('ended', manuelDogalBitis)
+    ses.addEventListener('error', yedegeGec)
+    const calmaSonucu = ses.play()
+    if (calmaSonucu && typeof calmaSonucu.catch === 'function') {
+      calmaSonucu.catch(yedegeGec)
+    }
+    manuelSesElemani = ses
+  } catch {
+    yedegeGec()
+  }
+}
+
+export function manuelZilDurdur() {
+  manuelBittiCallback = null // elle durdurulduğunda "doğal bitiş" callback'i çağrılmasın
+  manuelTemizle()
+}
