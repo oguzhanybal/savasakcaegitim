@@ -5,6 +5,11 @@ import { useMemo, useState } from 'react'
 // olduğunu tek tabloda gösterir. Hem sınıf derslerini (ders_programi), hem
 // haftalık bire bir dersleri (bire_bir_atamalari), hem de tek seferlik bire bir
 // dersleri (bire_bir_yoklama, atama_id boş) birleştirir.
+//
+// onHucreTikla verilirse (opsiyonel), BOŞ hücreler tıklanabilir olur — üstteki
+// sayfaya { ogretmenId, ogretmenAdi, tarih, gun, baslangic, bitis } bilgisini
+// iletir. Dolu hücrelere tıklama hiçbir zaman bir şey yapmaz (yanlışlıkla
+// üzerine yazmayı önlemek için).
 
 const GUNLER = ['', 'Pazartesi', 'Salı', 'Çarşamba', 'Perşembe', 'Cuma', 'Cumartesi', 'Pazar']
 
@@ -40,7 +45,7 @@ const SAAT_DILIMLERI = (() => {
   return dilimler
 })()
 
-export default function MusaitlikTablosu({ ogretmenler, dersProgrami, atamalar, yoklamalar, ogrenciAdMap }) {
+export default function MusaitlikTablosu({ ogretmenler, dersProgrami, atamalar, yoklamalar, ogrenciAdMap, onHucreTikla }) {
   const [tarih, setTarih] = useState(() => new Date().toISOString().slice(0, 10))
   const gun = gunNumaraTarihten(tarih)
 
@@ -108,7 +113,7 @@ export default function MusaitlikTablosu({ ogretmenler, dersProgrami, atamalar, 
           span++
         }
       }
-      hucreler.push({ baslangic: dilim.baslangic, span, dolu })
+      hucreler.push({ baslangic: dilim.baslangic, bitis: dilim.bitis, span, dolu })
       i += span
     }
     return hucreler
@@ -119,7 +124,10 @@ export default function MusaitlikTablosu({ ogretmenler, dersProgrami, atamalar, 
       <div className="px-4 py-3 border-b border-gray-100 bg-gray-50 flex items-center justify-between flex-wrap gap-3">
         <div>
           <h2 className="font-semibold text-gray-700">Günlük Müsaitlik</h2>
-          <p className="text-xs text-gray-400 mt-0.5">Hangi öğretmenin hangi saatte dersi var, hangisi boş — tek bakışta.</p>
+          <p className="text-xs text-gray-400 mt-0.5">
+            Hangi öğretmenin hangi saatte dersi var, hangisi boş — tek bakışta.
+            {onHucreTikla && ' Boş bir hücreye tıklayarak o saate direkt ders ekleyebilirsiniz.'}
+          </p>
         </div>
         <div className="flex items-center gap-2">
           <button type="button" onClick={() => setTarih((t) => gunEkle(t, -1))} className="px-2 py-1.5 rounded-lg text-sm text-gray-500 hover:bg-gray-100">
@@ -159,27 +167,35 @@ export default function MusaitlikTablosu({ ogretmenler, dersProgrami, atamalar, 
                   <td className="sticky left-0 z-10 bg-white px-3 py-1.5 font-semibold text-gray-700 border-t border-gray-100 whitespace-nowrap">
                     {o.ad_soyad}
                   </td>
-                  {hucreler.map((h) => (
-                    <td
-                      key={h.baslangic}
-                      colSpan={h.span}
-                      title={h.dolu ? `${h.dolu.etiket} (${saatKisalt(h.dolu.baslangic)}–${saatKisalt(h.dolu.bitis)})` : 'Boş'}
-                      className={`border-t border-l border-gray-100 text-center align-middle py-1 ${
-                        h.dolu ? h.dolu.renk : 'bg-green-50 h-8'
-                      }`}
-                    >
-                      {h.dolu ? (
-                        <span className="leading-none block px-0.5">
-                          <span className="block truncate text-[9px] font-medium">{h.dolu.etiket}</span>
-                          <span className="block text-[8px] opacity-70 whitespace-nowrap">
-                            {saatKisalt(h.dolu.baslangic)}–{saatKisalt(h.dolu.bitis)}
+                  {hucreler.map((h) => {
+                    const tiklanabilir = !h.dolu && !!onHucreTikla
+                    return (
+                      <td
+                        key={h.baslangic}
+                        colSpan={h.span}
+                        title={h.dolu ? `${h.dolu.etiket} (${saatKisalt(h.dolu.baslangic)}–${saatKisalt(h.dolu.bitis)})` : tiklanabilir ? 'Boş — tıklayarak ders ekle' : 'Boş'}
+                        onClick={
+                          tiklanabilir
+                            ? () => onHucreTikla({ ogretmenId: o.id, ogretmenAdi: o.ad_soyad, tarih, gun, baslangic: h.baslangic, bitis: h.bitis })
+                            : undefined
+                        }
+                        className={`border-t border-l border-gray-100 text-center align-middle py-1 ${
+                          h.dolu ? h.dolu.renk : tiklanabilir ? 'bg-green-50 h-8 cursor-pointer hover:bg-green-200 transition-colors' : 'bg-green-50 h-8'
+                        }`}
+                      >
+                        {h.dolu ? (
+                          <span className="leading-none block px-0.5">
+                            <span className="block truncate text-[9px] font-medium">{h.dolu.etiket}</span>
+                            <span className="block text-[8px] opacity-70 whitespace-nowrap">
+                              {saatKisalt(h.dolu.baslangic)}–{saatKisalt(h.dolu.bitis)}
+                            </span>
                           </span>
-                        </span>
-                      ) : (
-                        ''
-                      )}
-                    </td>
-                  ))}
+                        ) : (
+                          ''
+                        )}
+                      </td>
+                    )
+                  })}
                 </tr>
               )
             })}
