@@ -150,6 +150,12 @@ export default function YoklamaRaporu() {
   const [seciliSinif, setSeciliSinif] = useState('')
   const [kayitlar, setKayitlar] = useState([])
   const [loading, setLoading] = useState(true)
+  // Bir sınıfta genelde birden fazla öğretmen ders veriyor (her ders saatinin
+  // kendi öğretmeni var). "Tümü" yerine tek bir öğretmen seçilince, o
+  // öğretmenin verdiği ders saatlerine ait yoklama kayıtlarına daraltıyoruz —
+  // "öğrenci X, öğretmen Y'nin kaç dersinden kaçına gelmiş" sorusuna cevap
+  // versin diye.
+  const [seciliOgretmen, setSeciliOgretmen] = useState('')
 
   useEffect(() => {
     supabase.from('siniflar').select('*').then(({ data }) => {
@@ -162,9 +168,10 @@ export default function YoklamaRaporu() {
   useEffect(() => {
     if (!seciliSinif) return
     setLoading(true)
+    setSeciliOgretmen('')
     supabase
       .from('yoklama')
-      .select('*, ogrenciler(ad_soyad)')
+      .select('*, ogrenciler(ad_soyad), ders_programi(id, ders_adi, ogretmen_profile_id, profiles:ogretmen_profile_id(ad_soyad, brans))')
       .eq('sinif_id', seciliSinif)
       .order('tarih', { ascending: false })
       .then(({ data }) => {
@@ -173,8 +180,22 @@ export default function YoklamaRaporu() {
       })
   }, [seciliSinif])
 
-  const ozet = {}
+  // Bu sınıfta en az bir yoklama kaydına sahip, birbirinden farklı öğretmenler
+  // — dropdown'da "Tümü"nün altında listelensin diye.
+  const ogretmenlerMap = new Map()
   kayitlar.forEach((k) => {
+    const oid = k.ders_programi?.ogretmen_profile_id
+    const oad = k.ders_programi?.profiles?.ad_soyad
+    if (oid && oad && !ogretmenlerMap.has(oid)) ogretmenlerMap.set(oid, oad)
+  })
+  const ogretmenler = [...ogretmenlerMap.entries()].sort((a, b) => a[1].localeCompare(b[1], 'tr'))
+
+  const kayitlarGosterilen = seciliOgretmen
+    ? kayitlar.filter((k) => k.ders_programi?.ogretmen_profile_id === seciliOgretmen)
+    : kayitlar
+
+  const ozet = {}
+  kayitlarGosterilen.forEach((k) => {
     const ad = k.ogrenciler?.ad_soyad || 'Bilinmeyen'
     if (!ozet[ad]) ozet[ad] = { geldi: 0, gelmedi: 0 }
     if (k.geldi) ozet[ad].geldi += 1
@@ -189,17 +210,34 @@ export default function YoklamaRaporu() {
       <BugunkuYoklamaDurumu isYonetici={isYonetici} ogretmenProfileId={profile?.id} />
 
       {siniflar.length > 0 && (
-        <div className="mb-6">
-          <label className="block text-sm font-medium text-gray-700 mb-1">Sınıf</label>
-          <select
-            value={seciliSinif}
-            onChange={(e) => setSeciliSinif(e.target.value)}
-            className="w-full max-w-sm px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue bg-white"
-          >
-            {siniflar.map((s) => (
-              <option key={s.id} value={s.id}>{s.ad}</option>
-            ))}
-          </select>
+        <div className="mb-6 flex flex-wrap gap-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Sınıf</label>
+            <select
+              value={seciliSinif}
+              onChange={(e) => setSeciliSinif(e.target.value)}
+              className="w-full max-w-sm px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue bg-white"
+            >
+              {siniflar.map((s) => (
+                <option key={s.id} value={s.id}>{s.ad}</option>
+              ))}
+            </select>
+          </div>
+          {ogretmenler.length > 0 && (
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Öğretmen</label>
+              <select
+                value={seciliOgretmen}
+                onChange={(e) => setSeciliOgretmen(e.target.value)}
+                className="w-full max-w-sm px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue bg-white"
+              >
+                <option value="">Tümü</option>
+                {ogretmenler.map(([id, ad]) => (
+                  <option key={id} value={id}>{ad}</option>
+                ))}
+              </select>
+            </div>
+          )}
         </div>
       )}
 
@@ -211,7 +249,12 @@ export default function YoklamaRaporu() {
 
       {!loading && kayitlar.length > 0 && (
         <>
-          <h2 className="font-semibold text-gray-700 mb-3">Öğrenci Bazlı Özet</h2>
+          <h2 className="font-semibold text-gray-700 mb-3">
+            Öğrenci Bazlı Özet
+            {seciliOgretmen && (
+              <span className="font-normal text-gray-400"> — {ogretmenlerMap.get(seciliOgretmen)}</span>
+            )}
+          </h2>
           <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden mb-8">
             <table className="w-full text-sm">
               <thead>
@@ -242,26 +285,35 @@ export default function YoklamaRaporu() {
           </div>
 
           <h2 className="font-semibold text-gray-700 mb-3">Detaylı Geçmiş (Son Kayıtlar)</h2>
-          <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
-            <table className="w-full text-sm">
+          <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-x-auto touch-pan-x overscroll-x-contain">
+            <table className="text-sm min-w-[640px] w-full">
               <thead>
                 <tr className="bg-navy text-white text-left">
-                  <th className="px-4 py-3 font-semibold">Tarih</th>
-                  <th className="px-4 py-3 font-semibold">Öğrenci</th>
-                  <th className="px-4 py-3 font-semibold">Durum</th>
+                  <th className="px-4 py-3 font-semibold whitespace-nowrap">Tarih</th>
+                  <th className="px-4 py-3 font-semibold whitespace-nowrap">Öğrenci</th>
+                  {!seciliOgretmen && <th className="px-4 py-3 font-semibold">Ders / Öğretmen</th>}
+                  <th className="px-4 py-3 font-semibold whitespace-nowrap">Durum</th>
                 </tr>
               </thead>
               <tbody>
-                {kayitlar.slice(0, 100).map((k, i) => {
+                {kayitlarGosterilen.slice(0, 100).map((k, i) => {
                   const d = new Date(k.tarih)
                   const gunAdi = GUNLER[((d.getDay() + 6) % 7) + 1]
                   return (
                     <tr key={k.id} className={i % 2 ? 'bg-gray-50' : ''}>
-                      <td className="px-4 py-3 text-gray-600">
+                      <td className="px-4 py-3 text-gray-600 whitespace-nowrap">
                         {d.toLocaleDateString('tr-TR')} <span className="text-gray-400">({gunAdi})</span>
                       </td>
-                      <td className="px-4 py-3 font-medium text-gray-800">{k.ogrenciler?.ad_soyad}</td>
-                      <td className="px-4 py-3">
+                      <td className="px-4 py-3 font-medium text-gray-800 whitespace-nowrap">{k.ogrenciler?.ad_soyad}</td>
+                      {!seciliOgretmen && (
+                        <td className="px-4 py-3 text-gray-600 whitespace-nowrap">
+                          {k.ders_programi?.ders_adi || '—'}
+                          {k.ders_programi?.profiles?.ad_soyad && (
+                            <span className="text-gray-400"> — {k.ders_programi.profiles.ad_soyad}</span>
+                          )}
+                        </td>
+                      )}
+                      <td className="px-4 py-3 whitespace-nowrap">
                         <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${
                           k.geldi ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'
                         }`}>

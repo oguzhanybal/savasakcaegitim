@@ -5,14 +5,10 @@ import { paraFormat, bireBirDersDetaylariOlustur } from '../lib/ekstreHesap'
 
 // ============================================================================
 // ÖĞRENCİ ZAMAN ÇİZELGESİ — bir öğrenciyle ilgili HER ŞEYİ (ödemeler, bire bir
-// dersler, ödevler, sınav sonuçları) tek bir kronolojik akışta gösteren, sadece
-// yönetici için, salt-okunur bir "hikaye" görünümü. Amaç: bir veli görüşmesi
-// öncesi ya da yeni bir öğretmene öğrenciyi tanıtırken, beş ayrı sayfaya
-// bakmak yerine tek ekranda her şeyi görebilmek.
-//
-// NOT: Genel sınıf yoklaması (devamsızlık) şimdilik bu çizelgeye DAHİL DEĞİL —
-// o tablonun güncel şeması bu dosyayı hazırlarken elimizde yoktu. İstenirse
-// ayrıca eklenebilir.
+// dersler, ödevler, sınav sonuçları, sınıf dersi devamsızlığı) tek bir
+// kronolojik akışta gösteren, sadece yönetici için, salt-okunur bir "hikaye"
+// görünümü. Amaç: bir veli görüşmesi öncesi ya da yeni bir öğretmene öğrenciyi
+// tanıtırken, beş ayrı sayfaya bakmak yerine tek ekranda her şeyi görebilmek.
 // ============================================================================
 
 function tarihUzunFormat(tarihStr) {
@@ -38,6 +34,7 @@ const TUR_STIL = {
   birebir: { renk: 'bg-orange-500', etiket: 'Bire Bir' },
   odev: { renk: 'bg-blue-500', etiket: 'Ödev' },
   sinav: { renk: 'bg-purple-500', etiket: 'Sınav' },
+  devamsizlik: { renk: 'bg-red-500', etiket: 'Devamsızlık' },
 }
 
 const FILTRELER = [
@@ -46,6 +43,7 @@ const FILTRELER = [
   { tur: 'birebir', etiket: 'Bire Bir' },
   { tur: 'odev', etiket: 'Ödevler' },
   { tur: 'sinav', etiket: 'Sınavlar' },
+  { tur: 'devamsizlik', etiket: 'Devamsızlık' },
 ]
 
 function OlayKarti({ olay, sonMu }) {
@@ -69,10 +67,61 @@ function OlayKarti({ olay, sonMu }) {
   )
 }
 
+// Sınıf dersi devamsızlık özeti: hem genel toplam (kaç dersten kaçına
+// gelmemiş), hem öğretmen bazında kırılım (ör. "Oğuzhan Yaşar Bal'ın 5
+// dersinden 2'sine gelmemiş") — Yoklama Raporu'ndaki mantığın aynısı,
+// burada tek bir öğrenci için.
+function DevamsizlikOzeti({ yoklamaKayitlari }) {
+  if (!yoklamaKayitlari || yoklamaKayitlari.length === 0) return null
+
+  const genelGeldi = yoklamaKayitlari.filter((y) => y.geldi).length
+  const genelGelmedi = yoklamaKayitlari.length - genelGeldi
+
+  const ogretmenMap = new Map()
+  for (const y of yoklamaKayitlari) {
+    const ad = y.ders_programi?.profiles?.ad_soyad || 'Bilinmeyen öğretmen'
+    if (!ogretmenMap.has(ad)) ogretmenMap.set(ad, { geldi: 0, gelmedi: 0 })
+    const s = ogretmenMap.get(ad)
+    if (y.geldi) s.geldi += 1
+    else s.gelmedi += 1
+  }
+  const ogretmenListesi = [...ogretmenMap.entries()].sort((a, b) => a[0].localeCompare(b[0], 'tr'))
+
+  return (
+    <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5 mb-6">
+      <h2 className="font-semibold text-gray-700 mb-3">Sınıf Dersi Devamsızlığı</h2>
+      <div className="flex flex-wrap gap-4 mb-4 text-sm">
+        <span className="text-gray-500">
+          Toplam <span className="font-semibold text-gray-800">{yoklamaKayitlari.length}</span> ders
+        </span>
+        <span className="text-green-600 font-semibold">{genelGeldi} geldi</span>
+        <span className="text-red-500 font-semibold">{genelGelmedi} gelmedi</span>
+      </div>
+      <div className="divide-y divide-gray-50 border-t border-gray-100">
+        {ogretmenListesi.map(([ad, s]) => {
+          const toplam = s.geldi + s.gelmedi
+          const oran = toplam > 0 ? Math.round((s.gelmedi / toplam) * 100) : 0
+          return (
+            <div key={ad} className="py-2.5 flex items-center justify-between gap-3 flex-wrap">
+              <span className="font-medium text-gray-800 text-sm">{ad}</span>
+              <span className="text-sm text-gray-500">
+                <span className="text-red-500 font-semibold">{s.gelmedi}</span>/{toplam} derse gelmedi
+                {' '}
+                <span className={`font-semibold ${oran > 20 ? 'text-red-500' : 'text-gray-400'}`}>(%{oran})</span>
+              </span>
+            </div>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
+
 export default function OgrenciZamanCizelgesi() {
   const { ogrenciId } = useParams()
   const [ogrenci, setOgrenci] = useState(null)
   const [olaylar, setOlaylar] = useState([])
+  const [yoklamaKayitlari, setYoklamaKayitlari] = useState([])
   const [aktifFiltre, setAktifFiltre] = useState(null)
   const [loading, setLoading] = useState(true)
   const [hata, setHata] = useState('')
@@ -94,7 +143,15 @@ export default function OgrenciZamanCizelgesi() {
         .is('atama_id', null),
       supabase.from('odevler').select('*, profiles:ogretmen_profile_id(ad_soyad)').eq('ogrenci_id', ogrenciId),
       supabase.from('ogrenci_sinav_sonuclari').select('*, sinavlar(sinav_adi, sinav_tarihi)').eq('ogrenci_id', ogrenciId),
-    ]).then(async ([o, odemelerRes, bbaRes, ekDersRes, odevRes, sinavRes]) => {
+      // Sınıf dersi yoklaması (devamsızlık) — hangi ders saatine, hangi
+      // öğretmene ait olduğunu görebilmek için ders_programi üzerinden
+      // ders adı ve öğretmen bilgisini de birlikte çekiyoruz.
+      supabase
+        .from('yoklama')
+        .select('*, ders_programi(ders_adi, profiles:ogretmen_profile_id(ad_soyad, brans))')
+        .eq('ogrenci_id', ogrenciId)
+        .order('tarih', { ascending: false }),
+    ]).then(async ([o, odemelerRes, bbaRes, ekDersRes, odevRes, sinavRes, yoklamaRes]) => {
       if (iptalEdildi) return
       if (o.error || !o.data) {
         setHata('Öğrenci bulunamadı.')
@@ -102,6 +159,7 @@ export default function OgrenciZamanCizelgesi() {
         return
       }
       setOgrenci(o.data)
+      setYoklamaKayitlari(yoklamaRes.data || [])
 
       // Haftalık atamalara bağlı yoklama kayıtları ayrı bir sorguyla çekiliyor
       // (BireBir.jsx / Muhasebe.jsx'teki AYNI desen) — atama id'leri elimize
@@ -176,6 +234,25 @@ export default function OgrenciZamanCizelgesi() {
         })
       }
 
+      // Devamsızlık için sadece "Gelmedi" kayıtlarını akışa ekliyoruz —
+      // "Geldi" (yani her normal ders) her gün onlarca satır ekleyip
+      // hikayeyi anlamsız kalabalıklaştırırdı; devamsızlık zaten dikkat
+      // çekmesi gereken, istisnai durum.
+      for (const y of yoklamaRes.data || []) {
+        if (y.geldi) continue
+        yeniOlaylar.push({
+          tur: 'devamsizlik',
+          tarih: y.tarih,
+          icerik: (
+            <span>
+              <span className="font-medium">{y.ders_programi?.ders_adi || 'Sınıf dersi'}</span>
+              {y.ders_programi?.profiles?.ad_soyad ? ` (${y.ders_programi.profiles.ad_soyad})` : ''} dersine{' '}
+              <span className="font-medium text-red-600">gelmedi</span>.
+            </span>
+          ),
+        })
+      }
+
       yeniOlaylar.sort((a, b) => (a.tarih < b.tarih ? 1 : a.tarih > b.tarih ? -1 : 0))
       setOlaylar(yeniOlaylar)
       setLoading(false)
@@ -201,6 +278,8 @@ export default function OgrenciZamanCizelgesi() {
         {ogrenci?.sinif_ve_alan || '—'}
         {ogrenci?.veli?.ad_soyad ? ` · Veli: ${ogrenci.veli.ad_soyad}` : ''}
       </p>
+
+      <DevamsizlikOzeti yoklamaKayitlari={yoklamaKayitlari} />
 
       <div className="flex flex-wrap gap-2 mb-6">
         {FILTRELER.map((f) => (
