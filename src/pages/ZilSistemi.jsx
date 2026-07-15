@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../lib/AuthContext'
-import { sesSisteminiEtkinlestir, cikisZiliCal, manuelZilBaslat, manuelZilDurdur } from '../lib/zilSesiCal'
+import { sesSisteminiEtkinlestir, cikisZiliCal } from '../lib/zilSesiCal'
 
 // ============================================================================
 // ZİL SİSTEMİ — kurumun bilgisayarının saati kayıyor (eski donanım), bu yüzden
@@ -21,8 +21,9 @@ import { sesSisteminiEtkinlestir, cikisZiliCal, manuelZilBaslat, manuelZilDurdur
 // bu sayfayı görebilen ayrı bir "zil" rolü var (bkz. Layout.jsx, App.jsx).
 //
 // UZAKTAN KONTROL: Bu sayfa, aynı hesapla (ör. yönetici, telefondan) başka
-// bir cihazda da açılabilir. Oradaki "Manuel Çal" butonu ve "Durdur/Başlat"
-// butonu, "zil_uzaktan_komutlar" tablosuna bir satır ekler; sayfa açık olan
+// bir cihazda da açılabilir. Oradaki "Manuel Çal" (tek tıkla tek çalma) ve
+// "Durdur/Başlat" butonu, "zil_uzaktan_komutlar" tablosuna bir satır ekler;
+// sayfa açık olan
 // TÜM cihazlar bu tabloyu her 2 saniyede bir kontrol edip (basit "polling" —
 // Supabase Realtime/websocket yerine, her zaman çalışan sıradan bir sorgu
 // kullanılıyor, bu yüzden daha garanti) yeni komutları işler. AMA SES SADECE
@@ -106,7 +107,6 @@ export default function ZilSistemi() {
   const [etkinMi, setEtkinMi] = useState(false)
   const [uzaktanBilgi, setUzaktanBilgi] = useState('')
   const [susturmaSaatSecimi, setSusturmaSaatSecimi] = useState(1)
-  const [manuelCalıyorMu, setManuelCaliyorMu] = useState(false)
   // "2 saat zil çalma" gibi geçici susturma — bu, doğru (sunucudan alınan)
   // saate göre bir bitiş anı (ms) tutar. Süre dolunca otomatik olarak
   // kendiliğinden kalkar, "Zili Durdur"un aksine elle "Başlat"a gerek yoktur.
@@ -231,14 +231,9 @@ export default function ZilSistemi() {
       } else if (komut.komut === 'susturma_kaldir') {
         setSusturBitisMs(null)
         setUzaktanBilgi('Susturma, uzaktan kaldırıldı.')
-      } else if (komut.komut === 'manuel_cal_baslat') {
-        setManuelCaliyorMu(true)
-        if (isZil) manuelZilBaslat()
-        setUzaktanBilgi('Manuel çalma uzaktan başlatıldı.')
-      } else if (komut.komut === 'manuel_cal_durdur') {
-        setManuelCaliyorMu(false)
-        if (isZil) manuelZilDurdur()
-        setUzaktanBilgi('Manuel çalma uzaktan durduruldu.')
+      } else if (komut.komut === 'manuel_cal') {
+        if (isZil) cikisZiliCal()
+        setUzaktanBilgi('Manuel çal komutu uzaktan tetiklendi.')
       }
     }
 
@@ -287,16 +282,9 @@ export default function ZilSistemi() {
     uzaktanKomutGonder('susturma_kaldir')
   }
 
-  // Tek tuşla manuel çal — "istediğim zaman durdurayım": başladığında zil
-  // durdurulana kadar döngü halinde çalmaya devam eder.
-  function manuelCalBaslat() {
-    setManuelCaliyorMu(true)
-    uzaktanKomutGonder('manuel_cal_baslat')
-  }
-
-  function manuelCalDurdur() {
-    setManuelCaliyorMu(false)
-    uzaktanKomutGonder('manuel_cal_durdur')
+  // Tek tuşla manuel çal — bir kere tıklanınca zil bir kere çalar (döngü yok).
+  function manuelCal() {
+    uzaktanKomutGonder('manuel_cal')
   }
 
   const susturuluyorMu = susturBitisMs != null && gosterilenSaat.getTime() < susturBitisMs
@@ -487,29 +475,18 @@ export default function ZilSistemi() {
       <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6 mb-6">
         <h2 className="font-semibold text-gray-700 mb-1">Manuel Çal / Uzaktan Kontrol</h2>
         <p className="text-xs text-gray-400 mb-4">
-          Bu sayfayı aynı hesapla telefondan da açabilirsin — buradaki butonlar birkaç saniye içinde kurumdaki
-          bilgisayara ulaşır. Ama ses SADECE "zil" hesabıyla açık olan cihazda çalar; telefonun kendisi sessiz kalır,
-          sadece bir uzaktan kumanda gibi çalışır. "Manuel Çal"a bastığında zil, sen "Durdur"a basana kadar
-          döngü halinde çalmaya devam eder.
+          Bu sayfayı aynı hesapla telefondan da açabilirsin — buton birkaç saniye içinde kurumdaki bilgisayara ulaşır.
+          Ama ses SADECE "zil" hesabıyla açık olan cihazda çalar; telefonun kendisi sessiz kalır, sadece bir uzaktan
+          kumanda gibi çalışır. Her tıklama zili bir kere çaldırır.
         </p>
         <div className="flex flex-wrap gap-2">
-          {!manuelCalıyorMu ? (
-            <button
-              type="button"
-              onClick={manuelCalBaslat}
-              className="bg-navy text-white text-sm font-semibold px-5 py-2.5 rounded-lg hover:opacity-90 transition-opacity"
-            >
-              🔔 Manuel Çal
-            </button>
-          ) : (
-            <button
-              type="button"
-              onClick={manuelCalDurdur}
-              className="bg-red-500 text-white text-sm font-semibold px-5 py-2.5 rounded-lg hover:opacity-90 transition-opacity animate-pulse"
-            >
-              ⏹ Durdur
-            </button>
-          )}
+          <button
+            type="button"
+            onClick={manuelCal}
+            className="bg-navy text-white text-sm font-semibold px-5 py-2.5 rounded-lg hover:opacity-90 transition-opacity"
+          >
+            🔔 Manuel Çal
+          </button>
         </div>
 
         <div className="mt-5 pt-4 border-t border-gray-100">
