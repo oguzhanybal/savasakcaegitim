@@ -129,6 +129,19 @@ export default function ZilSistemi() {
   useEffect(() => {
     sunucuFarkiRef.current = sunucuFarki
   }, [sunucuFarki])
+  // Uzaktan komut kontrolü (aşağıda), senkron şu an güvenilir mi diye buna
+  // bakıyor — bkz. o efektteki not.
+  const senkronDurumuRef = useRef('bekliyor')
+  useEffect(() => {
+    senkronDurumuRef.current = senkronDurumu
+  }, [senkronDurumu])
+  // Bileşen kaldırıldıktan (unmount) sonra senkronizeEt'in kendi kendini
+  // zamanlayan tekrar denemesi hâlâ tetiklenip artık var olmayan bir bileşende
+  // state güncellemeye çalışmasın diye.
+  const monteliMiRef = useRef(true)
+  useEffect(() => () => {
+    monteliMiRef.current = false
+  }, [])
 
   // ---- Yeni ders ekleme formu — Öğrenci girilince Öğretmen (+1dk),
   // Öğretmen (elle ya da otomatik) belli olunca Çıkış (+45dk) öneriliyor.
@@ -148,12 +161,35 @@ export default function ZilSistemi() {
     setLoading(false)
   }
 
+  // OTOMATİK HIZLI TEKRAR DENEME: senkronizasyon BAŞARISIZ olursa, normal 10
+  // dakikalık döngüyü beklemeden 5 saniyede bir kendi kendini tekrar dener.
+  //
+  // ÖNEMLİ — önceki sürümdeki hata: bu tekrar deneme ayrı bir useEffect
+  // içinde, `senkronDurumu === 'hata'` değişimini izleyerek yapılıyordu. Ama
+  // React, bir state'e ZATEN SAHİP OLDUĞU değeri (ör. 'hata' iken tekrar
+  // 'hata') tekrar set edildiğinde re-render/efekt TETİKLEMİYOR (aynı
+  // referans/değer olduğu için "bailout" yapıyor). Yani: senkron İLK
+  // denemede başarısız olup 5sn sonra TEKRAR denendiğinde, o ikinci deneme de
+  // başarısız olursa, state hâlâ 'hata' olarak KALDIĞI için bir daha ASLA
+  // yeniden denenmiyordu — sistem, bir sonraki 10 dakikalık otomatik
+  // senkrona ya da sayfanın elle yenilenmesine kadar bozuk kalıyordu. Kurumda
+  // yaşanan "sunucu hatası, saat 1 saat geri düştü, uzaktan çal çalışmadı,
+  // sadece sayfayı yenileyince düzeldi" durumunun kök nedeni tam olarak buydu.
+  //
+  // Düzeltme: artık senkronizeEt() başarısız olunca KENDİ KENDİNİ doğrudan
+  // (bir React state/efekt zincirine bağımlı olmadan) 5 saniye sonra tekrar
+  // çağırıyor — art arda kaç kere başarısız olursa olsun, bağlantı düzelene
+  // kadar durmadan denemeye devam eder.
   async function senkronizeEt() {
     const oncekiAn = Date.now()
     const { data, error } = await supabase.rpc('simdiki_zaman')
     const sonrakiAn = Date.now()
+    if (!monteliMiRef.current) return
     if (error || !data) {
       setSenkronDurumu('hata')
+      setTimeout(() => {
+        if (monteliMiRef.current) senkronizeEt()
+      }, 5000)
       return
     }
     const sunucuMs = new Date(data).getTime()
@@ -169,20 +205,8 @@ export default function ZilSistemi() {
     senkronizeEt()
     const senkronId = setInterval(senkronizeEt, 10 * 60 * 1000)
     return () => clearInterval(senkronId)
-  }, [])
-
-  // OTOMATİK HIZLI TEKRAR DENEME: senkronizasyon bir kez BAŞARISIZ olduysa (ör.
-  // geçici bir internet kesintisi/ağ sorunu), normal 10 dakikalık döngüyü
-  // beklemeden 5 saniyede bir tekrar dener — bağlantı düzeldiği anda (birkaç
-  // saniye içinde) kendiliğinden düzelir, sayfanın elle yenilenmesine (F5)
-  // gerek kalmaz. Senkron başarılı olur olmaz (senkronDurumu 'tamam' olunca)
-  // bu efekt otomatik olarak durur.
-  useEffect(() => {
-    if (senkronDurumu !== 'hata') return
-    const id = setTimeout(senkronizeEt, 5000)
-    return () => clearTimeout(id)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [senkronDurumu])
+  }, [])
 
   // Her saniye: gösterilen saati güncelle, zil zamanı geldiyse çal.
   useEffect(() => {
@@ -278,7 +302,16 @@ export default function ZilSistemi() {
         if (islenenKomutIdleriRef.current.has(komut.id)) return
         islenenKomutIdleriRef.current.add(komut.id)
         const komutZamaniMs = new Date(komut.created_at).getTime()
-        if (suankiSunucuMs - komutZamaniMs > 15000) return
+        // "15 saniyeden eski" kontrolü, hesapladığımız suankiSunucuMs'in
+        // DOĞRU olduğuna güveniyor. Ama senkron o an başarısız/henüz hiç
+        // olmamışsa (senkronDurumu 'tamam' değilse), bu hesap kendisi yanlış
+        // olabilir (ör. sunucuFarki hâlâ 0, gerçek saatten saatlerce uzak) —
+        // böyle bir durumda komut aslında YENİ olsa bile "eski" sanılıp
+        // sessizce atlanabiliyordu (kurumda yaşanan "uzaktan çal çalışmadı"
+        // sorununun kök nedenlerinden biri buydu). O yüzden senkron
+        // güvenilir DEĞİLKEN bu eskilik filtresini hiç uygulamıyoruz —
+        // komut her hâlükârda işlenir.
+        if (senkronDurumuRef.current === 'tamam' && suankiSunucuMs - komutZamaniMs > 15000) return
         komutuIsle(komut, suankiSunucuMs)
       })
     }
