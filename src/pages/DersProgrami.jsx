@@ -475,7 +475,12 @@ export default function DersProgrami() {
       )}
 
       {!loading && program.length > 0 && gorunum === 'tablo' && (
-        <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-x-auto">
+        // touch-pan-x + overscroll-x-contain: mobil tarayıcılarda sayfa dikey
+        // kaydırılabilirken bu tablonun YATAY kaydırılabilir olduğunu tarayıcıya
+        // açıkça belirtiyoruz. Bazı mobil tarayıcılarda iç içe bir yatay kaydırma
+        // alanı, dokunma hareketinin dikey mi yatay mı olduğuna karar verirken
+        // "kaymıyor" gibi davranabiliyor; bu class'lar o belirsizliği kaldırıyor.
+        <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-x-auto touch-pan-x overscroll-x-contain">
           <table className="border-collapse text-sm min-w-[900px] w-full">
             <thead>
               <tr>
