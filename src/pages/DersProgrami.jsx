@@ -83,7 +83,10 @@ function DersEkleForm({ siniflar, ogretmenler, program, onEklendi, doldurBilgisi
     setOgretmenId(doldurBilgisi.ogretmenId)
     setGun(doldurBilgisi.gun)
     setBaslangic(doldurBilgisi.baslangic)
-    setBitis(doldurBilgisi.bitis || saateDakikaEkle(doldurBilgisi.baslangic, 45))
+    // Müsaitlik tablosundaki hücreler 30dk'lık dilimler olsa da, dersler genelde
+    // 45dk sürdüğü için tıklanan dilimin kendi bitişini değil, her zaman
+    // başlangıç + 45dk'yı öneriyoruz.
+    setBitis(saateDakikaEkle(doldurBilgisi.baslangic, 45))
     setHata('')
     setBasari('')
     sinifSelectRef.current?.focus()
@@ -494,6 +497,10 @@ export default function DersProgrami() {
   // Müsaitlik tablosunda boş bir hücreye tıklanınca buraya { ogretmenId, gun,
   // baslangic, bitis } yazılır; DersEkleForm bunu izleyip kendini otomatik doldurur.
   const [doldurBilgisi, setDoldurBilgisi] = useState(null)
+  // Tıklanan hücreyi tablo üzerinde koyu işaretlemek için — ders eklenene/
+  // taslağa kaydedilene kadar kullanıcı "hangi saate ekliyordum" diye
+  // unutmasın diye. dersEklendiVeyaTaslaklandi() içinde temizlenir.
+  const [seciliHucre, setSeciliHucre] = useState(null)
   const ilkYuklemeTamamRef = useRef(false)
 
   function veriyiYenile() {
@@ -614,9 +621,17 @@ export default function DersProgrami() {
   // öğretmen/gün/saat bilgisini forma iletir ve forma doğru yumuşak kaydırır.
   function hucreTiklandi(bilgi) {
     setDoldurBilgisi({ ...bilgi })
+    setSeciliHucre({ ogretmenId: bilgi.ogretmenId, tarih: bilgi.tarih, baslangic: bilgi.baslangic })
     requestAnimationFrame(() => {
       document.getElementById('ders-ekle-formu')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
     })
+  }
+
+  // Ders eklendiğinde ya da taslağa kaydedildiğinde hem veriyi yeniler hem de
+  // müsaitlik tablosundaki koyu işareti kaldırır.
+  function dersEklendiVeyaTaslaklandi() {
+    setSeciliHucre(null)
+    veriyiYenile()
   }
 
   const ogrenciAdMap = useMemo(() => new Map(ogrenciler.map((o) => [o.id, o.ad_soyad])), [ogrenciler])
@@ -666,12 +681,13 @@ export default function DersProgrami() {
             yoklamalar={bireBirYoklamalar}
             ogrenciAdMap={ogrenciAdMap}
             onHucreTikla={hucreTiklandi}
+            secili={seciliHucre}
           />
           <DersEkleForm
             siniflar={siniflar}
             ogretmenler={ogretmenler}
             program={program}
-            onEklendi={veriyiYenile}
+            onEklendi={dersEklendiVeyaTaslaklandi}
             doldurBilgisi={doldurBilgisi}
           />
           <TaslaklarimDersProgrami

@@ -240,7 +240,10 @@ function BireBirDersEkleForm({ ogrenciler, ogretmenler, atamalar, dersProgrami, 
     setTekrarlansin(false)
     setTarih(doldurBilgisi.tarih)
     setTekBaslangic(doldurBilgisi.baslangic)
-    setTekBitis(doldurBilgisi.bitis || saateDakikaEkle(doldurBilgisi.baslangic, 45))
+    // Müsaitlik tablosundaki hücreler 30dk'lık dilimler olsa da, buradaki
+    // dersler genelde 45dk sürdüğü için tıklanan dilimin kendi bitişini değil,
+    // her zaman başlangıç + 45dk'yı öneriyoruz.
+    setTekBitis(saateDakikaEkle(doldurBilgisi.baslangic, 45))
     setHata('')
     setBasari('')
     ogrenciSelectRef.current?.focus()
@@ -1971,6 +1974,10 @@ export default function BireBir() {
   // baslangic, bitis } yazılır; BireBirDersEkleForm bunu izleyip kendini otomatik
   // doldurur (bkz. hucreTiklandi).
   const [doldurBilgisi, setDoldurBilgisi] = useState(null)
+  // Tıklanan hücreyi tablo üzerinde koyu işaretlemek için — ders eklenene/
+  // taslağa kaydedilene kadar kullanıcı "hangi saate ekliyordum" diye
+  // unutmasın diye. dersEklendi() içinde temizlenir.
+  const [seciliHucre, setSeciliHucre] = useState(null)
   // İlk açılıştan sonra "Yükleniyor..." ekranını bir daha göstermiyoruz — bir ders
   // ekleyip onEklendi() ile veriyi yenilediğimizde tüm sayfa "Yükleniyor..." ekranına
   // dönüp formu (bileşeni) komple yeniden kuruyordu, bu da az önce doldurulmuş
@@ -2045,9 +2052,17 @@ export default function BireBir() {
   // öğretmen/tarih/saat bilgisini forma iletir ve forma doğru yumuşak kaydırır.
   function hucreTiklandi(bilgi) {
     setDoldurBilgisi({ ...bilgi })
+    setSeciliHucre({ ogretmenId: bilgi.ogretmenId, tarih: bilgi.tarih, baslangic: bilgi.baslangic })
     requestAnimationFrame(() => {
       document.getElementById('bire-bir-ekle-formu')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
     })
+  }
+
+  // Ders eklendiğinde ya da taslağa kaydedildiğinde hem veriyi yeniler hem de
+  // müsaitlik tablosundaki koyu işareti kaldırır.
+  function dersEklendiVeyaTaslaklandi() {
+    setSeciliHucre(null)
+    veriyiYenile()
   }
 
   const bugunGun = useMemo(() => {
@@ -2077,22 +2092,13 @@ export default function BireBir() {
     <div>
       <h1 className="text-2xl font-bold text-navy mb-6">{isYonetici ? 'Bire Bir Dersler' : 'Bire Bir Derslerim'}</h1>
 
-      {/* Ders hatırlatma (WhatsApp gönder) paneli sadece yöneticiye gösterilir —
-          öğretmen rolünde veli/öğrenciye mesaj gönderme yetkisi olmamalı. */}
-      {isYonetici && (
-        <DersHatirlatmaPaneli
-          atamalar={atamalar}
-          yoklamalar={yoklamalar}
-          sadeceOgretmenId={null}
-        />
-      )}
-
       {isYonetici && (
         <>
-          {/* Müsaitlik tablosu artık Ders Ekle formunun ÜSTÜNDE — sayfayı normal
-              kullanırken (öğrenci kaydederken) müsaitliğe bakmak için aşağı
-              inmeye gerek kalmasın diye. Boş bir hücreye tıklanınca da altındaki
-              forma o öğretmen/tarih/saat otomatik doldurulup kaydırılıyor. */}
+          {/* Sayfadaki sıralama: Müsaitlik Tablosu → Ders Ekle (ders seç) →
+              Ders Hatırlatması Gönder. Müsaitlik tablosu en üstte — sayfayı
+              normal kullanırken (öğrenci kaydederken) müsaitliğe bakmak için
+              aşağı inmeye gerek kalmasın diye. Boş bir hücreye tıklanınca da
+              altındaki forma o öğretmen/tarih/saat otomatik doldurulup kaydırılıyor. */}
           <MusaitlikTablosu
             ogretmenler={ogretmenler}
             dersProgrami={dersProgrami}
@@ -2100,6 +2106,7 @@ export default function BireBir() {
             yoklamalar={yoklamalar}
             ogrenciAdMap={ogrenciAdMap}
             onHucreTikla={hucreTiklandi}
+            secili={seciliHucre}
           />
           <BireBirDersEkleForm
             ogrenciler={ogrenciler}
@@ -2107,8 +2114,15 @@ export default function BireBir() {
             atamalar={atamalar}
             dersProgrami={dersProgrami}
             yoklamalar={yoklamalar}
-            onEklendi={veriyiYenile}
+            onEklendi={dersEklendiVeyaTaslaklandi}
             doldurBilgisi={doldurBilgisi}
+          />
+          {/* Ders hatırlatma (WhatsApp gönder) paneli sadece yöneticiye gösterilir —
+              öğretmen rolünde veli/öğrenciye mesaj gönderme yetkisi olmamalı. */}
+          <DersHatirlatmaPaneli
+            atamalar={atamalar}
+            yoklamalar={yoklamalar}
+            sadeceOgretmenId={null}
           />
           <TaslaklarimBireBir
             taslaklar={taslaklar}
