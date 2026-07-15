@@ -474,12 +474,12 @@ function BireBirDerslerimBolumu({ haftalikDersler, tekSeferlikDersler, birdenFaz
             const bugunMu = grup.tarih === yerelBugunTarihi()
             return (
               <div key={grup.tarih}>
-                <div className="px-4 py-2 bg-gray-50 border-t border-b border-gray-100 flex items-center gap-2">
-                  <span className="text-sm font-semibold text-navy">
+                <div className="px-4 py-2.5 bg-navy border-t border-slate-600 flex items-center gap-2">
+                  <span className="text-base font-bold text-white">
                     {new Date(grup.tarih + 'T12:00:00').toLocaleDateString('tr-TR', { weekday: 'long', day: 'numeric', month: 'long' })}
                   </span>
                   {bugunMu && (
-                    <span className="text-[10px] font-semibold bg-orange text-white px-1.5 py-0.5 rounded-full">Bugün</span>
+                    <span className="text-[10px] font-bold bg-orange text-white px-2 py-0.5 rounded-full">Bugün</span>
                   )}
                 </div>
                 <div className="divide-y divide-gray-50">
