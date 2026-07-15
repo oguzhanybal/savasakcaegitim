@@ -23,8 +23,12 @@ import { sesSisteminiEtkinlestir, cikisZiliCal } from '../lib/zilSesiCal'
 // UZAKTAN KONTROL: Bu sayfa, aynı hesapla (ör. yönetici, telefondan) başka
 // bir cihazda da açılabilir. Oradaki "Manuel Çal" butonları ve "Durdur/
 // Başlat" butonu, "zil_uzaktan_komutlar" tablosuna bir satır ekler; Supabase
-// Realtime sayesinde, sayfa açık olan TÜM cihazlar (ör. kurumdaki
-// bilgisayar) bu satırı anında görüp gereken zili çalar/durdurur/başlatır.
+// Realtime sayesinde, sayfa açık olan TÜM cihazlar bu satırı anında görür.
+// AMA SES SADECE "zil" ROLÜYLE açık olan cihazda çalar — yönetici hesabıyla
+// (ör. telefondan) açılan sayfa sadece bir UZAKTAN KUMANDA gibi davranır,
+// kendi başına ses çıkarmaz. Böylece "uzaktan zil çal" dediğinde ses sadece
+// kurumdaki (zil hesabıyla açık) bilgisayarda duyulur, komutu gönderen
+// telefonda değil.
 // ============================================================================
 
 // ÖNEMLİ: Saat dilimi burada "Europe/Istanbul" olarak SABİTLENMİŞTİR —
@@ -85,6 +89,8 @@ const BOS_FORM = { devre: '', dersNo: '', ogrenci: '', ogretmen: '', cikis: '' }
 export default function ZilSistemi() {
   const { profile } = useAuth()
   const isYonetici = profile?.rol === 'yonetici'
+  // Ses SADECE "zil" rolüyle açık olan cihazda çalar — bkz. dosya başındaki not.
+  const isZil = profile?.rol === 'zil'
 
   const [dersler, setDersler] = useState([])
   const [loading, setLoading] = useState(true)
@@ -97,8 +103,8 @@ export default function ZilSistemi() {
 
   const [gosterilenSaat, setGosterilenSaat] = useState(new Date())
   const [etkinMi, setEtkinMi] = useState(false)
-  const [sonCalanlar, setSonCalanlar] = useState([])
   const [uzaktanBilgi, setUzaktanBilgi] = useState('')
+  const [susturmaSaatSecimi, setSusturmaSaatSecimi] = useState(1)
   // "2 saat zil çalma" gibi geçici susturma — bu, doğru (sunucudan alınan)
   // saate göre bir bitiş anı (ms) tutar. Süre dolunca otomatik olarak
   // kendiliğinden kalkar, "Zili Durdur"un aksine elle "Başlat"a gerek yoktur.
@@ -160,6 +166,10 @@ export default function ZilSistemi() {
       setGosterilenSaat(suanki)
       // Susturma süresi dolduysa kendiliğinden kalksın.
       if (susturBitisMs && suanki.getTime() >= susturBitisMs) setSusturBitisMs(null)
+      // Otomatik zil SADECE "zil" hesabıyla açık olan cihazda gerçekten çalar
+      // — yönetici hesabıyla açık olan sayfa (ör. telefon) sadece durumu
+      // görür, kendi başına ses çıkarmaz.
+      if (!isZil) return
       if (!etkinMi) return
       if (susturBitisMs && suanki.getTime() < susturBitisMs) return
       const b = turkiyeSaatBilesenleri(suanki)
@@ -171,24 +181,21 @@ export default function ZilSistemi() {
       dersler.forEach((d) => {
         if (!d.aktif) return
         ;[
-          { alan: 'ogrenci_saat', tur: 'Öğrenci', sesFonksiyonu: cikisZiliCal },
-          { alan: 'ogretmen_saat', tur: 'Öğretmen', sesFonksiyonu: cikisZiliCal },
-          { alan: 'cikis_saat', tur: 'Çıkış', sesFonksiyonu: cikisZiliCal },
-        ].forEach(({ alan, tur, sesFonksiyonu }) => {
+          { alan: 'ogrenci_saat', sesFonksiyonu: cikisZiliCal },
+          { alan: 'ogretmen_saat', sesFonksiyonu: cikisZiliCal },
+          { alan: 'cikis_saat', sesFonksiyonu: cikisZiliCal },
+        ].forEach(({ alan, sesFonksiyonu }) => {
           const saat = d[alan]
           if (!saat || saatKisalt(saat) !== suankiHHMM) return
           const anahtar = `${d.id}_${alan}_${bugunAnahtari}`
           if (calinanlarRef.current.has(anahtar)) return
           calinanlarRef.current.add(anahtar)
           sesFonksiyonu()
-          setSonCalanlar((liste) =>
-            [{ etiket: `${d.devre ? d.devre + ' — ' : ''}${d.ders_no}. Ders (${tur})`, zaman: suanki }, ...liste].slice(0, 20)
-          )
         })
       })
     }, 1000)
     return () => clearInterval(id)
-  }, [sunucuFarki, etkinMi, dersler, susturBitisMs])
+  }, [sunucuFarki, etkinMi, dersler, susturBitisMs, isZil])
 
   // ---- Uzaktan komutları dinle (ör. telefondan gönderilen manuel çal /
   // durdur / başlat) — Supabase Realtime ile, sayfa açık olan TÜM cihazlara
@@ -206,8 +213,10 @@ export default function ZilSistemi() {
           const suankiSunucuMs = Date.now() + sunucuFarkiRef.current
           if (suankiSunucuMs - komutZamaniMs > 15000) return
 
+          // Durum bilgisi (rozet/mesaj) TÜM cihazlarda güncellenir — ama SES
+          // sadece "zil" rolüyle açık olan cihazda çalar (isZil kontrolü).
           if (komut.komut === 'baslat') {
-            sesSisteminiEtkinlestir()
+            if (isZil) sesSisteminiEtkinlestir()
             setEtkinMi(true)
             setUzaktanBilgi('Zil, uzaktan (başka bir cihazdan) başlatıldı.')
           } else if (komut.komut === 'durdur') {
@@ -227,9 +236,7 @@ export default function ZilSistemi() {
             const etiketler = { cal_ogrenci: 'Öğrenci Zili', cal_ogretmen: 'Öğretmen Zili', cal_cikis: 'Çıkış Zili' }
             const etiket = etiketler[komut.komut]
             if (!etiket) return
-            cikisZiliCal()
-            const suanki = new Date(suankiSunucuMs)
-            setSonCalanlar((liste) => [{ etiket: `Manuel — ${etiket}`, zaman: suanki }, ...liste].slice(0, 20))
+            if (isZil) cikisZiliCal()
             setUzaktanBilgi(`Manuel "${etiket}" komutu uzaktan tetiklendi.`)
           }
         }
@@ -445,9 +452,9 @@ export default function ZilSistemi() {
       <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6 mb-6">
         <h2 className="font-semibold text-gray-700 mb-1">Manuel Çal / Uzaktan Kontrol</h2>
         <p className="text-xs text-gray-400 mb-4">
-          Bu sayfayı aynı hesapla telefondan da açabilirsin — buradaki butonlar, Zil Sistemi açık olan TÜM cihazlara
-          (ör. kurumdaki bilgisayar) anında ulaşır. "Durdur"a basarsan otomatik çalma orada da durur, tekrar
-          "Başlat"a basana kadar.
+          Bu sayfayı aynı hesapla telefondan da açabilirsin — buradaki butonlar anında kurumdaki bilgisayara ulaşır.
+          Ama ses SADECE "zil" hesabıyla açık olan cihazda çalar; telefonun kendisi sessiz kalır, sadece bir uzaktan
+          kumanda gibi çalışır.
         </p>
         <div className="flex flex-wrap gap-2">
           <button
@@ -477,27 +484,24 @@ export default function ZilSistemi() {
           <p className="text-xs text-gray-400 mb-2">
             Belirli bir süre zil çalmasın (süre dolunca otomatik olarak kendiliğinden devam eder):
           </p>
-          <div className="flex flex-wrap gap-2">
+          <div className="flex flex-wrap items-center gap-2">
+            <select
+              value={susturmaSaatSecimi}
+              onChange={(e) => setSusturmaSaatSecimi(Number(e.target.value))}
+              className="px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue"
+            >
+              {Array.from({ length: 24 }, (_, i) => i + 1).map((saat) => (
+                <option key={saat} value={saat}>
+                  {saat} Saat
+                </option>
+              ))}
+            </select>
             <button
               type="button"
-              onClick={() => susturmaBaslat(60)}
+              onClick={() => susturmaBaslat(susturmaSaatSecimi * 60)}
               className="bg-amber-500 text-white text-sm font-semibold px-4 py-2 rounded-lg hover:opacity-90 transition-opacity"
             >
-              1 Saat Zil Çalma
-            </button>
-            <button
-              type="button"
-              onClick={() => susturmaBaslat(120)}
-              className="bg-amber-500 text-white text-sm font-semibold px-4 py-2 rounded-lg hover:opacity-90 transition-opacity"
-            >
-              2 Saat Zil Çalma
-            </button>
-            <button
-              type="button"
-              onClick={() => susturmaBaslat(180)}
-              className="bg-amber-500 text-white text-sm font-semibold px-4 py-2 rounded-lg hover:opacity-90 transition-opacity"
-            >
-              3 Saat Zil Çalma
+              Zil Çalmasın
             </button>
             {susturuluyorMu && (
               <button
@@ -524,6 +528,7 @@ export default function ZilSistemi() {
             {isYonetici ? 'Henüz ders/zil eklenmedi, aşağıdan ekleyebilirsiniz.' : 'Henüz ders/zil eklenmedi.'}
           </p>
         ) : (
+          <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
               <tr className="text-left text-gray-500">
@@ -594,6 +599,7 @@ export default function ZilSistemi() {
               ))}
             </tbody>
           </table>
+          </div>
         )}
         {isYonetici && (
           <form onSubmit={dersEkle} className="p-4 border-t border-gray-100 flex items-end gap-3 flex-wrap">
@@ -656,22 +662,6 @@ export default function ZilSistemi() {
           </form>
         )}
       </div>
-
-      {sonCalanlar.length > 0 && (
-        <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden mb-6">
-          <div className="px-4 py-3 border-b border-gray-100 bg-gray-50">
-            <h2 className="font-semibold text-gray-700">Bugün Çalan Ziller</h2>
-          </div>
-          <ul className="divide-y divide-gray-50">
-            {sonCalanlar.map((z, i) => (
-              <li key={i} className="px-4 py-2 text-sm flex items-center justify-between">
-                <span className="text-gray-700">{z.etiket}</span>
-                <span className="text-gray-400">{saatMetni(z.zaman)}</span>
-              </li>
-            ))}
-          </ul>
-        </div>
-      )}
 
       <p className="text-xs text-gray-400">
         Not: Bu sekme kapanırsa, bilgisayar uykuya geçerse ya da tarayıcı yeniden başlatılırsa zil çalmaz — sabah bu
