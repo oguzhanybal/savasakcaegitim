@@ -10,7 +10,13 @@ import { telefonGirdiIsle, telefonYerelGoster, telefonUyariGoster } from '../lib
 // autoComplete="off": tarayıcı (Chrome) bazen bu kutuya, formda başka bir yerde
 // (ör. başka bir öğrencinin velisi için) daha önce girilmiş bambaşka bir
 // numarayı "öneri" olarak gösteriyordu — kafa karıştırmasın diye kapatıldı.
-export default function TelefonInput({ value, onChange, girdiSinifi, placeholder = '532 422 17 37' }) {
+//
+// Placeholder olarak sahte bir örnek numara ("532 422 17 37") YAZMIYORUZ —
+// gerçek bir kayıtmış gibi görünüp kafa karıştırabiliyordu. Onun yerine
+// yönlendirme metninin kendisi placeholder oluyor; herkesin bildiği gibi,
+// kullanıcı yazmaya başlar başlamaz placeholder zaten kendiliğinden kayboluyor,
+// ayrı bir alt satıra gerek kalmıyor.
+export default function TelefonInput({ value, onChange, girdiSinifi, placeholder = '5 ile başlayın' }) {
   const uyariGoster = telefonUyariGoster(value)
   return (
     <div>
@@ -31,7 +37,6 @@ export default function TelefonInput({ value, onChange, girdiSinifi, placeholder
           spellCheck="false"
         />
       </div>
-      {!value && <p className="text-[11px] text-gray-400 mt-0.5">90 yazmanıza gerek yok, doğrudan 5 ile başlayın.</p>}
       {uyariGoster && <p className="text-[11px] text-red-500 mt-0.5">10 haneli olmalı ve 5 ile başlamalı.</p>}
     </div>
   )
