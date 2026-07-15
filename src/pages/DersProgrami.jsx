@@ -7,7 +7,7 @@ import MusaitlikTablosu from '../components/MusaitlikTablosu'
 const GUNLER = ['', 'Pazartesi', 'Salı', 'Çarşamba', 'Perşembe', 'Cuma', 'Cumartesi', 'Pazar']
 const GUNLER_KISA = ['', 'Pzt', 'Sal', 'Çar', 'Per', 'Cum', 'Cmt', 'Paz']
 const DERS_ONERILERI = [
-  'Matematik', 'Geometri', 'Türk Dili ve Edebiyatı', 'Fizik', 'Kimya', 'Biyoloji', 'Tarih', 'Coğrafya',
+  'Matematik', 'Geometri', 'Türkçe/Edebiyat', 'Fizik', 'Kimya', 'Biyoloji', 'Tarih', 'Coğrafya',
   'Felsefe', 'İngilizce', 'Din Kültürü ve Ahlak Bilgisi', 'Beden Eğitimi', 'Fen Bilimleri', 'Sosyal Bilgiler',
 ]
 
@@ -404,10 +404,28 @@ function TaslaklarimDersProgrami({ taslaklar, siniflar, ogretmenler, program, on
 // olarak kaydediliyor. İlk sürümde bu bölüm SADECE haftalık sabit atamalara
 // bakıyordu — tek seferlik dersi olan (ki çoğunluk bu) öğrenciler/veliler
 // hiçbir şey göremiyordu. Şimdi ikisini de ayrı ayrı gösteriyoruz.
+// tekSeferlikDersler zaten tarihe (sonra saate) göre sıralı geldiği için, art
+// arda gelen AYNI tarihli dersleri tek bir grupta topluyoruz — her ders
+// satırında tarihi tekrar tekrar yazmak yerine, admin'in "Tüm Bire Bir Dersler
+// — Arşiv" tablosundaki gibi tek bir gün başlığı altında gösterilsin diye.
+function gunGrupla(dersler) {
+  const gruplar = []
+  let sonTarih = null
+  for (const d of dersler) {
+    if (d.tarih !== sonTarih) {
+      gruplar.push({ tarih: d.tarih, dersler: [] })
+      sonTarih = d.tarih
+    }
+    gruplar[gruplar.length - 1].dersler.push(d)
+  }
+  return gruplar
+}
+
 function BireBirDerslerimBolumu({ haftalikDersler, tekSeferlikDersler, birdenFazlaCocukMu }) {
   const hicBirSeyYok = (!haftalikDersler || haftalikDersler.length === 0) && (!tekSeferlikDersler || tekSeferlikDersler.length === 0)
   if (hicBirSeyYok) return null
   const gunlereGore = GUNLER.map((_, gun) => (haftalikDersler || []).filter((d) => d.gun === gun)).slice(1)
+  const tekSeferlikGunlereGore = tekSeferlikDersler ? gunGrupla(tekSeferlikDersler) : []
 
   return (
     <div className="space-y-4 mb-6">
@@ -452,25 +470,42 @@ function BireBirDerslerimBolumu({ haftalikDersler, tekSeferlikDersler, birdenFaz
           <div className="px-4 py-3 bg-navy text-white font-semibold">
             {birdenFazlaCocukMu ? 'Yaklaşan Bire Bir Dersleri (Tekil)' : 'Yaklaşan Bire Bir Derslerim (Tekil)'}
           </div>
-          <div className="divide-y divide-gray-50">
-            {tekSeferlikDersler.map((d) => (
-              <div key={d.id} className="flex items-center justify-between gap-2 px-4 py-2.5 flex-wrap">
-                <div>
-                  <p className="font-medium text-gray-800 text-sm">
-                    {new Date(d.tarih + 'T12:00:00').toLocaleDateString('tr-TR', { weekday: 'long', day: 'numeric', month: 'long' })}
-                  </p>
-                  <p className="text-xs text-gray-400">
-                    {d.ogretmen_adi}
-                    {d.ogretmen_brans ? ` — ${d.ogretmen_brans}` : ''}
-                    {birdenFazlaCocukMu ? ` · ${d.ogrenci_adi}` : ''}
-                  </p>
+          {tekSeferlikGunlereGore.map((grup) => {
+            const bugunMu = grup.tarih === yerelBugunTarihi()
+            return (
+              <div key={grup.tarih}>
+                <div className="px-4 py-2 bg-gray-50 border-t border-b border-gray-100 flex items-center gap-2">
+                  <span className="text-sm font-semibold text-navy">
+                    {new Date(grup.tarih + 'T12:00:00').toLocaleDateString('tr-TR', { weekday: 'long', day: 'numeric', month: 'long' })}
+                  </span>
+                  {bugunMu && (
+                    <span className="text-[10px] font-semibold bg-orange text-white px-1.5 py-0.5 rounded-full">Bugün</span>
+                  )}
                 </div>
-                <p className="text-sm text-gray-500 whitespace-nowrap">
-                  {d.baslangic_saat ? `${saatKisalt(d.baslangic_saat)}${d.bitis_saat ? '–' + saatKisalt(d.bitis_saat) : ''}` : 'Saat belirtilmemiş'}
-                </p>
+                <div className="divide-y divide-gray-50">
+                  {grup.dersler.map((d) => (
+                    // min-w-0 + truncate: öğretmen adı/branşı uzun olsa bile satır
+                    // TAŞMAZ/ALTA KAYMAZ — saat her zaman aynı hizada, sağda kalır.
+                    // Önceki sürümde flex-wrap + sabit olmayan genişlik yüzünden,
+                    // isim uzun olduğunda saat alt satıra düşüyor, kısa olduğunda
+                    // yanında kalıyordu — tutarsız görünüyordu.
+                    <div key={d.id} className="flex items-center justify-between gap-3 px-4 py-2.5">
+                      <div className="min-w-0">
+                        <p className="font-medium text-gray-800 text-sm truncate">
+                          {d.ogretmen_adi}
+                          {d.ogretmen_brans ? ` — ${d.ogretmen_brans}` : ''}
+                        </p>
+                        {birdenFazlaCocukMu && <p className="text-xs text-gray-400 truncate">{d.ogrenci_adi}</p>}
+                      </div>
+                      <p className="text-base font-bold text-navy whitespace-nowrap shrink-0">
+                        {d.baslangic_saat ? `${saatKisalt(d.baslangic_saat)}${d.bitis_saat ? '–' + saatKisalt(d.bitis_saat) : ''}` : 'Saat belirtilmemiş'}
+                      </p>
+                    </div>
+                  ))}
+                </div>
               </div>
-            ))}
-          </div>
+            )
+          })}
         </div>
       )}
     </div>
