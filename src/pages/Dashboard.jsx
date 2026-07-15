@@ -49,14 +49,36 @@ export default function Dashboard() {
         setBuAyTahsilat(toplam)
       })
 
-    // Bugünkü devamsızlık
+    // Bugünkü devamsızlık: ÖĞRENCİ bazında sayılır, ders/saat bazında değil.
+    // "yoklama" tablosunda her satır bir öğrencinin BİR ders saatine ait
+    // kaydı olduğu için (aynı öğrenci bugün birden fazla derse giriyorsa
+    // birden fazla satırı olabilir), sadece "gelmedi" satırlarını saymak
+    // yanıltıcı olurdu — 3 dersine de girmeyen bir öğrenci 3 kez sayılırdı.
+    // Bunun yerine: bir öğrenci bugün GİRDİĞİ derslerin herhangi birine
+    // "Geldi" olarak işaretlenmişse, o gün okula gelmiş kabul edilir ve
+    // devamsız sayılmaz — başka bir dersine girmemiş olsa bile. Sadece
+    // bugüne ait TÜM kayıtları "Gelmedi" olan öğrenciler devamsız sayılır,
+    // ve her öğrenci en fazla 1 kez sayılır.
     const bugun = simdi.toISOString().slice(0, 10)
     supabase
       .from('yoklama')
-      .select('id', { count: 'exact', head: true })
+      .select('ogrenci_id, geldi')
       .eq('tarih', bugun)
-      .eq('geldi', false)
-      .then(({ count }) => setBugunDevamsizlik(count))
+      .then(({ data }) => {
+        const ogrenciDurumu = {}
+        ;(data || []).forEach((y) => {
+          if (y.geldi === true) {
+            // Herhangi bir derse "Geldi" denmişse, o öğrenci artık kesin
+            // olarak "geldi" sayılır — daha önce başka bir dersinde
+            // "Gelmedi" işaretlenmiş olsa bile bu durumu ezer.
+            ogrenciDurumu[y.ogrenci_id] = true
+          } else if (!(y.ogrenci_id in ogrenciDurumu)) {
+            ogrenciDurumu[y.ogrenci_id] = false
+          }
+        })
+        const devamsizSayisi = Object.values(ogrenciDurumu).filter((geldiMi) => geldiMi === false).length
+        setBugunDevamsizlik(devamsizSayisi)
+      })
   }, [profile])
 
   return (
