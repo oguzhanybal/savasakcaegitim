@@ -692,7 +692,15 @@ export default function DersProgrami() {
   const ogrenciAdMap = useMemo(() => new Map(ogrenciler.map((o) => [o.id, o.ad_soyad])), [ogrenciler])
 
   async function sil(id) {
-    if (!confirm('Bu ders saatini silmek istediğinize emin misiniz?')) return
+    if (!confirm('Bu ders saatini silmek istediğinize emin misiniz? Bu ders saatine ait yoklama kayıtları da (varsa) birlikte silinecek.')) return
+    // Bir ders saati silinirken, o ders saatine bağlı yoklama kayıtları da
+    // silinmezse veritabanında "sahipsiz" (hangi derse ait olduğu belli
+    // olmayan) kayıtlar kalır. Önce yoklamayı, sonra ders saatini siliyoruz.
+    const { error: yoklamaHata } = await supabase.from('yoklama').delete().eq('ders_programi_id', id)
+    if (yoklamaHata) {
+      alert('Hata (yoklama kayıtları silinirken): ' + yoklamaHata.message)
+      return
+    }
     const { error } = await supabase.from('ders_programi').delete().eq('id', id)
     if (error) alert('Hata: ' + error.message)
     else veriyiYenile()

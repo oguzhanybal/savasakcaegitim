@@ -209,6 +209,15 @@ export default function SinifDetay() {
   }
 
   async function dersSaatiSil(id) {
+    if (!confirm('Bu ders saatini silmek istediğinize emin misiniz? Bu ders saatine ait yoklama kayıtları da (varsa) birlikte silinecek.')) return
+    // Bir ders saati silinirken, o ders saatine bağlı yoklama kayıtları da
+    // silinmezse veritabanında "sahipsiz" kayıtlar kalır. Önce yoklamayı,
+    // sonra ders saatini siliyoruz.
+    const { error: yoklamaHata } = await supabase.from('yoklama').delete().eq('ders_programi_id', id)
+    if (yoklamaHata) {
+      alert('Hata (yoklama kayıtları silinirken): ' + yoklamaHata.message)
+      return
+    }
     const { error } = await supabase.from('ders_programi').delete().eq('id', id)
     if (!error) yukle()
     else alert('Hata: ' + error.message)
