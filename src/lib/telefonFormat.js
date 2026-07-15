@@ -27,7 +27,13 @@ export function telefonGirdiIsle(girilenDeger) {
 export function telefonYerelGoster(dbDegeri) {
   if (!dbDegeri) return ''
   let yerel = String(dbDegeri).replace(/\D/g, '')
-  if (yerel.startsWith('90') && yerel.length > 10) yerel = yerel.slice(2)
+  // NOT: uzunluğa bakmaksızın, baştaki "90" her zaman atılır — bu alan hep
+  // "90" + yerel numara formatında saklanıyor (kısa/yarım yazılmış değerler
+  // için de geçerli, ör. kullanıcı henüz 1-2 hane yazmışken bile doğru
+  // görünsün diye). Önceki sürümde sadece 10 haneden UZUN değerlerde
+  // atılıyordu; bu da kullanıcı "90" ile başlayarak yazmaya devam ederken
+  // (eski alışkanlık) kutunun yanlış/eksik göstermesine yol açıyordu.
+  if (yerel.startsWith('90')) yerel = yerel.slice(2)
   yerel = yerel.slice(0, 10)
   const parcalar = []
   if (yerel.length > 0) parcalar.push(yerel.slice(0, 3))
@@ -48,6 +54,20 @@ export const telefonTabloGoster = telefonYerelGoster
 export function telefonGecerliMi(dbDegeri) {
   if (!dbDegeri) return true
   let yerel = String(dbDegeri).replace(/\D/g, '')
-  if (yerel.startsWith('90') && yerel.length > 10) yerel = yerel.slice(2)
+  if (yerel.startsWith('90')) yerel = yerel.slice(2)
   return yerel.length === 10 && yerel.startsWith('5')
+}
+
+// Kutu henüz tam doldurulmamışken (kullanıcı hâlâ yazıyor) kırmızı hata
+// göstermek yersiz — sadece ya TAM 10 hane girildiğinde YANLIŞSA (5 ile
+// başlamıyorsa) ya da tamamen dolu ama eksik hanedeyse uyarı gösterilir.
+// Boş ya da yazım hâlâ devam ediyor gibi duran (10 haneden az) durumlarda
+// sessiz kalır.
+export function telefonUyariGoster(dbDegeri) {
+  if (!dbDegeri) return false
+  let yerel = String(dbDegeri).replace(/\D/g, '')
+  if (yerel.startsWith('90')) yerel = yerel.slice(2)
+  if (yerel.length === 0) return false
+  if (yerel.length < 10) return false
+  return !(yerel.length === 10 && yerel.startsWith('5'))
 }
