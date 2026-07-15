@@ -2,6 +2,8 @@ import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { adSoyadDuzelt, ilkHarfleriBuyukYap } from '../lib/adSoyadFormat'
+import { telefonYerelGoster } from '../lib/telefonFormat'
+import TelefonInput from '../components/TelefonInput'
 
 // Okulun kendi kayıt formuyla (SAVAŞ AKÇA ÖĞRENCİ KAYIT FORMU) BİREBİR aynı
 // başlıklar — form her yeni öğrenci geldiğinde zaten dolduruluyor, burada da
@@ -81,13 +83,12 @@ function KayitFormuAlanlari({ form, alanGuncelle, boyut = 'normal' }) {
               className={girdiSinifi}
             />
           </div>
-          <div className="flex-1 min-w-[150px]">
+          <div className="flex-1 min-w-[170px]">
             <label className={etiketSinifi}>Öğrenci Telefonu</label>
-            <input
+            <TelefonInput
               value={form.telefon}
-              onChange={(e) => alanGuncelle('telefon', e.target.value)}
-              className={girdiSinifi}
-              placeholder="905XXXXXXXXX"
+              onChange={(v) => alanGuncelle('telefon', v)}
+              girdiSinifi={girdiSinifi}
             />
           </div>
           <div className="flex-1 min-w-[150px]">
@@ -122,13 +123,12 @@ function KayitFormuAlanlari({ form, alanGuncelle, boyut = 'normal' }) {
               className={girdiSinifi}
             />
           </div>
-          <div className="flex-1 min-w-[150px]">
+          <div className="flex-1 min-w-[170px]">
             <label className={etiketSinifi}>Anne Telefonu</label>
-            <input
+            <TelefonInput
               value={form.anne_telefon}
-              onChange={(e) => alanGuncelle('anne_telefon', e.target.value)}
-              className={girdiSinifi}
-              placeholder="905XXXXXXXXX"
+              onChange={(v) => alanGuncelle('anne_telefon', v)}
+              girdiSinifi={girdiSinifi}
             />
           </div>
           <div className="flex-1 min-w-[180px]">
@@ -139,13 +139,12 @@ function KayitFormuAlanlari({ form, alanGuncelle, boyut = 'normal' }) {
               className={girdiSinifi}
             />
           </div>
-          <div className="flex-1 min-w-[150px]">
+          <div className="flex-1 min-w-[170px]">
             <label className={etiketSinifi}>Baba Telefonu</label>
-            <input
+            <TelefonInput
               value={form.baba_telefon}
-              onChange={(e) => alanGuncelle('baba_telefon', e.target.value)}
-              className={girdiSinifi}
-              placeholder="905XXXXXXXXX"
+              onChange={(v) => alanGuncelle('baba_telefon', v)}
+              girdiSinifi={girdiSinifi}
             />
           </div>
           <div className="flex-[2] min-w-[220px]">
@@ -508,7 +507,7 @@ export default function Ogrenciler() {
                       {o.ad_soyad}
                     </Link>
                   </td>
-                  <td className="px-4 py-3 text-gray-500">{o.telefon || '—'}</td>
+                  <td className="px-4 py-3 text-gray-500">{o.telefon ? telefonYerelGoster(o.telefon) : '—'}</td>
                   <td className="px-4 py-3 text-gray-500">{o.sinif_ve_alan || '—'}</td>
                   <td className="px-4 py-3">
                     {o.veli?.ad_soyad ? (

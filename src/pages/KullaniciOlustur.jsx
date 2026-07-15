@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { adSoyadDuzelt } from '../lib/adSoyadFormat'
+import TelefonInput from '../components/TelefonInput'
 
 const ROLLER = [
   { value: 'veli', label: 'Veli' },
@@ -141,11 +142,10 @@ export default function KullaniciOlustur() {
 
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Telefon (opsiyonel)</label>
-            <input
+            <TelefonInput
               value={telefon}
-              onChange={(e) => setTelefon(e.target.value)}
-              className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue"
-              placeholder="905XXXXXXXXX"
+              onChange={setTelefon}
+              girdiSinifi="w-full px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue"
             />
           </div>
 

@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { adSoyadDuzelt } from '../lib/adSoyadFormat'
+import { telefonYerelGoster } from '../lib/telefonFormat'
+import TelefonInput from '../components/TelefonInput'
 
 const BRANSLAR = [
   'Matematik', 'Türkçe', 'Türkçe/Edebiyat', 'Fen Bilimleri', 'Sosyal Bilgiler', 'İngilizce',
@@ -142,11 +144,10 @@ export default function Ogretmenler() {
                       </select>
                     </td>
                     <td className="px-4 py-2">
-                      <input
+                      <TelefonInput
                         value={duzenleTelefon}
-                        onChange={(e) => setDuzenleTelefon(e.target.value)}
-                        className="w-full px-2 py-1.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue"
-                        placeholder="905XXXXXXXXX"
+                        onChange={setDuzenleTelefon}
+                        girdiSinifi="w-full px-2 py-1.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue"
                       />
                     </td>
                     <td className="px-4 py-2 text-gray-400 text-xs">—</td>
@@ -176,7 +177,7 @@ export default function Ogretmenler() {
                       <span className="text-gray-400 text-xs">Belirtilmemiş</span>
                     )}
                   </td>
-                  <td className="px-4 py-3 text-gray-500">{o.telefon || '—'}</td>
+                  <td className="px-4 py-3 text-gray-500">{o.telefon ? telefonYerelGoster(o.telefon) : '—'}</td>
                   <td className="px-4 py-3">
                     {pasif ? (
                       <span className="px-2 py-0.5 rounded-full text-xs font-semibold bg-red-100 text-red-700">Pasif</span>
