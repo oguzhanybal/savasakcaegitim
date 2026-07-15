@@ -82,53 +82,60 @@ function BugunkuYoklamaDurumu({ isYonetici, ogretmenProfileId }) {
                 <span className="font-semibold text-orange-600">{alinmayanSayisi} henüz alınmadı</span>
               )}
             </div>
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="bg-navy text-white text-left">
-                  <th className="px-4 py-3 font-semibold">Saat</th>
-                  <th className="px-4 py-3 font-semibold">Sınıf</th>
-                  <th className="px-4 py-3 font-semibold">Ders / Öğretmen</th>
-                  <th className="px-4 py-3 font-semibold text-center">Durum</th>
-                  <th className="px-4 py-3 font-semibold">Gelmeyenler</th>
-                </tr>
-              </thead>
-              <tbody>
-                {ozet.map((o, i) => (
-                  <tr key={o.ders.id} className={i % 2 ? 'bg-gray-50' : ''}>
-                    <td className="px-4 py-3 text-gray-600 whitespace-nowrap">
-                      {saatKisalt(o.ders.baslangic_saat)}–{saatKisalt(o.ders.bitis_saat)}
-                    </td>
-                    <td className="px-4 py-3 font-medium text-gray-800">{o.ders.siniflar?.ad || '—'}</td>
-                    <td className="px-4 py-3 text-gray-600">
-                      {o.ders.ders_adi || '—'}
-                      {o.ders.profiles?.ad_soyad && (
-                        <span className="text-gray-400"> — {o.ders.profiles.ad_soyad}</span>
-                      )}
-                    </td>
-                    <td className="px-4 py-3 text-center">
-                      {o.alindiMi ? (
-                        <span className="px-2 py-0.5 rounded-full text-xs font-semibold bg-green-100 text-green-700">
-                          Alındı
-                        </span>
-                      ) : (
-                        <span className="px-2 py-0.5 rounded-full text-xs font-semibold bg-orange-100 text-orange-700">
-                          Henüz Alınmadı
-                        </span>
-                      )}
-                    </td>
-                    <td className="px-4 py-3">
-                      {!o.alindiMi ? (
-                        <span className="text-gray-300">—</span>
-                      ) : o.gelmeyenler.length === 0 ? (
-                        <span className="text-green-600 text-xs font-medium">Herkes geldi</span>
-                      ) : (
-                        <span className="text-red-500 text-xs">{o.gelmeyenler.join(', ')}</span>
-                      )}
-                    </td>
+            {/* touch-pan-x + overscroll-x-contain: mobil tarayıcılarda bu
+                tablonun YATAY kaydırılabilir olduğunu tarayıcıya açıkça
+                belirtiyoruz (Ders Programı tablosunda da aynı çözüm
+                kullanılıyor) — aksi halde bazı mobil tarayıcılarda metin
+                kesilip/sarılıp tablo hiç kaymıyor. */}
+            <div className="overflow-x-auto touch-pan-x overscroll-x-contain">
+              <table className="text-sm min-w-[640px] w-full">
+                <thead>
+                  <tr className="bg-navy text-white text-left">
+                    <th className="px-4 py-3 font-semibold whitespace-nowrap">Saat</th>
+                    <th className="px-4 py-3 font-semibold whitespace-nowrap">Sınıf</th>
+                    <th className="px-4 py-3 font-semibold">Ders / Öğretmen</th>
+                    <th className="px-4 py-3 font-semibold text-center whitespace-nowrap">Durum</th>
+                    <th className="px-4 py-3 font-semibold">Gelmeyenler</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody>
+                  {ozet.map((o, i) => (
+                    <tr key={o.ders.id} className={i % 2 ? 'bg-gray-50' : ''}>
+                      <td className="px-4 py-3 text-gray-600 whitespace-nowrap">
+                        {saatKisalt(o.ders.baslangic_saat)}–{saatKisalt(o.ders.bitis_saat)}
+                      </td>
+                      <td className="px-4 py-3 font-medium text-gray-800 whitespace-nowrap">{o.ders.siniflar?.ad || '—'}</td>
+                      <td className="px-4 py-3 text-gray-600 whitespace-nowrap">
+                        {o.ders.ders_adi || '—'}
+                        {o.ders.profiles?.ad_soyad && (
+                          <span className="text-gray-400"> — {o.ders.profiles.ad_soyad}</span>
+                        )}
+                      </td>
+                      <td className="px-4 py-3 text-center whitespace-nowrap">
+                        {o.alindiMi ? (
+                          <span className="px-2 py-0.5 rounded-full text-xs font-semibold bg-green-100 text-green-700">
+                            Alındı
+                          </span>
+                        ) : (
+                          <span className="px-2 py-0.5 rounded-full text-xs font-semibold bg-orange-100 text-orange-700">
+                            Henüz Alınmadı
+                          </span>
+                        )}
+                      </td>
+                      <td className="px-4 py-3 whitespace-nowrap">
+                        {!o.alindiMi ? (
+                          <span className="text-gray-300">—</span>
+                        ) : o.gelmeyenler.length === 0 ? (
+                          <span className="text-green-600 text-xs font-medium">Herkes geldi</span>
+                        ) : (
+                          <span className="text-red-500 text-xs">{o.gelmeyenler.join(', ')}</span>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           </>
         )}
       </div>
