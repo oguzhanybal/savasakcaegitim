@@ -1037,6 +1037,103 @@ function YoklamaSatiri({ atama, yoklamalar, onDegisti, ucretGorunur }) {
   )
 }
 
+// Bir tekil ders (bire_bir_yoklama) satırının "Düzenle"ye basılınca açılan
+// satır-içi (inline) düzenleme formu — tarih, saat aralığı ve (görünürse) tutar
+// güncellenebilir. Durum (Bekliyor/Geldi/Gelmedi) FARK ETMEKSİZİN çalışır —
+// yanlış girilmiş bir saati/tarihi silip yeniden eklemeye gerek kalmasın diye.
+function TekSeferlikDuzenleSatiri({ y, ucretGorunur, toplamSutun, onKaydedildi, onVazgec }) {
+  const [tarih, setTarih] = useState(y.tarih)
+  const [baslangic, setBaslangic] = useState(saatKisalt(y._baslangic) || '')
+  const [bitis, setBitis] = useState(saatKisalt(y._bitis) || '')
+  const [tutar, setTutar] = useState(String(y._tutar ?? ''))
+  const [hata, setHata] = useState('')
+  const [gonderiliyor, setGonderiliyor] = useState(false)
+
+  async function kaydet() {
+    setHata('')
+    if (!tarih) {
+      setHata('Lütfen tarihi girin.')
+      return
+    }
+    if (baslangic && bitis && baslangic >= bitis) {
+      setHata('Başlangıç saati bitiş saatinden önce olmalı.')
+      return
+    }
+    const guncelleme = {
+      tarih,
+      baslangic_saat: baslangic || null,
+      bitis_saat: bitis || null,
+    }
+    if (ucretGorunur) guncelleme.tutar = Number(tutar) || 0
+
+    setGonderiliyor(true)
+    const { error } = await supabase.from('bire_bir_yoklama').update(guncelleme).eq('id', y.id)
+    setGonderiliyor(false)
+    if (error) setHata('Hata: ' + error.message)
+    else onKaydedildi()
+  }
+
+  return (
+    <tr className="border-t border-gray-50 bg-blue-50">
+      <td className="px-2 py-1.5 align-top" colSpan={Math.max(toplamSutun - 1, 1)}>
+        <div className="flex flex-wrap gap-2 items-end">
+          <div>
+            <label className="block text-[11px] text-gray-500 mb-0.5">Tarih</label>
+            <input
+              type="date"
+              value={tarih}
+              onChange={(e) => setTarih(e.target.value)}
+              className="px-2 py-1.5 border border-gray-300 rounded-lg text-sm"
+            />
+          </div>
+          <div>
+            <label className="block text-[11px] text-gray-500 mb-0.5">Başlangıç</label>
+            <input
+              type="time"
+              value={baslangic}
+              onChange={(e) => {
+                const yeniBaslangic = e.target.value
+                setBaslangic(yeniBaslangic)
+                if (yeniBaslangic && !bitis) setBitis(saateDakikaEkle(yeniBaslangic, 45))
+              }}
+              className="px-2 py-1.5 border border-gray-300 rounded-lg text-sm"
+            />
+          </div>
+          <div>
+            <label className="block text-[11px] text-gray-500 mb-0.5">Bitiş</label>
+            <input
+              type="time"
+              value={bitis}
+              onChange={(e) => setBitis(e.target.value)}
+              className="px-2 py-1.5 border border-gray-300 rounded-lg text-sm"
+            />
+          </div>
+          {ucretGorunur && (
+            <div>
+              <label className="block text-[11px] text-gray-500 mb-0.5">Tutar (₺)</label>
+              <input
+                type="number"
+                min="0"
+                step="0.01"
+                value={tutar}
+                onChange={(e) => setTutar(e.target.value)}
+                className="w-28 px-2 py-1.5 border border-gray-300 rounded-lg text-sm"
+              />
+            </div>
+          )}
+        </div>
+        {hata && <p className="text-red-600 text-xs mt-2">{hata}</p>}
+      </td>
+      <td className="px-2 py-1.5 text-right whitespace-nowrap align-top space-x-2">
+        <button onClick={kaydet} disabled={gonderiliyor} className="text-green-600 text-sm font-semibold hover:underline disabled:opacity-50">
+          {gonderiliyor ? 'Kaydediliyor...' : 'Kaydet'}
+        </button>
+        <button onClick={onVazgec} className="text-gray-500 text-sm hover:underline">Vazgeç</button>
+      </td>
+    </tr>
+  )
+}
+
 // TÜM bire bir dersleri (hem haftalık tekrarlanan atamalardan Geldi/Gelmedi
 // işaretlenenler, hem "Hayır, sadece bu sefer" ile eklenen tek seferlikler)
 // TEK bir listede, haftalara bölünmüş olarak gösterir — "hangi öğrenci hangi
@@ -1046,6 +1143,7 @@ function YoklamaSatiri({ atama, yoklamalar, onDegisti, ucretGorunur }) {
 function TekSeferlikDerslerListesi({ yoklamalar, atamalar, onDegisti, sadeceOgretmenId = null, ucretGorunur = true }) {
   const [periyot, setPeriyot] = useState('hafta') // 'hafta' | 'ay'
   const [gosterilenSayisi, setGosterilenSayisi] = useState(8)
+  const [duzenlenenYoklamaId, setDuzenlenenYoklamaId] = useState(null)
   const atamaMap = useMemo(() => new Map(atamalar.map((a) => [a.id, a])), [atamalar])
 
   const dersler = useMemo(() => {
@@ -1120,6 +1218,12 @@ function TekSeferlikDerslerListesi({ yoklamalar, atamalar, onDegisti, sadeceOgre
     ? tumGruplar.filter(([anahtar]) => anahtar === seciliDonem)
     : tumGruplar.slice(0, gosterilenSayisi)
   const etiketUret = periyot === 'ay' ? ayEtiketi : haftaEtiketi
+
+  // Tablo başlıklarındaki toplam sütun sayısı — Düzenle satırındaki tek büyük
+  // hücrenin (colSpan) doğru genişlikte açılması için kullanılır. Sabit sütunlar:
+  // Tarih, Saat, Öğrenci, Tür, Durum, İşlemler = 6; öğretmen görünürse +1, tutar
+  // görünürse +1.
+  const toplamSutun = 6 + (!sadeceOgretmenId ? 1 : 0) + (ucretGorunur ? 1 : 0)
 
   async function sil(id) {
     if (!confirm('Bu ders kaydını silmek istediğinize emin misiniz?')) return
@@ -1219,47 +1323,61 @@ function TekSeferlikDerslerListesi({ yoklamalar, atamalar, onDegisti, sadeceOgre
                 </tr>
               </thead>
               <tbody>
-                {dersListesi.map((y) => (
-                  <tr key={y.id} className="border-t border-gray-50">
-                    <td className="px-2 py-1.5">{new Date(y.tarih + 'T12:00:00').toLocaleDateString('tr-TR')}</td>
-                    <td className="px-2 py-1.5 text-gray-500">
-                      {y._baslangic ? `${saatKisalt(y._baslangic)}${y._bitis ? '–' + saatKisalt(y._bitis) : ''}` : '—'}
-                    </td>
-                    <td className="px-2 py-1.5 font-medium text-gray-800">{y._ogrenciAdi || '—'}</td>
-                    {!sadeceOgretmenId && (
-                      <td className="px-2 py-1.5">
-                        {y._ogretmenAdi || '—'}
-                        {y._ogretmenBransi && <span className="text-xs text-gray-400"> ({y._ogretmenBransi})</span>}
+                {dersListesi.map((y) =>
+                  duzenlenenYoklamaId === y.id ? (
+                    <TekSeferlikDuzenleSatiri
+                      key={y.id}
+                      y={y}
+                      ucretGorunur={ucretGorunur}
+                      toplamSutun={toplamSutun}
+                      onKaydedildi={() => { setDuzenlenenYoklamaId(null); onDegisti() }}
+                      onVazgec={() => setDuzenlenenYoklamaId(null)}
+                    />
+                  ) : (
+                    <tr key={y.id} className="border-t border-gray-50">
+                      <td className="px-2 py-1.5">{new Date(y.tarih + 'T12:00:00').toLocaleDateString('tr-TR')}</td>
+                      <td className="px-2 py-1.5 text-gray-500">
+                        {y._baslangic ? `${saatKisalt(y._baslangic)}${y._bitis ? '–' + saatKisalt(y._bitis) : ''}` : '—'}
                       </td>
-                    )}
-                    <td className="px-2 py-1.5 text-gray-500">{y._kaynak}</td>
-                    {ucretGorunur && <td className="px-2 py-1.5">{paraFormat(y._tutar)}</td>}
-                    <td className="px-2 py-1.5">
-                      {y.durum === 'geldi' && (
-                        <span className="text-xs font-semibold bg-green-100 text-green-700 px-2 py-1 rounded-full">Geldi</span>
+                      <td className="px-2 py-1.5 font-medium text-gray-800">{y._ogrenciAdi || '—'}</td>
+                      {!sadeceOgretmenId && (
+                        <td className="px-2 py-1.5">
+                          {y._ogretmenAdi || '—'}
+                          {y._ogretmenBransi && <span className="text-xs text-gray-400"> ({y._ogretmenBransi})</span>}
+                        </td>
                       )}
-                      {y.durum === 'gelmedi' && (
-                        <span className="text-xs font-semibold bg-red-100 text-red-600 px-2 py-1 rounded-full">Gelmedi</span>
-                      )}
-                      {y.durum === 'bekliyor' && (
-                        <span className="text-xs font-semibold bg-yellow-100 text-yellow-700 px-2 py-1 rounded-full">Bekliyor</span>
-                      )}
-                    </td>
-                    <td className="px-2 py-1.5 text-right whitespace-nowrap space-x-2">
-                      {y.durum !== 'geldi' && (
-                        <button onClick={() => durumDegistir(y, 'geldi')} className="text-green-600 text-sm hover:underline">
-                          Geldi
+                      <td className="px-2 py-1.5 text-gray-500">{y._kaynak}</td>
+                      {ucretGorunur && <td className="px-2 py-1.5">{paraFormat(y._tutar)}</td>}
+                      <td className="px-2 py-1.5">
+                        {y.durum === 'geldi' && (
+                          <span className="text-xs font-semibold bg-green-100 text-green-700 px-2 py-1 rounded-full">Geldi</span>
+                        )}
+                        {y.durum === 'gelmedi' && (
+                          <span className="text-xs font-semibold bg-red-100 text-red-600 px-2 py-1 rounded-full">Gelmedi</span>
+                        )}
+                        {y.durum === 'bekliyor' && (
+                          <span className="text-xs font-semibold bg-yellow-100 text-yellow-700 px-2 py-1 rounded-full">Bekliyor</span>
+                        )}
+                      </td>
+                      <td className="px-2 py-1.5 text-right whitespace-nowrap space-x-2">
+                        {y.durum !== 'geldi' && (
+                          <button onClick={() => durumDegistir(y, 'geldi')} className="text-green-600 text-sm hover:underline">
+                            Geldi
+                          </button>
+                        )}
+                        {y.durum !== 'gelmedi' && (
+                          <button onClick={() => durumDegistir(y, 'gelmedi')} className="text-red-500 text-sm hover:underline">
+                            Gelmedi
+                          </button>
+                        )}
+                        <button onClick={() => setDuzenlenenYoklamaId(y.id)} className="text-navy text-sm hover:underline">
+                          Düzenle
                         </button>
-                      )}
-                      {y.durum !== 'gelmedi' && (
-                        <button onClick={() => durumDegistir(y, 'gelmedi')} className="text-red-500 text-sm hover:underline">
-                          Gelmedi
-                        </button>
-                      )}
-                      <button onClick={() => sil(y.id)} className="text-gray-400 text-sm hover:underline">Sil</button>
-                    </td>
-                  </tr>
-                ))}
+                        <button onClick={() => sil(y.id)} className="text-gray-400 text-sm hover:underline">Sil</button>
+                      </td>
+                    </tr>
+                  )
+                )}
               </tbody>
             </table>
           )
