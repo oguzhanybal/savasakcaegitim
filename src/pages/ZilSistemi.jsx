@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../lib/AuthContext'
-import { sesSisteminiEtkinlestir, cikisZiliCal } from '../lib/zilSesiCal'
+import { sesSisteminiEtkinlestir, cikisZiliCal, manuelZilBaslat, manuelZilDurdur } from '../lib/zilSesiCal'
 
 // ============================================================================
 // ZİL SİSTEMİ — kurumun bilgisayarının saati kayıyor (eski donanım), bu yüzden
@@ -21,14 +21,15 @@ import { sesSisteminiEtkinlestir, cikisZiliCal } from '../lib/zilSesiCal'
 // bu sayfayı görebilen ayrı bir "zil" rolü var (bkz. Layout.jsx, App.jsx).
 //
 // UZAKTAN KONTROL: Bu sayfa, aynı hesapla (ör. yönetici, telefondan) başka
-// bir cihazda da açılabilir. Oradaki "Manuel Çal" butonları ve "Durdur/
-// Başlat" butonu, "zil_uzaktan_komutlar" tablosuna bir satır ekler; Supabase
-// Realtime sayesinde, sayfa açık olan TÜM cihazlar bu satırı anında görür.
-// AMA SES SADECE "zil" ROLÜYLE açık olan cihazda çalar — yönetici hesabıyla
-// (ör. telefondan) açılan sayfa sadece bir UZAKTAN KUMANDA gibi davranır,
-// kendi başına ses çıkarmaz. Böylece "uzaktan zil çal" dediğinde ses sadece
-// kurumdaki (zil hesabıyla açık) bilgisayarda duyulur, komutu gönderen
-// telefonda değil.
+// bir cihazda da açılabilir. Oradaki "Manuel Çal" butonu ve "Durdur/Başlat"
+// butonu, "zil_uzaktan_komutlar" tablosuna bir satır ekler; sayfa açık olan
+// TÜM cihazlar bu tabloyu her 2 saniyede bir kontrol edip (basit "polling" —
+// Supabase Realtime/websocket yerine, her zaman çalışan sıradan bir sorgu
+// kullanılıyor, bu yüzden daha garanti) yeni komutları işler. AMA SES SADECE
+// "zil" ROLÜYLE açık olan cihazda çalar — yönetici hesabıyla (ör. telefondan)
+// açılan sayfa sadece bir UZAKTAN KUMANDA gibi davranır, kendi başına ses
+// çıkarmaz. Böylece "uzaktan zil çal" dediğinde ses sadece kurumdaki (zil
+// hesabıyla açık) bilgisayarda duyulur, komutu gönderen telefonda değil.
 // ============================================================================
 
 // ÖNEMLİ: Saat dilimi burada "Europe/Istanbul" olarak SABİTLENMİŞTİR —
@@ -105,6 +106,7 @@ export default function ZilSistemi() {
   const [etkinMi, setEtkinMi] = useState(false)
   const [uzaktanBilgi, setUzaktanBilgi] = useState('')
   const [susturmaSaatSecimi, setSusturmaSaatSecimi] = useState(1)
+  const [manuelCalıyorMu, setManuelCaliyorMu] = useState(false)
   // "2 saat zil çalma" gibi geçici susturma — bu, doğru (sunucudan alınan)
   // saate göre bir bitiş anı (ms) tutar. Süre dolunca otomatik olarak
   // kendiliğinden kalkar, "Zili Durdur"un aksine elle "Başlat"a gerek yoktur.
@@ -197,53 +199,74 @@ export default function ZilSistemi() {
     return () => clearInterval(id)
   }, [sunucuFarki, etkinMi, dersler, susturBitisMs, isZil])
 
-  // ---- Uzaktan komutları dinle (ör. telefondan gönderilen manuel çal /
-  // durdur / başlat) — Supabase Realtime ile, sayfa açık olan TÜM cihazlara
-  // anında ulaşır. Bağlantı kesilip yeniden kurulduğunda eski (>15 saniyelik)
-  // komutların "geç" gelip tekrar işlenmemesi için zaman kontrolü var.
+  // ---- Uzaktan komutları kontrol et (ör. telefondan gönderilen manuel çal /
+  // durdur / başlat). Supabase Realtime yerine BASİT POLLING kullanılıyor —
+  // bazı kurulumlarda Realtime (websocket) güvenilir çalışmayabiliyor; her 2
+  // saniyede bir düz bir SELECT ile yeni komut var mı kontrol etmek, aynı
+  // "derslerYukle" gibi sıradan bir sorgu olduğu için çok daha garanti
+  // çalışıyor. İşlenen komutlar id'siyle hatırlanır (aynı komut iki kez
+  // işlenmesin diye); 15 saniyeden eski komutlar (ör. sayfa yeni açıldığında
+  // geçmişte kalan eski bir komut) sessizce atlanır.
+  const islenenKomutIdleriRef = useRef(new Set())
   useEffect(() => {
-    const kanal = supabase
-      .channel('zil-uzaktan-komutlar')
-      .on(
-        'postgres_changes',
-        { event: 'INSERT', schema: 'public', table: 'zil_uzaktan_komutlar' },
-        (payload) => {
-          const komut = payload.new
-          const komutZamaniMs = new Date(komut.created_at).getTime()
-          const suankiSunucuMs = Date.now() + sunucuFarkiRef.current
-          if (suankiSunucuMs - komutZamaniMs > 15000) return
+    let iptalEdildi = false
 
-          // Durum bilgisi (rozet/mesaj) TÜM cihazlarda güncellenir — ama SES
-          // sadece "zil" rolüyle açık olan cihazda çalar (isZil kontrolü).
-          if (komut.komut === 'baslat') {
-            if (isZil) sesSisteminiEtkinlestir()
-            setEtkinMi(true)
-            setUzaktanBilgi('Zil, uzaktan (başka bir cihazdan) başlatıldı.')
-          } else if (komut.komut === 'durdur') {
-            setEtkinMi(false)
-            setUzaktanBilgi('Zil, uzaktan (başka bir cihazdan) durduruldu.')
-          } else if (komut.komut === 'sustur') {
-            const dakika = Number(komut.sure_dakika) || 0
-            setSusturBitisMs(suankiSunucuMs + dakika * 60000)
-            const saat = Math.floor(dakika / 60)
-            const dk = dakika % 60
-            const sureMetni = saat > 0 ? `${saat} saat${dk > 0 ? ` ${dk} dk` : ''}` : `${dk} dk`
-            setUzaktanBilgi(`Zil, uzaktan ${sureMetni} susturuldu.`)
-          } else if (komut.komut === 'susturma_kaldir') {
-            setSusturBitisMs(null)
-            setUzaktanBilgi('Susturma, uzaktan kaldırıldı.')
-          } else {
-            const etiketler = { cal_ogrenci: 'Öğrenci Zili', cal_ogretmen: 'Öğretmen Zili', cal_cikis: 'Çıkış Zili' }
-            const etiket = etiketler[komut.komut]
-            if (!etiket) return
-            if (isZil) cikisZiliCal()
-            setUzaktanBilgi(`Manuel "${etiket}" komutu uzaktan tetiklendi.`)
-          }
-        }
-      )
-      .subscribe()
-    return () => supabase.removeChannel(kanal)
-  }, [])
+    function komutuIsle(komut, suankiSunucuMs) {
+      // Durum bilgisi (rozet/mesaj) TÜM cihazlarda güncellenir — ama SES
+      // sadece "zil" rolüyle açık olan cihazda çalar (isZil kontrolü).
+      if (komut.komut === 'baslat') {
+        if (isZil) sesSisteminiEtkinlestir()
+        setEtkinMi(true)
+        setUzaktanBilgi('Zil, uzaktan (başka bir cihazdan) başlatıldı.')
+      } else if (komut.komut === 'durdur') {
+        setEtkinMi(false)
+        setUzaktanBilgi('Zil, uzaktan (başka bir cihazdan) durduruldu.')
+      } else if (komut.komut === 'sustur') {
+        const dakika = Number(komut.sure_dakika) || 0
+        setSusturBitisMs(suankiSunucuMs + dakika * 60000)
+        const saat = Math.floor(dakika / 60)
+        const dk = dakika % 60
+        const sureMetni = saat > 0 ? `${saat} saat${dk > 0 ? ` ${dk} dk` : ''}` : `${dk} dk`
+        setUzaktanBilgi(`Zil, uzaktan ${sureMetni} susturuldu.`)
+      } else if (komut.komut === 'susturma_kaldir') {
+        setSusturBitisMs(null)
+        setUzaktanBilgi('Susturma, uzaktan kaldırıldı.')
+      } else if (komut.komut === 'manuel_cal_baslat') {
+        setManuelCaliyorMu(true)
+        if (isZil) manuelZilBaslat()
+        setUzaktanBilgi('Manuel çalma uzaktan başlatıldı.')
+      } else if (komut.komut === 'manuel_cal_durdur') {
+        setManuelCaliyorMu(false)
+        if (isZil) manuelZilDurdur()
+        setUzaktanBilgi('Manuel çalma uzaktan durduruldu.')
+      }
+    }
+
+    async function kontrolEt() {
+      const { data, error } = await supabase
+        .from('zil_uzaktan_komutlar')
+        .select('*')
+        .order('created_at', { ascending: false })
+        .limit(10)
+      if (iptalEdildi || error || !data) return
+      const suankiSunucuMs = Date.now() + sunucuFarkiRef.current
+      // En eskiden en yeniye doğru işlensin diye ters çevir.
+      ;[...data].reverse().forEach((komut) => {
+        if (islenenKomutIdleriRef.current.has(komut.id)) return
+        islenenKomutIdleriRef.current.add(komut.id)
+        const komutZamaniMs = new Date(komut.created_at).getTime()
+        if (suankiSunucuMs - komutZamaniMs > 15000) return
+        komutuIsle(komut, suankiSunucuMs)
+      })
+    }
+
+    kontrolEt()
+    const id = setInterval(kontrolEt, 2000)
+    return () => {
+      iptalEdildi = true
+      clearInterval(id)
+    }
+  }, [isZil])
 
   async function uzaktanKomutGonder(komut, sureDakika = null) {
     sesSisteminiEtkinlestir()
@@ -262,6 +285,18 @@ export default function ZilSistemi() {
   function susturmayiKaldir() {
     setSusturBitisMs(null)
     uzaktanKomutGonder('susturma_kaldir')
+  }
+
+  // Tek tuşla manuel çal — "istediğim zaman durdurayım": başladığında zil
+  // durdurulana kadar döngü halinde çalmaya devam eder.
+  function manuelCalBaslat() {
+    setManuelCaliyorMu(true)
+    uzaktanKomutGonder('manuel_cal_baslat')
+  }
+
+  function manuelCalDurdur() {
+    setManuelCaliyorMu(false)
+    uzaktanKomutGonder('manuel_cal_durdur')
   }
 
   const susturuluyorMu = susturBitisMs != null && gosterilenSaat.getTime() < susturBitisMs
@@ -452,32 +487,29 @@ export default function ZilSistemi() {
       <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6 mb-6">
         <h2 className="font-semibold text-gray-700 mb-1">Manuel Çal / Uzaktan Kontrol</h2>
         <p className="text-xs text-gray-400 mb-4">
-          Bu sayfayı aynı hesapla telefondan da açabilirsin — buradaki butonlar anında kurumdaki bilgisayara ulaşır.
-          Ama ses SADECE "zil" hesabıyla açık olan cihazda çalar; telefonun kendisi sessiz kalır, sadece bir uzaktan
-          kumanda gibi çalışır.
+          Bu sayfayı aynı hesapla telefondan da açabilirsin — buradaki butonlar birkaç saniye içinde kurumdaki
+          bilgisayara ulaşır. Ama ses SADECE "zil" hesabıyla açık olan cihazda çalar; telefonun kendisi sessiz kalır,
+          sadece bir uzaktan kumanda gibi çalışır. "Manuel Çal"a bastığında zil, sen "Durdur"a basana kadar
+          döngü halinde çalmaya devam eder.
         </p>
         <div className="flex flex-wrap gap-2">
-          <button
-            type="button"
-            onClick={() => uzaktanKomutGonder('cal_ogrenci')}
-            className="bg-navy text-white text-sm font-semibold px-4 py-2 rounded-lg hover:opacity-90 transition-opacity"
-          >
-            Öğrenci Zilini Çal
-          </button>
-          <button
-            type="button"
-            onClick={() => uzaktanKomutGonder('cal_ogretmen')}
-            className="bg-navy text-white text-sm font-semibold px-4 py-2 rounded-lg hover:opacity-90 transition-opacity"
-          >
-            Öğretmen Zilini Çal
-          </button>
-          <button
-            type="button"
-            onClick={() => uzaktanKomutGonder('cal_cikis')}
-            className="bg-navy text-white text-sm font-semibold px-4 py-2 rounded-lg hover:opacity-90 transition-opacity"
-          >
-            Çıkış Zilini Çal
-          </button>
+          {!manuelCalıyorMu ? (
+            <button
+              type="button"
+              onClick={manuelCalBaslat}
+              className="bg-navy text-white text-sm font-semibold px-5 py-2.5 rounded-lg hover:opacity-90 transition-opacity"
+            >
+              🔔 Manuel Çal
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={manuelCalDurdur}
+              className="bg-red-500 text-white text-sm font-semibold px-5 py-2.5 rounded-lg hover:opacity-90 transition-opacity animate-pulse"
+            >
+              ⏹ Durdur
+            </button>
+          )}
         </div>
 
         <div className="mt-5 pt-4 border-t border-gray-100">
