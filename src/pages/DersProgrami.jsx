@@ -27,6 +27,17 @@ function araliklarCakisiyorMu(b1, s1, b2, s2) {
   return saatKisalt(b1) < saatKisalt(s2) && saatKisalt(b2) < saatKisalt(s1)
 }
 
+// "HH:MM" formatındaki bir saate dakika ekler — başlangıç saati girilince/
+// doldurulunca bitiş saatini otomatik +45 dakika önermek için kullanılır.
+function saateDakikaEkle(saat, dakika) {
+  if (!saat) return ''
+  const [h, m] = saat.split(':').map(Number)
+  const toplamDakika = (((h * 60 + m + dakika) % (24 * 60)) + 24 * 60) % (24 * 60)
+  const yeniSaat = Math.floor(toplamDakika / 60)
+  const yeniDakika = toplamDakika % 60
+  return `${String(yeniSaat).padStart(2, '0')}:${String(yeniDakika).padStart(2, '0')}`
+}
+
 // Yeni eklenmek istenen ders saatinin, mevcut programla (aynı sınıf ya da aynı
 // öğretmen üzerinden — öğretmen artık ders_programi satırından okunuyor) çakışıp
 // çakışmadığını kontrol eder.
@@ -51,7 +62,8 @@ function cakismaBul({ sinifId, gun, baslangic, bitis, ogretmenId }, program) {
   return null
 }
 
-function DersEkleForm({ siniflar, ogretmenler, program, onEklendi }) {
+function DersEkleForm({ siniflar, ogretmenler, program, onEklendi, doldurBilgisi }) {
+  const { profile } = useAuth()
   const [sinifId, setSinifId] = useState('')
   const [dersAdi, setDersAdi] = useState('')
   const [ogretmenId, setOgretmenId] = useState('')
@@ -59,7 +71,24 @@ function DersEkleForm({ siniflar, ogretmenler, program, onEklendi }) {
   const [baslangic, setBaslangic] = useState('')
   const [bitis, setBitis] = useState('')
   const [hata, setHata] = useState('')
+  const [basari, setBasari] = useState('')
   const [gonderiliyor, setGonderiliyor] = useState(false)
+  const sinifSelectRef = useRef(null)
+
+  // Müsaitlik tablosunda boş bir hücreye tıklanınca, üstten gelen öğretmen/gün/
+  // saat bilgisiyle formu otomatik doldurur ve sınıf seçimine odaklanır (sınıf
+  // bilgisi müsaitlik tablosundan gelmediği için elle seçilmesi gerekiyor).
+  useEffect(() => {
+    if (!doldurBilgisi) return
+    setOgretmenId(doldurBilgisi.ogretmenId)
+    setGun(doldurBilgisi.gun)
+    setBaslangic(doldurBilgisi.baslangic)
+    setBitis(doldurBilgisi.bitis || saateDakikaEkle(doldurBilgisi.baslangic, 45))
+    setHata('')
+    setBasari('')
+    sinifSelectRef.current?.focus()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [doldurBilgisi])
 
   async function ekle(e) {
     e.preventDefault()
@@ -105,13 +134,45 @@ function DersEkleForm({ siniflar, ogretmenler, program, onEklendi }) {
     }
   }
 
+  // Formu doldurup henüz kesinleşmemiş bir ders saati için "Taslağa Kaydet" —
+  // gerçek programa hemen eklemez, taslaklar tablosuna kaydeder. Çakışma kontrolü
+  // burada YAPILMAZ; yayınlanırken (Taslaklarım listesinden) kontrol edilir.
+  async function taslagaKaydet() {
+    setHata('')
+    setBasari('')
+    if (!sinifId || !baslangic || !bitis) {
+      setHata('Lütfen sınıf, gün ve saat aralığını doldurun.')
+      return
+    }
+    setGonderiliyor(true)
+    const { error } = await supabase.from('taslaklar').insert({
+      tur: 'sinif',
+      veri: {
+        sinif_id: sinifId,
+        gun: Number(gun),
+        baslangic_saat: baslangic,
+        bitis_saat: bitis,
+        ders_adi: dersAdi.trim() ? ilkHarfleriBuyukYap(dersAdi.trim()) : null,
+        ogretmen_profile_id: ogretmenId || null,
+      },
+      olusturan_profile_id: profile?.id,
+    })
+    setGonderiliyor(false)
+    if (error) setHata('Hata: ' + error.message)
+    else {
+      setBasari('✓ Taslağa kaydedildi — aşağıdaki "Taslaklarım" listesinden yayınlayabilirsiniz.')
+      onEklendi()
+    }
+  }
+
   return (
-    <form onSubmit={ekle} className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5 mb-6">
+    <form id="ders-ekle-formu" onSubmit={ekle} className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5 mb-6">
       <p className="font-semibold text-gray-700 mb-3">Yeni Ders Saati Ekle</p>
       <div className="flex flex-wrap gap-3 items-end">
         <div className="flex-1 min-w-[180px]">
           <label className="block text-sm font-medium text-gray-700 mb-1">Sınıf</label>
           <select
+            ref={sinifSelectRef}
             value={sinifId}
             onChange={(e) => setSinifId(e.target.value)}
             className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue bg-white"
@@ -185,9 +246,145 @@ function DersEkleForm({ siniflar, ogretmenler, program, onEklendi }) {
         >
           {gonderiliyor ? 'Ekleniyor...' : 'Ekle'}
         </button>
+        <button
+          type="button"
+          onClick={taslagaKaydet}
+          disabled={gonderiliyor}
+          className="bg-white border border-gray-200 text-gray-600 font-semibold px-5 py-2 rounded-lg hover:bg-gray-50 transition-colors disabled:opacity-50"
+        >
+          Taslağa Kaydet
+        </button>
       </div>
       {hata && <p className="text-red-600 text-sm mt-3">{hata}</p>}
+      {!hata && basari && <p className="text-green-600 text-sm mt-3">{basari}</p>}
     </form>
+  )
+}
+
+// ============================================================================
+// TASLAKLARIM (Ders Programı) — "Yeni Ders Saati Ekle" formundan "Taslağa
+// Kaydet" ile biriktirilen, henüz gerçek programa eklenmemiş sınıf dersleri.
+// Yönetici tek tek ya da hepsini birden "Yayınla" diyerek ders_programi
+// tablosuna aktarabilir. Yayınlarken çakışma kontrolü TEKRAR çalıştırılır —
+// taslak kaydedildikten sonra program değişmiş olabilir.
+// ============================================================================
+function TaslaklarimDersProgrami({ taslaklar, siniflar, ogretmenler, program, onDegisti }) {
+  const [gonderiliyorId, setGonderiliyorId] = useState(null)
+  const [tumuGonderiliyor, setTumuGonderiliyor] = useState(false)
+  const [hataMap, setHataMap] = useState({})
+
+  const sinifAdi = (id) => siniflar.find((s) => s.id === id)?.ad || 'Bilinmeyen sınıf'
+  const ogretmenAdi = (id) => ogretmenler.find((o) => o.id === id)?.ad_soyad || null
+
+  async function yayinla(t) {
+    const v = t.veri
+    const cakisma = cakismaBul(
+      { sinifId: v.sinif_id, gun: v.gun, baslangic: v.baslangic_saat, bitis: v.bitis_saat, ogretmenId: v.ogretmen_profile_id },
+      program
+    )
+    if (cakisma) {
+      const mesaj =
+        cakisma.tur === 'ogretmen'
+          ? `Çakışma var: bu öğretmen ${cakisma.gun} günü ${cakisma.saat} arasında zaten "${cakisma.dersAdi || cakisma.sinifAdi}" dersinde.`
+          : `Çakışma var: bu sınıfın ${cakisma.gun} günü ${cakisma.saat} arasında zaten "${cakisma.dersAdi || 'başka bir'}" dersi var.`
+      setHataMap((h) => ({ ...h, [t.id]: mesaj }))
+      return false
+    }
+    const { error } = await supabase.from('ders_programi').insert({
+      sinif_id: v.sinif_id,
+      gun: v.gun,
+      baslangic_saat: v.baslangic_saat,
+      bitis_saat: v.bitis_saat,
+      ders_adi: v.ders_adi,
+      ogretmen_profile_id: v.ogretmen_profile_id,
+    })
+    if (error) {
+      setHataMap((h) => ({ ...h, [t.id]: 'Hata: ' + error.message }))
+      return false
+    }
+    await supabase.from('taslaklar').delete().eq('id', t.id)
+    setHataMap((h) => {
+      const yeni = { ...h }
+      delete yeni[t.id]
+      return yeni
+    })
+    return true
+  }
+
+  async function tekYayinla(t) {
+    setGonderiliyorId(t.id)
+    await yayinla(t)
+    setGonderiliyorId(null)
+    onDegisti()
+  }
+
+  async function sil(id) {
+    if (!confirm('Bu taslağı silmek istediğinize emin misiniz?')) return
+    await supabase.from('taslaklar').delete().eq('id', id)
+    onDegisti()
+  }
+
+  async function tumunuYayinla() {
+    setTumuGonderiliyor(true)
+    let basarili = 0
+    let basarisiz = 0
+    for (const t of taslaklar) {
+      const sonuc = await yayinla(t)
+      if (sonuc) basarili++
+      else basarisiz++
+    }
+    setTumuGonderiliyor(false)
+    onDegisti()
+    if (basarisiz > 0) {
+      alert(`${basarili} taslak yayınlandı, ${basarisiz} tanesi çakışma/hata nedeniyle yayınlanamadı (listede kırmızı olarak görünüyor).`)
+    }
+  }
+
+  if (taslaklar.length === 0) return null
+
+  return (
+    <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden mb-6">
+      <div className="px-4 py-3 border-b border-gray-100 bg-gray-50 flex items-center justify-between flex-wrap gap-3">
+        <div>
+          <h2 className="font-semibold text-gray-700">Taslaklarım ({taslaklar.length})</h2>
+          <p className="text-xs text-gray-400 mt-0.5">Henüz gerçek programa eklenmemiş ders saatleri. Hazır olduğunda yayınlayın.</p>
+        </div>
+        <button
+          type="button"
+          onClick={tumunuYayinla}
+          disabled={tumuGonderiliyor}
+          className="bg-navy text-white text-sm font-semibold px-4 py-1.5 rounded-lg hover:opacity-90 transition-opacity disabled:opacity-50"
+        >
+          {tumuGonderiliyor ? 'Yayınlanıyor...' : 'Tümünü Yayınla'}
+        </button>
+      </div>
+      <div className="divide-y divide-gray-50">
+        {taslaklar.map((t) => (
+          <div key={t.id} className="px-4 py-2.5 flex items-center justify-between gap-3 flex-wrap">
+            <div>
+              <p className="text-sm font-medium text-gray-800">
+                {t.veri.ders_adi || sinifAdi(t.veri.sinif_id)} <span className="text-gray-400 font-normal">— {sinifAdi(t.veri.sinif_id)}</span>
+              </p>
+              <p className="text-xs text-gray-400">
+                {GUNLER[t.veri.gun]} · {saatKisalt(t.veri.baslangic_saat)}–{saatKisalt(t.veri.bitis_saat)}
+                {ogretmenAdi(t.veri.ogretmen_profile_id) ? ` · ${ogretmenAdi(t.veri.ogretmen_profile_id)}` : ''}
+              </p>
+              {hataMap[t.id] && <p className="text-xs text-red-600 mt-1">{hataMap[t.id]}</p>}
+            </div>
+            <div className="flex items-center gap-3 shrink-0">
+              <button
+                onClick={() => tekYayinla(t)}
+                disabled={gonderiliyorId === t.id || tumuGonderiliyor}
+                className="text-navy text-sm font-semibold hover:underline disabled:opacity-50"
+              >
+                {gonderiliyorId === t.id ? 'Yayınlanıyor...' : 'Yayınla'}
+              </button>
+              <button onClick={() => sil(t.id)} className="text-gray-400 text-sm hover:underline">Sil</button>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
   )
 }
 
@@ -291,8 +488,12 @@ export default function DersProgrami() {
   const [bireBirDerslerim, setBireBirDerslerim] = useState([])
   const [tekSeferlikDerslerim, setTekSeferlikDerslerim] = useState([])
   const [birdenFazlaCocukMu, setBirdenFazlaCocukMu] = useState(false)
+  const [taslaklar, setTaslaklar] = useState([])
   const [loading, setLoading] = useState(true)
   const [gorunum, setGorunum] = useState('tablo')
+  // Müsaitlik tablosunda boş bir hücreye tıklanınca buraya { ogretmenId, gun,
+  // baslangic, bitis } yazılır; DersEkleForm bunu izleyip kendini otomatik doldurur.
+  const [doldurBilgisi, setDoldurBilgisi] = useState(null)
   const ilkYuklemeTamamRef = useRef(false)
 
   function veriyiYenile() {
@@ -318,7 +519,9 @@ export default function DersProgrami() {
       isVeliYaDaOgrenci
         ? supabase.from('ogrenciler').select('id, ad_soyad, veli_profile_id, ogrenci_profile_id')
         : Promise.resolve({ data: [] }),
-    ]).then(([p, s, og, ba, by, o, kendiCocuklarSonuc]) => {
+      isYonetici ? supabase.from('taslaklar').select('*').eq('tur', 'sinif').order('created_at') : Promise.resolve({ data: [] }),
+    ]).then(([p, s, og, ba, by, o, kendiCocuklarSonuc, t]) => {
+      setTaslaklar(t.data || [])
       setProgram(
         (p.data || []).map((d) => ({
           ...d,
@@ -407,6 +610,15 @@ export default function DersProgrami() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
+  // Müsaitlik tablosunda boş bir hücreye tıklanınca çağrılır: hücrenin
+  // öğretmen/gün/saat bilgisini forma iletir ve forma doğru yumuşak kaydırır.
+  function hucreTiklandi(bilgi) {
+    setDoldurBilgisi({ ...bilgi })
+    requestAnimationFrame(() => {
+      document.getElementById('ders-ekle-formu')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    })
+  }
+
   const ogrenciAdMap = useMemo(() => new Map(ogrenciler.map((o) => [o.id, o.ad_soyad])), [ogrenciler])
 
   async function sil(id) {
@@ -453,8 +665,22 @@ export default function DersProgrami() {
             atamalar={bireBirAtamalar}
             yoklamalar={bireBirYoklamalar}
             ogrenciAdMap={ogrenciAdMap}
+            onHucreTikla={hucreTiklandi}
           />
-          <DersEkleForm siniflar={siniflar} ogretmenler={ogretmenler} program={program} onEklendi={veriyiYenile} />
+          <DersEkleForm
+            siniflar={siniflar}
+            ogretmenler={ogretmenler}
+            program={program}
+            onEklendi={veriyiYenile}
+            doldurBilgisi={doldurBilgisi}
+          />
+          <TaslaklarimDersProgrami
+            taslaklar={taslaklar}
+            siniflar={siniflar}
+            ogretmenler={ogretmenler}
+            program={program}
+            onDegisti={veriyiYenile}
+          />
         </>
       )}
 

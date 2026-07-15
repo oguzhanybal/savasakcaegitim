@@ -203,7 +203,8 @@ function tekSeferlikCakismaBul(
 //  - Hayır -> sadece o tarihe özel, tek seferlik bir ders kaydı (bire_bir_yoklama,
 //             atama_id boş) oluşturulur, hemen "Geldi" olarak borç eklenir.
 // ============================================================================
-function BireBirDersEkleForm({ ogrenciler, ogretmenler, atamalar, dersProgrami, yoklamalar, onEklendi }) {
+function BireBirDersEkleForm({ ogrenciler, ogretmenler, atamalar, dersProgrami, yoklamalar, onEklendi, doldurBilgisi }) {
+  const { profile } = useAuth()
   const [ogrenciId, setOgrenciId] = useState('')
   const [ogretmenId, setOgretmenId] = useState('')
   const [dersUcreti, setDersUcreti] = useState('')
@@ -227,6 +228,24 @@ function BireBirDersEkleForm({ ogrenciler, ogretmenler, atamalar, dersProgrami, 
   const [gonderiliyor, setGonderiliyor] = useState(false)
   const ogrenciSelectRef = useRef(null)
   const tekBaslangicRef = useRef(null)
+
+  // Müsaitlik tablosunda boş bir hücreye tıklanınca, üstten gelen bilgiyle formu
+  // otomatik doldurur ve öğrenci seçimine odaklanır — elle öğretmen/tarih/saat
+  // yazmaya gerek kalmasın diye. doldurBilgisi her tıklamada YENİ bir nesne
+  // olarak geldiği için (bkz. BireBir() bileşenindeki hucreTiklandi), bu effect
+  // aynı hücreye art arda tıklansa bile her seferinde tekrar çalışır.
+  useEffect(() => {
+    if (!doldurBilgisi) return
+    setOgretmenId(doldurBilgisi.ogretmenId)
+    setTekrarlansin(false)
+    setTarih(doldurBilgisi.tarih)
+    setTekBaslangic(doldurBilgisi.baslangic)
+    setTekBitis(doldurBilgisi.bitis || saateDakikaEkle(doldurBilgisi.baslangic, 45))
+    setHata('')
+    setBasari('')
+    ogrenciSelectRef.current?.focus()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [doldurBilgisi])
 
   // Seçilen öğretmenin, seçilen gündeki tüm dolu saatlerini (hem sınıf dersleri hem
   // diğer bire bir dersleri) tek listede gösterir — sadece "Evet, tekrarlansın"
@@ -400,8 +419,59 @@ function BireBirDersEkleForm({ ogrenciler, ogretmenler, atamalar, dersProgrami, 
     }
   }
 
+  // Formu doldurup henüz kesinleşmemiş bir ders için "Taslağa Kaydet" — gerçek
+  // programa hemen eklemez, sadece taslaklar tablosuna kaydeder. Çakışma kontrolü
+  // burada YAPILMAZ (henüz kesin değil); yayınlanırken (Taslaklarım listesinden)
+  // kontrol edilir.
+  async function taslagaKaydet() {
+    setHata('')
+    setBasari('')
+    if (!ogrenciId || !ogretmenId || !dersUcreti) {
+      setHata('Lütfen öğrenci, öğretmen ve ders ücretini girin.')
+      return
+    }
+    let tur, veri
+    if (tekrarlansin) {
+      if (!baslangic || !bitis) {
+        setHata('Lütfen başlangıç ve bitiş saatini girin.')
+        return
+      }
+      tur = 'bire_bir_haftalik'
+      veri = {
+        ogrenci_id: ogrenciId,
+        ogretmen_profile_id: ogretmenId,
+        ders_ucreti: Number(dersUcreti),
+        gun: Number(gun),
+        baslangic_saat: baslangic,
+        bitis_saat: bitis,
+      }
+    } else {
+      if (!tarih) {
+        setHata('Lütfen tarihi girin.')
+        return
+      }
+      tur = 'bire_bir_tekil'
+      veri = {
+        ogrenci_id: ogrenciId,
+        ogretmen_profile_id: ogretmenId,
+        tutar: Number(dersUcreti),
+        tarih,
+        baslangic_saat: tekBaslangic || null,
+        bitis_saat: tekBitis || null,
+      }
+    }
+    setGonderiliyor(true)
+    const { error } = await supabase.from('taslaklar').insert({ tur, veri, olusturan_profile_id: profile?.id })
+    setGonderiliyor(false)
+    if (error) setHata('Hata: ' + error.message)
+    else {
+      setBasari('✓ Taslağa kaydedildi — aşağıdaki "Taslaklarım" listesinden yayınlayabilirsiniz.')
+      onEklendi()
+    }
+  }
+
   return (
-    <form onSubmit={ekle} className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5 mb-6">
+    <form id="bire-bir-ekle-formu" onSubmit={ekle} className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5 mb-6">
       <p className="font-semibold text-gray-700 mb-3">Bire Bir Ders Ekle</p>
       <div className="flex flex-wrap gap-3 items-end">
         <div className="flex-1 min-w-[180px]">
@@ -576,17 +646,185 @@ function BireBirDersEkleForm({ ogrenciler, ogretmenler, atamalar, dersProgrami, 
         )}
       </div>
 
-      <button
-        type="submit"
-        disabled={gonderiliyor}
-        className="mt-4 bg-orange text-white font-semibold px-5 py-2 rounded-lg hover:opacity-90 transition-opacity disabled:opacity-50"
-      >
-        {gonderiliyor ? 'Ekleniyor...' : 'Ekle'}
-      </button>
+      <div className="mt-4 flex items-center gap-3 flex-wrap">
+        <button
+          type="submit"
+          disabled={gonderiliyor}
+          className="bg-orange text-white font-semibold px-5 py-2 rounded-lg hover:opacity-90 transition-opacity disabled:opacity-50"
+        >
+          {gonderiliyor ? 'Ekleniyor...' : 'Ekle'}
+        </button>
+        <button
+          type="button"
+          onClick={taslagaKaydet}
+          disabled={gonderiliyor}
+          className="bg-white border border-gray-200 text-gray-600 font-semibold px-5 py-2 rounded-lg hover:bg-gray-50 transition-colors disabled:opacity-50"
+        >
+          Taslağa Kaydet
+        </button>
+      </div>
 
       {hata && <p className="text-red-600 text-sm mt-3">{hata}</p>}
       {!hata && basari && <p className="text-green-600 text-sm mt-3">{basari}</p>}
     </form>
+  )
+}
+
+// ============================================================================
+// TASLAKLARIM (Bire Bir) — "Bire Bir Ders Ekle" formundan "Taslağa Kaydet" ile
+// biriktirilen, henüz gerçek programa eklenmemiş kayıtlar. Yönetici tek tek ya
+// da hepsini birden "Yayınla" diyerek gerçek tabloya (bire_bir_atamalari /
+// bire_bir_yoklama) aktarabilir. Yayınlarken AYNI çakışma kontrolleri (öğretmenin
+// / öğrencinin o saatte başka dersi var mı) tekrar çalıştırılır — taslak
+// kaydedildikten sonra program değişmiş olabilir.
+function TaslaklarimBireBir({ taslaklar, ogrenciler, ogretmenler, dersProgrami, atamalar, yoklamalar, onDegisti }) {
+  const [gonderiliyorId, setGonderiliyorId] = useState(null)
+  const [tumuGonderiliyor, setTumuGonderiliyor] = useState(false)
+  const [hataMap, setHataMap] = useState({})
+
+  const ogrenciAd = (id) => ogrenciler.find((o) => o.id === id)?.ad_soyad || 'Bilinmeyen öğrenci'
+  const ogretmenAd = (id) => ogretmenler.find((o) => o.id === id)?.ad_soyad || 'Bilinmeyen öğretmen'
+
+  // Bir taslağı gerçek tabloya aktarır. Başarılıysa true, çakışma/hata varsa
+  // false döner (hataMap'e o taslağın id'siyle hata mesajı yazılır).
+  async function yayinla(t) {
+    const v = t.veri
+    if (t.tur === 'bire_bir_haftalik') {
+      const cakisma = cakismaBul(
+        { ogrenciId: v.ogrenci_id, ogretmenId: v.ogretmen_profile_id, gun: v.gun, baslangic: v.baslangic_saat, bitis: v.bitis_saat },
+        dersProgrami,
+        atamalar
+      )
+      if (cakisma) {
+        setHataMap((h) => ({ ...h, [t.id]: `Çakışma var: ${cakisma.aciklama}.` }))
+        return false
+      }
+      const { error } = await supabase.from('bire_bir_atamalari').insert({
+        ogrenci_id: v.ogrenci_id,
+        ogretmen_profile_id: v.ogretmen_profile_id,
+        ders_ucreti: v.ders_ucreti,
+        gun: v.gun,
+        baslangic_saat: v.baslangic_saat,
+        bitis_saat: v.bitis_saat,
+      })
+      if (error) {
+        setHataMap((h) => ({ ...h, [t.id]: 'Hata: ' + error.message }))
+        return false
+      }
+    } else {
+      if (v.baslangic_saat && v.bitis_saat) {
+        const cakisma = tekSeferlikCakismaBul(
+          { ogrenciId: v.ogrenci_id, ogretmenId: v.ogretmen_profile_id, tarih: v.tarih, baslangic: v.baslangic_saat, bitis: v.bitis_saat },
+          dersProgrami,
+          atamalar,
+          yoklamalar,
+          ogrenciler,
+          ogretmenler
+        )
+        if (cakisma) {
+          setHataMap((h) => ({ ...h, [t.id]: `Çakışma var: ${cakisma.aciklama}.` }))
+          return false
+        }
+      }
+      const ileriTarihli = v.tarih > yerelBugunTarihi()
+      const { error } = await supabase.from('bire_bir_yoklama').insert({
+        ogrenci_id: v.ogrenci_id,
+        ogretmen_profile_id: v.ogretmen_profile_id,
+        tutar: v.tutar,
+        tarih: v.tarih,
+        durum: ileriTarihli ? 'bekliyor' : 'geldi',
+        baslangic_saat: v.baslangic_saat,
+        bitis_saat: v.bitis_saat,
+      })
+      if (error) {
+        setHataMap((h) => ({ ...h, [t.id]: 'Hata: ' + error.message }))
+        return false
+      }
+    }
+    await supabase.from('taslaklar').delete().eq('id', t.id)
+    setHataMap((h) => {
+      const yeni = { ...h }
+      delete yeni[t.id]
+      return yeni
+    })
+    return true
+  }
+
+  async function tekYayinla(t) {
+    setGonderiliyorId(t.id)
+    await yayinla(t)
+    setGonderiliyorId(null)
+    onDegisti()
+  }
+
+  async function sil(id) {
+    if (!confirm('Bu taslağı silmek istediğinize emin misiniz?')) return
+    await supabase.from('taslaklar').delete().eq('id', id)
+    onDegisti()
+  }
+
+  async function tumunuYayinla() {
+    setTumuGonderiliyor(true)
+    let basarili = 0
+    let basarisiz = 0
+    for (const t of taslaklar) {
+      const sonuc = await yayinla(t)
+      if (sonuc) basarili++
+      else basarisiz++
+    }
+    setTumuGonderiliyor(false)
+    onDegisti()
+    if (basarisiz > 0) {
+      alert(`${basarili} taslak yayınlandı, ${basarisiz} tanesi çakışma/hata nedeniyle yayınlanamadı (listede kırmızı olarak görünüyor).`)
+    }
+  }
+
+  if (taslaklar.length === 0) return null
+
+  return (
+    <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden mb-6">
+      <div className="px-4 py-3 border-b border-gray-100 bg-gray-50 flex items-center justify-between flex-wrap gap-3">
+        <div>
+          <h2 className="font-semibold text-gray-700">Taslaklarım ({taslaklar.length})</h2>
+          <p className="text-xs text-gray-400 mt-0.5">Henüz gerçek programa eklenmemiş bire bir dersler. Hazır olduğunda yayınlayın.</p>
+        </div>
+        <button
+          type="button"
+          onClick={tumunuYayinla}
+          disabled={tumuGonderiliyor}
+          className="bg-navy text-white text-sm font-semibold px-4 py-1.5 rounded-lg hover:opacity-90 transition-opacity disabled:opacity-50"
+        >
+          {tumuGonderiliyor ? 'Yayınlanıyor...' : 'Tümünü Yayınla'}
+        </button>
+      </div>
+      <div className="divide-y divide-gray-50">
+        {taslaklar.map((t) => (
+          <div key={t.id} className="px-4 py-2.5 flex items-center justify-between gap-3 flex-wrap">
+            <div>
+              <p className="text-sm font-medium text-gray-800">
+                {ogrenciAd(t.veri.ogrenci_id)} <span className="text-gray-400 font-normal">— {ogretmenAd(t.veri.ogretmen_profile_id)}</span>
+              </p>
+              <p className="text-xs text-gray-400">
+                {t.tur === 'bire_bir_haftalik'
+                  ? `Her hafta ${GUNLER[t.veri.gun]} · ${saatKisalt(t.veri.baslangic_saat)}–${saatKisalt(t.veri.bitis_saat)} · ${paraFormat(t.veri.ders_ucreti)}`
+                  : `${new Date(t.veri.tarih + 'T12:00:00').toLocaleDateString('tr-TR')}${t.veri.baslangic_saat ? ` · ${saatKisalt(t.veri.baslangic_saat)}–${saatKisalt(t.veri.bitis_saat)}` : ''} · ${paraFormat(t.veri.tutar)}`}
+              </p>
+              {hataMap[t.id] && <p className="text-xs text-red-600 mt-1">{hataMap[t.id]}</p>}
+            </div>
+            <div className="flex items-center gap-3 shrink-0">
+              <button
+                onClick={() => tekYayinla(t)}
+                disabled={gonderiliyorId === t.id || tumuGonderiliyor}
+                className="text-navy text-sm font-semibold hover:underline disabled:opacity-50"
+              >
+                {gonderiliyorId === t.id ? 'Yayınlanıyor...' : 'Yayınla'}
+              </button>
+              <button onClick={() => sil(t.id)} className="text-gray-400 text-sm hover:underline">Sil</button>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
   )
 }
 
@@ -1724,10 +1962,15 @@ export default function BireBir() {
   const [dersProgrami, setDersProgrami] = useState([])
   const [atamalar, setAtamalar] = useState([])
   const [yoklamalar, setYoklamalar] = useState([])
+  const [taslaklar, setTaslaklar] = useState([])
   const [loading, setLoading] = useState(true)
   const [sadeceAktif, setSadeceAktif] = useState(true)
   const [sadeceBugun, setSadeceBugun] = useState(true)
   const [yoklamaArama, setYoklamaArama] = useState('')
+  // Müsaitlik tablosunda boş bir hücreye tıklanınca buraya { ogretmenId, tarih,
+  // baslangic, bitis } yazılır; BireBirDersEkleForm bunu izleyip kendini otomatik
+  // doldurur (bkz. hucreTiklandi).
+  const [doldurBilgisi, setDoldurBilgisi] = useState(null)
   // İlk açılıştan sonra "Yükleniyor..." ekranını bir daha göstermiyoruz — bir ders
   // ekleyip onEklendi() ile veriyi yenilediğimizde tüm sayfa "Yükleniyor..." ekranına
   // dönüp formu (bileşeni) komple yeniden kuruyordu, bu da az önce doldurulmuş
@@ -1756,7 +1999,10 @@ export default function BireBir() {
       supabase
         .from('bire_bir_yoklama')
         .select('*, ogrenciler(ad_soyad, telefon, anne_telefon, baba_telefon), profiles:ogretmen_profile_id(ad_soyad, brans)'),
-    ]).then(([o, og, dp, a, y]) => {
+      isYonetici
+        ? supabase.from('taslaklar').select('*').in('tur', ['bire_bir_haftalik', 'bire_bir_tekil']).order('created_at')
+        : Promise.resolve({ data: [] }),
+    ]).then(([o, og, dp, a, y, t]) => {
       setOgrenciler(o.data || [])
       setOgretmenler(og.data || [])
       setDersProgrami(dp.data || [])
@@ -1784,6 +2030,7 @@ export default function BireBir() {
           ogrenci_baba_telefon: d.ogrenciler?.baba_telefon,
         }))
       )
+      setTaslaklar(t.data || [])
       ilkYuklemeTamamRef.current = true
       setLoading(false)
     })
@@ -1793,6 +2040,15 @@ export default function BireBir() {
     veriyiYenile()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
+
+  // Müsaitlik tablosunda boş bir hücreye tıklanınca çağrılır: hücrenin
+  // öğretmen/tarih/saat bilgisini forma iletir ve forma doğru yumuşak kaydırır.
+  function hucreTiklandi(bilgi) {
+    setDoldurBilgisi({ ...bilgi })
+    requestAnimationFrame(() => {
+      document.getElementById('bire-bir-ekle-formu')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    })
+  }
 
   const bugunGun = useMemo(() => {
     const g = new Date().getDay()
@@ -1833,6 +2089,18 @@ export default function BireBir() {
 
       {isYonetici && (
         <>
+          {/* Müsaitlik tablosu artık Ders Ekle formunun ÜSTÜNDE — sayfayı normal
+              kullanırken (öğrenci kaydederken) müsaitliğe bakmak için aşağı
+              inmeye gerek kalmasın diye. Boş bir hücreye tıklanınca da altındaki
+              forma o öğretmen/tarih/saat otomatik doldurulup kaydırılıyor. */}
+          <MusaitlikTablosu
+            ogretmenler={ogretmenler}
+            dersProgrami={dersProgrami}
+            atamalar={atamalar}
+            yoklamalar={yoklamalar}
+            ogrenciAdMap={ogrenciAdMap}
+            onHucreTikla={hucreTiklandi}
+          />
           <BireBirDersEkleForm
             ogrenciler={ogrenciler}
             ogretmenler={ogretmenler}
@@ -1840,13 +2108,16 @@ export default function BireBir() {
             dersProgrami={dersProgrami}
             yoklamalar={yoklamalar}
             onEklendi={veriyiYenile}
+            doldurBilgisi={doldurBilgisi}
           />
-          <MusaitlikTablosu
+          <TaslaklarimBireBir
+            taslaklar={taslaklar}
+            ogrenciler={ogrenciler}
             ogretmenler={ogretmenler}
             dersProgrami={dersProgrami}
             atamalar={atamalar}
             yoklamalar={yoklamalar}
-            ogrenciAdMap={ogrenciAdMap}
+            onDegisti={veriyiYenile}
           />
           <AtamaListesi
             atamalar={atamalar}
