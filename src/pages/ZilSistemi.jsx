@@ -31,6 +31,15 @@ import { sesSisteminiEtkinlestir, cikisZiliCal, manuelZilCalBaslat, manuelZilDur
 // açılan sayfa sadece bir UZAKTAN KUMANDA gibi davranır, kendi başına ses
 // çıkarmaz. Böylece "uzaktan zil çal" dediğinde ses sadece kurumdaki (zil
 // hesabıyla açık) bilgisayarda duyulur, komutu gönderen telefonda değil.
+//
+// SUNUCU SAATİ SENKRONİZASYONU: normalde her 10 dakikada bir tekrarlanır. Ama
+// bir seferinde (ör. o anki geçici bir internet kesintisi/ağ sorunu yüzünden)
+// senkronizasyon BAŞARISIZ olursa, bir dahaki 10 dakikaya kadar beklemek yerine
+// aşağıdaki ayrı efekt sayesinde 5 saniyede bir OTOMATİK olarak tekrar dener —
+// bağlantı düzelir düzelmez (birkaç saniye içinde) kendiliğinden düzelir,
+// sayfanın elle yenilenmesine gerek kalmaz. Bu süre zarfında (senkron
+// başarısız olduğu sürece) bilgisayarın KENDİ saati kullanılır, bu yanlışsa
+// zil de yanlış saatte çalabilir — o yüzden ekrandaki kırmızı uyarı önemlidir.
 // ============================================================================
 
 // ÖNEMLİ: Saat dilimi burada "Europe/Istanbul" olarak SABİTLENMİŞTİR —
@@ -161,6 +170,19 @@ export default function ZilSistemi() {
     const senkronId = setInterval(senkronizeEt, 10 * 60 * 1000)
     return () => clearInterval(senkronId)
   }, [])
+
+  // OTOMATİK HIZLI TEKRAR DENEME: senkronizasyon bir kez BAŞARISIZ olduysa (ör.
+  // geçici bir internet kesintisi/ağ sorunu), normal 10 dakikalık döngüyü
+  // beklemeden 5 saniyede bir tekrar dener — bağlantı düzeldiği anda (birkaç
+  // saniye içinde) kendiliğinden düzelir, sayfanın elle yenilenmesine (F5)
+  // gerek kalmaz. Senkron başarılı olur olmaz (senkronDurumu 'tamam' olunca)
+  // bu efekt otomatik olarak durur.
+  useEffect(() => {
+    if (senkronDurumu !== 'hata') return
+    const id = setTimeout(senkronizeEt, 5000)
+    return () => clearTimeout(id)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [senkronDurumu])
 
   // Her saniye: gösterilen saati güncelle, zil zamanı geldiyse çal.
   useEffect(() => {
@@ -449,7 +471,8 @@ export default function ZilSistemi() {
           {senkronDurumu === 'bekliyor' && 'Sunucuyla senkronize ediliyor...'}
           {senkronDurumu === 'hata' && (
             <span className="text-red-500">
-              Sunucuyla senkronize edilemedi — bilgisayarın kendi saati kullanılıyor (yanlış olabilir).
+              Sunucuyla senkronize edilemedi — bilgisayarın kendi saati kullanılıyor (yanlış olabilir). Otomatik
+              olarak birkaç saniyede bir tekrar deneniyor, elle bir şey yapmanıza gerek yok.
             </span>
           )}
         </p>
