@@ -19,6 +19,12 @@ import { sesSisteminiEtkinlestir, cikisZiliCal } from '../lib/zilSesiCal'
 // Bu sayfa hep açık bir sekmede, herkesin ulaşabileceği bir bilgisayarda
 // duracağı için, yönetici hesabı o bilgisayarda açık bırakılmasın diye SADECE
 // bu sayfayı görebilen ayrı bir "zil" rolü var (bkz. Layout.jsx, App.jsx).
+//
+// UZAKTAN KONTROL: Bu sayfa, aynı hesapla (ör. yönetici, telefondan) başka
+// bir cihazda da açılabilir. Oradaki "Manuel Çal" butonları ve "Durdur/
+// Başlat" butonu, "zil_uzaktan_komutlar" tablosuna bir satır ekler; Supabase
+// Realtime sayesinde, sayfa açık olan TÜM cihazlar (ör. kurumdaki
+// bilgisayar) bu satırı anında görüp gereken zili çalar/durdurur/başlatır.
 // ============================================================================
 
 // ÖNEMLİ: Saat dilimi burada "Europe/Istanbul" olarak SABİTLENMİŞTİR —
@@ -92,7 +98,19 @@ export default function ZilSistemi() {
   const [gosterilenSaat, setGosterilenSaat] = useState(new Date())
   const [etkinMi, setEtkinMi] = useState(false)
   const [sonCalanlar, setSonCalanlar] = useState([])
+  const [uzaktanBilgi, setUzaktanBilgi] = useState('')
+  // "2 saat zil çalma" gibi geçici susturma — bu, doğru (sunucudan alınan)
+  // saate göre bir bitiş anı (ms) tutar. Süre dolunca otomatik olarak
+  // kendiliğinden kalkar, "Zili Durdur"un aksine elle "Başlat"a gerek yoktur.
+  const [susturBitisMs, setSusturBitisMs] = useState(null)
   const calinanlarRef = useRef(new Set())
+  // Ring-check ve uzaktan komut dinleme kapanışları (closure) her zaman GÜNCEL
+  // sunucuFarki'na erişsin diye bir ref'te de tutuyoruz (bağımlılık dizisi
+  // boş olan efektler için).
+  const sunucuFarkiRef = useRef(0)
+  useEffect(() => {
+    sunucuFarkiRef.current = sunucuFarki
+  }, [sunucuFarki])
 
   // ---- Yeni ders ekleme formu — Öğrenci girilince Öğretmen (+1dk),
   // Öğretmen (elle ya da otomatik) belli olunca Çıkış (+45dk) öneriliyor.
@@ -140,7 +158,10 @@ export default function ZilSistemi() {
     const id = setInterval(() => {
       const suanki = new Date(Date.now() + sunucuFarki)
       setGosterilenSaat(suanki)
+      // Susturma süresi dolduysa kendiliğinden kalksın.
+      if (susturBitisMs && suanki.getTime() >= susturBitisMs) setSusturBitisMs(null)
       if (!etkinMi) return
+      if (susturBitisMs && suanki.getTime() < susturBitisMs) return
       const b = turkiyeSaatBilesenleri(suanki)
       const suankiHHMM = `${b.saat}:${b.dakika}`
       const suankiSaniye = Number(b.saniye)
@@ -167,7 +188,76 @@ export default function ZilSistemi() {
       })
     }, 1000)
     return () => clearInterval(id)
-  }, [sunucuFarki, etkinMi, dersler])
+  }, [sunucuFarki, etkinMi, dersler, susturBitisMs])
+
+  // ---- Uzaktan komutları dinle (ör. telefondan gönderilen manuel çal /
+  // durdur / başlat) — Supabase Realtime ile, sayfa açık olan TÜM cihazlara
+  // anında ulaşır. Bağlantı kesilip yeniden kurulduğunda eski (>15 saniyelik)
+  // komutların "geç" gelip tekrar işlenmemesi için zaman kontrolü var.
+  useEffect(() => {
+    const kanal = supabase
+      .channel('zil-uzaktan-komutlar')
+      .on(
+        'postgres_changes',
+        { event: 'INSERT', schema: 'public', table: 'zil_uzaktan_komutlar' },
+        (payload) => {
+          const komut = payload.new
+          const komutZamaniMs = new Date(komut.created_at).getTime()
+          const suankiSunucuMs = Date.now() + sunucuFarkiRef.current
+          if (suankiSunucuMs - komutZamaniMs > 15000) return
+
+          if (komut.komut === 'baslat') {
+            sesSisteminiEtkinlestir()
+            setEtkinMi(true)
+            setUzaktanBilgi('Zil, uzaktan (başka bir cihazdan) başlatıldı.')
+          } else if (komut.komut === 'durdur') {
+            setEtkinMi(false)
+            setUzaktanBilgi('Zil, uzaktan (başka bir cihazdan) durduruldu.')
+          } else if (komut.komut === 'sustur') {
+            const dakika = Number(komut.sure_dakika) || 0
+            setSusturBitisMs(suankiSunucuMs + dakika * 60000)
+            const saat = Math.floor(dakika / 60)
+            const dk = dakika % 60
+            const sureMetni = saat > 0 ? `${saat} saat${dk > 0 ? ` ${dk} dk` : ''}` : `${dk} dk`
+            setUzaktanBilgi(`Zil, uzaktan ${sureMetni} susturuldu.`)
+          } else if (komut.komut === 'susturma_kaldir') {
+            setSusturBitisMs(null)
+            setUzaktanBilgi('Susturma, uzaktan kaldırıldı.')
+          } else {
+            const etiketler = { cal_ogrenci: 'Öğrenci Zili', cal_ogretmen: 'Öğretmen Zili', cal_cikis: 'Çıkış Zili' }
+            const etiket = etiketler[komut.komut]
+            if (!etiket) return
+            cikisZiliCal()
+            const suanki = new Date(suankiSunucuMs)
+            setSonCalanlar((liste) => [{ etiket: `Manuel — ${etiket}`, zaman: suanki }, ...liste].slice(0, 20))
+            setUzaktanBilgi(`Manuel "${etiket}" komutu uzaktan tetiklendi.`)
+          }
+        }
+      )
+      .subscribe()
+    return () => supabase.removeChannel(kanal)
+  }, [])
+
+  async function uzaktanKomutGonder(komut, sureDakika = null) {
+    sesSisteminiEtkinlestir()
+    const { error } = await supabase.from('zil_uzaktan_komutlar').insert({ komut, sure_dakika: sureDakika })
+    if (error) alert('Komut gönderilemedi: ' + error.message)
+  }
+
+  // "2 saat / 3 saat zil çalma" — hem bu cihazda hemen etkili olsun (iyimser
+  // güncelleme) hem de diğer cihazlara (ör. kurumdaki bilgisayar) uzaktan
+  // komutla ulaşsın diye ikisi de yapılıyor.
+  function susturmaBaslat(dakika) {
+    setSusturBitisMs(Date.now() + sunucuFarki + dakika * 60000)
+    uzaktanKomutGonder('sustur', dakika)
+  }
+
+  function susturmayiKaldir() {
+    setSusturBitisMs(null)
+    uzaktanKomutGonder('susturma_kaldir')
+  }
+
+  const susturuluyorMu = susturBitisMs != null && gosterilenSaat.getTime() < susturBitisMs
 
   const siradakiZil = useMemo(() => {
     const b = turkiyeSaatBilesenleri(gosterilenSaat)
@@ -196,10 +286,12 @@ export default function ZilSistemi() {
   function zilBaslat() {
     sesSisteminiEtkinlestir()
     setEtkinMi(true)
+    uzaktanKomutGonder('baslat')
   }
 
   function zilDurdur() {
     setEtkinMi(false)
+    uzaktanKomutGonder('durdur')
   }
 
   function formuSifirla() {
@@ -335,6 +427,89 @@ export default function ZilSistemi() {
             izin vermiyor. Bu butona SADECE sabah bir kez basmanız yeterli, sayfa açık kaldığı sürece gün boyu çalışır.
           </p>
         )}
+        {susturuluyorMu && (
+          <div className="flex flex-col items-center gap-2 mt-4">
+            <span className="inline-flex items-center gap-2 text-amber-700 font-semibold text-sm bg-amber-50 px-4 py-2 rounded-full">
+              🔇 Zil susturuldu — {saatMetni(new Date(susturBitisMs))} saatine kadar otomatik çalmayacak
+            </span>
+            <button type="button" onClick={susturmayiKaldir} className="text-gray-400 text-xs hover:underline">
+              Susturmayı Şimdi Kaldır
+            </button>
+          </div>
+        )}
+        {uzaktanBilgi && (
+          <p className="text-xs text-blue-600 bg-blue-50 rounded-lg px-3 py-2 mt-3">{uzaktanBilgi}</p>
+        )}
+      </div>
+
+      <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6 mb-6">
+        <h2 className="font-semibold text-gray-700 mb-1">Manuel Çal / Uzaktan Kontrol</h2>
+        <p className="text-xs text-gray-400 mb-4">
+          Bu sayfayı aynı hesapla telefondan da açabilirsin — buradaki butonlar, Zil Sistemi açık olan TÜM cihazlara
+          (ör. kurumdaki bilgisayar) anında ulaşır. "Durdur"a basarsan otomatik çalma orada da durur, tekrar
+          "Başlat"a basana kadar.
+        </p>
+        <div className="flex flex-wrap gap-2">
+          <button
+            type="button"
+            onClick={() => uzaktanKomutGonder('cal_ogrenci')}
+            className="bg-navy text-white text-sm font-semibold px-4 py-2 rounded-lg hover:opacity-90 transition-opacity"
+          >
+            Öğrenci Zilini Çal
+          </button>
+          <button
+            type="button"
+            onClick={() => uzaktanKomutGonder('cal_ogretmen')}
+            className="bg-navy text-white text-sm font-semibold px-4 py-2 rounded-lg hover:opacity-90 transition-opacity"
+          >
+            Öğretmen Zilini Çal
+          </button>
+          <button
+            type="button"
+            onClick={() => uzaktanKomutGonder('cal_cikis')}
+            className="bg-navy text-white text-sm font-semibold px-4 py-2 rounded-lg hover:opacity-90 transition-opacity"
+          >
+            Çıkış Zilini Çal
+          </button>
+        </div>
+
+        <div className="mt-5 pt-4 border-t border-gray-100">
+          <p className="text-xs text-gray-400 mb-2">
+            Belirli bir süre zil çalmasın (süre dolunca otomatik olarak kendiliğinden devam eder):
+          </p>
+          <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={() => susturmaBaslat(60)}
+              className="bg-amber-500 text-white text-sm font-semibold px-4 py-2 rounded-lg hover:opacity-90 transition-opacity"
+            >
+              1 Saat Zil Çalma
+            </button>
+            <button
+              type="button"
+              onClick={() => susturmaBaslat(120)}
+              className="bg-amber-500 text-white text-sm font-semibold px-4 py-2 rounded-lg hover:opacity-90 transition-opacity"
+            >
+              2 Saat Zil Çalma
+            </button>
+            <button
+              type="button"
+              onClick={() => susturmaBaslat(180)}
+              className="bg-amber-500 text-white text-sm font-semibold px-4 py-2 rounded-lg hover:opacity-90 transition-opacity"
+            >
+              3 Saat Zil Çalma
+            </button>
+            {susturuluyorMu && (
+              <button
+                type="button"
+                onClick={susturmayiKaldir}
+                className="text-gray-400 text-sm px-4 py-2 hover:underline"
+              >
+                Susturmayı Kaldır
+              </button>
+            )}
+          </div>
+        </div>
       </div>
 
       <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden mb-6">
