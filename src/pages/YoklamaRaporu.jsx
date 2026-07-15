@@ -1,9 +1,144 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
+import { useAuth } from '../lib/AuthContext'
 
 const GUNLER = ['', 'Pazartesi', 'Salı', 'Çarşamba', 'Perşembe', 'Cuma', 'Cumartesi', 'Pazar']
 
+function saatKisalt(s) {
+  return s ? s.slice(0, 5) : s
+}
+
+// Bugün için: her sınıfın programlı ders saatini, o saat için öğretmenin
+// yoklama alıp almadığını (Yoklama Al sayfasından "Yoklamayı Kaydet"e
+// basıldıysa o ders saatine ait satırlar oluşuyor) ve alındıysa kimlerin
+// "Gelmedi" işaretlendiğini TEK bakışta gösteren bölüm. Yönetici bunu tüm
+// sınıflar için görür ("hangi öğretmen yoklama almış, hangisi almamış,
+// alanlarda kim gelmemiş"); öğretmen girerse sadece kendi derslerini görür.
+function BugunkuYoklamaDurumu({ isYonetici, ogretmenProfileId }) {
+  const [dersSaatleri, setDersSaatleri] = useState([])
+  const [yoklamalar, setYoklamalar] = useState([])
+  const [loading, setLoading] = useState(true)
+  const bugunGunNo = ((new Date().getDay() + 6) % 7) + 1
+
+  useEffect(() => {
+    setLoading(true)
+    const bugun = new Date().toISOString().slice(0, 10)
+    let sorgu = supabase
+      .from('ders_programi')
+      .select('*, siniflar(ad), profiles:ogretmen_profile_id(ad_soyad, brans)')
+      .eq('gun', bugunGunNo)
+    if (!isYonetici && ogretmenProfileId) sorgu = sorgu.eq('ogretmen_profile_id', ogretmenProfileId)
+
+    Promise.all([
+      sorgu,
+      supabase
+        .from('yoklama')
+        .select('ders_programi_id, ogrenci_id, geldi, ogrenciler(ad_soyad)')
+        .eq('tarih', bugun),
+    ]).then(([dp, y]) => {
+      const sirali = [...(dp.data || [])].sort((a, b) => {
+        const s = (a.baslangic_saat || '').localeCompare(b.baslangic_saat || '')
+        if (s !== 0) return s
+        return (a.siniflar?.ad || '').localeCompare(b.siniflar?.ad || '', 'tr')
+      })
+      setDersSaatleri(sirali)
+      setYoklamalar(y.data || [])
+      setLoading(false)
+    })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isYonetici, ogretmenProfileId])
+
+  const ozet = dersSaatleri.map((ders) => {
+    const kayitlar = yoklamalar.filter((y) => y.ders_programi_id === ders.id)
+    const alindiMi = kayitlar.length > 0
+    const gelmeyenler = kayitlar.filter((y) => !y.geldi).map((y) => y.ogrenciler?.ad_soyad).filter(Boolean)
+    return { ders, alindiMi, gelmeyenler }
+  })
+  const alinanSayisi = ozet.filter((o) => o.alindiMi).length
+  const alinmayanSayisi = ozet.length - alinanSayisi
+
+  return (
+    <div className="mb-8">
+      <h2 className="font-semibold text-gray-700 mb-1">
+        {isYonetici ? 'Bugünkü Yoklama Durumu (Tüm Sınıflar)' : 'Bugünkü Yoklama Durumum'}
+      </h2>
+      <p className="text-xs text-gray-400 mb-3">
+        Bugün {GUNLER[bugunGunNo]} — hangi ders saati için yoklama alınmış, hangisi için henüz alınmamış ve alınanlarda kim gelmemiş burada görünür.
+      </p>
+
+      <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+        {loading && <p className="p-4 text-gray-400 text-sm">Yükleniyor...</p>}
+        {!loading && ozet.length === 0 && (
+          <p className="p-4 text-gray-400 text-sm">Bugün ({GUNLER[bugunGunNo]}) programlı ders saati yok.</p>
+        )}
+        {!loading && ozet.length > 0 && (
+          <>
+            <div className="px-4 py-2.5 bg-gray-50 border-b border-gray-100 flex flex-wrap gap-3 text-xs">
+              <span className="font-semibold text-gray-600">
+                Toplam {ozet.length} ders saati
+              </span>
+              <span className="font-semibold text-green-600">{alinanSayisi} alındı</span>
+              {alinmayanSayisi > 0 && (
+                <span className="font-semibold text-orange-600">{alinmayanSayisi} henüz alınmadı</span>
+              )}
+            </div>
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="bg-navy text-white text-left">
+                  <th className="px-4 py-3 font-semibold">Saat</th>
+                  <th className="px-4 py-3 font-semibold">Sınıf</th>
+                  <th className="px-4 py-3 font-semibold">Ders / Öğretmen</th>
+                  <th className="px-4 py-3 font-semibold text-center">Durum</th>
+                  <th className="px-4 py-3 font-semibold">Gelmeyenler</th>
+                </tr>
+              </thead>
+              <tbody>
+                {ozet.map((o, i) => (
+                  <tr key={o.ders.id} className={i % 2 ? 'bg-gray-50' : ''}>
+                    <td className="px-4 py-3 text-gray-600 whitespace-nowrap">
+                      {saatKisalt(o.ders.baslangic_saat)}–{saatKisalt(o.ders.bitis_saat)}
+                    </td>
+                    <td className="px-4 py-3 font-medium text-gray-800">{o.ders.siniflar?.ad || '—'}</td>
+                    <td className="px-4 py-3 text-gray-600">
+                      {o.ders.ders_adi || '—'}
+                      {o.ders.profiles?.ad_soyad && (
+                        <span className="text-gray-400"> — {o.ders.profiles.ad_soyad}</span>
+                      )}
+                    </td>
+                    <td className="px-4 py-3 text-center">
+                      {o.alindiMi ? (
+                        <span className="px-2 py-0.5 rounded-full text-xs font-semibold bg-green-100 text-green-700">
+                          Alındı
+                        </span>
+                      ) : (
+                        <span className="px-2 py-0.5 rounded-full text-xs font-semibold bg-orange-100 text-orange-700">
+                          Henüz Alınmadı
+                        </span>
+                      )}
+                    </td>
+                    <td className="px-4 py-3">
+                      {!o.alindiMi ? (
+                        <span className="text-gray-300">—</span>
+                      ) : o.gelmeyenler.length === 0 ? (
+                        <span className="text-green-600 text-xs font-medium">Herkes geldi</span>
+                      ) : (
+                        <span className="text-red-500 text-xs">{o.gelmeyenler.join(', ')}</span>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </>
+        )}
+      </div>
+    </div>
+  )
+}
+
 export default function YoklamaRaporu() {
+  const { profile } = useAuth()
+  const isYonetici = profile?.rol === 'yonetici'
   const [siniflar, setSiniflar] = useState([])
   const [seciliSinif, setSeciliSinif] = useState('')
   const [kayitlar, setKayitlar] = useState([])
@@ -43,6 +178,8 @@ export default function YoklamaRaporu() {
   return (
     <div>
       <h1 className="text-2xl font-bold text-navy mb-6">Yoklama Raporu</h1>
+
+      <BugunkuYoklamaDurumu isYonetici={isYonetici} ogretmenProfileId={profile?.id} />
 
       {siniflar.length > 0 && (
         <div className="mb-6">
