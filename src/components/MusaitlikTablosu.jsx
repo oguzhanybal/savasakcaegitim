@@ -220,7 +220,7 @@ export default function MusaitlikTablosu({
         baslangic: d.baslangic_saat,
         bitis: d.bitis_saat,
         etiket: d.ders_adi || d.sinif_adi || 'Sınıf dersi',
-        renk: 'bg-blue-100 text-blue-800',
+        renk: 'bg-blue-100 text-blue-800 border-l-[3px] border-l-blue-500',
       })
     }
     for (const a of atamalar || []) {
@@ -229,7 +229,7 @@ export default function MusaitlikTablosu({
         baslangic: a.baslangic_saat,
         bitis: a.bitis_saat,
         etiket: a.ogrenci_adi || 'Bire bir',
-        renk: 'bg-orange-100 text-orange-800',
+        renk: 'bg-orange-100 text-orange-800 border-l-[3px] border-l-orange-500',
       })
     }
     for (const y of yoklamalar || []) {
@@ -240,7 +240,7 @@ export default function MusaitlikTablosu({
         baslangic: y.baslangic_saat,
         bitis: y.bitis_saat,
         etiket: (ogrenciAdMap && ogrenciAdMap.get(y.ogrenci_id)) || 'Bire bir',
-        renk: 'bg-orange-100 text-orange-800',
+        renk: 'bg-orange-100 text-orange-800 border-l-[3px] border-l-orange-500',
       })
     }
     return harita
@@ -381,8 +381,8 @@ export default function MusaitlikTablosu({
                       >
                         {h.dolu ? (
                           <span className="leading-none block px-0.5">
-                            <span className="block truncate text-[9px] font-medium">{h.dolu.etiket}</span>
-                            <span className="block text-[8px] opacity-70 whitespace-nowrap">
+                            <span className="block truncate text-[11px] font-semibold">{h.dolu.etiket}</span>
+                            <span className="block text-[9px] opacity-70 whitespace-nowrap">
                               {saatKisalt(h.dolu.baslangic)}–{saatKisalt(h.dolu.bitis)}
                             </span>
                           </span>
@@ -496,10 +496,10 @@ export default function MusaitlikTablosu({
           <span className="w-3 h-3 rounded bg-green-50 border border-green-200 inline-block"></span> Boş
         </span>
         <span className="flex items-center gap-1">
-          <span className="w-3 h-3 rounded bg-blue-100 inline-block"></span> Sınıf dersi
+          <span className="w-3 h-3 rounded bg-blue-100 border-l-[3px] border-l-blue-500 inline-block"></span> Sınıf dersi
         </span>
         <span className="flex items-center gap-1">
-          <span className="w-3 h-3 rounded bg-orange-100 inline-block"></span> Bire bir
+          <span className="w-3 h-3 rounded bg-orange-100 border-l-[3px] border-l-orange-500 inline-block"></span> Bire bir
         </span>
       </div>
     </div>
