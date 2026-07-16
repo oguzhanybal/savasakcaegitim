@@ -13,6 +13,7 @@ import {
   bireBirDersDetaylariOlustur,
   fazlaOdemeleriHesapla,
   ogrenciSatirlariHesapla,
+  sonOdemeleriGrupSiniriylaKes,
 } from '../lib/ekstreHesap'
 
 function paraFormat(n) {
@@ -577,13 +578,18 @@ export default function Muhasebe() {
     // ödemenin "tarih"ini aynen devralır — sadece tarihe göre sıralarsak aynı
     // güne ait farklı öğrencilerin dağıtılmış kayıtları rastgele karışabiliyor.
     // created_at (gerçek giriş sırası) ile bu karışıklık düzeliyor.
+    //
+    // 40 satır çekip sonOdemeleriGrupSiniriylaKes ile en az 15'e tamamlıyoruz —
+    // düz limit(15) kullansaydık, bir öğrencinin aynı günkü tek işlemi (ör.
+    // Bire Bir + Kitap diye 2 satıra bölünmüş) tam sınırın ortasına denk
+    // gelirse ikiye bölünüp yarısı görünmez olurdu.
     supabase
       .from('odemeler')
       .select('*, ogrenciler(ad_soyad)')
       .order('tarih', { ascending: false })
       .order('created_at', { ascending: false })
-      .limit(15)
-      .then(({ data }) => setSonOdemeler(data || []))
+      .limit(40)
+      .then(({ data }) => setSonOdemeler(sonOdemeleriGrupSiniriylaKes(data || [], 15)))
   }
 
   useEffect(() => {

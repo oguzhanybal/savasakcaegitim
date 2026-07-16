@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../lib/AuthContext'
-import { taksitPlaniOlustur, aylikBorcDurumHesapla } from '../lib/ekstreHesap'
+import { taksitPlaniOlustur, aylikBorcDurumHesapla, sonOdemeleriGrupSiniriylaKes } from '../lib/ekstreHesap'
 
 function paraFormat(n) {
   return new Intl.NumberFormat('tr-TR', { style: 'currency', currency: 'TRY' }).format(n || 0)
@@ -98,23 +98,25 @@ export default function Dashboard() {
         setBugunDevamsizlik(devamsizSayisi)
       })
 
-    // Son alınan ödemeler — Muhasebe.jsx'teki "Son Alınan Ödemeler" paneliyle
-    // aynı sorgu, panelde kompakt göstermek için sadece 8 tanesi.
+    // Son alınan ödemeler — en az 15 işlem gösterilir. İkinci sıralama ölçütü
+    // olarak created_at da eklendi: "Dağıtılmamış" bir ödeme sonradan kalemlere
+    // bölündüğünde (bkz. Muhasebe.jsx OdemeDagitForm), yeni oluşan satırlar
+    // orijinal ödemenin "tarih"ini AYNEN devralır — yani aynı güne ait, farklı
+    // öğrencilere ait dağıtılmış satırlar sadece tarihe göre sıralanınca
+    // rastgele karışabiliyordu. Şimdi aynı tarihli kayıtlar, gerçekte sisteme
+    // hangi sırayla girildiyse o sırada gruplanıyor.
     //
-    // İkinci sıralama ölçütü olarak created_at da eklendi: "Dağıtılmamış" bir
-    // ödeme sonradan kalemlere bölündüğünde (bkz. Muhasebe.jsx OdemeDagitForm),
-    // yeni oluşan satırlar orijinal ödemenin "tarih"ini AYNEN devralır — yani
-    // aynı güne ait, farklı öğrencilere ait dağıtılmış satırlar sadece tarihe
-    // göre sıralanınca rastgele karışabiliyordu (created_at, yani gerçek giriş
-    // sırası hiç dikkate alınmıyordu). Şimdi aynı tarihli kayıtlar, gerçekte
-    // sisteme hangi sırayla girildiyse o sırada gruplanıyor.
+    // Ayrıca 40 satır çekip sonOdemeleriGrupSiniriylaKes ile en az 15'e
+    // tamamlıyoruz — düz "limit(15)" kullansaydık, bir öğrencinin aynı günkü
+    // tek işlemi (ör. Bire Bir + Kitap diye 2 satıra bölünmüş) tam 15. satırın
+    // ortasına denk gelirse ikiye bölünüp yarısı görünmez olurdu.
     supabase
       .from('odemeler')
       .select('*, ogrenciler(ad_soyad)')
       .order('tarih', { ascending: false })
       .order('created_at', { ascending: false })
-      .limit(8)
-      .then(({ data }) => setSonOdemeler(data || []))
+      .limit(40)
+      .then(({ data }) => setSonOdemeler(sonOdemeleriGrupSiniriylaKes(data || [], 15)))
 
     // Toplam öğretmen (pasif olarak işaretlenmemiş olanlar — Ogretmenler.jsx'teki
     // "aktif === false" ise pasif kuralıyla aynı)
