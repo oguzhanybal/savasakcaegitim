@@ -1134,28 +1134,28 @@ export default function DersProgrami() {
                         <div className="space-y-1">
                           {dersler.map((d) => (
                             <div key={d.id} className="bg-blue-50 border border-blue-100 rounded-lg px-2 py-1 relative group">
+                              {isYonetici && (
+                                <div className="flex items-center justify-end gap-1.5 h-3 mb-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                                  <button
+                                    onClick={() => duzenle(d)}
+                                    className="text-[10px] text-blue-500 hover:text-blue-700 leading-none"
+                                  >
+                                    Düzenle
+                                  </button>
+                                  <button
+                                    onClick={() => sil(d.id)}
+                                    className="text-[10px] text-red-400 hover:text-red-700 leading-none"
+                                  >
+                                    Sil
+                                  </button>
+                                </div>
+                              )}
                               <p className="font-semibold text-navy text-xs leading-tight">{d.ders_adi || d.sinif_adi}</p>
                               <p className="text-[11px] text-gray-500 leading-tight">{d.sinif_adi}</p>
                               {d.ogretmen_adi && <p className="text-[11px] text-gray-400 leading-tight">{d.ogretmen_adi}</p>}
                               <p className="text-[10px] text-gray-400 leading-tight">
                                 {saatKisalt(d.baslangic_saat)}–{saatKisalt(d.bitis_saat)}
                               </p>
-                              {isYonetici && (
-                                <div className="absolute top-0.5 right-1 flex items-center gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity">
-                                  <button
-                                    onClick={() => duzenle(d)}
-                                    className="text-[10px] text-blue-500 hover:text-blue-700"
-                                  >
-                                    Düzenle
-                                  </button>
-                                  <button
-                                    onClick={() => sil(d.id)}
-                                    className="text-[10px] text-red-400 hover:text-red-700"
-                                  >
-                                    Sil
-                                  </button>
-                                </div>
-                              )}
                             </div>
                           ))}
                         </div>
