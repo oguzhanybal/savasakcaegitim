@@ -32,36 +32,41 @@ import { sesSisteminiEtkinlestir, cikisZiliCal, manuelZilCalBaslat, manuelZilDur
 // çıkarmaz. Böylece "uzaktan zil çal" dediğinde ses sadece kurumdaki (zil
 // hesabıyla açık) bilgisayarda duyulur, komutu gönderen telefonda değil.
 //
-// SUNUCU SAATİ SENKRONİZASYONU: normalde her 10 dakikada bir tekrarlanır. Ama
+// SUNUCU SAATİ SENKRONİZASYONU: normalde her 2 dakikada bir tekrarlanır. Ama
 // bir seferinde (ör. o anki geçici bir internet kesintisi/ağ sorunu yüzünden)
-// senkronizasyon BAŞARISIZ olursa, bir dahaki 10 dakikaya kadar beklemek yerine
+// senkronizasyon BAŞARISIZ olursa, bir dahaki 2 dakikaya kadar beklemek yerine
 // aşağıdaki ayrı efekt sayesinde 5 saniyede bir OTOMATİK olarak tekrar dener —
 // bağlantı düzelir düzelmez (birkaç saniye içinde) kendiliğinden düzelir,
 // sayfanın elle yenilenmesine gerek kalmaz. Bu süre zarfında (senkron
 // başarısız olduğu sürece) bilgisayarın KENDİ saati kullanılır, bu yanlışsa
 // zil de yanlış saatte çalabilir — o yüzden ekrandaki kırmızı uyarı önemlidir.
 //
-// TARAYICI SEKME KISITLAMASI ("saat geri kalıyor" sorunu): tarayıcılar, pil
-// tasarrufu için EKRANDA OLMAYAN/ARKA PLANDAKİ sekmelerin zamanlayıcılarını
-// (setInterval) yavaşlatır — sekme dakikalarca arka planda ya da bilgisayar
-// ekranı kararmış/uykuda kaldıysa, buradaki "her saniye" çalışması gereken
-// kontrol, ARADA BÜYÜK BOŞLUKLAR bırakarak çok daha seyrek çalışabilir. Bunun
-// iki somut sonucu vardı: (1) ekrandaki saat, gerçek saatin gerisinde kalmış
-// gibi görünüyordu (aslında saat YANLIŞ hesaplanmıyor, sadece EKRANA
-// YANSITILMASI gecikiyor) ve (2) bu gecikme yüzünden, tam o sırada
-// gönderilmiş bir "Manuel Çal" uzaktan komutu, sekme uyanıp kontrol ettiğinde
-// üzerinden 15 saniyeden fazla zaman geçmiş sayılıp SESSİZCE ATLANIYORDU. Bunu
-// düzeltmek için üç önlem eklendi:
-//   1) "Zili Başlat"a basılınca (ve uzaktan "başlat" komutu geldiğinde, SADECE
-//      "zil" hesabıyla açık olan cihazda) bir Wake Lock (ekran uykuya
-//      dalmasın) isteği gönderiliyor — sekme arka plana düşme ihtimali azalır.
-//   2) Uzaktan komutlar için "çok eski, atla" eşiği 15 saniyeden 90 saniyeye
-//      çıkarıldı — sekme birkaç on saniye gecikmeli uyansa bile komut artık
-//      atlanmadan işlenir.
-//   3) Otomatik zil kontrolü artık "şu anki saniye 0-2 mi" diye DAR bir
-//      pencereye bakmak yerine, bir önceki kontrolden bu yana geçen TÜM
-//      dakikaları (büyük bir boşluk varsa dahi) tek tek tarayıp hiçbir zili
-//      atlamıyor.
+// "SAAT HEP GERİ KALIYOR" SORUNU — ÜÇ AYRI ÖNLEM birikerek eklendi:
+//   A) TARAYICI SEKME KISITLAMASI: tarayıcılar, pil tasarrufu için EKRANDA
+//      OLMAYAN/ARKA PLANDAKİ sekmelerin zamanlayıcılarını yavaşlatır. Buna
+//      karşı: (1) "Zili Başlat"a basılınca / uzaktan "başlat" geldiğinde
+//      (SADECE "zil" hesabıyla açık cihazda) bir Wake Lock isteği gönderiliyor,
+//      (2) uzaktan komutlar için "çok eski, atla" eşiği 90 saniyeye çıkarıldı,
+//      (3) otomatik zil kontrolü dar bir saniye penceresine değil, bir önceki
+//      kontrolden bu yana geçen TÜM dakikaları tarayıp hiçbir zili atlamıyor.
+//   B) (denendi, YETERSİZ çıktı) "Hız katsayısı" ile telafi: ilk düşünce, saatin
+//      sabit YANLIŞ bir değerde değil YANLIŞ HIZDA aktığıydı (klasik NTP istemci
+//      mantığı). Ama gözlemlenen belirti (35dk, 13dk gibi RASTGELE değil, tam
+//      "1 saat sonra 2 saat" gibi YUVARLAK SIÇRAMALAR) bunun bir "yavaş akış"
+//      değil, duvar saatinin ARA SIRA ANİDEN SIÇRADIĞI anlamına geldiğini
+//      gösterdi (ör. bozuk bir RTC/saat çipi, ya da işletim sisteminin kendi
+//      saat servisinin periyodik "düzeltmesi"). Sabit bir hız katsayısı bunu
+//      ÇÖZEMEZ, çünkü hesap YİNE bilgisayarın (sıçrayan) Date.now()'una dayanıyordu.
+//   C) performance.now() İLE TAMAMEN BAĞIMSIZLAŞTIRMA (asıl çözüm): artık ne
+//      bilgisayarın duvar saatinin HIZINA ne de SIÇRAMALARINA bakılıyor —
+//      performance.now(), sayfa açıldığından beri SADECE İLERİ akan, duvar
+//      saatinden tamamen ayrı bir sayaçtır (tarayıcının "monotonic clock"
+//      garantisi). Her senkronda "o anki sunucu zamanı + o anki performance.now()"
+//      bir ankor olarak saklanıyor; aradan geçen HER an, sadece performance.now()'un
+//      o ankordan bu yana ne kadar ilerlediği (bu asla yanlış hızda akmaz, asla
+//      geri sıçramaz) sunucu zamanına eklenerek hesaplanıyor. Bilgisayarın duvar
+//      saati ne yaparsa yapsın (yavaş aksın, sıçrasın, hatta tamamen dursun) artık
+//      hiç önemi yok — ondan hiç yararlanılmıyor (bkz. suankiGercekZamanMs).
 // ============================================================================
 
 // ÖNEMLİ: Saat dilimi burada "Europe/Istanbul" olarak SABİTLENMİŞTİR —
@@ -144,13 +149,39 @@ export default function ZilSistemi() {
   // kendiliğinden kalkar, "Zili Durdur"un aksine elle "Başlat"a gerek yoktur.
   const [susturBitisMs, setSusturBitisMs] = useState(null)
   const calinanlarRef = useRef(new Set())
-  // Ring-check ve uzaktan komut dinleme kapanışları (closure) her zaman GÜNCEL
-  // sunucuFarki'na erişsin diye bir ref'te de tutuyoruz (bağımlılık dizisi
-  // boş olan efektler için).
-  const sunucuFarkiRef = useRef(0)
-  useEffect(() => {
-    sunucuFarkiRef.current = sunucuFarki
-  }, [sunucuFarki])
+
+  // ---- SAAT KAYMASI TELAFİSİ — performance.now() ile ----
+  // "1 saat geri, sonra 2 saat geri" gibi TEMİZ, YUVARLAK SAAT sıçramaları
+  // (35 dk, 13 dk gibi rastgele görünen miktarlar DEĞİL) bir "yavaş akan
+  // saat" (drift) belirtisi değil — bu, bilgisayarın DUVAR SAATİNİN (RTC/
+  // sistem saati) ara sıra ANİDEN SIÇRADIĞININ (ör. Windows'un kendi NTP
+  // servisinin bozuk bir saat çipini periyodik olarak "düzeltmeye" çalışıp
+  // yanlışlıkla saat başı adımlarla oynaması, ya da RTC pili ölmüş/bozuk bir
+  // donanımda saatin zaman zaman sıfırlanması gibi) işareti. Önceki sürüm
+  // (Date.now() farkına dayalı "hız katsayısı") bunu ÇÖZEMEZ, çünkü Date.now()
+  // TAM OLARAK bu bozuk duvar saatine dayanıyor — saat aniden 1 saat geri
+  // sıçrarsa, Date.now() da o anda aniden 1 saat geri sıçrar.
+  //
+  // Bunun yerine artık performance.now() kullanılıyor: bu, duvar saatinden
+  // (RTC/Date) TAMAMEN BAĞIMSIZ, sayfa açıldığından beri SADECE İLERİ akan
+  // (asla geri sıçramayan, donanım saati ne kadar bozuk olursa olsun bundan
+  // ETKİLENMEYEN) bir sayaçtır — tarayıcıların "monotonic clock" garantisi.
+  // Yöntem: her senkronda "şu anki sunucu zamanı" ile "o anki performance.now()
+  // değeri" bir çift olarak (ankor) saklanıyor; aradaki her an, sadece
+  // performance.now()'un o ankordan bu yana ne kadar İLERLEDİĞİ (bu SAYAÇ asla
+  // yanlış hızda akmaz, asla sıçramaz) sunucu zamanına eklenerek hesaplanıyor —
+  // bilgisayarın duvar saati ne yaparsa yapsın (yavaş aksın, hızlı aksın, aniden
+  // sıçrasın) hiç önemi kalmıyor, çünkü ondan HİÇ yararlanılmıyor.
+  const ankorRef = useRef({ sunucuMs: null, performansAnkoru: null })
+
+  // Şu anki GERÇEK zamanı (ham milisaniye) verir — hem ekrandaki saat hem zil
+  // kontrolü hem uzaktan komutlar TEK bir yerden bunu kullanır. Bir ref'ten
+  // okuduğu için her çağrıda GÜNCEL değeri verir, bağımlılık dizisi gerekmez.
+  function suankiGercekZamanMs() {
+    const { sunucuMs, performansAnkoru } = ankorRef.current
+    if (sunucuMs == null) return Date.now() // sayfa yeni açıldı, henüz hiç senkron olmadı
+    return sunucuMs + (performance.now() - performansAnkoru)
+  }
 
   // ---- Ekran Uykusu Engelleme (Wake Lock) ----
   // "zil" hesabıyla açık olan bilgisayarın ekranı kararıp uykuya dalarsa,
@@ -210,17 +241,23 @@ export default function ZilSistemi() {
   }
 
   async function senkronizeEt() {
-    const oncekiAn = Date.now()
+    // Gecikme (RTT) tahmini için de performance.now() kullanılıyor — bu da
+    // duvar saatinden bağımsız, gerçek geçen süreyi ölçmek için Date.now()'dan
+    // daha güvenilir.
+    const oncekiPerf = performance.now()
     const { data, error } = await supabase.rpc('simdiki_zaman')
-    const sonrakiAn = Date.now()
+    const sonrakiPerf = performance.now()
     if (error || !data) {
       setSenkronDurumu('hata')
       return
     }
     const sunucuMs = new Date(data).getTime()
-    const tahminiGecikme = (sonrakiAn - oncekiAn) / 2
-    const yerelReferansAn = oncekiAn + tahminiGecikme
-    setSunucuFarki(sunucuMs - yerelReferansAn)
+    const tahminiGecikme = (sonrakiPerf - oncekiPerf) / 2
+    const performansAnkoru = oncekiPerf + tahminiGecikme // isteğin "ortası" anındaki performance.now() değeri
+
+    ankorRef.current = { sunucuMs, performansAnkoru }
+
+    setSunucuFarki((f) => f + 1) // sadece efektleri tetiklemek için tutuluyor (bkz. ankorRef)
     setSenkronDurumu('tamam')
     setSonSenkronZamani(new Date())
   }
@@ -228,7 +265,12 @@ export default function ZilSistemi() {
   useEffect(() => {
     derslerYukle()
     senkronizeEt()
-    const senkronId = setInterval(senkronizeEt, 10 * 60 * 1000)
+    // performance.now() bilgisayarın duvar saatinden bağımsız aktığı için artık
+    // önceki sürümdeki gibi "saat kayması birikmesin diye sık senkronize et"
+    // kaygısı yok — yine de sunucu saatiyle (ör. sunucu tarafında manuel bir
+    // saat değişikliği olursa) uzun vadede hizada kalmak için 2 dakikada bir
+    // tazeleniyor.
+    const senkronId = setInterval(senkronizeEt, 2 * 60 * 1000)
     return () => clearInterval(senkronId)
   }, [])
 
@@ -257,7 +299,7 @@ export default function ZilSistemi() {
   // Her saniye: gösterilen saati güncelle, zil zamanı geldiyse çal.
   useEffect(() => {
     const id = setInterval(() => {
-      const suanki = new Date(Date.now() + sunucuFarki)
+      const suanki = new Date(suankiGercekZamanMs())
       setGosterilenSaat(suanki)
       // Susturma süresi dolduysa kendiliğinden kalksın.
       if (susturBitisMs && suanki.getTime() >= susturBitisMs) setSusturBitisMs(null)
@@ -368,7 +410,7 @@ export default function ZilSistemi() {
         .order('created_at', { ascending: false })
         .limit(10)
       if (iptalEdildi || error || !data) return
-      const suankiSunucuMs = Date.now() + sunucuFarkiRef.current
+      const suankiSunucuMs = suankiGercekZamanMs()
       // En eskiden en yeniye doğru işlensin diye ters çevir.
       ;[...data].reverse().forEach((komut) => {
         if (islenenKomutIdleriRef.current.has(komut.id)) return
@@ -410,7 +452,7 @@ export default function ZilSistemi() {
   // güncelleme) hem de diğer cihazlara (ör. kurumdaki bilgisayar) uzaktan
   // komutla ulaşsın diye ikisi de yapılıyor.
   function susturmaBaslat(dakika) {
-    setSusturBitisMs(Date.now() + sunucuFarki + dakika * 60000)
+    setSusturBitisMs(suankiGercekZamanMs() + dakika * 60000)
     uzaktanKomutGonder('sustur', dakika)
   }
 
