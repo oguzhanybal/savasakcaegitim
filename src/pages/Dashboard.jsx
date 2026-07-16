@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { Link } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../lib/AuthContext'
 import { taksitPlaniOlustur, aylikBorcDurumHesapla } from '../lib/ekstreHesap'
@@ -7,13 +8,24 @@ function paraFormat(n) {
   return new Intl.NumberFormat('tr-TR', { style: 'currency', currency: 'TRY' }).format(n || 0)
 }
 
-function Card({ label, value, color = 'text-navy' }) {
-  return (
-    <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
+function Card({ label, value, color = 'text-navy', to }) {
+  const icerik = (
+    <>
       <p className="text-sm text-gray-500 font-medium">{label}</p>
       <p className={`text-3xl font-bold mt-1 ${color}`}>{value}</p>
-    </div>
+    </>
   )
+  if (to) {
+    return (
+      <Link
+        to={to}
+        className="block bg-white rounded-2xl border border-gray-100 shadow-sm p-5 hover:shadow-md hover:border-navy/20 transition-all cursor-pointer"
+      >
+        {icerik}
+      </Link>
+    )
+  }
+  return <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">{icerik}</div>
 }
 
 export default function Dashboard() {
@@ -152,28 +164,32 @@ export default function Dashboard() {
 
       {profile?.rol === 'yonetici' && (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-          <Card label="Aktif Öğrenci" value={ogrenciSayisi ?? '...'} />
-          <Card label="Toplam Sınıf" value={sinifSayisi ?? '...'} />
+          <Card label="Aktif Öğrenci" value={ogrenciSayisi ?? '...'} to="/ogrenciler" />
+          <Card label="Toplam Sınıf" value={sinifSayisi ?? '...'} to="/siniflar" />
           <Card
             label="Bu Ay Toplam Tahsilat"
             value={buAyTahsilat !== null ? paraFormat(buAyTahsilat) : '...'}
             color="text-green-600"
+            to="/gelir-raporu"
           />
           <Card
             label="Bugünkü Devamsızlık"
             value={bugunDevamsizlik ?? '...'}
             color={bugunDevamsizlik > 0 ? 'text-red-500' : 'text-navy'}
+            to="/yoklama-raporu"
           />
-          <Card label="Toplam Öğretmen" value={ogretmenSayisi ?? '...'} />
+          <Card label="Toplam Öğretmen" value={ogretmenSayisi ?? '...'} to="/ogretmenler" />
           <Card
             label="Geciken Ödeme"
             value={gecikenOdemeSayisi ?? '...'}
             color={gecikenOdemeSayisi > 0 ? 'text-red-500' : 'text-navy'}
+            to="/toplu-ekstre"
           />
           <Card
             label="Yaklaşan Vade (7 gün)"
             value={yaklasanVadeSayisi ?? '...'}
             color={yaklasanVadeSayisi > 0 ? 'text-orange-500' : 'text-navy'}
+            to="/toplu-ekstre"
           />
         </div>
       )}
