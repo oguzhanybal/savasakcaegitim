@@ -572,10 +572,16 @@ export default function Muhasebe() {
   const [sozlesmeKaydediliyor, setSozlesmeKaydediliyor] = useState(false)
 
   function sonOdemeleriYukle() {
+    // İkinci sıralama ölçütü created_at: "Dağıtılmamış" bir ödeme sonradan
+    // kalemlere bölününce (bkz. OdemeDagitForm.kaydet), yeni satırlar orijinal
+    // ödemenin "tarih"ini aynen devralır — sadece tarihe göre sıralarsak aynı
+    // güne ait farklı öğrencilerin dağıtılmış kayıtları rastgele karışabiliyor.
+    // created_at (gerçek giriş sırası) ile bu karışıklık düzeliyor.
     supabase
       .from('odemeler')
       .select('*, ogrenciler(ad_soyad)')
       .order('tarih', { ascending: false })
+      .order('created_at', { ascending: false })
       .limit(15)
       .then(({ data }) => setSonOdemeler(data || []))
   }

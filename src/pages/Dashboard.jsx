@@ -100,10 +100,19 @@ export default function Dashboard() {
 
     // Son alınan ödemeler — Muhasebe.jsx'teki "Son Alınan Ödemeler" paneliyle
     // aynı sorgu, panelde kompakt göstermek için sadece 8 tanesi.
+    //
+    // İkinci sıralama ölçütü olarak created_at da eklendi: "Dağıtılmamış" bir
+    // ödeme sonradan kalemlere bölündüğünde (bkz. Muhasebe.jsx OdemeDagitForm),
+    // yeni oluşan satırlar orijinal ödemenin "tarih"ini AYNEN devralır — yani
+    // aynı güne ait, farklı öğrencilere ait dağıtılmış satırlar sadece tarihe
+    // göre sıralanınca rastgele karışabiliyordu (created_at, yani gerçek giriş
+    // sırası hiç dikkate alınmıyordu). Şimdi aynı tarihli kayıtlar, gerçekte
+    // sisteme hangi sırayla girildiyse o sırada gruplanıyor.
     supabase
       .from('odemeler')
       .select('*, ogrenciler(ad_soyad)')
       .order('tarih', { ascending: false })
+      .order('created_at', { ascending: false })
       .limit(8)
       .then(({ data }) => setSonOdemeler(data || []))
 
