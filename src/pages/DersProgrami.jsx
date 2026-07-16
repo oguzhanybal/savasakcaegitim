@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../lib/AuthContext'
 import { ilkHarfleriBuyukYap } from '../lib/adSoyadFormat'
+import { DERS_PERIYOTLARI } from '../lib/dersPeriyotlari'
 import MusaitlikTablosu from '../components/MusaitlikTablosu'
 
 const GUNLER = ['', 'Pazartesi', 'Salı', 'Çarşamba', 'Perşembe', 'Cuma', 'Cumartesi', 'Pazar']
@@ -517,16 +518,10 @@ function GunlukProgramListesi({ program, ogretmenler, atamalar, yoklamalar, ogre
     return olaylar
   }, [program, atamalar, yoklamalar, gun, tarih, ogrenciAdMap])
 
-  // Saat sütunları: o gün gerçekten var olan tüm başlangıç/bitiş saatlerinin
-  // sınır noktalarından oluşur (sabit 30dk dilim DEĞİL).
-  const dilimler = useMemo(() => {
-    const noktalar = [...new Set(gununOlaylari.flatMap((o) => [o.baslangic, o.bitis]))].sort()
-    const sonuc = []
-    for (let i = 0; i < noktalar.length - 1; i++) {
-      sonuc.push({ baslangic: noktalar[i], bitis: noktalar[i + 1] })
-    }
-    return sonuc
-  }, [gununOlaylari])
+  // Saat sütunları: artık o günün olaylarından türetilen değişken sınırlar
+  // DEĞİL, okulun sabit ders periyotları (45dk ders + 10dk teneffüs, bkz.
+  // dersPeriyotlari.js) — Müsaitlik Tablosu ile aynı sütun yapısı.
+  const dilimler = DERS_PERIYOTLARI
 
   // Sadece o gün en az bir olayı (dersi) olan öğretmenler gösterilir.
   const gorunecekOgretmenler = useMemo(() => {
