@@ -289,9 +289,9 @@ export default function Sozlesme() {
           <p className="mb-3 pl-4">d) Kursun öğretime başlamasından önceki bir tarihte öğrencinin herhangi bir sebeple kurumdan ayrılması ve müracaat etmesi.</p>
           <p className="mb-1">
             <b>Madde 15:</b> Yayın bedeli (kitap, test, deneme sınavları vs.) {finalSinif} sınıfı için{' '}
-            {yayinBedeli !== null ? paraFormat(yayinBedeli) : '—'}'dir; eğitim bedeli ise{' '}
-            {egitimBedeli !== null ? paraFormat(egitimBedeli) : '—'}'dir. Toplam kurs ücreti{' '}
-            {paraFormat(toplamTutar)}'dir. Eğitim programları sınıf düzeyinde farklılık göstermektedir. Kayıt iptali
+            {yayinBedeli !== null ? paraFormat(yayinBedeli) : '……………'}'dir; eğitim bedeli ise{' '}
+            {egitimBedeli !== null ? paraFormat(egitimBedeli) : '……………'}'dir. Toplam kurs ücreti{' '}
+            ……………'dir. Eğitim programları sınıf düzeyinde farklılık göstermektedir. Kayıt iptali
             gerektiren durumlarda, her öğrenci için yayın ücreti ve eğitim ücreti ayrı hesaplanır; eğitim ücreti
             verilen eğitim süresi doğrultusunda hesaplanarak veliden tahsil edilir. Yayın bedeli peşin tahsil edilir
             ve iadesi kesinlikle yapılamaz.
@@ -318,7 +318,7 @@ export default function Sozlesme() {
             {donemBitis || '……………'} ayında sona erecektir.
           </p>
 
-          <h3 className="font-bold text-navy mt-4 mb-1">TAAHÜT</h3>
+          <h3 className="font-bold text-navy mt-4 mb-1">TAAHHÜT</h3>
           <p className="mb-3">
             <b>Madde 23:</b> Savaş Akça Özel Kişisel Gelişim Kursuna, yukarıdaki tarihler arasında verilecek öğretim
             programı hizmeti karşılığında ({tutarYaziyla(toplamTutar)}) borcumuzdur.
@@ -331,7 +331,7 @@ export default function Sozlesme() {
           <p className="mb-3">
             Üst üste 2 taksiti vadesinde ödemediğimiz takdirde, bu tarihten itibaren geciken taksitlerin kanuni
             gecikme bedelinin tarafımıza ait olacağını; ihtilaf vukuunda bu sözleşmeden doğabilecek tüm
-            anlaşmazlıklara Ankara Mahkemeleri ve İcra Dairelerinin yetkili olduğunu kabul ederim. İş bu kayıt
+            anlaşmazlıklara Ankara Mahkemeleri ve İcra Dairelerinin yetkili olduğunu kabul ederim. İşbu kayıt
             sözleşmesinin tüm hükümlerini tarafımca eksiksiz olarak okumuş ve herhangi bir tereddüt olmaksızın
             anlamış olup, tamamen hür irade ve arzumla yukarıdaki ikaz çerçevesinde sözleşme şartlarını kesin
             olarak kabul ediyorum. İşbu sözleşmenin bir nüshası tarafıma teslim edilmiştir.
