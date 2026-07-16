@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react'
+import { DERS_PERIYOTLARI } from '../lib/dersPeriyotlari'
 
 // Hem Bire Bir sayfasında hem Ders Programı sayfasında kullanılan ortak bileşen:
 // seçilen bir tarih için, tüm öğretmenlerin o gün hangi saatlerde dolu/boş
@@ -38,17 +39,9 @@ function gunEkle(tarihStr, gunSayisi) {
   return t.toISOString().slice(0, 10)
 }
 
-// 08:00'dan 22:00'a kadar, 30 dakikalık dilimler halinde sütun başlıkları.
-const SAAT_DILIMLERI = (() => {
-  const dilimler = []
-  for (let dk = 8 * 60; dk < 22 * 60; dk += 30) {
-    const bDk = dk
-    const bitDk = dk + 30
-    const yaz = (x) => `${String(Math.floor(x / 60)).padStart(2, '0')}:${String(x % 60).padStart(2, '0')}`
-    dilimler.push({ baslangic: yaz(bDk), bitis: yaz(bitDk) })
-  }
-  return dilimler
-})()
+// Sütun başlıkları artık serbest 30dk dilimler DEĞİL, okulun gerçek sabit
+// ders periyotları (45dk ders + 10dk teneffüs, bkz. dersPeriyotlari.js).
+const SAAT_DILIMLERI = DERS_PERIYOTLARI
 
 export default function MusaitlikTablosu({ ogretmenler, dersProgrami, atamalar, yoklamalar, ogrenciAdMap, onHucreTikla, secili }) {
   const [tarih, setTarih] = useState(() => new Date().toISOString().slice(0, 10))
