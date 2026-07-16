@@ -982,8 +982,12 @@ export default function DersProgrami() {
   }
 
   // Veli/öğrenci için sınıf ders programı (tablo/liste) sadece bu sekme
-  // seçiliyken gösterilir; yönetici/öğretmen için sekme hiç yok, her zaman gösterilir.
-  const sinifProgramiGoster = !isVeliYaDaOgrenci || veliSekme === 'program'
+  // seçiliyken gösterilir; öğretmen için sekme hiç yok, her zaman gösterilir.
+  // Yönetici için ise bu alttaki genel haftalık tablo artık GÖSTERİLMİYOR —
+  // yöneticinin zaten "Ders Ekleme Aracı" (Müsaitlik Tablosu) ve "Günlük
+  // Program Listesi" sekmeleri var, aynı bilgiyi tekrar aşağıda kalabalık
+  // bir haftalık tabloyla göstermek gereksizdi.
+  const sinifProgramiGoster = isYonetici ? false : !isVeliYaDaOgrenci || veliSekme === 'program'
 
   return (
     <div>
