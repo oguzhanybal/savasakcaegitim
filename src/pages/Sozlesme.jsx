@@ -289,9 +289,9 @@ export default function Sozlesme() {
           <p className="mb-3 pl-4">d) Kursun öğretime başlamasından önceki bir tarihte öğrencinin herhangi bir sebeple kurumdan ayrılması ve müracaat etmesi.</p>
           <p className="mb-1">
             <b>Madde 15:</b> Yayın bedeli (kitap, test, deneme sınavları vs.) {finalSinif} sınıfı için{' '}
-            {yayinBedeli !== null ? paraFormat(yayinBedeli) : '……………'}'dir; eğitim bedeli ise{' '}
-            {egitimBedeli !== null ? paraFormat(egitimBedeli) : '……………'}'dir. Toplam kurs ücreti{' '}
-            ……………'dir. Eğitim programları sınıf düzeyinde farklılık göstermektedir. Kayıt iptali
+            {yayinBedeli !== null ? paraFormat(yayinBedeli) : '……………………………'}'dir; eğitim bedeli ise{' '}
+            {egitimBedeli !== null ? paraFormat(egitimBedeli) : '……………………………'}'dir. Toplam kurs ücreti{' '}
+            ……………………………'dir. Eğitim programları sınıf düzeyinde farklılık göstermektedir. Kayıt iptali
             gerektiren durumlarda, her öğrenci için yayın ücreti ve eğitim ücreti ayrı hesaplanır; eğitim ücreti
             verilen eğitim süresi doğrultusunda hesaplanarak veliden tahsil edilir. Yayın bedeli peşin tahsil edilir
             ve iadesi kesinlikle yapılamaz.
