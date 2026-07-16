@@ -213,7 +213,7 @@ export default function Sozlesme() {
         </div>
 
         {/* SAYFA 2 — Genel şartlar (aynı 23 madde, sadece görünüm iyileştirildi) */}
-        <div className="sozlesme-sayfa bg-white rounded-2xl print:rounded-none shadow-sm print:shadow-none border border-gray-100 print:border-0 p-8 text-[11.5px] leading-relaxed text-gray-700">
+        <div className="sozlesme-sayfa bg-white rounded-2xl print:rounded-none shadow-sm print:shadow-none border border-gray-100 print:border-0 p-8 text-[11.5px] leading-relaxed text-gray-700 text-justify">
           <h2 className="text-center text-lg font-bold text-navy mb-4">KAYIT SÖZLEŞMESİ GENEL ŞARTLARI</h2>
           <p className="text-center text-xs text-gray-400 mb-1">{egitimDonemi !== '—' ? egitimDonemi : ''} ÖĞRETİM YILI</p>
           <p className="text-center font-semibold text-gray-800 mb-4">
