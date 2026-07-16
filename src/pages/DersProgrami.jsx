@@ -683,7 +683,7 @@ function GunlukProgramListesi({ program, ogretmenler, atamalar, yoklamalar, ogre
               const hucreler = satirHucreleriniOlustur(o.id, mobilDilimler)
               return (
                 <tr key={o.id} className={i % 2 ? 'bg-gray-50/60' : ''}>
-                  <td className="px-1 py-1 font-semibold text-gray-700 border-t border-gray-100 truncate">
+                  <td className="px-1 py-1 font-semibold text-gray-700 border-t border-gray-100 break-words leading-tight">
                     {o.ad_soyad}
                   </td>
                   {hucreler.map((h) => (
@@ -691,9 +691,9 @@ function GunlukProgramListesi({ program, ogretmenler, atamalar, yoklamalar, ogre
                       key={h.baslangic}
                       colSpan={h.span}
                       title={h.dolu ? `${h.dolu.etiket}${h.dolu.altEtiket ? ' — ' + h.dolu.altEtiket : ''}` : ''}
-                      className={`border-t border-l border-gray-100 text-center align-middle py-1 leading-tight ${h.dolu ? h.dolu.renk : ''}`}
+                      className={`border-t border-l border-gray-100 text-center align-top py-1 leading-tight ${h.dolu ? h.dolu.renk : ''}`}
                     >
-                      {h.dolu && <span className="block truncate px-0.5">{h.dolu.etiket}</span>}
+                      {h.dolu && <span className="block break-words px-0.5">{h.dolu.etiket}</span>}
                     </td>
                   ))}
                 </tr>
