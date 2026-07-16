@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../lib/AuthContext'
+import { taksitPlaniOlustur, aylikBorcDurumHesapla } from '../lib/ekstreHesap'
 
 function paraFormat(n) {
   return new Intl.NumberFormat('tr-TR', { style: 'currency', currency: 'TRY' }).format(n || 0)
@@ -21,6 +22,9 @@ export default function Dashboard() {
   const [sinifSayisi, setSinifSayisi] = useState(null)
   const [buAyTahsilat, setBuAyTahsilat] = useState(null)
   const [bugunDevamsizlik, setBugunDevamsizlik] = useState(null)
+  const [ogretmenSayisi, setOgretmenSayisi] = useState(null)
+  const [gecikenOdemeSayisi, setGecikenOdemeSayisi] = useState(null)
+  const [yaklasanVadeSayisi, setYaklasanVadeSayisi] = useState(null)
 
   useEffect(() => {
     if (profile?.rol !== 'yonetici') return
@@ -79,6 +83,66 @@ export default function Dashboard() {
         const devamsizSayisi = Object.values(ogrenciDurumu).filter((geldiMi) => geldiMi === false).length
         setBugunDevamsizlik(devamsizSayisi)
       })
+
+    // Toplam öğretmen (pasif olarak işaretlenmemiş olanlar — Ogretmenler.jsx'teki
+    // "aktif === false" ise pasif kuralıyla aynı)
+    supabase
+      .from('profiles')
+      .select('aktif')
+      .eq('rol', 'ogretmen')
+      .then(({ data }) => {
+        setOgretmenSayisi((data || []).filter((o) => o.aktif !== false).length)
+      })
+
+    // Geciken ödeme sayısı + Yaklaşan vade (7 gün): TopluEkstre.jsx ile aynı
+    // veriyi (tüm aktif öğrenciler, sözleşmeler, aylık borçlar, ödemeler) çekip
+    // ekstreHesap.js'teki AYNI taksit/borç motorunu (taksitPlaniOlustur,
+    // aylikBorcDurumHesapla) her öğrenci için ayrı ayrı çalıştırıyoruz — Ekstre
+    // ve Muhasebe sayfalarındaki "gecikti/bekliyor" durumlarıyla birebir tutarlı
+    // olsun diye.
+    Promise.all([
+      supabase.from('ogrenciler').select('id').or('durum.eq.aktif,durum.is.null'),
+      supabase.from('sozlesmeler').select('*'),
+      supabase.from('aylik_borclar').select('*'),
+      supabase.from('odemeler').select('*'),
+    ]).then(([{ data: aktifOgrenciler }, { data: sozlesmeler }, { data: aylikBorclar }, { data: odemeler }]) => {
+      const aktifIdSeti = new Set((aktifOgrenciler || []).map((o) => o.id))
+      const yediGunSonra = new Date(simdi)
+      yediGunSonra.setHours(0, 0, 0, 0)
+      yediGunSonra.setDate(yediGunSonra.getDate() + 7)
+      const bugunGunBasi = new Date(simdi)
+      bugunGunBasi.setHours(0, 0, 0, 0)
+
+      let gecikenSayac = 0
+      let yaklasanSayac = 0
+
+      for (const ogrenciId of aktifIdSeti) {
+        const sOgrenci = (sozlesmeler || []).filter((s) => s.ogrenci_id === ogrenciId)
+        const aOgrenci = (aylikBorclar || []).filter((a) => a.ogrenci_id === ogrenciId)
+        const oOgrenci = (odemeler || []).filter((o) => o.ogrenci_id === ogrenciId)
+
+        let bOgrenciGecikti = false
+
+        for (const s of sOgrenci) {
+          for (const t of taksitPlaniOlustur(s, oOgrenci)) {
+            if (t.durum === 'gecikti') bOgrenciGecikti = true
+            if (t.durum === 'bekliyor') {
+              const vadeGunBasi = new Date(t.vade)
+              vadeGunBasi.setHours(0, 0, 0, 0)
+              if (vadeGunBasi >= bugunGunBasi && vadeGunBasi <= yediGunSonra) yaklasanSayac++
+            }
+          }
+        }
+        for (const a of aOgrenci) {
+          if (aylikBorcDurumHesapla(a, aOgrenci, oOgrenci).durum === 'gecikti') bOgrenciGecikti = true
+        }
+
+        if (bOgrenciGecikti) gecikenSayac++
+      }
+
+      setGecikenOdemeSayisi(gecikenSayac)
+      setYaklasanVadeSayisi(yaklasanSayac)
+    })
   }, [profile])
 
   return (
@@ -99,6 +163,17 @@ export default function Dashboard() {
             label="Bugünkü Devamsızlık"
             value={bugunDevamsizlik ?? '...'}
             color={bugunDevamsizlik > 0 ? 'text-red-500' : 'text-navy'}
+          />
+          <Card label="Toplam Öğretmen" value={ogretmenSayisi ?? '...'} />
+          <Card
+            label="Geciken Ödeme"
+            value={gecikenOdemeSayisi ?? '...'}
+            color={gecikenOdemeSayisi > 0 ? 'text-red-500' : 'text-navy'}
+          />
+          <Card
+            label="Yaklaşan Vade (7 gün)"
+            value={yaklasanVadeSayisi ?? '...'}
+            color={yaklasanVadeSayisi > 0 ? 'text-orange-500' : 'text-navy'}
           />
         </div>
       )}
