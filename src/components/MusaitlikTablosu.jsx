@@ -395,7 +395,7 @@ export default function MusaitlikTablosu({
                         {hizliPopupBuradaMi && (
                           <div
                             onClick={(e) => e.stopPropagation()}
-                            className="absolute z-30 top-full left-1/2 -translate-x-1/2 mt-1 w-60 bg-white border border-gray-200 rounded-xl shadow-lg p-3 text-left cursor-default normal-case"
+                            className="absolute z-30 top-full left-1/2 -translate-x-1/2 mt-1 w-60 bg-white border border-gray-200 rounded-xl shadow-lg p-3 text-left cursor-default normal-case text-gray-700"
                           >
                             <div className="flex items-center justify-between mb-2">
                               <span className="text-[11px] font-semibold text-gray-500">
