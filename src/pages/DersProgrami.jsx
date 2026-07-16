@@ -1053,6 +1053,10 @@ export default function DersProgrami() {
                 ogrenciAdMap={ogrenciAdMap}
                 onHucreTikla={hucreTiklandi}
                 secili={seciliHucre}
+                ogrenciler={ogrenciler}
+                siniflar={siniflar}
+                hizliEkleEtkin
+                onHizliEklendi={dersEklendiVeyaTaslaklandi}
               />
               <DersEkleForm
                 siniflar={siniflar}
