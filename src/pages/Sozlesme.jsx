@@ -13,23 +13,6 @@ function tarihFormat(d) {
   return new Date(d + 'T12:00:00').toLocaleDateString('tr-TR')
 }
 
-const AYLAR = [
-  'Ocak', 'Şubat', 'Mart', 'Nisan', 'Mayıs', 'Haziran',
-  'Temmuz', 'Ağustos', 'Eylül', 'Ekim', 'Kasım', 'Aralık',
-]
-
-// Madde 22'deki "eğitim öğretim dönemi ... ayında başlayıp ... ayında sona
-// erecektir" boşluklarını, ödeme planının kapsadığı ay aralığından türetiyoruz
-// — sözleşmenin fiilen kapsadığı süre bu olduğu için en tutarlı yaklaşım bu.
-function donemAySpani(sozlesme) {
-  if (!sozlesme.ilk_taksit_tarihi) return { baslangic: '', bitis: '' }
-  const ilk = new Date(sozlesme.ilk_taksit_tarihi)
-  const taksitSayisi = Number(sozlesme.taksit_sayisi) || 1
-  const son = new Date(ilk)
-  son.setMonth(son.getMonth() + (taksitSayisi - 1))
-  return { baslangic: AYLAR[ilk.getMonth()], bitis: AYLAR[son.getMonth()] }
-}
-
 export default function Sozlesme() {
   const { sozlesmeId } = useParams()
   const [sozlesme, setSozlesme] = useState(null)
@@ -78,7 +61,6 @@ export default function Sozlesme() {
   const egitimDonemi = sozlesme.egitim_donemi || '—'
   const veliAdSoyad = ogrenci.veli?.ad_soyad || ''
   const iletisim = ogrenci.veli?.telefon || ogrenci.telefon || ''
-  const { baslangic: donemBaslangic, bitis: donemBitis } = donemAySpani(sozlesme)
 
   const yayinBedeli = sozlesme.kalem === 'Kitap' ? toplamTutar : null
   const egitimBedeli = sozlesme.kalem === 'Kurs' || sozlesme.kalem === 'Okul' ? toplamTutar : null
@@ -314,14 +296,14 @@ export default function Sozlesme() {
 
           <h3 className="font-bold text-navy mt-4 mb-1">SÜRE</h3>
           <p className="mb-3">
-            <b>Madde 22:</b> Kursumuzun eğitim öğretim dönemi {donemBaslangic || '……………'} ayında başlayıp{' '}
-            {donemBitis || '……………'} ayında sona erecektir.
+            <b>Madde 22:</b> Kursumuzun eğitim öğretim dönemi …………… ayında başlayıp{' '}
+            …………… ayında sona erecektir.
           </p>
 
           <h3 className="font-bold text-navy mt-4 mb-1">TAAHHÜT</h3>
           <p className="mb-3">
             <b>Madde 23:</b> Savaş Akça Özel Kişisel Gelişim Kursuna, yukarıdaki tarihler arasında verilecek öğretim
-            programı hizmeti karşılığında ({tutarYaziyla(toplamTutar)}) borcumuzdur.
+            programı hizmeti karşılığında (……………………………………………) borcumuzdur.
           </p>
 
           <p className="font-semibold text-gray-800 mb-3">
