@@ -48,7 +48,7 @@ export default function Sozlesme() {
   useEffect(() => {
     if (!ogrenci) return
     document.title = `${ogrenci.ad_soyad} Sözleşmesi`
-    return () => { document.title = 'Savaş Akça Eğitim - Sistem' }
+    return () => { document.title = 'Savaş Akça Eğitim Portalı' }
   }, [ogrenci])
 
   if (loading) return <p className="p-6 text-gray-400">Yükleniyor...</p>

@@ -63,14 +63,14 @@ export default function Ekstre() {
   }, [ogrenciId])
 
   // İndirilen PDF/yazdırma çıktısının dosya adı (ve tarayıcı sekme başlığı)
-  // öğrenci adı ve dönemi göstersin diye — "Savaş Akça Eğitim - Sistem" gibi
+  // öğrenci adı ve dönemi göstersin diye — "Savaş Akça Eğitim Portalı" gibi
   // genel bir isimle kaydedilmesin. Sayfadan ayrılınca eski başlığa dönüyoruz.
   useEffect(() => {
     if (!ogrenci) return
     const ayMetni = new Date(seciliAy + '-01').toLocaleDateString('tr-TR', { month: 'long', year: 'numeric' })
     document.title = `${ogrenci.ad_soyad} Aylık Muhasebe - ${ayMetni}`
     return () => {
-      document.title = 'Savaş Akça Eğitim - Sistem'
+      document.title = 'Savaş Akça Eğitim Portalı'
     }
   }, [ogrenci, seciliAy])
 
