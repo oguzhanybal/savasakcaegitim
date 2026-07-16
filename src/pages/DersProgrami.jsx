@@ -41,10 +41,11 @@ function saateDakikaEkle(saat, dakika) {
 // Yeni eklenmek istenen ders saatinin, mevcut programla (aynı sınıf ya da aynı
 // öğretmen üzerinden — öğretmen artık ders_programi satırından okunuyor) çakışıp
 // çakışmadığını kontrol eder.
-function cakismaBul({ sinifId, gun, baslangic, bitis, ogretmenId }, program) {
+function cakismaBul({ sinifId, gun, baslangic, bitis, ogretmenId }, program, haricId = null) {
   if (!sinifId || !baslangic || !bitis) return null
 
   for (const p of program) {
+    if (p.id === haricId) continue
     if (p.gun !== gun) continue
     const ayniSinif = p.sinif_id === sinifId
     const ayniOgretmen = !!ogretmenId && p.ogretmen_profile_id === ogretmenId
@@ -62,7 +63,7 @@ function cakismaBul({ sinifId, gun, baslangic, bitis, ogretmenId }, program) {
   return null
 }
 
-function DersEkleForm({ siniflar, ogretmenler, program, onEklendi, doldurBilgisi }) {
+function DersEkleForm({ siniflar, ogretmenler, program, onEklendi, doldurBilgisi, duzenlenenDers, onDuzenlemeBitti }) {
   const { profile } = useAuth()
   const [sinifId, setSinifId] = useState('')
   const [dersAdi, setDersAdi] = useState('')
@@ -74,6 +75,7 @@ function DersEkleForm({ siniflar, ogretmenler, program, onEklendi, doldurBilgisi
   const [basari, setBasari] = useState('')
   const [gonderiliyor, setGonderiliyor] = useState(false)
   const sinifSelectRef = useRef(null)
+  const duzenleModu = !!duzenlenenDers
 
   // Müsaitlik tablosunda boş bir hücreye tıklanınca, üstten gelen öğretmen/gün/
   // saat bilgisiyle formu otomatik doldurur ve sınıf seçimine odaklanır (sınıf
@@ -93,6 +95,35 @@ function DersEkleForm({ siniflar, ogretmenler, program, onEklendi, doldurBilgisi
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [doldurBilgisi])
 
+  // Tablodaki "Düzenle" ile mevcut bir ders saati seçildiğinde, formu o dersin
+  // güncel bilgileriyle doldurur ve "ekleme" değil "güncelleme" moduna geçirir.
+  useEffect(() => {
+    if (!duzenlenenDers) return
+    setSinifId(duzenlenenDers.sinif_id || '')
+    setDersAdi(duzenlenenDers.ders_adi || '')
+    setOgretmenId(duzenlenenDers.ogretmen_profile_id || '')
+    setGun(duzenlenenDers.gun)
+    setBaslangic(saatKisalt(duzenlenenDers.baslangic_saat) || '')
+    setBitis(saatKisalt(duzenlenenDers.bitis_saat) || '')
+    setHata('')
+    setBasari('')
+    requestAnimationFrame(() => {
+      document.getElementById('ders-ekle-formu')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [duzenlenenDers])
+
+  function iptalEt() {
+    setSinifId('')
+    setDersAdi('')
+    setOgretmenId('')
+    setBaslangic('')
+    setBitis('')
+    setHata('')
+    setBasari('')
+    onDuzenlemeBitti()
+  }
+
   async function ekle(e) {
     e.preventDefault()
     setHata('')
@@ -105,7 +136,11 @@ function DersEkleForm({ siniflar, ogretmenler, program, onEklendi, doldurBilgisi
       return
     }
 
-    const cakisma = cakismaBul({ sinifId, gun: Number(gun), baslangic, bitis, ogretmenId }, program)
+    const cakisma = cakismaBul(
+      { sinifId, gun: Number(gun), baslangic, bitis, ogretmenId },
+      program,
+      duzenleModu ? duzenlenenDers.id : null
+    )
     if (cakisma) {
       if (cakisma.tur === 'ogretmen') {
         setHata(
@@ -118,21 +153,33 @@ function DersEkleForm({ siniflar, ogretmenler, program, onEklendi, doldurBilgisi
     }
 
     setGonderiliyor(true)
-    const { error } = await supabase.from('ders_programi').insert({
+    const veri = {
       sinif_id: sinifId,
       gun: Number(gun),
       baslangic_saat: baslangic,
       bitis_saat: bitis,
       ders_adi: dersAdi.trim() ? ilkHarfleriBuyukYap(dersAdi.trim()) : null,
       ogretmen_profile_id: ogretmenId || null,
-    })
+    }
+    const { error } = duzenleModu
+      ? await supabase.from('ders_programi').update(veri).eq('id', duzenlenenDers.id)
+      : await supabase.from('ders_programi').insert(veri)
     setGonderiliyor(false)
     if (error) {
       setHata('Hata: ' + error.message)
     } else {
-      setBaslangic('')
-      setBitis('')
-      setDersAdi('')
+      if (duzenleModu) {
+        setSinifId('')
+        setDersAdi('')
+        setOgretmenId('')
+        setBaslangic('')
+        setBitis('')
+        onDuzenlemeBitti()
+      } else {
+        setBaslangic('')
+        setBitis('')
+        setDersAdi('')
+      }
       onEklendi()
     }
   }
@@ -170,7 +217,7 @@ function DersEkleForm({ siniflar, ogretmenler, program, onEklendi, doldurBilgisi
 
   return (
     <form id="ders-ekle-formu" onSubmit={ekle} className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5 mb-6">
-      <p className="font-semibold text-gray-700 mb-3">Yeni Ders Saati Ekle</p>
+      <p className="font-semibold text-gray-700 mb-3">{duzenleModu ? 'Dersi Düzenle' : 'Yeni Ders Saati Ekle'}</p>
       <div className="flex flex-wrap gap-3 items-end">
         <div className="flex-1 min-w-[180px]">
           <label className="block text-sm font-medium text-gray-700 mb-1">Sınıf</label>
@@ -247,16 +294,27 @@ function DersEkleForm({ siniflar, ogretmenler, program, onEklendi, doldurBilgisi
           disabled={gonderiliyor}
           className="bg-orange text-white font-semibold px-5 py-2 rounded-lg hover:opacity-90 transition-opacity disabled:opacity-50"
         >
-          {gonderiliyor ? 'Ekleniyor...' : 'Ekle'}
+          {gonderiliyor ? (duzenleModu ? 'Güncelleniyor...' : 'Ekleniyor...') : duzenleModu ? 'Güncelle' : 'Ekle'}
         </button>
-        <button
-          type="button"
-          onClick={taslagaKaydet}
-          disabled={gonderiliyor}
-          className="bg-white border border-gray-200 text-gray-600 font-semibold px-5 py-2 rounded-lg hover:bg-gray-50 transition-colors disabled:opacity-50"
-        >
-          Taslağa Kaydet
-        </button>
+        {duzenleModu ? (
+          <button
+            type="button"
+            onClick={iptalEt}
+            disabled={gonderiliyor}
+            className="bg-white border border-gray-200 text-gray-600 font-semibold px-5 py-2 rounded-lg hover:bg-gray-50 transition-colors disabled:opacity-50"
+          >
+            İptal
+          </button>
+        ) : (
+          <button
+            type="button"
+            onClick={taslagaKaydet}
+            disabled={gonderiliyor}
+            className="bg-white border border-gray-200 text-gray-600 font-semibold px-5 py-2 rounded-lg hover:bg-gray-50 transition-colors disabled:opacity-50"
+          >
+            Taslağa Kaydet
+          </button>
+        )}
       </div>
       {hata && <p className="text-red-600 text-sm mt-3">{hata}</p>}
       {!hata && basari && <p className="text-green-600 text-sm mt-3">{basari}</p>}
@@ -386,6 +444,195 @@ function TaslaklarimDersProgrami({ taslaklar, siniflar, ogretmenler, program, on
             </div>
           </div>
         ))}
+      </div>
+    </div>
+  )
+}
+
+// ============================================================================
+// GÜNLÜK PROGRAM LİSTESİ — Müsaitlik Tablosu'ndan FARKLI bir amaca hizmet
+// eden, yöneticiye özel salt-okunur bir görünüm: "bugün kim, kaçta, kiminle
+// ders yapıyor" sorusuna tek bakışta cevap vermek için. Müsaitlik Tablosu
+// ders EKLERKEN kullanılıyor ve boş öğretmeni de göstermek ZORUNDA (boş saate
+// ders yazılacak) — o yüzden ona dokunulmadı. Burada ise tam tersi: o gün
+// HİÇ dersi (ne sınıf ne bire bir) olmayan öğretmen satırı hiç gösterilmiyor.
+// Saat sütunları da sabit 30dk'lık genel dilimler değil, o gün programda
+// GERÇEKTEN var olan ders saatlerinin başlangıç/bitiş noktalarından otomatik
+// oluşuyor — böylece sütun genişlikleri gerçek ders sürelerine göre şekilleniyor.
+// ============================================================================
+function gunNumaraTarihten(tarihStr) {
+  if (!tarihStr) return null
+  const g = new Date(tarihStr + 'T12:00:00').getDay()
+  return g === 0 ? 7 : g
+}
+
+function gunEkle(tarihStr, gunSayisi) {
+  const t = new Date(tarihStr + 'T12:00:00')
+  t.setDate(t.getDate() + gunSayisi)
+  return t.toISOString().slice(0, 10)
+}
+
+function GunlukProgramListesi({ program, ogretmenler, atamalar, yoklamalar, ogrenciAdMap }) {
+  const [tarih, setTarih] = useState(() => new Date().toISOString().slice(0, 10))
+  const gun = gunNumaraTarihten(tarih)
+
+  // O günün TÜM olaylarını (sınıf dersi + haftalık bire bir + tek seferlik
+  // bire bir) tek listede topluyoruz.
+  const gununOlaylari = useMemo(() => {
+    const olaylar = []
+    for (const d of program) {
+      if (d.gun !== gun || !d.ogretmen_profile_id) continue
+      olaylar.push({
+        ogretmenId: d.ogretmen_profile_id,
+        baslangic: saatKisalt(d.baslangic_saat),
+        bitis: saatKisalt(d.bitis_saat),
+        etiket: d.ders_adi || d.sinif_adi || 'Sınıf dersi',
+        altEtiket: d.sinif_adi,
+        renk: 'bg-blue-100 text-blue-800',
+      })
+    }
+    for (const a of atamalar || []) {
+      if (!a.aktif || a.gun !== gun || !a.ogretmen_profile_id) continue
+      olaylar.push({
+        ogretmenId: a.ogretmen_profile_id,
+        baslangic: saatKisalt(a.baslangic_saat),
+        bitis: saatKisalt(a.bitis_saat),
+        etiket: a.ogrenci_adi || 'Bire bir',
+        altEtiket: 'Bire bir',
+        renk: 'bg-orange-100 text-orange-800',
+      })
+    }
+    for (const y of yoklamalar || []) {
+      if (y.atama_id || y.tarih !== tarih || !y.baslangic_saat || !y.bitis_saat || !y.ogretmen_profile_id) continue
+      if (y.durum === 'gelmedi') continue // öğrenci gelmediyse o saat artık boş sayılır
+      olaylar.push({
+        ogretmenId: y.ogretmen_profile_id,
+        baslangic: saatKisalt(y.baslangic_saat),
+        bitis: saatKisalt(y.bitis_saat),
+        etiket: (ogrenciAdMap && ogrenciAdMap.get(y.ogrenci_id)) || 'Bire bir',
+        altEtiket: 'Bire bir',
+        renk: 'bg-orange-100 text-orange-800',
+      })
+    }
+    return olaylar
+  }, [program, atamalar, yoklamalar, gun, tarih, ogrenciAdMap])
+
+  // Saat sütunları: o gün gerçekten var olan tüm başlangıç/bitiş saatlerinin
+  // sınır noktalarından oluşur (sabit 30dk dilim DEĞİL).
+  const dilimler = useMemo(() => {
+    const noktalar = [...new Set(gununOlaylari.flatMap((o) => [o.baslangic, o.bitis]))].sort()
+    const sonuc = []
+    for (let i = 0; i < noktalar.length - 1; i++) {
+      sonuc.push({ baslangic: noktalar[i], bitis: noktalar[i + 1] })
+    }
+    return sonuc
+  }, [gununOlaylari])
+
+  // Sadece o gün en az bir olayı (dersi) olan öğretmenler gösterilir.
+  const gorunecekOgretmenler = useMemo(() => {
+    const mesgulIdler = new Set(gununOlaylari.map((o) => o.ogretmenId))
+    return ogretmenler.filter((o) => mesgulIdler.has(o.id))
+  }, [ogretmenler, gununOlaylari])
+
+  function hucreDurumu(ogretmenId, dilim) {
+    return gununOlaylari.find(
+      (o) => o.ogretmenId === ogretmenId && araliklarCakisiyorMu(dilim.baslangic, dilim.bitis, o.baslangic, o.bitis)
+    )
+  }
+
+  function satirHucreleriniOlustur(ogretmenId) {
+    const hucreler = []
+    let i = 0
+    while (i < dilimler.length) {
+      const dilim = dilimler[i]
+      const dolu = hucreDurumu(ogretmenId, dilim)
+      let span = 1
+      if (dolu) {
+        while (i + span < dilimler.length && hucreDurumu(ogretmenId, dilimler[i + span]) === dolu) {
+          span++
+        }
+      }
+      hucreler.push({ baslangic: dilim.baslangic, span, dolu })
+      i += span
+    }
+    return hucreler
+  }
+
+  return (
+    <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden mb-6">
+      <div className="px-4 py-3 border-b border-gray-100 bg-gray-50 flex items-center justify-between flex-wrap gap-3">
+        <div>
+          <h2 className="font-semibold text-gray-700">Günlük Program Listesi</h2>
+          <p className="text-xs text-gray-400 mt-0.5">O gün dersi olan öğretmenler — kiminle, kaçta. Dersi olmayan öğretmenler görünmez.</p>
+        </div>
+        <div className="flex items-center gap-2">
+          <button type="button" onClick={() => setTarih((t) => gunEkle(t, -1))} className="px-2 py-1.5 rounded-lg text-sm text-gray-500 hover:bg-gray-100">
+            ◀
+          </button>
+          <input
+            type="date"
+            value={tarih}
+            onChange={(e) => setTarih(e.target.value)}
+            className="px-2 py-1.5 border border-gray-200 rounded-lg text-sm"
+          />
+          <button type="button" onClick={() => setTarih((t) => gunEkle(t, 1))} className="px-2 py-1.5 rounded-lg text-sm text-gray-500 hover:bg-gray-100">
+            ▶
+          </button>
+          <span className="text-xs text-gray-400 whitespace-nowrap">{GUNLER[gun]}</span>
+        </div>
+      </div>
+      <div className="overflow-x-auto">
+        <table className="border-collapse text-xs w-full">
+          <thead>
+            <tr>
+              <th className="sticky left-0 z-10 bg-navy text-white px-3 py-2 text-left font-semibold min-w-[150px]">
+                Öğretmen
+              </th>
+              {dilimler.map((d) => (
+                <th key={d.baslangic} className="bg-navy text-white px-1 py-2 font-medium border-l border-white/10 min-w-[70px]">
+                  {d.baslangic}–{d.bitis}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {gorunecekOgretmenler.map((o, i) => {
+              const hucreler = satirHucreleriniOlustur(o.id)
+              return (
+                <tr key={o.id} className={i % 2 ? 'bg-gray-50/60' : ''}>
+                  <td className="sticky left-0 z-10 bg-white px-3 py-1.5 font-semibold text-gray-700 border-t border-gray-100 whitespace-nowrap">
+                    {o.ad_soyad}
+                    {o.brans && <span className="block text-[10px] font-normal text-gray-400">{o.brans}</span>}
+                  </td>
+                  {hucreler.map((h) => (
+                    <td
+                      key={h.baslangic}
+                      colSpan={h.span}
+                      title={h.dolu ? `${h.dolu.etiket}${h.dolu.altEtiket ? ' — ' + h.dolu.altEtiket : ''}` : ''}
+                      className={`border-t border-l border-gray-100 text-center align-middle py-1 ${h.dolu ? h.dolu.renk : ''}`}
+                    >
+                      {h.dolu && (
+                        <span className="leading-none block px-0.5">
+                          <span className="block truncate text-[9px] font-medium">{h.dolu.etiket}</span>
+                          {h.dolu.altEtiket && (
+                            <span className="block text-[8px] opacity-70 truncate">{h.dolu.altEtiket}</span>
+                          )}
+                        </span>
+                      )}
+                    </td>
+                  ))}
+                </tr>
+              )
+            })}
+            {gorunecekOgretmenler.length === 0 && (
+              <tr>
+                <td colSpan={dilimler.length + 1} className="px-4 py-4 text-center text-gray-400">
+                  Bu tarihte dersi olan öğretmen bulunamadı.
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
       </div>
     </div>
   )
@@ -541,6 +788,12 @@ export default function DersProgrami() {
   // taslağa kaydedilene kadar kullanıcı "hangi saate ekliyordum" diye
   // unutmasın diye. dersEklendiVeyaTaslaklandi() içinde temizlenir.
   const [seciliHucre, setSeciliHucre] = useState(null)
+  // Tablodaki "Düzenle" ile seçilen, formda güncellenmekte olan ders saati.
+  const [duzenlenenDers, setDuzenlenenDers] = useState(null)
+  // Yönetici için: "Ders Ekleme Aracı" (Müsaitlik + Ekle formu + Taslaklar) ile
+  // "Günlük Program Listesi" (salt-okunur, o gün dersi olanları gösteren)
+  // görünümü arasında geçiş.
+  const [yonetimGorunum, setYonetimGorunum] = useState('ekle')
   const ilkYuklemeTamamRef = useRef(false)
 
   function veriyiYenile() {
@@ -660,6 +913,10 @@ export default function DersProgrami() {
   // Müsaitlik tablosunda boş bir hücreye tıklanınca çağrılır: hücrenin
   // öğretmen/gün/saat bilgisini forma iletir ve forma doğru yumuşak kaydırır.
   function hucreTiklandi(bilgi) {
+    // Müsaitlik tablosundan boş bir hücreye tıklanması, "yeni ders ekleme"
+    // akışıdır — o an bir dersi düzenliyorsak (Düzenle modu) önce onu iptal
+    // edip forma karışmasını önlüyoruz.
+    setDuzenlenenDers(null)
     // Aynı öğretmen/tarih için, az önce seçilen hücrenin HEMEN YANINDAKİ
     // (bir sonraki 30dk'lık) sütuna tıklanırsa, bunu "arka arkaya bir ders daha"
     // isteği olarak yorumluyoruz: yeni dersin başlangıcını, önceki dersin
@@ -687,6 +944,15 @@ export default function DersProgrami() {
   function dersEklendiVeyaTaslaklandi() {
     setSeciliHucre(null)
     veriyiYenile()
+  }
+
+  // Tablodaki "Düzenle" butonuna basılınca çağrılır: formu düzenlenecek ders
+  // bilgisiyle doldurur ve forma kaydırır (kaydırma DersEkleForm içindeki
+  // useEffect'te yapılıyor).
+  function duzenle(d) {
+    setDoldurBilgisi(null)
+    setSeciliHucre(null)
+    setDuzenlenenDers(d)
   }
 
   const ogrenciAdMap = useMemo(() => new Map(ogrenciler.map((o) => [o.id, o.ad_soyad])), [ogrenciler])
@@ -761,29 +1027,62 @@ export default function DersProgrami() {
 
       {isYonetici && (
         <>
-          <MusaitlikTablosu
-            ogretmenler={ogretmenler}
-            dersProgrami={program}
-            atamalar={bireBirAtamalar}
-            yoklamalar={bireBirYoklamalar}
-            ogrenciAdMap={ogrenciAdMap}
-            onHucreTikla={hucreTiklandi}
-            secili={seciliHucre}
-          />
-          <DersEkleForm
-            siniflar={siniflar}
-            ogretmenler={ogretmenler}
-            program={program}
-            onEklendi={dersEklendiVeyaTaslaklandi}
-            doldurBilgisi={doldurBilgisi}
-          />
-          <TaslaklarimDersProgrami
-            taslaklar={taslaklar}
-            siniflar={siniflar}
-            ogretmenler={ogretmenler}
-            program={program}
-            onDegisti={veriyiYenile}
-          />
+          <div className="flex bg-white border border-gray-200 rounded-lg overflow-hidden text-sm mb-4 w-fit">
+            <button
+              type="button"
+              onClick={() => setYonetimGorunum('ekle')}
+              className={`px-3 py-1.5 font-medium transition-colors ${yonetimGorunum === 'ekle' ? 'bg-navy text-white' : 'text-gray-600 hover:bg-gray-50'}`}
+            >
+              Ders Ekleme Aracı
+            </button>
+            <button
+              type="button"
+              onClick={() => setYonetimGorunum('gunluk')}
+              className={`px-3 py-1.5 font-medium transition-colors ${yonetimGorunum === 'gunluk' ? 'bg-navy text-white' : 'text-gray-600 hover:bg-gray-50'}`}
+            >
+              Günlük Program Listesi
+            </button>
+          </div>
+
+          {yonetimGorunum === 'ekle' && (
+            <>
+              <MusaitlikTablosu
+                ogretmenler={ogretmenler}
+                dersProgrami={program}
+                atamalar={bireBirAtamalar}
+                yoklamalar={bireBirYoklamalar}
+                ogrenciAdMap={ogrenciAdMap}
+                onHucreTikla={hucreTiklandi}
+                secili={seciliHucre}
+              />
+              <DersEkleForm
+                siniflar={siniflar}
+                ogretmenler={ogretmenler}
+                program={program}
+                onEklendi={dersEklendiVeyaTaslaklandi}
+                doldurBilgisi={doldurBilgisi}
+                duzenlenenDers={duzenlenenDers}
+                onDuzenlemeBitti={() => setDuzenlenenDers(null)}
+              />
+              <TaslaklarimDersProgrami
+                taslaklar={taslaklar}
+                siniflar={siniflar}
+                ogretmenler={ogretmenler}
+                program={program}
+                onDegisti={veriyiYenile}
+              />
+            </>
+          )}
+
+          {yonetimGorunum === 'gunluk' && (
+            <GunlukProgramListesi
+              program={program}
+              ogretmenler={ogretmenler}
+              atamalar={bireBirAtamalar}
+              yoklamalar={bireBirYoklamalar}
+              ogrenciAdMap={ogrenciAdMap}
+            />
+          )}
         </>
       )}
 
@@ -842,12 +1141,20 @@ export default function DersProgrami() {
                                 {saatKisalt(d.baslangic_saat)}–{saatKisalt(d.bitis_saat)}
                               </p>
                               {isYonetici && (
-                                <button
-                                  onClick={() => sil(d.id)}
-                                  className="absolute top-0.5 right-1 text-[10px] text-red-400 hover:text-red-700 opacity-0 group-hover:opacity-100 transition-opacity"
-                                >
-                                  Sil
-                                </button>
+                                <div className="absolute top-0.5 right-1 flex items-center gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                                  <button
+                                    onClick={() => duzenle(d)}
+                                    className="text-[10px] text-blue-500 hover:text-blue-700"
+                                  >
+                                    Düzenle
+                                  </button>
+                                  <button
+                                    onClick={() => sil(d.id)}
+                                    className="text-[10px] text-red-400 hover:text-red-700"
+                                  >
+                                    Sil
+                                  </button>
+                                </div>
                               )}
                             </div>
                           ))}
@@ -882,12 +1189,20 @@ export default function DersProgrami() {
                         </p>
                       </div>
                       {isYonetici && (
-                        <button
-                          onClick={() => sil(d.id)}
-                          className="text-xs text-red-500 hover:text-red-700 hover:underline shrink-0"
-                        >
-                          Sil
-                        </button>
+                        <div className="flex items-center gap-3 shrink-0">
+                          <button
+                            onClick={() => duzenle(d)}
+                            className="text-xs text-blue-600 hover:text-blue-800 hover:underline"
+                          >
+                            Düzenle
+                          </button>
+                          <button
+                            onClick={() => sil(d.id)}
+                            className="text-xs text-red-500 hover:text-red-700 hover:underline"
+                          >
+                            Sil
+                          </button>
+                        </div>
                       )}
                     </div>
                   ))}
