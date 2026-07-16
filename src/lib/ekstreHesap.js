@@ -314,6 +314,28 @@ export function bireBirOzetLinkOlustur(telefon, mesaj) {
 }
 
 // ============================================================================
+// DEVAMSIZLIK BİLDİRİMİ — Yoklama.jsx'te bir öğrenci "Gelmedi" olarak
+// işaretlenip yoklama kaydedildiğinde, anneye/babaya WhatsApp üzerinden
+// "bugün derse gelmedi" bildirimi gönderebilmek için mesaj üretir. Link
+// üretimi için AYNI bireBirOzetLinkOlustur fonksiyonu kullanılır (telefon +
+// hazır metin alıp wa.me linkine çeviren genel fonksiyon) — burada ayrıca
+// bir link fonksiyonu tanımlamaya gerek yok.
+// ============================================================================
+export function devamsizlikMesajiOlustur({ ogrenciAdi, tarihStr, sinifAdi, saatAraligi }) {
+  const tarihMetni = new Date(tarihStr + 'T12:00:00').toLocaleDateString('tr-TR', {
+    day: '2-digit',
+    month: 'long',
+    year: 'numeric',
+    weekday: 'long',
+  })
+  return (
+    `Değerli Velimiz,\n${ogrenciAdi} adlı öğrencimiz ${tarihMetni} tarihinde` +
+    `${sinifAdi ? ` ${sinifAdi} sınıfının` : ''}${saatAraligi ? ` ${saatAraligi} saatleri arasındaki` : ''} dersine gelmemiştir.\n` +
+    `Bilginize sunarız.\nSavaş Akça Eğitim`
+  )
+}
+
+// ============================================================================
 // ÖDEV BİLDİRİMİ — Odev.jsx'te yeni bir ödev girildiğinde, öğrenciye/veliye
 // WhatsApp üzerinden "yeni ödevin var" bildirimi gönderebilmek için mesaj
 // üretir. Link üretimi için AYNI bireBirOzetLinkOlustur fonksiyonu kullanılır
@@ -567,4 +589,34 @@ export function kantinBorclariOlustur(alislar) {
       donem,
     }
   })
+}
+
+// ============================================================================
+// SON ALINAN ÖDEMELER — LİSTEYİ GRUP SINIRINDA KES — Muhasebe.jsx ve
+// Dashboard.jsx'teki "Son Alınan Ödemeler" panelleri kullanır. "Dağıtılmamış"
+// bir ödeme sonradan birden fazla kaleme bölündüğünde (bkz. Muhasebe.jsx
+// OdemeDagitForm), AYNI öğrencinin AYNI günkü tek bir işlemi birden fazla
+// satıra (ör. Bire Bir + Kitap) ayrılmış olur. Listeyi düz "en fazla N satır"
+// diye kessek, bu satırlar ortadan bölünüp o öğrencinin o günkü işleminin
+// yarısı görünmez hâle gelebilir. Bunun yerine: en az minSayisi satır
+// göster, ama minSayisi'e ulaştıktan sonra bile, aynı öğrenci+aynı gün
+// grubunun geri kalanı bitene kadar eklemeye devam et (grup sınırında kes).
+// "data" ZATEN tarih DESC + created_at DESC sıralı gelmeli (Supabase
+// sorgusundaki sıralamayla aynı) — bu fonksiyon sırayı değiştirmez, sadece
+// nereye kadar göstereceğine karar verir.
+// ============================================================================
+export function sonOdemeleriGrupSiniriylaKes(data, minSayisi) {
+  const grupAnahtari = (o) => `${o.ogrenci_id}|${(o.tarih || '').slice(0, 10)}`
+  const sonuc = []
+  for (const satir of data || []) {
+    if (sonuc.length >= minSayisi) {
+      if (sonuc.length > 0 && grupAnahtari(satir) === grupAnahtari(sonuc[sonuc.length - 1])) {
+        sonuc.push(satir)
+        continue
+      }
+      break
+    }
+    sonuc.push(satir)
+  }
+  return sonuc
 }
