@@ -96,7 +96,11 @@ export default function Ekstre() {
   // kafası karışabilir, o ödemeyi kendisi yapmış gibi görünmesin diye. Yönetici hepsini görür.
   // (Not: bu filtre sadece GÖRÜNÜR listeyi etkiler, borç hesaplarına devreden ödemeler dahildir.)
   const gorunurOdemeler = isVeli ? odemeler.filter((o) => !o.kalem?.includes('Devreden')) : odemeler
-  const sonOdemeler = gorunurOdemeler.slice(0, 10)
+  // Veli "bugüne kadar yaptığım tüm ödemeleri PDF olarak istiyorum" dediğinde
+  // elindeki çıktı eksiksiz olsun diye — burada artık SADECE son 10 kayıt değil,
+  // öğrencinin (görünür) tüm ödeme geçmişi listeleniyor.
+  const gosterilecekOdemeler = gorunurOdemeler
+  const gosterilenOdemeToplami = gosterilecekOdemeler.reduce((t, o) => t + Number(o.tutar), 0)
 
   return (
     <div className="min-h-screen bg-cream py-8 px-4">
@@ -239,7 +243,7 @@ export default function Ekstre() {
             )}
 
             <div className="mt-6">
-              <p className="font-semibold text-navy mb-2">Ödeme Geçmişi (Son {sonOdemeler.length} Kayıt)</p>
+              <p className="font-semibold text-navy mb-2">Ödeme Geçmişi — Bugüne Kadar Yapılan Tüm Ödemeler ({gosterilecekOdemeler.length} Kayıt)</p>
               <table className="w-full text-sm border border-gray-200 rounded-lg overflow-hidden">
                 <thead>
                   <tr className="bg-navy text-white text-left">
@@ -249,10 +253,10 @@ export default function Ekstre() {
                   </tr>
                 </thead>
                 <tbody>
-                  {sonOdemeler.length === 0 && (
+                  {gosterilecekOdemeler.length === 0 && (
                     <tr><td colSpan={3} className="px-3 py-3 text-center text-gray-400">Ödeme kaydı yok.</td></tr>
                   )}
-                  {sonOdemeler.map((o, i) => (
+                  {gosterilecekOdemeler.map((o, i) => (
                     <tr key={o.id} className={i % 2 ? 'bg-gray-50' : ''}>
                       <td className="px-3 py-2">{new Date(o.tarih).toLocaleDateString('tr-TR')}</td>
                       <td className="px-3 py-2">{o.kalem || '—'}</td>
@@ -260,6 +264,14 @@ export default function Ekstre() {
                     </tr>
                   ))}
                 </tbody>
+                {gosterilecekOdemeler.length > 0 && (
+                  <tfoot>
+                    <tr className="bg-gray-50 font-semibold border-t border-gray-200">
+                      <td className="px-3 py-2" colSpan={2}>TOPLAM ÖDENEN</td>
+                      <td className="px-3 py-2 text-right">{paraFormat(gosterilenOdemeToplami)}</td>
+                    </tr>
+                  </tfoot>
+                )}
               </table>
             </div>
           </div>
