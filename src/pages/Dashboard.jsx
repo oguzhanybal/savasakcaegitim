@@ -36,6 +36,7 @@ export default function Dashboard() {
   const [bugunDevamsizlik, setBugunDevamsizlik] = useState(null)
   const [ogretmenSayisi, setOgretmenSayisi] = useState(null)
   const [gecikenOdemeSayisi, setGecikenOdemeSayisi] = useState(null)
+  const [gecikenOgrenciler, setGecikenOgrenciler] = useState([])
   const [yaklasanVadeSayisi, setYaklasanVadeSayisi] = useState(null)
 
   useEffect(() => {
@@ -106,53 +107,75 @@ export default function Dashboard() {
         setOgretmenSayisi((data || []).filter((o) => o.aktif !== false).length)
       })
 
-    // Geciken ödeme sayısı + Yaklaşan vade (7 gün): TopluEkstre.jsx ile aynı
+    // Geciken ödeme listesi + Yaklaşan vade (7 gün): TopluEkstre.jsx ile aynı
     // veriyi (tüm aktif öğrenciler, sözleşmeler, aylık borçlar, ödemeler) çekip
     // ekstreHesap.js'teki AYNI taksit/borç motorunu (taksitPlaniOlustur,
     // aylikBorcDurumHesapla) her öğrenci için ayrı ayrı çalıştırıyoruz — Ekstre
-    // ve Muhasebe sayfalarındaki "gecikti/bekliyor" durumlarıyla birebir tutarlı
-    // olsun diye.
+    // ve Muhasebe sayfalarındaki "gecikti/bekliyor/kısmi" durumlarıyla birebir
+    // tutarlı olsun diye.
+    //
+    // "Geciken" tanımı: vadesi/ait olduğu ayı geçmiş VE tamamen kapanmamış her
+    // kalem — durum 'gecikti' (hiç ödeme düşmemiş) OLABİLECEĞİ gibi, vadesi
+    // geçtiği hâlde sadece KISMEN ödenmiş ('kismi' + vade/ay geçmiş) kalemler
+    // de dahil. (taksitPlaniOlustur/aylikBorcDurumHesapla'daki 'kismi' durumu
+    // tek başına vade kontrolü yapmıyor — önden kısmi ödeme yapılmış ama vadesi
+    // henüz gelmemiş bir taksit de 'kismi' çıkabiliyor; bu yüzden vade/ay
+    // kontrolünü burada ayrıca yapıyoruz.)
     Promise.all([
-      supabase.from('ogrenciler').select('id').or('durum.eq.aktif,durum.is.null'),
+      supabase.from('ogrenciler').select('id, ad_soyad').or('durum.eq.aktif,durum.is.null'),
       supabase.from('sozlesmeler').select('*'),
       supabase.from('aylik_borclar').select('*'),
       supabase.from('odemeler').select('*'),
     ]).then(([{ data: aktifOgrenciler }, { data: sozlesmeler }, { data: aylikBorclar }, { data: odemeler }]) => {
-      const aktifIdSeti = new Set((aktifOgrenciler || []).map((o) => o.id))
       const yediGunSonra = new Date(simdi)
       yediGunSonra.setHours(0, 0, 0, 0)
       yediGunSonra.setDate(yediGunSonra.getDate() + 7)
       const bugunGunBasi = new Date(simdi)
       bugunGunBasi.setHours(0, 0, 0, 0)
+      const buAyIndex = simdi.getFullYear() * 12 + simdi.getMonth()
 
-      let gecikenSayac = 0
       let yaklasanSayac = 0
+      const gecikenListe = []
 
-      for (const ogrenciId of aktifIdSeti) {
+      for (const ogrenci of aktifOgrenciler || []) {
+        const ogrenciId = ogrenci.id
         const sOgrenci = (sozlesmeler || []).filter((s) => s.ogrenci_id === ogrenciId)
         const aOgrenci = (aylikBorclar || []).filter((a) => a.ogrenci_id === ogrenciId)
         const oOgrenci = (odemeler || []).filter((o) => o.ogrenci_id === ogrenciId)
 
-        let bOgrenciGecikti = false
+        let gecikenTutar = 0
 
         for (const s of sOgrenci) {
           for (const t of taksitPlaniOlustur(s, oOgrenci)) {
-            if (t.durum === 'gecikti') bOgrenciGecikti = true
-            if (t.durum === 'bekliyor') {
-              const vadeGunBasi = new Date(t.vade)
-              vadeGunBasi.setHours(0, 0, 0, 0)
-              if (vadeGunBasi >= bugunGunBasi && vadeGunBasi <= yediGunSonra) yaklasanSayac++
+            const vadeGunBasi = new Date(t.vade)
+            vadeGunBasi.setHours(0, 0, 0, 0)
+            const vadeGecti = vadeGunBasi < bugunGunBasi
+            if (t.durum === 'gecikti' || (t.durum === 'kismi' && vadeGecti)) {
+              gecikenTutar += t.kalanTutar
+            }
+            if (t.durum === 'bekliyor' && vadeGunBasi >= bugunGunBasi && vadeGunBasi <= yediGunSonra) {
+              yaklasanSayac++
             }
           }
         }
         for (const a of aOgrenci) {
-          if (aylikBorcDurumHesapla(a, aOgrenci, oOgrenci).durum === 'gecikti') bOgrenciGecikti = true
+          const d = new Date(a.donem)
+          const borcAyIndex = d.getFullYear() * 12 + d.getMonth()
+          const ayGecti = borcAyIndex < buAyIndex
+          const sonuc = aylikBorcDurumHesapla(a, aOgrenci, oOgrenci)
+          if (sonuc.durum === 'gecikti' || (sonuc.durum === 'kismi' && ayGecti)) {
+            gecikenTutar += sonuc.kalanTutar
+          }
         }
 
-        if (bOgrenciGecikti) gecikenSayac++
+        if (gecikenTutar > 0.01) {
+          gecikenListe.push({ id: ogrenciId, adSoyad: ogrenci.ad_soyad, tutar: gecikenTutar })
+        }
       }
 
-      setGecikenOdemeSayisi(gecikenSayac)
+      gecikenListe.sort((a, b) => b.tutar - a.tutar)
+      setGecikenOgrenciler(gecikenListe)
+      setGecikenOdemeSayisi(gecikenListe.length)
       setYaklasanVadeSayisi(yaklasanSayac)
     })
   }, [profile])
@@ -191,6 +214,24 @@ export default function Dashboard() {
             color={yaklasanVadeSayisi > 0 ? 'text-orange-500' : 'text-navy'}
             to="/toplu-ekstre"
           />
+        </div>
+      )}
+
+      {profile?.rol === 'yonetici' && gecikenOgrenciler.length > 0 && (
+        <div className="bg-white rounded-2xl border border-red-100 shadow-sm p-5 mt-4">
+          <h3 className="font-semibold text-red-600 mb-3">Geciken Ödemesi Olanlar ({gecikenOgrenciler.length})</h3>
+          <div className="divide-y divide-gray-100">
+            {gecikenOgrenciler.map((o) => (
+              <Link
+                key={o.id}
+                to={`/ekstre/${o.id}`}
+                className="flex items-center justify-between py-2 px-2 -mx-2 rounded-lg hover:bg-gray-50 transition-colors"
+              >
+                <span className="text-sm text-gray-700">{o.adSoyad}</span>
+                <span className="text-sm font-semibold text-red-500">{paraFormat(o.tutar)}</span>
+              </Link>
+            ))}
+          </div>
         </div>
       )}
 
