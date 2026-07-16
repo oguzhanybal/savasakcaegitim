@@ -489,7 +489,7 @@ function GunlukProgramListesi({ program, ogretmenler, atamalar, yoklamalar, ogre
         bitis: saatKisalt(d.bitis_saat),
         etiket: d.ders_adi || d.sinif_adi || 'Sınıf dersi',
         altEtiket: d.sinif_adi,
-        renk: 'bg-blue-100 text-blue-800',
+        renk: 'bg-blue-100 text-blue-800 border-l-[3px] border-l-blue-500',
       })
     }
     for (const a of atamalar || []) {
@@ -500,7 +500,7 @@ function GunlukProgramListesi({ program, ogretmenler, atamalar, yoklamalar, ogre
         bitis: saatKisalt(a.bitis_saat),
         etiket: a.ogrenci_adi || 'Bire bir',
         altEtiket: 'Bire bir',
-        renk: 'bg-orange-100 text-orange-800',
+        renk: 'bg-orange-100 text-orange-800 border-l-[3px] border-l-orange-500',
       })
     }
     for (const y of yoklamalar || []) {
@@ -512,7 +512,7 @@ function GunlukProgramListesi({ program, ogretmenler, atamalar, yoklamalar, ogre
         bitis: saatKisalt(y.bitis_saat),
         etiket: (ogrenciAdMap && ogrenciAdMap.get(y.ogrenci_id)) || 'Bire bir',
         altEtiket: 'Bire bir',
-        renk: 'bg-orange-100 text-orange-800',
+        renk: 'bg-orange-100 text-orange-800 border-l-[3px] border-l-orange-500',
       })
     }
     return olaylar
@@ -608,9 +608,9 @@ function GunlukProgramListesi({ program, ogretmenler, atamalar, yoklamalar, ogre
                     >
                       {h.dolu && (
                         <span className="leading-none block px-0.5">
-                          <span className="block truncate text-[9px] font-medium">{h.dolu.etiket}</span>
+                          <span className="block truncate text-[11px] font-semibold">{h.dolu.etiket}</span>
                           {h.dolu.altEtiket && (
-                            <span className="block text-[8px] opacity-70 truncate">{h.dolu.altEtiket}</span>
+                            <span className="block text-[9px] opacity-70 truncate">{h.dolu.altEtiket}</span>
                           )}
                         </span>
                       )}
