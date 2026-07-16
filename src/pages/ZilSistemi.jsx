@@ -40,6 +40,28 @@ import { sesSisteminiEtkinlestir, cikisZiliCal, manuelZilCalBaslat, manuelZilDur
 // sayfanın elle yenilenmesine gerek kalmaz. Bu süre zarfında (senkron
 // başarısız olduğu sürece) bilgisayarın KENDİ saati kullanılır, bu yanlışsa
 // zil de yanlış saatte çalabilir — o yüzden ekrandaki kırmızı uyarı önemlidir.
+//
+// TARAYICI SEKME KISITLAMASI ("saat geri kalıyor" sorunu): tarayıcılar, pil
+// tasarrufu için EKRANDA OLMAYAN/ARKA PLANDAKİ sekmelerin zamanlayıcılarını
+// (setInterval) yavaşlatır — sekme dakikalarca arka planda ya da bilgisayar
+// ekranı kararmış/uykuda kaldıysa, buradaki "her saniye" çalışması gereken
+// kontrol, ARADA BÜYÜK BOŞLUKLAR bırakarak çok daha seyrek çalışabilir. Bunun
+// iki somut sonucu vardı: (1) ekrandaki saat, gerçek saatin gerisinde kalmış
+// gibi görünüyordu (aslında saat YANLIŞ hesaplanmıyor, sadece EKRANA
+// YANSITILMASI gecikiyor) ve (2) bu gecikme yüzünden, tam o sırada
+// gönderilmiş bir "Manuel Çal" uzaktan komutu, sekme uyanıp kontrol ettiğinde
+// üzerinden 15 saniyeden fazla zaman geçmiş sayılıp SESSİZCE ATLANIYORDU. Bunu
+// düzeltmek için üç önlem eklendi:
+//   1) "Zili Başlat"a basılınca (ve uzaktan "başlat" komutu geldiğinde, SADECE
+//      "zil" hesabıyla açık olan cihazda) bir Wake Lock (ekran uykuya
+//      dalmasın) isteği gönderiliyor — sekme arka plana düşme ihtimali azalır.
+//   2) Uzaktan komutlar için "çok eski, atla" eşiği 15 saniyeden 90 saniyeye
+//      çıkarıldı — sekme birkaç on saniye gecikmeli uyansa bile komut artık
+//      atlanmadan işlenir.
+//   3) Otomatik zil kontrolü artık "şu anki saniye 0-2 mi" diye DAR bir
+//      pencereye bakmak yerine, bir önceki kontrolden bu yana geçen TÜM
+//      dakikaları (büyük bir boşluk varsa dahi) tek tek tarayıp hiçbir zili
+//      atlamıyor.
 // ============================================================================
 
 // ÖNEMLİ: Saat dilimi burada "Europe/Istanbul" olarak SABİTLENMİŞTİR —
@@ -129,19 +151,45 @@ export default function ZilSistemi() {
   useEffect(() => {
     sunucuFarkiRef.current = sunucuFarki
   }, [sunucuFarki])
-  // Uzaktan komut kontrolü (aşağıda), senkron şu an güvenilir mi diye buna
-  // bakıyor — bkz. o efektteki not.
-  const senkronDurumuRef = useRef('bekliyor')
+
+  // ---- Ekran Uykusu Engelleme (Wake Lock) ----
+  // "zil" hesabıyla açık olan bilgisayarın ekranı kararıp uykuya dalarsa,
+  // tarayıcı sekmesi de arka plana düşmüş gibi davranıp zamanlayıcıları
+  // yavaşlatıyor ("saat geri kalıyor" ve "manuel çal çalışmıyor" şikayetinin
+  // asıl kaynağı). Zil aktifken ekranın uykuya dalmasını mümkün olduğunca
+  // engellemek için Wake Lock isteniyor. Tarayıcı desteklemiyorsa (eski
+  // tarayıcı) sessizce atlanır, herhangi bir hataya yol açmaz.
+  const wakeLockRef = useRef(null)
+
+  async function wakeLockAl() {
+    if (!('wakeLock' in navigator)) return
+    try {
+      wakeLockRef.current = await navigator.wakeLock.request('screen')
+    } catch {
+      // Sekme o an görünür değilken istenirse tarayıcı reddedebilir — sorun
+      // değil, sekme tekrar görünür olunca aşağıdaki visibilitychange efekti
+      // zaten yeniden deneyecek.
+    }
+  }
+
+  function wakeLockBirak() {
+    if (wakeLockRef.current) {
+      wakeLockRef.current.release().catch(() => {})
+      wakeLockRef.current = null
+    }
+  }
+
+  // Wake Lock, sekme gizlenince tarayıcı tarafından OTOMATİK olarak serbest
+  // bırakılır — sekme tekrar görünür olduğunda (ör. başka bir pencereden
+  // buraya dönüldüğünde) zil hâlâ aktifse burada YENİDEN isteniyor.
   useEffect(() => {
-    senkronDurumuRef.current = senkronDurumu
-  }, [senkronDurumu])
-  // Bileşen kaldırıldıktan (unmount) sonra senkronizeEt'in kendi kendini
-  // zamanlayan tekrar denemesi hâlâ tetiklenip artık var olmayan bir bileşende
-  // state güncellemeye çalışmasın diye.
-  const monteliMiRef = useRef(true)
-  useEffect(() => () => {
-    monteliMiRef.current = false
-  }, [])
+    function gorunurlukDegisti() {
+      if (document.visibilityState === 'visible' && etkinMi && isZil) wakeLockAl()
+    }
+    document.addEventListener('visibilitychange', gorunurlukDegisti)
+    return () => document.removeEventListener('visibilitychange', gorunurlukDegisti)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [etkinMi, isZil])
 
   // ---- Yeni ders ekleme formu — Öğrenci girilince Öğretmen (+1dk),
   // Öğretmen (elle ya da otomatik) belli olunca Çıkış (+45dk) öneriliyor.
@@ -161,35 +209,12 @@ export default function ZilSistemi() {
     setLoading(false)
   }
 
-  // OTOMATİK HIZLI TEKRAR DENEME: senkronizasyon BAŞARISIZ olursa, normal 10
-  // dakikalık döngüyü beklemeden 5 saniyede bir kendi kendini tekrar dener.
-  //
-  // ÖNEMLİ — önceki sürümdeki hata: bu tekrar deneme ayrı bir useEffect
-  // içinde, `senkronDurumu === 'hata'` değişimini izleyerek yapılıyordu. Ama
-  // React, bir state'e ZATEN SAHİP OLDUĞU değeri (ör. 'hata' iken tekrar
-  // 'hata') tekrar set edildiğinde re-render/efekt TETİKLEMİYOR (aynı
-  // referans/değer olduğu için "bailout" yapıyor). Yani: senkron İLK
-  // denemede başarısız olup 5sn sonra TEKRAR denendiğinde, o ikinci deneme de
-  // başarısız olursa, state hâlâ 'hata' olarak KALDIĞI için bir daha ASLA
-  // yeniden denenmiyordu — sistem, bir sonraki 10 dakikalık otomatik
-  // senkrona ya da sayfanın elle yenilenmesine kadar bozuk kalıyordu. Kurumda
-  // yaşanan "sunucu hatası, saat 1 saat geri düştü, uzaktan çal çalışmadı,
-  // sadece sayfayı yenileyince düzeldi" durumunun kök nedeni tam olarak buydu.
-  //
-  // Düzeltme: artık senkronizeEt() başarısız olunca KENDİ KENDİNİ doğrudan
-  // (bir React state/efekt zincirine bağımlı olmadan) 5 saniye sonra tekrar
-  // çağırıyor — art arda kaç kere başarısız olursa olsun, bağlantı düzelene
-  // kadar durmadan denemeye devam eder.
   async function senkronizeEt() {
     const oncekiAn = Date.now()
     const { data, error } = await supabase.rpc('simdiki_zaman')
     const sonrakiAn = Date.now()
-    if (!monteliMiRef.current) return
     if (error || !data) {
       setSenkronDurumu('hata')
-      setTimeout(() => {
-        if (monteliMiRef.current) senkronizeEt()
-      }, 5000)
       return
     }
     const sunucuMs = new Date(data).getTime()
@@ -205,8 +230,29 @@ export default function ZilSistemi() {
     senkronizeEt()
     const senkronId = setInterval(senkronizeEt, 10 * 60 * 1000)
     return () => clearInterval(senkronId)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
+
+  // OTOMATİK HIZLI TEKRAR DENEME: senkronizasyon bir kez BAŞARISIZ olduysa (ör.
+  // geçici bir internet kesintisi/ağ sorunu), normal 10 dakikalık döngüyü
+  // beklemeden 5 saniyede bir tekrar dener — bağlantı düzeldiği anda (birkaç
+  // saniye içinde) kendiliğinden düzelir, sayfanın elle yenilenmesine (F5)
+  // gerek kalmaz. Senkron başarılı olur olmaz (senkronDurumu 'tamam' olunca)
+  // bu efekt otomatik olarak durur.
+  useEffect(() => {
+    if (senkronDurumu !== 'hata') return
+    const id = setTimeout(senkronizeEt, 5000)
+    return () => clearTimeout(id)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [senkronDurumu])
+
+  // Bir önceki kontrolde işlenen dakika (Türkiye saatine göre, gün içindeki
+  // dakika sayısı: 0-1439) ve hangi güne ait olduğu burada tutuluyor. Sekme
+  // arka planda kalıp tarayıcı bu "her saniye" çalışması gereken kontrolü
+  // GECİKTİRİRSE (bkz. dosya başındaki not), bu ref sayesinde ARADA KALAN
+  // dakikaların HİÇBİRİ atlanmadan geriye dönük taranıp zili çalınabilir.
+  // Normal durumda (sekme önde, gecikme yok) zaten her saniye tetiklendiği
+  // için aralık her seferinde tek dakikadan ibarettir, davranış değişmez.
+  const sonKontrolRef = useRef(null)
 
   // Her saniye: gösterilen saati güncelle, zil zamanı geldiyse çal.
   useEffect(() => {
@@ -220,28 +266,45 @@ export default function ZilSistemi() {
       // görür, kendi başına ses çıkarmaz.
       if (!isZil) return
       if (!etkinMi) return
-      if (susturBitisMs && suanki.getTime() < susturBitisMs) return
-      const b = turkiyeSaatBilesenleri(suanki)
-      const suankiHHMM = `${b.saat}:${b.dakika}`
-      const suankiSaniye = Number(b.saniye)
-      if (suankiSaniye > 2) return
-      const bugunAnahtari = turkiyeTarihAnahtari(suanki)
 
-      dersler.forEach((d) => {
-        if (!d.aktif) return
-        ;[
-          { alan: 'ogrenci_saat', sesFonksiyonu: cikisZiliCal },
-          { alan: 'ogretmen_saat', sesFonksiyonu: cikisZiliCal },
-          { alan: 'cikis_saat', sesFonksiyonu: cikisZiliCal },
-        ].forEach(({ alan, sesFonksiyonu }) => {
-          const saat = d[alan]
-          if (!saat || saatKisalt(saat) !== suankiHHMM) return
-          const anahtar = `${d.id}_${alan}_${bugunAnahtari}`
-          if (calinanlarRef.current.has(anahtar)) return
-          calinanlarRef.current.add(anahtar)
-          sesFonksiyonu()
+      const b = turkiyeSaatBilesenleri(suanki)
+      const bugunAnahtari = turkiyeTarihAnahtari(suanki)
+      const suankiDakika = Number(b.saat) * 60 + Number(b.dakika)
+
+      const onceki = sonKontrolRef.current
+      sonKontrolRef.current = { gun: bugunAnahtari, dakika: suankiDakika }
+
+      if (susturBitisMs && suanki.getTime() < susturBitisMs) return
+
+      // İlk çalıştırma, gün değişmiş ya da 3 saatten büyük bir boşluk varsa
+      // (ör. bilgisayar geceden beri kapalıydı/uykudaydı) geriye dönük TÜM o
+      // dakikaları taramak yerine sadece BU ANI kontrol ediyoruz — yoksa
+      // bilgisayar açılır açılmaz saatlerce önceki ziller art arda, art
+      // arda çalmaya kalkardı.
+      let baslangicDakika = suankiDakika
+      if (onceki && onceki.gun === bugunAnahtari && suankiDakika - onceki.dakika <= 180) {
+        baslangicDakika = onceki.dakika + 1
+      }
+      if (baslangicDakika > suankiDakika) return // aynı dakika içinde ikinci kontrol, atla
+
+      for (let dk = baslangicDakika; dk <= suankiDakika; dk++) {
+        const dkHHMM = `${String(Math.floor(dk / 60)).padStart(2, '0')}:${String(dk % 60).padStart(2, '0')}`
+        dersler.forEach((d) => {
+          if (!d.aktif) return
+          ;[
+            { alan: 'ogrenci_saat', sesFonksiyonu: cikisZiliCal },
+            { alan: 'ogretmen_saat', sesFonksiyonu: cikisZiliCal },
+            { alan: 'cikis_saat', sesFonksiyonu: cikisZiliCal },
+          ].forEach(({ alan, sesFonksiyonu }) => {
+            const saat = d[alan]
+            if (!saat || saatKisalt(saat) !== dkHHMM) return
+            const anahtar = `${d.id}_${alan}_${bugunAnahtari}`
+            if (calinanlarRef.current.has(anahtar)) return
+            calinanlarRef.current.add(anahtar)
+            sesFonksiyonu()
+          })
         })
-      })
+      }
     }, 1000)
     return () => clearInterval(id)
   }, [sunucuFarki, etkinMi, dersler, susturBitisMs, isZil])
@@ -252,8 +315,13 @@ export default function ZilSistemi() {
   // saniyede bir düz bir SELECT ile yeni komut var mı kontrol etmek, aynı
   // "derslerYukle" gibi sıradan bir sorgu olduğu için çok daha garanti
   // çalışıyor. İşlenen komutlar id'siyle hatırlanır (aynı komut iki kez
-  // işlenmesin diye); 15 saniyeden eski komutlar (ör. sayfa yeni açıldığında
-  // geçmişte kalan eski bir komut) sessizce atlanır.
+  // işlenmesin diye); 90 saniyeden eski komutlar (ör. sayfa yeni açıldığında
+  // geçmişte kalan eski bir komut, YA DA sekme arka planda kalıp gecikmeli
+  // uyandığında hâlâ makul sürede fark edilebilecek bir komut) sessizce
+  // atlanır. Bu eşik önceden 15 saniyeydi; tarayıcının arka plandaki sekmeleri
+  // yavaşlatması yüzünden bazen "Manuel Çal" komutu 15 saniyeden geç fark
+  // edilip sessizce atlanıyordu ("manuel çal çalışmıyor" şikayeti) — bu yüzden
+  // 90 saniyeye çıkarıldı.
   const islenenKomutIdleriRef = useRef(new Set())
   useEffect(() => {
     let iptalEdildi = false
@@ -262,10 +330,14 @@ export default function ZilSistemi() {
       // Durum bilgisi (rozet/mesaj) TÜM cihazlarda güncellenir — ama SES
       // sadece "zil" rolüyle açık olan cihazda çalar (isZil kontrolü).
       if (komut.komut === 'baslat') {
-        if (isZil) sesSisteminiEtkinlestir()
+        if (isZil) {
+          sesSisteminiEtkinlestir()
+          wakeLockAl()
+        }
         setEtkinMi(true)
         setUzaktanBilgi('Zil, uzaktan (başka bir cihazdan) başlatıldı.')
       } else if (komut.komut === 'durdur') {
+        if (isZil) wakeLockBirak()
         setEtkinMi(false)
         setUzaktanBilgi('Zil, uzaktan (başka bir cihazdan) durduruldu.')
       } else if (komut.komut === 'sustur') {
@@ -302,16 +374,7 @@ export default function ZilSistemi() {
         if (islenenKomutIdleriRef.current.has(komut.id)) return
         islenenKomutIdleriRef.current.add(komut.id)
         const komutZamaniMs = new Date(komut.created_at).getTime()
-        // "15 saniyeden eski" kontrolü, hesapladığımız suankiSunucuMs'in
-        // DOĞRU olduğuna güveniyor. Ama senkron o an başarısız/henüz hiç
-        // olmamışsa (senkronDurumu 'tamam' değilse), bu hesap kendisi yanlış
-        // olabilir (ör. sunucuFarki hâlâ 0, gerçek saatten saatlerce uzak) —
-        // böyle bir durumda komut aslında YENİ olsa bile "eski" sanılıp
-        // sessizce atlanabiliyordu (kurumda yaşanan "uzaktan çal çalışmadı"
-        // sorununun kök nedenlerinden biri buydu). O yüzden senkron
-        // güvenilir DEĞİLKEN bu eskilik filtresini hiç uygulamıyoruz —
-        // komut her hâlükârda işlenir.
-        if (senkronDurumuRef.current === 'tamam' && suankiSunucuMs - komutZamaniMs > 15000) return
+        if (suankiSunucuMs - komutZamaniMs > 90000) return
         komutuIsle(komut, suankiSunucuMs)
       })
     }
@@ -400,11 +463,13 @@ export default function ZilSistemi() {
 
   function zilBaslat() {
     sesSisteminiEtkinlestir()
+    if (isZil) wakeLockAl()
     setEtkinMi(true)
     uzaktanKomutGonder('baslat')
   }
 
   function zilDurdur() {
+    if (isZil) wakeLockBirak()
     setEtkinMi(false)
     uzaktanKomutGonder('durdur')
   }
@@ -771,7 +836,9 @@ export default function ZilSistemi() {
 
       <p className="text-xs text-gray-400">
         Not: Bu sekme kapanırsa, bilgisayar uykuya geçerse ya da tarayıcı yeniden başlatılırsa zil çalmaz — sabah bu
-        sayfayı açıp "Zili Başlat" demeyi ve sekmeyi gün boyu açık bırakmayı unutmayın.
+        sayfayı açıp "Zili Başlat" demeyi ve sekmeyi gün boyu açık bırakmayı unutmayın. Mümkünse zil bilgisayarında
+        ekran/bilgisayar uykusunu (güç ayarlarından) tamamen kapatın ve bu sekmeyi en önde, başka bir pencereyle
+        kapatılmadan tutun — bu, saatin ve uzaktan komutların gecikmesini en aza indirir.
       </p>
     </div>
   )
