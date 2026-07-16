@@ -70,6 +70,14 @@ function yerelBugunTarihi() {
   return `${n.getFullYear()}-${String(n.getMonth() + 1).padStart(2, '0')}-${String(n.getDate()).padStart(2, '0')}`
 }
 
+// Şu anki saati "HH:MM" olarak, YEREL saate göre üretir — bir tek seferlik ders
+// BUGÜN için, henüz gelmemiş bir saate (ör. şu an 12:38 iken 12:50'ye) eklendiğinde
+// bunun da "ileri tarihli/saatli" sayılıp otomatik "Geldi" yapılmaması için kullanılır.
+function yerelSuankiSaatDakika() {
+  const n = new Date()
+  return `${String(n.getHours()).padStart(2, '0')}:${String(n.getMinutes()).padStart(2, '0')}`
+}
+
 // Bir tarihin (YYYY-MM-DD) içinde bulunduğu haftanın PAZARTESİ gününü bulur —
 // "Tüm Bire Bir Dersler" listesini haftalık gruplamak için kullanılır.
 function haftaBaslangici(tarihStr) {
@@ -380,7 +388,14 @@ function BireBirDersEkleForm({ ogrenciler, ogretmenler, atamalar, dersProgrami, 
       // "Bekliyor" olarak kaydediliyor, ders yapıldıktan sonra "Son Tek Seferlik
       // Dersler" listesinden Geldi/Gelmedi işaretlenir. Bugün ya da geçmiş bir
       // tarihse (unutulmuş/geçmiş bir dersi girme senaryosu) direkt "Geldi" olur.
-      const ileriTarihli = tarih > yerelBugunTarihi()
+      // AMA: tarih BUGÜN olsa bile, girilen Başlangıç saati şu andan HENÜZ
+      // GELMEDİYSE (ör. şu an 12:38 iken derse 12:50 girildiyse), bu ders de
+      // henüz yaşanmamış demektir — eskiden sadece TARİH karşılaştırıldığı için
+      // böyle durumlarda da yanlışlıkla direkt "Geldi" yazılıp hemen borç
+      // ekleniyordu. Artık aynı gün için SAAT de kontrol ediliyor.
+      const ileriTarihli =
+        tarih > yerelBugunTarihi() ||
+        (tarih === yerelBugunTarihi() && tekBaslangic && tekBaslangic > yerelSuankiSaatDakika())
       const durum = ileriTarihli ? 'bekliyor' : 'geldi'
 
       setGonderiliyor(true)
