@@ -229,27 +229,9 @@ export default function Dashboard() {
 
       {profile?.rol === 'yonetici' && (gecikenOgrenciler.length > 0 || sonOdemeler.length > 0) && (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mt-4">
-          {gecikenOgrenciler.length > 0 && (
-            <div className="bg-white rounded-2xl border border-red-100 shadow-sm p-5">
-              <h3 className="font-semibold text-red-600 mb-3">Geciken Ödemesi Olanlar ({gecikenOgrenciler.length})</h3>
-              <div className="divide-y divide-gray-100">
-                {gecikenOgrenciler.map((o) => (
-                  <Link
-                    key={o.id}
-                    to={`/ekstre/${o.id}`}
-                    className="flex items-center justify-between py-2 px-2 -mx-2 rounded-lg hover:bg-gray-50 transition-colors"
-                  >
-                    <span className="text-sm text-gray-700">{o.adSoyad}</span>
-                    <span className="text-sm font-semibold text-red-500">{paraFormat(o.tutar)}</span>
-                  </Link>
-                ))}
-              </div>
-            </div>
-          )}
-
           {sonOdemeler.length > 0 && (
-            <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
-              <h3 className="font-semibold text-gray-700 mb-3">Son Alınan Ödemeler</h3>
+            <div className="bg-white rounded-2xl border border-green-100 shadow-sm p-5">
+              <h3 className="font-semibold text-green-600 mb-3">Son Alınan Ödemeler</h3>
               <div className="divide-y divide-gray-100">
                 {sonOdemeler.map((o) => (
                   <Link
@@ -264,6 +246,24 @@ export default function Dashboard() {
                       </span>
                     </span>
                     <span className="text-sm font-semibold text-green-600 whitespace-nowrap">{paraFormat(o.tutar)}</span>
+                  </Link>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {gecikenOgrenciler.length > 0 && (
+            <div className="bg-white rounded-2xl border border-red-100 shadow-sm p-5">
+              <h3 className="font-semibold text-red-600 mb-3">Geciken Ödemesi Olanlar ({gecikenOgrenciler.length})</h3>
+              <div className="divide-y divide-gray-100">
+                {gecikenOgrenciler.map((o) => (
+                  <Link
+                    key={o.id}
+                    to={`/ekstre/${o.id}`}
+                    className="flex items-center justify-between py-2 px-2 -mx-2 rounded-lg hover:bg-gray-50 transition-colors"
+                  >
+                    <span className="text-sm text-gray-700">{o.adSoyad}</span>
+                    <span className="text-sm font-semibold text-red-500">{paraFormat(o.tutar)}</span>
                   </Link>
                 ))}
               </div>
