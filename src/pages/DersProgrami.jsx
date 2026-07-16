@@ -476,6 +476,12 @@ function gunEkle(tarihStr, gunSayisi) {
 function GunlukProgramListesi({ program, ogretmenler, atamalar, yoklamalar, ogrenciAdMap }) {
   const [tarih, setTarih] = useState(() => new Date().toISOString().slice(0, 10))
   const gun = gunNumaraTarihten(tarih)
+  // Mobilde 14 sütunu kaydırmadan, okunaklı göstermek mümkün olmadığı için
+  // günü ikiye bölüyoruz: sabah (09:00–13:25, öğle arasından ÖNCE) ve öğleden
+  // sonra (14:15–22:20, öğle arasından SONRA) — bu ikisi zaten okulun kendi
+  // saat düzenindeki doğal ayrım noktası (bkz. dersPeriyotlari.js), rastgele
+  // bir bölme değil. Masaüstünde bu ayrım kullanılmaz, tüm gün tek tabloda görünür.
+  const [mobilYariGun, setMobilYariGun] = useState('sabah')
 
   // O günün TÜM olaylarını (sınıf dersi + haftalık bire bir + tek seferlik
   // bire bir) tek listede topluyoruz.
@@ -489,7 +495,7 @@ function GunlukProgramListesi({ program, ogretmenler, atamalar, yoklamalar, ogre
         bitis: saatKisalt(d.bitis_saat),
         etiket: d.ders_adi || d.sinif_adi || 'Sınıf dersi',
         altEtiket: d.sinif_adi,
-        renk: 'bg-blue-100 text-blue-800 border-l-[3px] border-l-blue-500',
+        renk: 'bg-blue-200 text-blue-900 border-l-4 border-l-blue-600',
       })
     }
     for (const a of atamalar || []) {
@@ -500,7 +506,7 @@ function GunlukProgramListesi({ program, ogretmenler, atamalar, yoklamalar, ogre
         bitis: saatKisalt(a.bitis_saat),
         etiket: a.ogrenci_adi || 'Bire bir',
         altEtiket: 'Bire bir',
-        renk: 'bg-orange-100 text-orange-800 border-l-[3px] border-l-orange-500',
+        renk: 'bg-orange-200 text-orange-900 border-l-4 border-l-orange-600',
       })
     }
     for (const y of yoklamalar || []) {
@@ -512,7 +518,7 @@ function GunlukProgramListesi({ program, ogretmenler, atamalar, yoklamalar, ogre
         bitis: saatKisalt(y.bitis_saat),
         etiket: (ogrenciAdMap && ogrenciAdMap.get(y.ogrenci_id)) || 'Bire bir',
         altEtiket: 'Bire bir',
-        renk: 'bg-orange-100 text-orange-800 border-l-[3px] border-l-orange-500',
+        renk: 'bg-orange-200 text-orange-900 border-l-4 border-l-orange-600',
       })
     }
     return olaylar
@@ -522,6 +528,11 @@ function GunlukProgramListesi({ program, ogretmenler, atamalar, yoklamalar, ogre
   // DEĞİL, okulun sabit ders periyotları (45dk ders + 10dk teneffüs, bkz.
   // dersPeriyotlari.js) — Müsaitlik Tablosu ile aynı sütun yapısı.
   const dilimler = DERS_PERIYOTLARI
+  // İlk 5 periyot sabah (09:00–13:25), kalan 9'u öğleden sonra (14:15–22:20) —
+  // sadece mobil görünümde kullanılır (bkz. mobilYariGun).
+  const sabahDilimleri = DERS_PERIYOTLARI.slice(0, 5)
+  const ogledenSonraDilimleri = DERS_PERIYOTLARI.slice(5)
+  const mobilDilimler = mobilYariGun === 'sabah' ? sabahDilimleri : ogledenSonraDilimleri
 
   // Sadece o gün en az bir olayı (dersi) olan öğretmenler gösterilir.
   const gorunecekOgretmenler = useMemo(() => {
@@ -535,15 +546,18 @@ function GunlukProgramListesi({ program, ogretmenler, atamalar, yoklamalar, ogre
     )
   }
 
-  function satirHucreleriniOlustur(ogretmenId) {
+  // kaynakDilimler opsiyonel: verilmezse tüm gün (masaüstü tablosu), verilirse
+  // sadece o alt küme (mobildeki sabah/öğleden sonra yarısı) için hücreleri
+  // birleştirir — böylece öğle arasının iki yakası asla birbirine karışmaz.
+  function satirHucreleriniOlustur(ogretmenId, kaynakDilimler = dilimler) {
     const hucreler = []
     let i = 0
-    while (i < dilimler.length) {
-      const dilim = dilimler[i]
+    while (i < kaynakDilimler.length) {
+      const dilim = kaynakDilimler[i]
       const dolu = hucreDurumu(ogretmenId, dilim)
       let span = 1
       if (dolu) {
-        while (i + span < dilimler.length && hucreDurumu(ogretmenId, dilimler[i + span]) === dolu) {
+        while (i + span < kaynakDilimler.length && hucreDurumu(ogretmenId, kaynakDilimler[i + span]) === dolu) {
           span++
         }
       }
@@ -576,7 +590,10 @@ function GunlukProgramListesi({ program, ogretmenler, atamalar, yoklamalar, ogre
           <span className="text-xs text-gray-400 whitespace-nowrap">{GUNLER[gun]}</span>
         </div>
       </div>
-      <div className="overflow-x-auto">
+      {/* Masaüstünde (md ve üzeri) geniş tablo — yatay dilimler. Mobilde bu
+          tablo 14 sütun yüzünden yana kaydırma gerektirdiği için gizlenir,
+          yerine aşağıdaki dikey/kart görünüm gösterilir (bkz. md:hidden blok). */}
+      <div className="hidden md:block overflow-x-auto">
         <table className="border-collapse text-xs w-full">
           <thead>
             <tr>
@@ -622,6 +639,69 @@ function GunlukProgramListesi({ program, ogretmenler, atamalar, yoklamalar, ogre
             {gorunecekOgretmenler.length === 0 && (
               <tr>
                 <td colSpan={dilimler.length + 1} className="px-4 py-4 text-center text-gray-400">
+                  Bu tarihte dersi olan öğretmen bulunamadı.
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+
+      {/* Mobilde (md altı): masaüstündeki AYNI tablo mantığı, ama tüm 14 sütunu
+          kaydırmadan sığdırmak okunaksız olacağı için gün ikiye bölünür (bkz.
+          mobilYariGun) — her yarıda 5-9 sütun, kaydırma gerekmeden okunaklı sığar. */}
+      <div className="md:hidden">
+        <div className="flex border-b border-gray-100 text-xs">
+          <button
+            type="button"
+            onClick={() => setMobilYariGun('sabah')}
+            className={`flex-1 py-2 font-medium transition-colors ${mobilYariGun === 'sabah' ? 'bg-navy text-white' : 'text-gray-500 hover:bg-gray-50'}`}
+          >
+            {sabahDilimleri[0].baslangic}–{sabahDilimleri[sabahDilimleri.length - 1].bitis}
+          </button>
+          <button
+            type="button"
+            onClick={() => setMobilYariGun('ogleden_sonra')}
+            className={`flex-1 py-2 font-medium transition-colors ${mobilYariGun === 'ogleden_sonra' ? 'bg-navy text-white' : 'text-gray-500 hover:bg-gray-50'}`}
+          >
+            {ogledenSonraDilimleri[0].baslangic}–{ogledenSonraDilimleri[ogledenSonraDilimleri.length - 1].bitis}
+          </button>
+        </div>
+        <table className="border-collapse text-[9px] w-full table-fixed">
+          <thead>
+            <tr>
+              <th className="bg-navy text-white px-1 py-1.5 text-left font-semibold w-14">Öğr.</th>
+              {mobilDilimler.map((d) => (
+                <th key={d.baslangic} className="bg-navy text-white px-0.5 py-1.5 font-medium border-l border-white/10 leading-tight">
+                  {d.baslangic}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {gorunecekOgretmenler.map((o, i) => {
+              const hucreler = satirHucreleriniOlustur(o.id, mobilDilimler)
+              return (
+                <tr key={o.id} className={i % 2 ? 'bg-gray-50/60' : ''}>
+                  <td className="px-1 py-1 font-semibold text-gray-700 border-t border-gray-100 truncate">
+                    {o.ad_soyad}
+                  </td>
+                  {hucreler.map((h) => (
+                    <td
+                      key={h.baslangic}
+                      colSpan={h.span}
+                      title={h.dolu ? `${h.dolu.etiket}${h.dolu.altEtiket ? ' — ' + h.dolu.altEtiket : ''}` : ''}
+                      className={`border-t border-l border-gray-100 text-center align-middle py-1 leading-tight ${h.dolu ? h.dolu.renk : ''}`}
+                    >
+                      {h.dolu && <span className="block truncate px-0.5">{h.dolu.etiket}</span>}
+                    </td>
+                  ))}
+                </tr>
+              )
+            })}
+            {gorunecekOgretmenler.length === 0 && (
+              <tr>
+                <td colSpan={mobilDilimler.length + 1} className="px-4 py-4 text-center text-gray-400">
                   Bu tarihte dersi olan öğretmen bulunamadı.
                 </td>
               </tr>
