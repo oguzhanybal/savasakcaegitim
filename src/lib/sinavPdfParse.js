@@ -11,6 +11,43 @@
 import { pdfBelgesiAc } from './kitapcikOcr'
 import { adSoyadDuzelt } from './adSoyadFormat'
 
+// pdf-lib, kitapcikOcr.js'teki pdf.js/Tesseract.js ile AYNI CDN deseniyle
+// (npm install yerine) dinamik olarak yükleniyor — kullanıcı yerelde npm
+// çalıştıramıyor, sadece GitHub'a dosya sürüklüyor. Burada pdf-lib SADECE
+// var olan PDF sayfalarını OLDUĞU GİBİ kopyalamak için kullanılıyor (yeni
+// metin ÇİZMİYORUZ) — bu yüzden pdf-lib'in Standard14/WinAnsi fontlarındaki
+// bilinen Türkçe karakter (ğ,ş,ı,İ) sorunuyla hiç karşılaşmıyoruz; o sorun
+// SADECE yeni metin yazarken ortaya çıkıyor (bkz. Makbuz/Ekstre/Sozlesme'nin
+// neden print-to-PDF kullandığı).
+let pdfLibYuklemePromise = null
+function pdfLibYukle() {
+  if (window.PDFLib) return Promise.resolve(window.PDFLib)
+  if (pdfLibYuklemePromise) return pdfLibYuklemePromise
+  pdfLibYuklemePromise = new Promise((resolve, reject) => {
+    const script = document.createElement('script')
+    script.src = 'https://cdn.jsdelivr.net/npm/pdf-lib@1.17.1/dist/pdf-lib.min.js'
+    script.onload = () => resolve(window.PDFLib)
+    script.onerror = () => reject(new Error('pdf-lib yüklenemedi (internet bağlantınızı kontrol edin).'))
+    document.head.appendChild(script)
+  })
+  return pdfLibYuklemePromise
+}
+
+// Bir kaynak pdf-lib belgesinden (zaten yüklenmiş) 1 ya da 2 sayfayı OLDUĞU
+// GİBİ kopyalayıp ayrı, küçük bir PDF Blob'u olarak döner — öğrencinin
+// birleştirilmiş sınıf karnesinden KENDİ 2 sayfasını (özet + Konu Analizi)
+// ayırıp Storage'a kaydetmek, admin ve öğrenci/veli sonradan orijinal
+// karneyi indirebilsin diye.
+async function kaynakBelgedenSayfalariAyir(PDFLib, kaynakPdf, sayfa1No, sayfa2No) {
+  const yeniPdf = await PDFLib.PDFDocument.create()
+  const sayfaIndeksleri =
+    sayfa2No <= kaynakPdf.getPageCount() ? [sayfa1No - 1, sayfa2No - 1] : [sayfa1No - 1]
+  const kopyalananSayfalar = await yeniPdf.copyPages(kaynakPdf, sayfaIndeksleri)
+  kopyalananSayfalar.forEach((sayfa) => yeniPdf.addPage(sayfa))
+  const bytes = await yeniPdf.save()
+  return new Blob([bytes], { type: 'application/pdf' })
+}
+
 // Bilinen TYT/AYT ders adları — sayfa 2'deki (KONU ANALİZİ) ders başlıkları
 // bazen bozuk bir font kodlamasıyla geliyor (görünmez kontrol karakterleri
 // gerçek harflerin yerine geçiyor, ör. "Matematik" yerine "Matema\x00k").
@@ -286,7 +323,19 @@ async function belgedenOgrenciCikar(belge, sayfa1No, sayfa2No) {
 export async function sinavSonucPdfIndenCikar(dosya) {
   const belge = await pdfBelgesiAc(dosya)
   if (belge.numPages < 1) throw new Error('PDF boş görünüyor.')
-  return belgedenOgrenciCikar(belge, 1, 2)
+  const ogrenci = await belgedenOgrenciCikar(belge, 1, 2)
+  try {
+    const PDFLib = await pdfLibYukle()
+    const kaynakBytes = await dosya.arrayBuffer()
+    const kaynakPdf = await PDFLib.PDFDocument.load(kaynakBytes)
+    ogrenci.karnePdfBlob = await kaynakBelgedenSayfalariAyir(PDFLib, kaynakPdf, 1, 2)
+  } catch (e) {
+    // Orijinal PDF ayrılamasa bile (ör. pdf-lib CDN'den yüklenemedi) asıl
+    // ayrıştırılan VERİ hâlâ kullanılabilir olsun — sadece "indir" özelliği
+    // o satır için eksik kalır, karneyi kaydetmeyi engellemez.
+    console.error('Karne PDF\'i ayrılamadı:', e.message)
+  }
+  return ogrenci
 }
 
 // Okulun tarama/analiz yazılımı "tüm sınıfın" karnesini TEK PDF olarak dışa
@@ -299,10 +348,31 @@ export async function sinavSonucPdfIndenTumOgrencileriCikar(dosya) {
   const belge = await pdfBelgesiAc(dosya)
   if (belge.numPages < 1) throw new Error('PDF boş görünüyor.')
 
+  // pdf-lib kaynak belgesi (varsa) TÜM öğrenciler için BİR KEZ yükleniyor —
+  // her öğrenci için dosyayı baştan açmak yerine, aynı kaynaktan tekrar
+  // tekrar sayfa kopyalıyoruz. Bu adım başarısız olsa bile (ör. CDN'e
+  // erişilemedi) asıl veri ayrıştırma etkilenmesin diye ayrı try/catch'te.
+  let PDFLib = null
+  let kaynakPdf = null
+  try {
+    PDFLib = await pdfLibYukle()
+    const kaynakBytes = await dosya.arrayBuffer()
+    kaynakPdf = await PDFLib.PDFDocument.load(kaynakBytes)
+  } catch (e) {
+    console.error('Karne PDF\'leri ayrılamayacak (pdf-lib yüklenemedi):', e.message)
+  }
+
   const sonuclar = []
   for (let sayfa = 1; sayfa <= belge.numPages; sayfa += 2) {
     try {
       const ogrenci = await belgedenOgrenciCikar(belge, sayfa, sayfa + 1)
+      if (PDFLib && kaynakPdf) {
+        try {
+          ogrenci.karnePdfBlob = await kaynakBelgedenSayfalariAyir(PDFLib, kaynakPdf, sayfa, sayfa + 1)
+        } catch (e) {
+          console.error(`Sayfa ${sayfa} için karne PDF'i ayrılamadı:`, e.message)
+        }
+      }
       sonuclar.push({ basariliMi: true, baslangicSayfa: sayfa, veri: ogrenci })
     } catch (e) {
       sonuclar.push({ basariliMi: false, baslangicSayfa: sayfa, hata: e.message })
