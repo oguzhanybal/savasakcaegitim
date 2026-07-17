@@ -238,26 +238,59 @@ function sayfa1Ayikla(satirlar) {
     return en
   }
 
-  // "TYT-SOSYAL BİLİMLER" / "TYT-FEN BİLİMLERİ" satırları, altlarındaki
-  // gerçek derslerin (Tarih/Coğrafya/... , Fizik/Kimya/Biyoloji) TOPLAMIdır —
-  // bunları ve genel TOPLAM satırını atlıyoruz, sadece GERÇEK dersleri alıyoruz.
+  // Bilinen "alt toplam" etiketleri (garantili metin eşleşmesi, ilk savunma
+  // hattı) — ama TEK BAŞINA yeterli değil: bazı özel/karma sınavlarda (ör.
+  // TYT+AYT birleşik Türkçe-Matematik denemesi) "TYT-MATEMATİK" de aslında
+  // Matematik+Geometri'nin alt toplamı olarak kullanılabiliyor, bu isim
+  // standart TYT'de ise GERÇEK bir ders. Bu yüzden aşağıda GİRİNTİ tabanlı
+  // yapısal bir kontrol de var: bir satır GİRİNTİSİZ (üst düzey) ve hemen
+  // ÖNCESİ girintili (çocuk) bir satırsa, bu satır alt toplamdır — ders adı
+  // ne olursa olsun atlanır. Böylece hem bilinen hem bilinmeyen tüm alt
+  // toplam biçimleri (kaç soru sayısı farklı olursa olsun) doğru yakalanır.
   const ATLANACAK_ETIKETLER = ['TYT-SOSYAL BİLİMLER', 'TYT-FEN BİLİMLERİ', 'TOPLAM', 'AYT-SOSYAL BİLİMLER', 'AYT-FEN BİLİMLERİ']
 
   const dersSonuclari = []
+  let ustDuzeyX = null
+  let oncekiGirintiliMi = false
   for (let i = tabloHeaderIdx + 1; i <= toplamIdx; i++) {
     const satir = satirlar[i]
     const siraliOgeler = satir.items.slice().sort((a, b) => a.x - b.x)
     const dersOgeleri = siraliOgeler.filter((it) => it.x < ankraj.SORU - 30)
     const dersAdiHam = dersOgeleri.map((i) => i.str).join(' ').trim()
-    if (!dersAdiHam || ATLANACAK_ETIKETLER.includes(dersAdiHam)) continue
+    if (!dersAdiHam) continue
+
+    const buSatirinX = dersOgeleri[0]?.x ?? 0
+    if (ustDuzeyX === null) ustDuzeyX = buSatirinX
+    const buSatirGirintiliMi = buSatirinX > ustDuzeyX + 5
+    // Üst düzey (girintisiz) bir satır — BİLİNEN bir alt toplam etiketiyse
+    // YA DA hemen önce çocuk (girintili) satır(lar) geldiyse — bu bir ALT
+    // TOPLAM'dır, gerçek bir ders değil (yoksa altındaki çocukların soru/net
+    // değerleri bir de bu satırda TEKRAR sayılır). ÖNEMLİ: her iki durumda da
+    // oncekiGirintiliMi'yi false'a sıfırlamamız lazım — yoksa (ör. bilinen
+    // etiket listesinden atlanan bir satırdan sonra gelen bir sonraki üst
+    // düzey satır) yanlışlıkla ESKİ (bayat) "önceki çocuktu" bilgisiyle
+    // gereksiz yere atlanabilir.
+    if (ATLANACAK_ETIKETLER.includes(dersAdiHam) || (!buSatirGirintiliMi && oncekiGirintiliMi)) {
+      oncekiGirintiliMi = false
+      continue
+    }
+    oncekiGirintiliMi = buSatirGirintiliMi
 
     const degerler = {}
     for (const it of siraliOgeler.filter((it) => it.x >= ankraj.SORU - 30)) {
       degerler[enYakinKolon(it.x)] = it.str
     }
-    const dersAdiTemiz = dersAdiHam.replace(/^(TYT|AYT)-/, '')
+    const onekEslesme = dersAdiHam.match(/^(TYT|AYT)-(.+)$/)
+    let dersAdiTemiz = adSoyadDuzelt(onekEslesme ? onekEslesme[2] : dersAdiHam)
+    // Karma (TYT+AYT birlikte) sınavlarda aynı ders hem TYT hem AYT bölümünde
+    // ayrı ayrı geçebiliyor (ör. "TYT-Matematik" ve "AYT-Matematik" — önek
+    // atılınca ikisi de "Matematik" olurdu). Çakışma varsa öneki KORUYUP
+    // ayırt edici bir isim kullanıyoruz (ör. "AYT Matematik").
+    if (onekEslesme && dersSonuclari.some((d) => d.ders_adi === dersAdiTemiz)) {
+      dersAdiTemiz = `${onekEslesme[1]} ${dersAdiTemiz}`
+    }
     dersSonuclari.push({
-      ders_adi: adSoyadDuzelt(dersAdiTemiz),
+      ders_adi: dersAdiTemiz,
       soru_sayisi: parseInt(degerler.SORU || '0', 10),
       dogru: parseInt(degerler.DOĞRU || '0', 10),
       yanlis: parseInt(degerler.YANLIŞ || '0', 10),
@@ -281,12 +314,14 @@ function sayfa1Ayikla(satirlar) {
 // soruyu BOŞ bıraktığında ÖC/SO hücreleri sayfada hiç YOKTUR (sabit x
 // konumuna göre eşleştirmek bu durumda yanlış hizalanır).
 // ============================================================================
-function sayfa2Ayikla(satirlar) {
-  const headerRow = satirlar.find((r) => r.items.filter((i) => i.str === 'No').length === 3)
+function sayfa2Ayikla(satirlar, sayfa1DersSonuclari) {
+  // Sütun sayısı sınava göre değişir (120 sorulu tam TYT 3 sütun, daha kısa/
+  // özel denemeler 1-2 sütun olabilir) — kaç tane "No" başlığı varsa o kadar
+  // sütun kabul ediyoruz, sabit 3 beklemiyoruz.
+  const headerRow = satirlar.find((r) => r.items.filter((i) => i.str === 'No').length >= 1)
   if (!headerRow) {
-    // Bazı sınavlarda (ör. sadece 1 test içeren kısa denemeler) sütun sayısı
-    // farklı olabilir — bulamazsak sessizce boş dönüyoruz, sayfa 1 verisi
-    // (ders bazlı toplamlar) yine de kullanılabilir durumda kalır.
+    // Beklenen "No" başlığı hiç bulunamadıysa sessizce boş dönüyoruz, sayfa 1
+    // verisi (ders bazlı toplamlar) yine de kullanılabilir durumda kalır.
     return []
   }
   const noXler = headerRow.items.filter((i) => i.str === 'No').map((i) => i.x).sort((a, b) => a - b)
@@ -305,6 +340,26 @@ function sayfa2Ayikla(satirlar) {
 
   const soruSonuclari = []
   const mevcutDers = new Array(sutunSayisi).fill(null)
+  // Bir ders adı SAYFA 2'de (KONU ANALİZİ) birden fazla kez başlık olarak
+  // çıkabiliyor — karma (TYT+AYT) sınavlarda "Matematik" hem TYT hem AYT
+  // bölümünde ayrı bir blok olarak geçebiliyor, ama bu sayfadaki ham metin
+  // ikisinde de BİREBİR AYNI (font kodlama sorunu yüzünden TYT/AYT öneki bu
+  // sayfada hiç yok). Ayırt etmek için SAYFA 1'in (DERS ANALİZİ) zaten
+  // çözdüğü isimleri (ör. "Matematik" ve "AYT Matematik") kullanıyoruz:
+  // KAÇINCI kez aynı temel isimle karşılaşıyorsak, sayfa 1'deki O KADARINCI
+  // eşleşen girişin adını alıyoruz (ikisi de aynı sırada/yukarıdan aşağı
+  // aynı sıra ile geliyor).
+  const dersGorulmeSayaci = new Map()
+  function dersAdiCoz(hamMetin) {
+    const temelAd = enYakinBilinenDers(hamMetin)
+    const sayac = (dersGorulmeSayaci.get(temelAd) || 0) + 1
+    dersGorulmeSayaci.set(temelAd, sayac)
+    if (sayac === 1) return temelAd
+    const eslesenler = (sayfa1DersSonuclari || []).filter(
+      (d) => d.ders_adi === temelAd || d.ders_adi.endsWith(' ' + temelAd)
+    )
+    return eslesenler[sayac - 1]?.ders_adi || temelAd
+  }
 
   for (const satir of veriSatirlari) {
     const sutunlar = Array.from({ length: sutunSayisi }, () => [])
@@ -317,7 +372,7 @@ function sayfa2Ayikla(satirlar) {
         // Sayı ile başlamıyorsa bu bir DERS BAŞLIĞI satırıdır (ör. "Türkçe",
         // "Matematik", "Tarih"...), soru satırı değil.
         const etiket = ogeler.map((i) => i.str).join('')
-        mevcutDers[c] = enYakinBilinenDers(etiket)
+        mevcutDers[c] = dersAdiCoz(etiket)
         continue
       }
       const soru_no = parseInt(ilk.str, 10)
@@ -356,7 +411,7 @@ async function belgedenOgrenciCikar(belge, sayfa1No, sayfa2No) {
   let soruSonuclari = []
   if (sayfa2No <= belge.numPages) {
     const sayfa2Ogeleri = await sayfaMetinOgeleriniAl(belge, sayfa2No)
-    soruSonuclari = sayfa2Ayikla(satirlaraGrupla(sayfa2Ogeleri))
+    soruSonuclari = sayfa2Ayikla(satirlaraGrupla(sayfa2Ogeleri), sayfa1.dersSonuclari)
   }
 
   const toplamSoru = sayfa1.dersSonuclari.reduce((t, d) => t + d.soru_sayisi, 0)
