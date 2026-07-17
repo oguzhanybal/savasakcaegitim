@@ -112,6 +112,55 @@ function KutuKatmani({ sayfaGoruntusu, sorularBuSayfada, seciliGeciciId, cizimMo
 }
 
 // ============================================================================
+// HIZLI ELLE İŞARETLEME — OCR'a hiç güvenmeden, admin her sorunun sadece SOL
+// ÜST köşesine (soru numarasının olduğu yere) TEK TIKLAMA yapar, sürükleme
+// YOK. Kutunun boyutu otomatik hesaplanır: genişlik, tıklanan noktanın sayfa
+// sol/sağ yarısında olmasına göre (2 sütunlu düzen varsayımıyla) o sütunun
+// kalan genişliği; yükseklik ise AYNI SÜTUNDAKİ bir SONRAKİ tıklamaya kadar
+// olan mesafe (sütunda son soru ise sayfa altına kadar). Bu, karmaşık/eşit
+// olmayan yükseklikte sorular (grafik, tablo, resim içeren AYT matematik
+// soruları gibi) içeren kitapçıklarda OCR'dan çok daha güvenilir sonuç verir
+// — çünkü admin zaten soruyu insan gözüyle görüp doğru yeri işaretliyor.
+function NoktaIsaretlemeKatmani({ sayfaGoruntusu, buSayfadakiNoktalar, onNoktaEkle }) {
+  const containerRef = useRef(null)
+
+  function tiklandi(e) {
+    const rect = containerRef.current.getBoundingClientRect()
+    const oranX = sayfaGoruntusu.genislik / rect.width
+    const oranY = sayfaGoruntusu.yukseklik / rect.height
+    onNoktaEkle({ x: (e.clientX - rect.left) * oranX, y: (e.clientY - rect.top) * oranY })
+  }
+
+  return (
+    <div
+      ref={containerRef}
+      className="relative w-full select-none"
+      style={{ cursor: 'crosshair' }}
+      onClick={tiklandi}
+    >
+      <img
+        src={sayfaGoruntusu.dataUrl}
+        alt={`Sayfa ${sayfaGoruntusu.sayfaNo}`}
+        className="w-full block rounded-lg border border-gray-200"
+        draggable={false}
+      />
+      {buSayfadakiNoktalar.map((n, i) => (
+        <div
+          key={i}
+          className="absolute -translate-x-1/2 -translate-y-1/2 w-6 h-6 rounded-full bg-orange text-white text-xs font-bold flex items-center justify-center border-2 border-white shadow pointer-events-none"
+          style={{
+            left: `${(n.x / sayfaGoruntusu.genislik) * 100}%`,
+            top: `${(n.y / sayfaGoruntusu.yukseklik) * 100}%`,
+          }}
+        >
+          {n.globalSira}
+        </div>
+      ))}
+    </div>
+  )
+}
+
+// ============================================================================
 // TOPLU DERS ATAMA — OCR'ın bulduğu soru kutuları (doğru sırada) hazır olunca,
 // admin'in her birine TEK TEK ders adı + soru no yazması (100+ soru için
 // saatler süren bir iş) yerine, sadece "hangi dersten kaç soru var" bilgisini
@@ -250,6 +299,13 @@ export default function SinavKitapciklari() {
   // deyip eski tek-tek düzenleme akışına geçebilir.
   const [blokPaneliGoster, setBlokPaneliGoster] = useState(false)
 
+  // "Hızlı Elle İşaretleme" modu — OCR kullanmadan, admin sayfa sayfa
+  // gezinip her sorunun sol üst köşesine tıklar. elleNoktalar TÜM sayfalar
+  // boyunca, TIKLAMA SIRASINA göre (yani zaten doğru okuma sırasında) tutulur.
+  const [elleIsaretlemeModu, setElleIsaretlemeModu] = useState(false)
+  const [elleNoktalar, setElleNoktalar] = useState([])
+  const [elleSayfaIndex, setElleSayfaIndex] = useState(0)
+
   const [kaydediliyor, setKaydediliyor] = useState(false)
   const [hata, setHata] = useState('')
   const [basari, setBasari] = useState('')
@@ -301,6 +357,112 @@ export default function SinavKitapciklari() {
   useEffect(() => {
     veriyiYenile()
   }, [])
+
+  function girdileriDogrula() {
+    if (!dosya) {
+      setHata('Lütfen önce bir PDF seçin.')
+      return false
+    }
+    if (!seciliSinavId) {
+      setHata('Lütfen bir sınav seçin ya da yeni sınav ekleyin.')
+      return false
+    }
+    if (seciliSinavId === '__yeni__' && !yeniSinavAdi.trim()) {
+      setHata('Yeni sınavın adını girin.')
+      return false
+    }
+    return true
+  }
+
+  // OCR'a HİÇ başvurmadan — sadece sayfaları görüntüye çevirip "Hızlı Elle
+  // İşaretleme" moduna geçiyoruz. OCR'ın güvenilir olmadığı (grafik/tablo/
+  // resim ağırlıklı, düzensiz yükseklikte sorular içeren) kitapçıklarda bu
+  // çok daha hızlı ve hatasız sonuç veriyor.
+  async function elleIsaretlemeyeBasla() {
+    setHata('')
+    setBasari('')
+    if (!girdileriDogrula()) return
+    setAnalizEdiliyor(true)
+    setSayfaGoruntuleri([])
+    setSorular([])
+    setElleNoktalar([])
+    try {
+      setAnalizDurumu('PDF açılıyor...')
+      const belge = await pdfBelgesiAc(dosya)
+      const sayfaSayisi = belge.numPages
+      const goruntuler = []
+      for (let s = 1; s <= sayfaSayisi; s++) {
+        setAnalizDurumu(`Sayfa ${s}/${sayfaSayisi} hazırlanıyor...`)
+        const { dataUrl, genislik, yukseklik } = await sayfayiGoruntuyeCevir(belge, s, 2)
+        goruntuler.push({ sayfaNo: s, dataUrl, genislik, yukseklik })
+      }
+      setSayfaGoruntuleri(goruntuler)
+      setElleSayfaIndex(0)
+      setElleIsaretlemeModu(true)
+      setAnalizDurumu('')
+    } catch (e) {
+      setHata('Hata: ' + e.message)
+    } finally {
+      setAnalizEdiliyor(false)
+    }
+  }
+
+  function elleNoktaEkle(sayfaNo, nokta) {
+    setElleNoktalar((liste) => [...liste, { sayfaNo, x: nokta.x, y: nokta.y }])
+  }
+
+  function elleSonNoktayiGeriAl() {
+    setElleNoktalar((liste) => {
+      if (liste.length === 0) return liste
+      const yeni = liste.slice(0, -1)
+      const silinen = liste[liste.length - 1]
+      // Silinen nokta başka bir sayfadaysa, admin'in onu görebilmesi için o
+      // sayfaya geri dön.
+      const silinenSayfaIndex = sayfaGoruntuleri.findIndex((g) => g.sayfaNo === silinen.sayfaNo)
+      if (silinenSayfaIndex !== -1) setElleSayfaIndex(silinenSayfaIndex)
+      return yeni
+    })
+  }
+
+  // Tıklama noktalarını (doğru okuma sırasında) gerçek kutulara çevirir —
+  // bkz. NoktaIsaretlemeKatmani üstündeki açıklama: genişlik sütuna (sayfanın
+  // sol/sağ yarısı) göre, yükseklik aynı sütundaki bir sonraki noktaya kadar.
+  function noktalariKutuyaCevir() {
+    const sayfaMap = new Map(sayfaGoruntuleri.map((g) => [g.sayfaNo, g]))
+    const kenarBosluk = 12
+    const kutular = elleNoktalar.map((nokta, i) => {
+      const g = sayfaMap.get(nokta.sayfaNo)
+      const solYarida = nokta.x < g.genislik / 2
+      const genislik = Math.max(60, (solYarida ? g.genislik / 2 - nokta.x : g.genislik - nokta.x) - kenarBosluk)
+
+      const sonraki = elleNoktalar[i + 1]
+      const sonrakiAyniSutunda =
+        sonraki && sonraki.sayfaNo === nokta.sayfaNo && sonraki.x < g.genislik / 2 === solYarida ? sonraki : null
+
+      const yukseklik = Math.max(
+        30,
+        (sonrakiAyniSutunda ? sonrakiAyniSutunda.y - nokta.y : g.yukseklik - nokta.y) - 6
+      )
+
+      return {
+        gecici_id: `m${nokta.sayfaNo}-${i}`,
+        ders_adi: '',
+        soru_no: i + 1,
+        sayfa_no: nokta.sayfaNo,
+        x: nokta.x,
+        y: nokta.y,
+        genislik,
+        yukseklik,
+      }
+    })
+    setSorular(kutular)
+    setSeciliIndex(0)
+    setElleIsaretlemeModu(false)
+    setBlokPaneliGoster(kutular.length > 0)
+    setBasari(
+      `${kutular.length} soru işaretlendi. Şimdi hangi dersten kaç soru olduğunu girip toplu atayabilirsiniz.`
+    )
+  }
 
   async function analizEt() {
     setHata('')
@@ -689,14 +851,96 @@ export default function SinavKitapciklari() {
             disabled={analizEdiliyor}
             className="bg-orange text-white font-semibold px-5 py-2 rounded-lg hover:opacity-90 transition-opacity disabled:opacity-50"
           >
-            {analizEdiliyor ? 'Analiz ediliyor...' : 'Kitapçığı Analiz Et'}
+            {analizEdiliyor ? 'Hazırlanıyor...' : 'Kitapçığı Analiz Et (OCR)'}
+          </button>
+          <button
+            type="button"
+            onClick={elleIsaretlemeyeBasla}
+            disabled={analizEdiliyor}
+            className="bg-navy text-white font-semibold px-5 py-2 rounded-lg hover:opacity-90 transition-opacity disabled:opacity-50"
+          >
+            {analizEdiliyor ? 'Hazırlanıyor...' : 'Hızlı Elle İşaretle (OCR\'sız)'}
           </button>
         </div>
+        <p className="text-xs text-gray-400 mt-2">
+          Grafik/tablo/resim içeren, düzensiz uzunlukta sorulardan oluşan kitapçıklarda (ör. AYT Matematik) OCR
+          çoğu soruyu bulamayabilir — bu durumda "Hızlı Elle İşaretle" ile her sorunun sol üst köşesine sırayla
+          tek tıklayarak çok daha hızlı ve hatasız sonuç alırsınız.
+        </p>
 
         {analizEdiliyor && <p className="text-sm text-blue mt-3">{analizDurumu} (sayfa sayısına göre birkaç dakika sürebilir, sayfayı kapatmayın.)</p>}
         {hata && <p className="text-red-600 text-sm mt-3">{hata}</p>}
         {!hata && basari && <p className="text-green-600 text-sm mt-3">{basari}</p>}
       </div>
+
+      {elleIsaretlemeModu && sayfaGoruntuleri[elleSayfaIndex] && (
+        <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5 mb-6">
+          <div className="bg-blue/5 border border-blue/20 rounded-lg p-3 mb-4 text-sm text-gray-700">
+            <p className="font-semibold text-navy mb-1">Nasıl kullanılır:</p>
+            <p>
+              Sayfada, HER sorunun numarasının olduğu SOL ÜST köşeye, okuma sırasına göre (yukarıdan aşağı, sonra
+              soldan sağa sütuna) TEK TEK tıklayın. Kutu boyutunu siz çizmiyorsunuz — bir sonraki tıklamaya kadar
+              olan alanı sistem otomatik kutu yapıyor. Sayfada soru yoksa (kapak, boş sayfa vb.) hiç tıklamadan
+              sonraki sayfaya geçin.
+            </p>
+          </div>
+
+          <div className="flex items-center justify-between flex-wrap gap-3 mb-4">
+            <p className="font-semibold text-gray-700">
+              Sayfa {elleSayfaIndex + 1} / {sayfaGoruntuleri.length} — toplam işaretlenen: {elleNoktalar.length}
+            </p>
+            <div className="flex gap-2 flex-wrap">
+              <button
+                type="button"
+                onClick={elleSonNoktayiGeriAl}
+                disabled={elleNoktalar.length === 0}
+                className="px-3 py-1.5 rounded-lg text-sm font-semibold bg-white border border-gray-200 text-gray-600 hover:bg-gray-100 disabled:opacity-40"
+              >
+                ↺ Son Noktayı Geri Al
+              </button>
+              <button
+                type="button"
+                onClick={() => setElleSayfaIndex((i) => Math.max(0, i - 1))}
+                disabled={elleSayfaIndex === 0}
+                className="px-3 py-1.5 rounded-lg text-sm font-semibold bg-white border border-gray-200 text-gray-600 hover:bg-gray-100 disabled:opacity-40"
+              >
+                ← Önceki Sayfa
+              </button>
+              <button
+                type="button"
+                onClick={() => setElleSayfaIndex((i) => Math.min(sayfaGoruntuleri.length - 1, i + 1))}
+                disabled={elleSayfaIndex === sayfaGoruntuleri.length - 1}
+                className="px-3 py-1.5 rounded-lg text-sm font-semibold bg-white border border-gray-200 text-gray-600 hover:bg-gray-100 disabled:opacity-40"
+              >
+                Sonraki Sayfa →
+              </button>
+              <button
+                type="button"
+                onClick={() => setElleIsaretlemeModu(false)}
+                className="px-3 py-1.5 rounded-lg text-sm font-semibold text-gray-500 hover:bg-gray-100"
+              >
+                Vazgeç
+              </button>
+              <button
+                type="button"
+                onClick={noktalariKutuyaCevir}
+                disabled={elleNoktalar.length === 0}
+                className="bg-orange text-white font-semibold px-4 py-1.5 rounded-lg text-sm hover:opacity-90 disabled:opacity-40"
+              >
+                Tamamla → Kutulara Çevir ({elleNoktalar.length})
+              </button>
+            </div>
+          </div>
+
+          <NoktaIsaretlemeKatmani
+            sayfaGoruntusu={sayfaGoruntuleri[elleSayfaIndex]}
+            buSayfadakiNoktalar={elleNoktalar
+              .map((n, i) => ({ ...n, globalSira: i + 1 }))
+              .filter((n) => n.sayfaNo === sayfaGoruntuleri[elleSayfaIndex].sayfaNo)}
+            onNoktaEkle={(nokta) => elleNoktaEkle(sayfaGoruntuleri[elleSayfaIndex].sayfaNo, nokta)}
+          />
+        </div>
+      )}
 
       {sorular.length > 0 && blokPaneliGoster && (
         <TopluDersAtamaPaneli
