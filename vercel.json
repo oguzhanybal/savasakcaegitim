@@ -1,5 +1,11 @@
 {
   "rewrites": [
     { "source": "/((?!api/).*)", "destination": "/index.html" }
-  ]
+  ],
+  "crons": [
+    { "path": "/api/odev-arsivle", "schedule": "0 3 * * *" }
+  ],
+  "functions": {
+    "api/odev-arsivle.js": { "maxDuration": 60 }
+  }
 }
