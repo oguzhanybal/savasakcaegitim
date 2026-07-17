@@ -4,9 +4,12 @@
 // Google Drive'a taşımak (yükleyip oradaki linki kaydetmek) ve Supabase
 // Storage'dan silmek — Supabase'in ücretsiz depolama kotası dolmasın diye.
 //
-// GÜVENLİK: bu uç nokta, sadece Vercel'in kendisinin (cron tetiklediğinde)
-// gönderdiği "Authorization: Bearer <CRON_SECRET>" başlığıyla çalışır —
-// başka biri bu adresi ziyaret ederse hiçbir şey yapmadan 401 döner.
+// GÜVENLİK: bu uç nokta, ya Vercel'in kendisinin (cron tetiklediğinde)
+// gönderdiği "Authorization: Bearer <CRON_SECRET>" başlığıyla, ya da elle
+// test etmek için tarayıcı adres çubuğuna yazılan "?secret=<CRON_SECRET>"
+// ile çalışır — ikisi de eşleşmezse hiçbir şey yapmadan 401 döner. Bu
+// "?secret=" yolu KASITLI olarak eklendi: yönetici, 2 hafta beklemeden,
+// tarayıcıdan bu adresi ziyaret ederek arşivlemeyi anında deneyebilsin diye.
 import { createClient } from '@supabase/supabase-js'
 
 const BUCKET = 'odev-ekleri'
@@ -14,10 +17,25 @@ const KLASOR_ADI = 'Savaş Akça Eğitim - Ödev Arşivi'
 const BIR_CALISMADA_MAKSIMUM_DOSYA = 10 // Vercel'in zaman sınırını aşmamak için
 
 export default async function handler(req, res) {
-  const cronSecret = process.env.CRON_SECRET
+  // .trim() ekliyoruz — Vercel'e değer kopyala-yapıştırılırken bazen gözle
+  // görülmeyen bir boşluk/satır sonu karakteri de yapıştırılabiliyor, bu da
+  // "aynı görünen ama aslında eşleşmeyen" bir değere yol açabiliyor.
+  const cronSecret = (process.env.CRON_SECRET || '').trim()
   const gelenYetki = req.headers.authorization || ''
-  if (!cronSecret || gelenYetki !== `Bearer ${cronSecret}`) {
-    res.status(401).json({ error: 'Yetkisiz.' })
+  const gelenSorguSecret = String(req.query?.secret || '').trim()
+  const yetkiliMi = cronSecret && (gelenYetki === `Bearer ${cronSecret}` || gelenSorguSecret === cronSecret)
+  if (!yetkiliMi) {
+    // Tanı bilgisi olarak sadece UZUNLUKLARI (karakter sayısı) döndürüyoruz —
+    // gerçek değerleri asla göstermiyoruz. Vercel'e kaydedilen ile tarayıcıda
+    // yazılan uzunluk farklıysa, muhtemelen kopyala-yapıştır sırasında fazladan
+    // bir karakter (boşluk, satır sonu vb.) eklenmiş demektir.
+    res.status(401).json({
+      error: 'Yetkisiz.',
+      tani: {
+        vercelde_kayitli_uzunluk: cronSecret.length,
+        tarayicidan_gelen_uzunluk: gelenSorguSecret.length,
+      },
+    })
     return
   }
 
