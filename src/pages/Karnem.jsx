@@ -30,6 +30,11 @@ export default function Karnem() {
   const [sonuclar, setSonuclar] = useState([])
   const [loading, setLoading] = useState(true)
   const [pdfIndiriliyorId, setPdfIndiriliyorId] = useState(null)
+  // Akordeon: sınav sayısı arttıkça sayfa çok uzayıp karışmasın diye SADECE
+  // en son sınav (liste zaten created_at'e göre en yeniden en eskiye sıralı,
+  // bkz. aşağıdaki .order('created_at', {ascending:false})) varsayılan
+  // olarak açık geliyor, diğerleri başlığa tıklanınca açılıyor.
+  const [acikId, setAcikId] = useState(null)
 
   async function karnePdfIndir(s) {
     if (!s.karne_pdf_yolu) return
@@ -99,6 +104,9 @@ export default function Karnem() {
               .sort((a, b) => dersSiraPuani(a.ders_adi) - dersSiraPuani(b.ders_adi)),
           }))
         )
+        // En son sınav (liste zaten en yeniden en eskiye sıralı) varsayılan
+        // olarak açık gelsin, geri kalanlar kapalı.
+        setAcikId(liste.length > 0 ? liste[0].id : null)
         setLoading(false)
       })
   }, [seciliId])
@@ -144,15 +152,29 @@ export default function Karnem() {
 
       {!loading && sonuclar.length > 0 && (
         <div className="space-y-5">
-          {sonuclar.map((s) => (
+          {sonuclar.map((s) => {
+            const acikMi = acikId === s.id
+            return (
             <div key={s.id} className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
-              <div className="px-5 py-4 border-b border-gray-100 bg-gray-50 flex items-center justify-between flex-wrap gap-2">
-                <div>
-                  <p className="font-semibold text-navy">{s.sinavlar?.sinav_adi || 'Sınav'}</p>
-                  <p className="text-xs text-gray-400">
-                    {s.sinavlar?.sinav_tarihi && new Date(s.sinavlar.sinav_tarihi).toLocaleDateString('tr-TR')}
-                    {s.kitapcik && ` · Kitapçık ${s.kitapcik}`}
-                  </p>
+              <div
+                onClick={() => setAcikId(acikMi ? null : s.id)}
+                className="px-5 py-4 border-b border-gray-100 bg-gray-50 flex items-center justify-between flex-wrap gap-2 cursor-pointer select-none"
+              >
+                <div className="flex items-center gap-2">
+                  <svg
+                    width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"
+                    strokeLinecap="round" strokeLinejoin="round"
+                    className={`shrink-0 text-gray-400 transition-transform duration-150 ${acikMi ? 'rotate-180' : ''}`}
+                  >
+                    <polyline points="6 9 12 15 18 9" />
+                  </svg>
+                  <div>
+                    <p className="font-semibold text-navy">{s.sinavlar?.sinav_adi || 'Sınav'}</p>
+                    <p className="text-xs text-gray-400">
+                      {s.sinavlar?.sinav_tarihi && new Date(s.sinavlar.sinav_tarihi).toLocaleDateString('tr-TR')}
+                      {s.kitapcik && ` · Kitapçık ${s.kitapcik}`}
+                    </p>
+                  </div>
                 </div>
                 <div className="flex items-center gap-4 flex-wrap">
                   <div className="text-sm flex gap-4 flex-wrap">
@@ -172,7 +194,7 @@ export default function Karnem() {
                   {s.karne_pdf_yolu && (
                     <button
                       type="button"
-                      onClick={() => karnePdfIndir(s)}
+                      onClick={(e) => { e.stopPropagation(); karnePdfIndir(s) }}
                       disabled={pdfIndiriliyorId === s.id}
                       className="text-xs font-semibold text-navy border border-navy/20 px-3 py-1.5 rounded-full hover:bg-navy/5 disabled:opacity-40"
                     >
@@ -181,7 +203,7 @@ export default function Karnem() {
                   )}
                 </div>
               </div>
-              {s.dersler.length > 0 && (
+              {acikMi && s.dersler.length > 0 && (
                 <div className="overflow-x-auto">
                   <table className="w-full text-sm min-w-[420px]">
                     <thead>
@@ -210,7 +232,8 @@ export default function Karnem() {
                 </div>
               )}
             </div>
-          ))}
+            )
+          })}
         </div>
       )}
     </div>
