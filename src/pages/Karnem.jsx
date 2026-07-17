@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { Link } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../lib/AuthContext'
 
@@ -108,6 +109,19 @@ export default function Karnem() {
           if (!puanMap.has(p.sonuc_id)) puanMap.set(p.sonuc_id, [])
           puanMap.get(p.sonuc_id).push(p)
         }
+        // Hata Kitapçığı butonu SADECE admin o sınavın o kitapçığını (A/B)
+        // gerçekten hazırlayıp ONAYLADIYSA çıksın istiyoruz — yoksa öğrenci/
+        // veli tıklayınca "kitapçık henüz yüklenmemiş" hata sayfasıyla
+        // karşılaşırdı. sinav_kitapciklari.onaylandi = true olan (sinav_id,
+        // kitapcik) çiftlerini önceden çekip bir sete koyuyoruz.
+        const sinavIdleri = [...new Set(liste.map((s) => s.sinav_id).filter(Boolean))]
+        const { data: kitapciklarData } =
+          sinavIdleri.length > 0
+            ? await supabase.from('sinav_kitapciklari').select('sinav_id, kitapcik, onaylandi').in('sinav_id', sinavIdleri)
+            : { data: [] }
+        const hazirKitapcikSeti = new Set(
+          (kitapciklarData || []).filter((k) => k.onaylandi).map((k) => `${k.sinav_id}|${k.kitapcik}`)
+        )
         setSonuclar(
           liste.map((s) => ({
             ...s,
@@ -115,6 +129,7 @@ export default function Karnem() {
               .slice()
               .sort((a, b) => dersSiraPuani(a.ders_adi) - dersSiraPuani(b.ders_adi)),
             puanlar: puanMap.get(s.id) || [],
+            kitapcikHazirMi: hazirKitapcikSeti.has(`${s.sinav_id}|${s.kitapcik}`),
           }))
         )
         // En son sınav (liste zaten en yeniden en eskiye sıralı) varsayılan
@@ -129,7 +144,7 @@ export default function Karnem() {
 
   return (
     <div>
-      <h1 className="text-2xl font-bold text-navy mb-2">{seciciGoster ? 'Sınav Karneleri' : 'Sınav Karnem'}</h1>
+      <h1 className="text-2xl font-bold text-navy mb-2">{seciciGoster ? 'Sınav Sonuçları' : 'Sınav Sonuçlarım'}</h1>
       <p className="text-sm text-gray-500 mb-6">
         Girdiğiniz sınavların sonuçları ve ders bazında doğru/yanlış/boş dökümü.
       </p>
@@ -216,6 +231,17 @@ export default function Karnem() {
                       </svg>
                       {pdfIndiriliyorId === s.id ? 'Açılıyor...' : 'Detaylı Karne İndir'}
                     </button>
+                  )}
+                  {(s.toplam_yanlis || 0) + (s.toplam_bos || 0) > 0 && s.kitapcikHazirMi && (
+                    <Link
+                      to={`/hata-kitapcigi/${s.id}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      onClick={(e) => e.stopPropagation()}
+                      className="text-xs font-semibold bg-orange text-white px-3 py-1.5 rounded-full hover:opacity-90"
+                    >
+                      Hata Kitapçığını Görüntüle
+                    </Link>
                   )}
                 </div>
               </div>
