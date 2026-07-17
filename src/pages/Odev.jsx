@@ -191,18 +191,21 @@ function OdevVerForm({ ogrenciler, ogretmenProfileId, varsayilanDers, onEklendi 
   const [sonEklenenler, setSonEklenenler] = useState([])
   const [dosyaHatasi, setDosyaHatasi] = useState('')
   const dosyaInputRef = useRef(null)
-  const MAKSIMUM_PDF_BOYUTU = 5 * 1024 * 1024 // 5 MB
+  const MAKSIMUM_PDF_BOYUTU = 20 * 1024 * 1024 // 20 MB
 
   // Fotoğraflar zaten otomatik küçültülüyor (resmiSikistir), ama PDF'ler
   // OLDUĞU GİBİ yükleniyor — taranmış (her sayfası yüksek çözünürlüklü resim
-  // olan) bir PDF çok büyük olabilir ve ücretsiz depolama kotasını (1 GB)
-  // hızla doldurabilir. 5 MB'ı GEÇEN PDF'ler doğrudan REDDEDİLİYOR (yüklemeye
+  // olan) bir PDF çok büyük olabilir. Dosyalar en fazla 2 hafta Supabase'in
+  // ücretsiz 1 GB'lık deposunda bekliyor (sonra Google Drive'a otomatik
+  // arşivleniyor — bkz. api/odev-arsivle.js), o yüzden sınırı TAMAMEN
+  // kaldırmak yerine makul bir üst sınır (20 MB) koyduk. 20 MB'ı GEÇEN
+  // PDF'ler doğrudan REDDEDİLİYOR (yüklemeye
   // izin verilmiyor) — hoca bunun yerine ödev kağıdının fotoğrafını çekip
   // yüklemeli (fotoğraflar otomatik küçültülüyor, boyut sorunu olmuyor).
   function dosyaSecildi(dosya) {
     if (dosya && dosya.type === 'application/pdf' && dosya.size > MAKSIMUM_PDF_BOYUTU) {
       setDosyaHatasi(
-        `Bu PDF ${(dosya.size / (1024 * 1024)).toFixed(1)} MB — 5 MB sınırını aşıyor, kabul edilmiyor. Bunun yerine ödev kağıdının fotoğrafını çekip yükleyin (fotoğraflar otomatik küçültülür, sorun olmaz).`
+        `Bu PDF ${(dosya.size / (1024 * 1024)).toFixed(1)} MB — 20 MB sınırını aşıyor, kabul edilmiyor. Bunun yerine ödev kağıdının fotoğrafını çekip yükleyin (fotoğraflar otomatik küçültülür, sorun olmaz).`
       )
       setDosya(null)
       if (dosyaInputRef.current) dosyaInputRef.current.value = ''
@@ -262,10 +265,10 @@ function OdevVerForm({ ogrenciler, ogretmenProfileId, varsayilanDers, onEklendi 
       setHata('Lütfen bir başlık girin.')
       return
     }
-    // dosyaSecildi zaten 5 MB'ı geçen PDF'leri kabul etmiyor, ama ekstra
+    // dosyaSecildi zaten 20 MB'ı geçen PDF'leri kabul etmiyor, ama ekstra
     // güvenlik olarak gönderim anında da tekrar kontrol ediyoruz.
     if (dosya && dosya.type === 'application/pdf' && dosya.size > MAKSIMUM_PDF_BOYUTU) {
-      setHata('Seçili PDF 5 MB sınırını aşıyor, kabul edilmiyor.')
+      setHata('Seçili PDF 20 MB sınırını aşıyor, kabul edilmiyor.')
       return
     }
     setGonderiliyor(true)
@@ -496,7 +499,7 @@ function OdevVerForm({ ogrenciler, ogretmenProfileId, varsayilanDers, onEklendi 
         />
         <p className="text-xs text-gray-400 mt-1">
           Fotoğraflar yüklenmeden önce otomatik olarak küçültülür (depolama alanından tasarruf için). PDF'ler
-          5 MB'ı geçemez.
+          20 MB'ı geçemez.
         </p>
         {dosyaHatasi && <p className="text-xs text-red-600 font-medium mt-1">⚠️ {dosyaHatasi}</p>}
       </div>
