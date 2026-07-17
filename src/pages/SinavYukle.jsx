@@ -1,15 +1,17 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
-import { sinavSonucPdfIndenCikar } from '../lib/sinavPdfParse'
+import { sinavSonucPdfIndenTumOgrencileriCikar } from '../lib/sinavPdfParse'
 
-// Bir sınavı giren TÜM öğrencilerin sonuç PDF'lerini TEK SEFERDE (aynı anda
-// birden fazla dosya seçerek) yükleyip otomatik ayrıştırmayı sağlayan sayfa.
-// Her PDF öğrencinin bireysel "karne" raporu olduğu için, sistem her dosyayı
-// ayrı ayrı okuyup (a) öğrenciyi isimden eşleştirir, (b) hangi sınava ait
-// olduğunu admin'in üstte seçtiği sınavdan alır — çünkü taramanın ürettiği
-// otomatik sınav adı ile SinavKitapciklari.jsx'te elle girilen sınav adının
-// harfi harfine aynı olacağı garanti değildir.
+// Bir sınavı giren TÜM öğrencilerin sonuç PDF'lerini TEK SEFERDE yükleyip
+// otomatik ayrıştırmayı sağlayan sayfa. Okulun tarama/analiz yazılımı "tüm
+// sınıfın" sonuçlarını TEK PDF olarak dışa aktarınca, her öğrencinin 2
+// sayfalık karnesi ART ARDA birleştirilmiş oluyor (22 sayfalık dosya = 11
+// öğrenci gibi) — bu yüzden burada seçilen HER dosya, içindeki TÜM
+// öğrencilere ayrıştırılıyor (sinavSonucPdfIndenTumOgrencileriCikar), tek
+// dosyadan birden fazla satır (öğrenci) çıkabiliyor. Sistem her öğrenciyi
+// isimden eşleştirmeye çalışır — siz eşleşmeyi kontrol edip onayladıktan
+// sonra sonuçlar kaydedilir.
 export default function SinavYukle() {
   const [sinavlar, setSinavlar] = useState([])
   const [seciliSinavId, setSeciliSinavId] = useState('')
@@ -41,31 +43,40 @@ export default function SinavYukle() {
     if (!dosyaListesi || dosyaListesi.length === 0) return
     setGenelHata('')
     setAyikliyor(true)
-    const yeniSatirlar = []
-    for (const dosya of Array.from(dosyaListesi)) {
-      const satir = {
-        id: `${dosya.name}-${Date.now()}-${Math.random()}`,
-        dosyaAdi: dosya.name,
-        dosya,
-        durum: 'ayikliyor',
-        hata: '',
-        veri: null,
-        ogrenciId: '',
-        kaydedildi: false,
-      }
-      yeniSatirlar.push(satir)
-    }
-    setSatirlar((liste) => [...liste, ...yeniSatirlar])
 
-    for (const satir of yeniSatirlar) {
+    for (const dosya of Array.from(dosyaListesi)) {
+      // Dosya seçilir seçilmez, o dosya için TEK bir "ayrıştırılıyor" satırı
+      // gösteriyoruz — içinde kaç öğrenci olduğunu henüz bilmiyoruz. Sonuçlar
+      // gelince bu tek satırı, bulunan öğrenci sayısı kadar gerçek satıra
+      // bölüyoruz (aşağıda geciciId ile değiştiriliyor).
+      const geciciId = `${dosya.name}-${Date.now()}-${Math.random()}`
+      setSatirlar((liste) => [
+        ...liste,
+        { id: geciciId, dosyaAdi: dosya.name, durum: 'ayikliyor', hata: '', veri: null, ogrenciId: '', kaydedildi: false },
+      ])
+
       try {
-        const veri = await sinavSonucPdfIndenCikar(satir.dosya)
-        const eslesenId = ogrenciEslestir(veri.ogrenciAdSoyad)
-        setSatirlar((liste) =>
-          liste.map((s) => (s.id === satir.id ? { ...s, durum: 'hazir', veri, ogrenciId: eslesenId } : s))
-        )
+        const sonuclar = await sinavSonucPdfIndenTumOgrencileriCikar(dosya)
+        const cokluMu = sonuclar.length > 1
+        const yeniSatirlar = sonuclar.map((s) => {
+          const id = `${dosya.name}-s${s.baslangicSayfa}-${Date.now()}-${Math.random()}`
+          const dosyaAdi = cokluMu ? `${dosya.name} — sayfa ${s.baslangicSayfa}-${s.baslangicSayfa + 1}` : dosya.name
+          if (!s.basariliMi) {
+            return { id, dosyaAdi, durum: 'hata', hata: s.hata, veri: null, ogrenciId: '', kaydedildi: false }
+          }
+          return {
+            id,
+            dosyaAdi,
+            durum: 'hazir',
+            hata: '',
+            veri: s.veri,
+            ogrenciId: ogrenciEslestir(s.veri.ogrenciAdSoyad),
+            kaydedildi: false,
+          }
+        })
+        setSatirlar((liste) => [...liste.filter((s) => s.id !== geciciId), ...yeniSatirlar])
       } catch (e) {
-        setSatirlar((liste) => liste.map((s) => (s.id === satir.id ? { ...s, durum: 'hata', hata: e.message } : s)))
+        setSatirlar((liste) => liste.map((s) => (s.id === geciciId ? { ...s, durum: 'hata', hata: e.message } : s)))
       }
     }
     setAyikliyor(false)
@@ -273,7 +284,12 @@ export default function SinavYukle() {
                         ))}
                       </select>
                       {!s.ogrenciId && (
-                        <p className="text-xs text-yellow-700 mt-1">Otomatik eşleşme bulunamadı, elle seçin.</p>
+                        <p className="text-xs text-yellow-700 mt-1">
+                          Otomatik eşleşme bulunamadı (PDF'teki isim "{s.veri.ogrenciAdSoyad}" listedeki hiçbir
+                          öğrenciyle birebir uyuşmuyor) — doğru öğrenciyi elle seçin. Buradaki soru/doğru/yanlış
+                          verileri PDF'ten geldiği için değişmez, bu kutu sadece o veriyi HANGİ öğrenci kaydına
+                          bağlayacağınızı belirler.
+                        </p>
                       )}
                     </div>
 
