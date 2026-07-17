@@ -10,6 +10,7 @@ import {
   gunAnahtari,
   bireBirBorclariOlustur,
   kantinBorclariOlustur,
+  aylikBorclariKalemAyaGoreGrupla,
   bireBirDersDetaylariOlustur,
   fazlaOdemeleriHesapla,
   ogrenciSatirlariHesapla,
@@ -75,6 +76,15 @@ function OdemeDagitForm({ odeme, onTamam, onVazgec }) {
         tutar: Number(s.tutar),
         kalem: s.kalem,
         tarih: odeme.tarih,
+        // created_at'i de orijinal (dağıtılmamış) ödemenin created_at'inden
+        // aynen devralıyoruz. Aksi halde Supabase yeni satırlara created_at'i
+        // "şu an" (dağıtma butonuna basılan an) olarak verirdi — bir ödeme
+        // birden fazla oturumda (önce bir kısmı, sonra geri kalanı) dağıtılırsa
+        // bu, gerçek alınma sırasını bozup başka öğrencilerin ödemeleriyle
+        // karışık/tutarsız görünmesine yol açıyordu. Kalan tutar güncellenirken
+        // (update) satırın created_at'i zaten değişmediği için, ikinci dağıtımda
+        // da odeme.created_at hâlâ doğru/orijinal alınma anını taşıyor.
+        created_at: odeme.created_at,
       }))
     const { error: eklemeHatasi } = await supabase.from('odemeler').insert(eklenecekler)
     if (eklemeHatasi) {
@@ -740,6 +750,10 @@ export default function Muhasebe() {
     }
   }
 
+  // "Aylık Kalem Borçları" tablosu artık her dersi/alışı tek tek değil, aynı
+  // kalem+ay için TEK bir toplam satır olarak gösteriyor (bkz. yorum, ekstreHesap.js).
+  const aylikBorclarGruplu = aylikBorclariKalemAyaGoreGrupla(aylikBorclar)
+
   const seciliOgrenci = ogrenciler.find((o) => o.id === seciliId)
   // Veli birden fazla öğrenciye bağlıysa (kardeşler), yönetici olmasa da
   // aralarında geçiş yapabilsin diye seçiciyi ona da gösteriyoruz.
@@ -1085,16 +1099,21 @@ export default function Muhasebe() {
                 </tr>
               </thead>
               <tbody>
-                {aylikBorclar.length === 0 && (
+                {aylikBorclarGruplu.length === 0 && (
                   <tr><td colSpan={isYonetici ? 6 : 5} className="px-4 py-4 text-center text-gray-400">Aylık kalem borcu bulunamadı.</td></tr>
                 )}
-                {aylikBorclar.map((a) => {
-                  const d = aylikBorcDurumHesapla(a, aylikBorclar, odemeler)
+                {aylikBorclarGruplu.map((g) => {
+                  const d = aylikBorcDurumHesapla(g, aylikBorclar, odemeler)
                   return (
-                  <tr key={a.id} className={`border-t border-gray-50 ${d.durum === 'gecikti' ? 'bg-red-50' : d.durum === 'kismi' ? 'bg-amber-50' : ''}`}>
-                    <td className="px-4 py-2 font-medium text-gray-800">{a.kalem}</td>
-                    <td className="px-4 py-2">{new Date(a.donem).toLocaleDateString('tr-TR', { month: 'long', year: 'numeric' })}</td>
-                    <td className="px-4 py-2">{paraFormat(a.tutar)}</td>
+                  <tr key={g.id} className={`border-t border-gray-50 ${d.durum === 'gecikti' ? 'bg-red-50' : d.durum === 'kismi' ? 'bg-amber-50' : ''}`}>
+                    <td className="px-4 py-2 font-medium text-gray-800">
+                      {g.kalem}
+                      {g.satirlar.length > 1 && (
+                        <span className="text-gray-400 font-normal text-xs ml-1">({g.satirlar.length} işlem)</span>
+                      )}
+                    </td>
+                    <td className="px-4 py-2">{new Date(g.donem).toLocaleDateString('tr-TR', { month: 'long', year: 'numeric' })}</td>
+                    <td className="px-4 py-2">{paraFormat(g.tutar)}</td>
                     <td className="px-4 py-2"><DurumRozeti durum={d.durum} /></td>
                     <td className="px-4 py-2">
                       {d.durum === 'kismi' ? (
@@ -1105,14 +1124,14 @@ export default function Muhasebe() {
                     </td>
                     {isYonetici && (
                       <td className="px-4 py-2">
-                        {aylikBorcGercekMi(a) ? (
-                          <button onClick={() => aylikBorcSil(a)} className="text-red-500 text-sm hover:underline">
+                        {g.satirlar.length === 1 && aylikBorcGercekMi(g.satirlar[0]) ? (
+                          <button onClick={() => aylikBorcSil(g.satirlar[0])} className="text-red-500 text-sm hover:underline">
                             Sil
                           </button>
                         ) : (
                           <span
                             className="text-gray-300 text-xs"
-                            title="Bu satır Bire Bir/Kantin sayfasındaki bir kayıttan otomatik oluşturuluyor — silmek için o sayfadaki asıl kaydı silin."
+                            title="Bu satır Bire Bir/Kantin sayfasındaki kayıtlardan otomatik oluşturuluyor (tek tek dersler için aşağıdaki 'Bire Bir Ders Dökümü' bölümüne bakın) — silmek için o sayfadaki asıl kaydı silin."
                           >
                             —
                           </span>
