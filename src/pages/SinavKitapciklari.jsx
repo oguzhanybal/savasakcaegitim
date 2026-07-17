@@ -174,7 +174,7 @@ function NoktaIsaretlemeKatmani({ sayfaGoruntusu, buSayfadakiNoktalar, onNoktaEk
 // birkaç kutu) tek tek düzeltmek kalır.
 // ============================================================================
 function TopluDersAtamaPaneli({ toplamSoru, onUygula, onVazgec, onGeriDon }) {
-  const [bloklar, setBloklar] = useState([{ id: 1, ders: '', sayi: '' }])
+  const [bloklar, setBloklar] = useState([{ id: 1, ders: '', sayi: '', baslangic: '1' }])
 
   const toplamGirilen = bloklar.reduce((t, b) => t + (Number(b.sayi) || 0), 0)
 
@@ -182,16 +182,30 @@ function TopluDersAtamaPaneli({ toplamSoru, onUygula, onVazgec, onGeriDon }) {
     setBloklar((liste) => liste.map((b) => (b.id === id ? { ...b, ...alanlar } : b)))
   }
   function blokEkle() {
-    setBloklar((liste) => [...liste, { id: Date.now(), ders: '', sayi: '' }])
+    setBloklar((liste) => [...liste, { id: Date.now(), ders: '', sayi: '', baslangic: '1' }])
   }
   function blokSil(id) {
     setBloklar((liste) => liste.filter((b) => b.id !== id))
+  }
+  // "Öncekinin devamı" — bir önceki bloğun başlangıç no'su + soru sayısını
+  // bu bloğun başlangıcı yapar. Bkz. panel içindeki uyarı: karnede TYT'nin
+  // Sosyal Bilimler / Fen Bilimleri grupları İÇİNDEKİ dersler (Tarih→Coğrafya
+  // →Felsefe→Din Kültürü, Fizik→Kimya→Biyoloji) numarayı SIFIRLAMADAN devam
+  // ettiriyor (Kimya 8'den, Biyoloji 15'ten başlıyor gibi) — bu buton o
+  // devamı elle hesaplama derdini ortadan kaldırıyor.
+  function oncekininDevami(index) {
+    if (index === 0) return
+    const onceki = bloklar[index - 1]
+    const yeniBaslangic = (Number(onceki.baslangic) || 1) + (Number(onceki.sayi) || 0)
+    blokGuncelle(bloklar[index].id, { baslangic: String(yeniBaslangic) })
   }
 
   function uygula() {
     const gecerliBloklar = bloklar.filter((b) => b.ders.trim() && Number(b.sayi) > 0)
     if (gecerliBloklar.length === 0) return
-    onUygula(gecerliBloklar.map((b) => ({ ders: b.ders.trim(), sayi: Number(b.sayi) })))
+    onUygula(
+      gecerliBloklar.map((b) => ({ ders: b.ders.trim(), sayi: Number(b.sayi), baslangic: Number(b.baslangic) || 1 }))
+    )
   }
 
   return (
@@ -205,22 +219,23 @@ function TopluDersAtamaPaneli({ toplamSoru, onUygula, onVazgec, onGeriDon }) {
       </p>
       <p className="text-xs text-orange bg-orange/10 border border-orange/20 rounded-lg px-3 py-2 mb-4">
         Önemli: "Sosyal" ve "Fen" bloklarını TEK satırda toplamayın — sonuç karnesindeki Konu Analizi tablosu
-        bunları ayrı ayrı sayar (Tarih, Coğrafya, Felsefe, Din Kültürü / Fizik, Kimya, Biyoloji), her biri kendi
-        içinde 1'den başlar. Hata kitapçığı oluşturulurken ders adı BİREBİR eşleşmesi gerektiği için, buraya da
-        aynı ayrı ders adlarını (ör. Tarih: 5, Coğrafya: 5, Felsefe: 5, Din Kültürü: 5, Fizik: 7, Kimya: 7,
-        Biyoloji: 6) girin — yazarken önerilerden seçebilirsiniz.
+        bunları ayrı ayrı sayar (Tarih, Coğrafya, Felsefe, Din Kültürü / Fizik, Kimya, Biyoloji). AMA bu dersler
+        kendi içinde 1'den BAŞLAMAZ — grup içinde kesintisiz devam eder: Tarih 1-5, Coğrafya 6-10, Felsefe 11-15,
+        Din Kültürü 16-20; Fizik 1-7, Kimya 8-14, Biyoloji 15-20 gibi. Her blok için aşağıdaki
+        <b> "Başlangıç No"</b> kutusuna doğru sayıyı yazın (bir önceki dersin devamıysa yanındaki
+        <b> "↳ öncekinin devamı"</b> butonuna basmanız yeterli).
       </p>
 
       <div className="space-y-2 mb-3">
         {bloklar.map((b, i) => (
-          <div key={b.id} className="flex items-center gap-2">
+          <div key={b.id} className="flex items-center gap-2 flex-wrap">
             <span className="text-xs text-gray-400 w-5 shrink-0">{i + 1}.</span>
             <input
               list="ders-onerileri"
               value={b.ders}
               onChange={(e) => blokGuncelle(b.id, { ders: e.target.value })}
               placeholder="örn. Türkçe"
-              className="flex-1 px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue bg-white"
+              className="flex-1 min-w-[140px] px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue bg-white"
             />
             <input
               type="number"
@@ -228,8 +243,30 @@ function TopluDersAtamaPaneli({ toplamSoru, onUygula, onVazgec, onGeriDon }) {
               value={b.sayi}
               onChange={(e) => blokGuncelle(b.id, { sayi: e.target.value })}
               placeholder="soru sayısı"
-              className="w-28 px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue bg-white"
+              className="w-24 px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue bg-white"
             />
+            <div className="flex items-center gap-1">
+              <span className="text-xs text-gray-400">No:</span>
+              <input
+                type="number"
+                min="1"
+                value={b.baslangic}
+                onChange={(e) => blokGuncelle(b.id, { baslangic: e.target.value })}
+                placeholder="1"
+                title="Bu dersin ilk sorusu karnede kaç numara?"
+                className="w-16 px-2 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue bg-white"
+              />
+            </div>
+            {i > 0 && (
+              <button
+                type="button"
+                onClick={() => oncekininDevami(i)}
+                className="text-xs text-blue font-semibold hover:underline whitespace-nowrap"
+                title="Başlangıç no'yu bir önceki dersin devamı yap"
+              >
+                ↳ öncekinin devamı
+              </button>
+            )}
             {bloklar.length > 1 && (
               <button
                 type="button"
@@ -799,7 +836,12 @@ export default function SinavKitapciklari() {
         }
         if (!mevcutBlok) return s
         sayacBuBlokta += 1
-        return { ...s, ders_adi: mevcutBlok.ders, soru_no: sayacBuBlokta }
+        // soru_no, bloğun "Başlangıç No"suna göre hesaplanır — çoğu ders
+        // 1'den başlar ama karnede bazı dersler (ör. bir grubun ikinci/üçüncü
+        // alt dersi) numarayı sıfırlamadan devam ettirir (Kimya 8'den,
+        // Biyoloji 15'ten başlaması gibi) — bkz. TopluDersAtamaPaneli notu.
+        const baslangic = Number(mevcutBlok.baslangic) || 1
+        return { ...s, ders_adi: mevcutBlok.ders, soru_no: baslangic + sayacBuBlokta - 1 }
       })
     })
     setBlokPaneliGoster(false)
