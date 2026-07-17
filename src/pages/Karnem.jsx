@@ -96,12 +96,25 @@ export default function Karnem() {
           if (!dersMap.has(d.sonuc_id)) dersMap.set(d.sonuc_id, [])
           dersMap.get(d.sonuc_id).push(d)
         }
+        // Karnedeki "PUAN VE SIRALAMALAR" tablosu — üniversiteye yerleşmede
+        // asıl belirleyici olan bilgi bu olduğu için (net değil) her zaman,
+        // akordeon kapalıyken bile görünsün diye başlıkta gösteriyoruz.
+        const { data: puanVerileri } =
+          sonucIdleri.length > 0
+            ? await supabase.from('sinav_puan_sonuclari').select('*').in('sonuc_id', sonucIdleri)
+            : { data: [] }
+        const puanMap = new Map()
+        for (const p of puanVerileri || []) {
+          if (!puanMap.has(p.sonuc_id)) puanMap.set(p.sonuc_id, [])
+          puanMap.get(p.sonuc_id).push(p)
+        }
         setSonuclar(
           liste.map((s) => ({
             ...s,
             dersler: (dersMap.get(s.id) || [])
               .slice()
               .sort((a, b) => dersSiraPuani(a.ders_adi) - dersSiraPuani(b.ders_adi)),
+            puanlar: puanMap.get(s.id) || [],
           }))
         )
         // En son sınav (liste zaten en yeniden en eskiye sıralı) varsayılan
@@ -203,6 +216,21 @@ export default function Karnem() {
                   )}
                 </div>
               </div>
+              {s.puanlar && s.puanlar.length > 0 && (
+                <div className="px-5 py-3 bg-orange/5 border-b border-orange/10 flex flex-wrap gap-x-6 gap-y-1">
+                  {s.puanlar.map((p) => (
+                    <div key={p.id} className="text-sm">
+                      <span className="font-semibold text-orange">{p.puan_turu} Puan: {p.puan ?? '-'}</span>
+                      {p.genel_siralama != null && (
+                        <span className="text-gray-600"> · Genel Sıralama: <b>{p.genel_siralama.toLocaleString('tr-TR')}</b></span>
+                      )}
+                      {p.kurum_siralama != null && <span className="text-gray-400"> · Kurum: {p.kurum_siralama}</span>}
+                      {p.sube_siralama != null && <span className="text-gray-400"> · Şube: {p.sube_siralama}</span>}
+                      {p.sinif_siralama != null && <span className="text-gray-400"> · Sınıf: {p.sinif_siralama}</span>}
+                    </div>
+                  ))}
+                </div>
+              )}
               {acikMi && s.dersler.length > 0 && (
                 <div className="overflow-x-auto">
                   <table className="w-full text-sm min-w-[420px]">

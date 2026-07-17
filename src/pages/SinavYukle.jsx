@@ -114,10 +114,23 @@ export default function SinavYukle() {
       if (!dersMap.has(d.sonuc_id)) dersMap.set(d.sonuc_id, [])
       dersMap.get(d.sonuc_id).push(d)
     }
+    // Karnedeki "PUAN VE SIRALAMALAR" tablosu — üniversite yerleştirmesinde
+    // asıl belirleyici bilgi bu olduğu için ders dökümünün yanında ayrıca
+    // gösteriyoruz.
+    const { data: puanVerileri } =
+      sonucIdleri.length > 0
+        ? await supabase.from('sinav_puan_sonuclari').select('*').in('sonuc_id', sonucIdleri)
+        : { data: [] }
+    const puanMap = new Map()
+    for (const p of puanVerileri || []) {
+      if (!puanMap.has(p.sonuc_id)) puanMap.set(p.sonuc_id, [])
+      puanMap.get(p.sonuc_id).push(p)
+    }
     setKayitliSonuclar(
       liste.map((s) => ({
         ...s,
         dersler: (dersMap.get(s.id) || []).slice().sort((a, b) => dersSiraPuani(a.ders_adi) - dersSiraPuani(b.ders_adi)),
+        puanlar: puanMap.get(s.id) || [],
       }))
     )
     setKayitliSonuclarYukleniyor(false)
@@ -393,9 +406,10 @@ export default function SinavYukle() {
       if (sonucHatasi) throw sonucHatasi
 
       // Bu öğrenci bu sınav için daha önce kaydedilmişse (ör. PDF yanlışlıkla
-      // iki kere yüklendi), eski ders/soru satırlarını silip yeniden yazıyoruz.
+      // iki kere yüklendi), eski ders/soru/puan satırlarını silip yeniden yazıyoruz.
       await supabase.from('sinav_ders_sonuclari').delete().eq('sonuc_id', sonucVerisi.id)
       await supabase.from('sinav_soru_sonuclari').delete().eq('sonuc_id', sonucVerisi.id)
+      await supabase.from('sinav_puan_sonuclari').delete().eq('sonuc_id', sonucVerisi.id)
 
       if (veri.dersSonuclari.length > 0) {
         const { error } = await supabase.from('sinav_ders_sonuclari').insert(
@@ -422,6 +436,21 @@ export default function SinavYukle() {
             dogru_cevap: s.dogru_cevap,
             ogrenci_cevap: s.ogrenci_cevap,
             sonuc: s.sonuc,
+          }))
+        )
+        if (error) throw error
+      }
+
+      if (veri.puanSonuclari && veri.puanSonuclari.length > 0) {
+        const { error } = await supabase.from('sinav_puan_sonuclari').insert(
+          veri.puanSonuclari.map((p) => ({
+            sonuc_id: sonucVerisi.id,
+            puan_turu: p.puan_turu,
+            puan: p.puan,
+            genel_siralama: p.genel_siralama,
+            kurum_siralama: p.kurum_siralama,
+            sube_siralama: p.sube_siralama,
+            sinif_siralama: p.sinif_siralama,
           }))
         )
         if (error) throw error
@@ -573,6 +602,20 @@ export default function SinavYukle() {
                         <b className="text-red-700">{k.toplam_yanlis}</b> · Boş: <b className="text-gray-500">{k.toplam_bos}</b> ·
                         Net: <b className="text-navy">{k.toplam_net}</b>
                       </p>
+                      {k.puanlar && k.puanlar.length > 0 && (
+                        <p className="text-xs text-orange font-medium mt-0.5">
+                          {k.puanlar
+                            .map(
+                              (p) =>
+                                `${p.puan_turu} Puan: ${p.puan ?? '-'}` +
+                                (p.genel_siralama != null ? ` · Genel Sıralama: ${p.genel_siralama.toLocaleString('tr-TR')}` : '') +
+                                (p.kurum_siralama != null ? ` · Kurum: ${p.kurum_siralama}` : '') +
+                                (p.sube_siralama != null ? ` · Şube: ${p.sube_siralama}` : '') +
+                                (p.sinif_siralama != null ? ` · Sınıf: ${p.sinif_siralama}` : '')
+                            )
+                            .join('  |  ')}
+                        </p>
+                      )}
                     </div>
                     <div className="flex items-center gap-2 flex-wrap justify-end">
                       {k.karne_pdf_yolu && (
