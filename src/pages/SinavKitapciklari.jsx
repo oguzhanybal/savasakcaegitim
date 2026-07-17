@@ -111,6 +111,124 @@ function KutuKatmani({ sayfaGoruntusu, sorularBuSayfada, seciliGeciciId, cizimMo
   )
 }
 
+// ============================================================================
+// TOPLU DERS ATAMA — OCR'ın bulduğu soru kutuları (doğru sırada) hazır olunca,
+// admin'in her birine TEK TEK ders adı + soru no yazması (100+ soru için
+// saatler süren bir iş) yerine, sadece "hangi dersten kaç soru var" bilgisini
+// (ör. Türkçe 40, Matematik 40, Fizik 14...) tek seferde girmesini sağlar.
+// Sistem bunu, kutuların zaten doğru okuma sırasında olmasından yararlanarak,
+// hepsine birden otomatik dağıtır. Admin'e sadece İSTİSNALARI (yanlış yerdeki
+// birkaç kutu) tek tek düzeltmek kalır.
+// ============================================================================
+function TopluDersAtamaPaneli({ toplamSoru, onUygula, onVazgec }) {
+  const [bloklar, setBloklar] = useState([{ id: 1, ders: '', sayi: '' }])
+
+  const toplamGirilen = bloklar.reduce((t, b) => t + (Number(b.sayi) || 0), 0)
+
+  function blokGuncelle(id, alanlar) {
+    setBloklar((liste) => liste.map((b) => (b.id === id ? { ...b, ...alanlar } : b)))
+  }
+  function blokEkle() {
+    setBloklar((liste) => [...liste, { id: Date.now(), ders: '', sayi: '' }])
+  }
+  function blokSil(id) {
+    setBloklar((liste) => liste.filter((b) => b.id !== id))
+  }
+
+  function uygula() {
+    const gecerliBloklar = bloklar.filter((b) => b.ders.trim() && Number(b.sayi) > 0)
+    if (gecerliBloklar.length === 0) return
+    onUygula(gecerliBloklar.map((b) => ({ ders: b.ders.trim(), sayi: Number(b.sayi) })))
+  }
+
+  return (
+    <div className="bg-blue/5 border border-blue/20 rounded-2xl p-5 mb-6">
+      <p className="font-semibold text-navy mb-1">Toplu Ders Ataması (önerilen — çok zaman kazandırır)</p>
+      <p className="text-sm text-gray-600 mb-4">
+        Sistem toplam <b>{toplamSoru}</b> soru kutusu buldu ve bunlar zaten kitapçıktaki okuma sırasında (baştan
+        sona). Her birini tek tek doldurmak yerine, hangi dersten kaç soru olduğunu aşağıya sırayla yazın —
+        sistem hepsine otomatik ders adı ve soru numarası verecek. Sonra sadece nadir hatalı kutuları tek tek
+        düzeltirsiniz.
+      </p>
+
+      <div className="space-y-2 mb-3">
+        {bloklar.map((b, i) => (
+          <div key={b.id} className="flex items-center gap-2">
+            <span className="text-xs text-gray-400 w-5 shrink-0">{i + 1}.</span>
+            <input
+              list="ders-onerileri"
+              value={b.ders}
+              onChange={(e) => blokGuncelle(b.id, { ders: e.target.value })}
+              placeholder="örn. Türkçe"
+              className="flex-1 px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue bg-white"
+            />
+            <input
+              type="number"
+              min="1"
+              value={b.sayi}
+              onChange={(e) => blokGuncelle(b.id, { sayi: e.target.value })}
+              placeholder="soru sayısı"
+              className="w-28 px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue bg-white"
+            />
+            {bloklar.length > 1 && (
+              <button
+                type="button"
+                onClick={() => blokSil(b.id)}
+                className="text-red-400 text-sm px-2 hover:text-red-600"
+                title="Bu satırı sil"
+              >
+                ✕
+              </button>
+            )}
+          </div>
+        ))}
+      </div>
+
+      <div className="flex items-center justify-between flex-wrap gap-3">
+        <div className="flex items-center gap-3">
+          <button
+            type="button"
+            onClick={blokEkle}
+            className="text-navy text-sm font-semibold hover:underline"
+          >
+            + Ders Ekle
+          </button>
+          <span
+            className={`text-xs font-semibold ${
+              toplamGirilen === toplamSoru ? 'text-green-600' : 'text-gray-400'
+            }`}
+          >
+            Toplam: {toplamGirilen} / {toplamSoru} soru
+          </span>
+        </div>
+        <div className="flex gap-2">
+          <button
+            type="button"
+            onClick={onVazgec}
+            className="px-3 py-1.5 rounded-lg text-sm font-semibold text-gray-500 hover:bg-white"
+          >
+            Bunu atla, tek tek gireceğim
+          </button>
+          <button
+            type="button"
+            onClick={uygula}
+            disabled={toplamGirilen === 0}
+            className="bg-navy text-white font-semibold px-4 py-1.5 rounded-lg text-sm hover:opacity-90 disabled:opacity-40"
+          >
+            Uygula
+          </button>
+        </div>
+      </div>
+      {toplamGirilen !== 0 && toplamGirilen !== toplamSoru && (
+        <p className="text-xs text-orange mt-2">
+          Girdiğiniz toplam ({toplamGirilen}), tespit edilen soru sayısından ({toplamSoru}) farklı — yine de
+          uygulayabilirsiniz, kalan kutulara ders adı boş atanır, onları tek tek düzeltirsiniz.
+        </p>
+      )}
+    </div>
+  )
+}
+
 export default function SinavKitapciklari() {
   const [sinavlar, setSinavlar] = useState([])
   const [kitapciklar, setKitapciklar] = useState([])
@@ -127,6 +245,10 @@ export default function SinavKitapciklari() {
   const [sorular, setSorular] = useState([])
   const [seciliIndex, setSeciliIndex] = useState(0)
   const [cizimModu, setCizimModu] = useState(false)
+  // Yeni bir analiz sonucu geldiğinde varsayılan olarak TOPLU DERS ATAMA
+  // paneli gösterilir (bkz. TopluDersAtamaPaneli) — admin isterse "Bunu atla"
+  // deyip eski tek-tek düzenleme akışına geçebilir.
+  const [blokPaneliGoster, setBlokPaneliGoster] = useState(false)
 
   const [kaydediliyor, setKaydediliyor] = useState(false)
   const [hata, setHata] = useState('')
@@ -271,6 +393,9 @@ export default function SinavKitapciklari() {
       setSorular(tumSorular)
       setSeciliIndex(0)
       setAnalizDurumu('')
+      // Yeni bir analiz sonrası, önce hızlı toplu atama paneli gösterilir —
+      // admin isterse "Bunu atla" diyip eski tek-tek akışa geçebilir.
+      setBlokPaneliGoster(tumSorular.length > 0)
       if (tumSorular.length === 0) {
         setHata('Hiç soru başlangıcı tespit edilemedi. Aşağıdan "Soru Ekle" ile elle işaretleyebilirsiniz.')
       } else if (siraFiltresiUygulanmadi) {
@@ -287,6 +412,29 @@ export default function SinavKitapciklari() {
     } finally {
       setAnalizEdiliyor(false)
     }
+  }
+
+  // TopluDersAtamaPaneli'nden gelen [{ders, sayi}, ...] blok listesini,
+  // `sorular` dizisindeki (zaten okuma sırasında olan) kutulara sırayla
+  // dağıtır. Örn. [{ders:'Türkçe', sayi:40}, {ders:'Matematik', sayi:40}]
+  // verilirse, ilk 40 kutuya "Türkçe 1..40", sonraki 40'a "Matematik 1..40" yazılır.
+  function topluAta(bloklar) {
+    setSorular((liste) => {
+      let kalan = [...bloklar]
+      let mevcutBlok = kalan.shift()
+      let sayacBuBlokta = 0
+      return liste.map((s) => {
+        while (mevcutBlok && sayacBuBlokta >= mevcutBlok.sayi) {
+          mevcutBlok = kalan.shift()
+          sayacBuBlokta = 0
+        }
+        if (!mevcutBlok) return s
+        sayacBuBlokta += 1
+        return { ...s, ders_adi: mevcutBlok.ders, soru_no: sayacBuBlokta }
+      })
+    })
+    setBlokPaneliGoster(false)
+    setBasari('Toplu atama uygulandı. Şimdi sayfaları hızlıca gözden geçirip, varsa yanlış yerdeki nadir kutuları düzeltin.')
   }
 
   function soruGuncelle(gecici_id, alanlar) {
@@ -550,7 +698,15 @@ export default function SinavKitapciklari() {
         {!hata && basari && <p className="text-green-600 text-sm mt-3">{basari}</p>}
       </div>
 
-      {sorular.length > 0 && seciliSoru && (
+      {sorular.length > 0 && blokPaneliGoster && (
+        <TopluDersAtamaPaneli
+          toplamSoru={sorular.length}
+          onUygula={topluAta}
+          onVazgec={() => setBlokPaneliGoster(false)}
+        />
+      )}
+
+      {sorular.length > 0 && !blokPaneliGoster && seciliSoru && (
         <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5 mb-6">
           <div className="bg-blue/5 border border-blue/20 rounded-lg p-3 mb-4 text-sm text-gray-700 space-y-1">
             <p className="font-semibold text-navy">Nasıl kullanılır — her aday için tek tek:</p>
@@ -566,9 +722,18 @@ export default function SinavKitapciklari() {
             </p>
           </div>
           <div className="flex items-center justify-between flex-wrap gap-3 mb-4">
-            <p className="font-semibold text-gray-700">
-              Soru {seciliIndex + 1} / {sorular.length} — {tamamlananSayisi} tanesi dolduruldu
-            </p>
+            <div>
+              <p className="font-semibold text-gray-700">
+                Soru {seciliIndex + 1} / {sorular.length} — {tamamlananSayisi} tanesi dolduruldu
+              </p>
+              <button
+                type="button"
+                onClick={() => setBlokPaneliGoster(true)}
+                className="text-xs text-navy font-semibold hover:underline"
+              >
+                ↺ Toplu Ders Atamaya Dön
+              </button>
+            </div>
             <div className="flex gap-2">
               <button
                 type="button"
