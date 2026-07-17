@@ -106,7 +106,7 @@ function menuOlustur(rol) {
     return [
       { tur: 'link', to: '/', label: 'Ana Sayfa', end: true },
       { tur: 'link', to: '/program', label: 'Ders Programım' },
-      { tur: 'link', to: '/odev', label: 'Ödevler' },
+      { tur: 'link', to: '/odev', label: 'Ödevlerim' },
       { tur: 'link', to: '/karnem', label: 'Sınav Sonuçlarım' },
       { tur: 'link', to: '/sifremi-degistir', label: 'Şifremi Değiştir' },
     ]
