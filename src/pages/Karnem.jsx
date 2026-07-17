@@ -209,9 +209,12 @@ export default function Karnem() {
                       type="button"
                       onClick={(e) => { e.stopPropagation(); karnePdfIndir(s) }}
                       disabled={pdfIndiriliyorId === s.id}
-                      className="text-xs font-semibold text-navy border border-navy/20 px-3 py-1.5 rounded-full hover:bg-navy/5 disabled:opacity-40"
+                      className="inline-flex items-center gap-1.5 text-xs font-bold bg-navy text-white px-3.5 py-1.5 rounded-full shadow-sm hover:opacity-90 disabled:opacity-40"
                     >
-                      {pdfIndiriliyorId === s.id ? 'Açılıyor...' : 'Karne PDF İndir'}
+                      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M12 3v12m0 0l-4-4m4 4l4-4M4 20h16" />
+                      </svg>
+                      {pdfIndiriliyorId === s.id ? 'Açılıyor...' : 'Detaylı Karne İndir'}
                     </button>
                   )}
                 </div>
