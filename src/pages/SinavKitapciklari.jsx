@@ -347,6 +347,7 @@ export default function SinavKitapciklari() {
   const [sinavlar, setSinavlar] = useState([])
   const [kitapciklar, setKitapciklar] = useState([])
   const [silinenKitapcikId, setSilinenKitapcikId] = useState(null)
+  const [silinenSinavId, setSilinenSinavId] = useState(null)
   const [seciliSinavId, setSeciliSinavId] = useState('')
   const [yeniSinavAdi, setYeniSinavAdi] = useState('')
   const [yeniSinavTarihi, setYeniSinavTarihi] = useState('')
@@ -431,6 +432,57 @@ export default function SinavKitapciklari() {
       alert('Hata: ' + e.message)
     } finally {
       setSilinenKitapcikId(null)
+    }
+  }
+
+  // Bir SINAVIN KENDİSİNİ (ör. deneme amaçlı eklenmiş "1. tyt", "2" gibi
+  // test kayıtları) kalıcı olarak siler — kitapcikSil'in aksine bu, sınava
+  // bağlı HER ŞEYİ temizler: kitapçıklar (+ soru haritaları + Storage'daki
+  // PDF'ler) VE o sınava ait tüm öğrenci sonuçları (+ ders/soru detayları).
+  // Çok yıkıcı bir işlem olduğu için onay metninde tam olarak neyin
+  // silineceği açıkça yazıyor.
+  async function sinavSil(s) {
+    const buSinavinKitapciklari = kitapciklar.filter((k) => k.sinav_id === s.id)
+    if (
+      !confirm(
+        `"${s.sinav_adi}" sınavını kalıcı olarak silmek istediğinize emin misiniz?\n\n` +
+          `Bu, o sınava ait ${buSinavinKitapciklari.length} kitapçığı (soru haritalarıyla birlikte) VE bu sınava ` +
+          `girmiş tüm öğrencilerin kaydedilmiş sonuçlarını (karne/hata kitapçığı verileri dahil) da siler. ` +
+          `Bu işlem GERİ ALINAMAZ.`
+      )
+    )
+      return
+    setSilinenSinavId(s.id)
+    try {
+      // 1) Bu sınavın kitapçıkları: soru haritaları + Storage'daki PDF'ler + kitapçık satırları.
+      for (const k of buSinavinKitapciklari) {
+        await supabase.from('sinav_kitapcik_sorulari').delete().eq('kitapcik_id', k.id)
+        if (k.pdf_yolu) {
+          const { error: dosyaHatasi } = await supabase.storage.from('sinav-kitapciklari').remove([k.pdf_yolu])
+          if (dosyaHatasi) console.error('PDF dosyası silinemedi:', dosyaHatasi.message)
+        }
+      }
+      await supabase.from('sinav_kitapciklari').delete().eq('sinav_id', s.id)
+
+      // 2) Bu sınava girmiş öğrencilerin sonuçları: ders/soru detayları + sonuç satırları.
+      const { data: sonuclar } = await supabase.from('ogrenci_sinav_sonuclari').select('id').eq('sinav_id', s.id)
+      const sonucIdleri = (sonuclar || []).map((x) => x.id)
+      if (sonucIdleri.length > 0) {
+        await supabase.from('sinav_ders_sonuclari').delete().in('sonuc_id', sonucIdleri)
+        await supabase.from('sinav_soru_sonuclari').delete().in('sonuc_id', sonucIdleri)
+        await supabase.from('ogrenci_sinav_sonuclari').delete().in('id', sonucIdleri)
+      }
+
+      // 3) Sınavın kendisi.
+      const { error } = await supabase.from('sinavlar').delete().eq('id', s.id)
+      if (error) throw error
+
+      veriyiYenile()
+      if (seciliSinavId === s.id) setSeciliSinavId('')
+    } catch (e) {
+      alert('Hata: ' + e.message)
+    } finally {
+      setSilinenSinavId(null)
     }
   }
 
@@ -1051,6 +1103,46 @@ export default function SinavKitapciklari() {
           >
             Düzenlemeyi İptal Et
           </button>
+        </div>
+      )}
+
+      {sinavlar.length > 0 && (
+        <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-x-auto mb-6">
+          <div className="px-4 py-3 border-b border-gray-100 bg-gray-50">
+            <h2 className="font-semibold text-gray-700">Sınavlar</h2>
+            <p className="text-xs text-gray-400 mt-0.5">
+              Yanlışlıkla ya da deneme amaçlı eklenmiş bir sınavı buradan silebilirsiniz — o sınava ait TÜM
+              kitapçıklar ve öğrenci sonuçları da birlikte silinir.
+            </p>
+          </div>
+          <table className="w-full text-sm min-w-[400px]">
+            <thead>
+              <tr className="text-left text-gray-500">
+                <th className="px-4 py-2 font-medium">Sınav</th>
+                <th className="px-4 py-2 font-medium">Tarih</th>
+                <th className="px-4 py-2 font-medium text-right">İşlemler</th>
+              </tr>
+            </thead>
+            <tbody>
+              {sinavlar.map((s) => (
+                <tr key={s.id} className="border-t border-gray-50">
+                  <td className="px-4 py-2 font-medium text-gray-800">{s.sinav_adi}</td>
+                  <td className="px-4 py-2 text-gray-500">
+                    {s.sinav_tarihi ? new Date(s.sinav_tarihi).toLocaleDateString('tr-TR') : '—'}
+                  </td>
+                  <td className="px-4 py-2 text-right">
+                    <button
+                      onClick={() => sinavSil(s)}
+                      disabled={silinenSinavId === s.id}
+                      className="text-red-500 text-sm hover:underline disabled:opacity-50"
+                    >
+                      {silinenSinavId === s.id ? 'Siliniyor...' : 'Sil'}
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
       )}
 
