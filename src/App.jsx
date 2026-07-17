@@ -28,7 +28,6 @@ import Sozlesme from './pages/Sozlesme'
 import SifreSifirla from './pages/SifreSifirla'
 import SifremiDegistir from './pages/SifremiDegistir'
 import Odev from './pages/Odev'
-import Kaynaklar from './pages/Kaynaklar'
 import OgrenciZamanCizelgesi from './pages/OgrenciZamanCizelgesi'
 import YedekAl from './pages/YedekAl'
 import ZilSistemi from './pages/ZilSistemi'
@@ -260,14 +259,6 @@ function AnaUygulama() {
             element={
               <Korumali izinliRoller={['yonetici', 'ogretmen', 'veli', 'ogrenci']}>
                 <Odev />
-              </Korumali>
-            }
-          />
-          <Route
-            path="kaynaklar"
-            element={
-              <Korumali izinliRoller={['yonetici', 'ogretmen', 'veli', 'ogrenci']}>
-                <Kaynaklar />
               </Korumali>
             }
           />
