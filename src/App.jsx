@@ -23,6 +23,7 @@ import KullaniciOlustur from './pages/KullaniciOlustur'
 import Kantin from './pages/Kantin'
 import SinavKitapciklari from './pages/SinavKitapciklari'
 import SinavYukle from './pages/SinavYukle'
+import SinavSonuclari from './pages/SinavSonuclari'
 import HataKitapcigi from './pages/HataKitapcigi'
 import Karnem from './pages/Karnem'
 import Sozlesme from './pages/Sozlesme'
@@ -292,6 +293,14 @@ function AnaUygulama() {
             element={
               <Korumali izinliRoller={['yonetici']}>
                 <SinavYukle />
+              </Korumali>
+            }
+          />
+          <Route
+            path="sinav-sonuclari"
+            element={
+              <Korumali izinliRoller={['yonetici']}>
+                <SinavSonuclari />
               </Korumali>
             }
           />
