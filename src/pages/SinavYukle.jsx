@@ -1,7 +1,8 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { sinavSonucPdfIndenTumOgrencileriCikar } from '../lib/sinavPdfParse'
+import { ilkHarfleriBuyukYap } from '../lib/adSoyadFormat'
 
 // Bir sınavı giren TÜM öğrencilerin sonuç PDF'lerini TEK SEFERDE yükleyip
 // otomatik ayrıştırmayı sağlayan sayfa. Okulun tarama/analiz yazılımı "tüm
@@ -31,6 +32,19 @@ export default function SinavYukle() {
     }
   })
   const [ogrenciler, setOgrenciler] = useState([])
+  // "+ Yeni sınav ekle" seçildiğinde kullanılan alanlar — artık kitapçık
+  // yüklenmeden ÖNCE de sonuç PDF'leri yüklenip yeni bir sınav
+  // oluşturulabiliyor (kitapçık sonradan "Sınav Kitapçıkları" sayfasından
+  // AYNI sınava eklenebilir).
+  const [yeniSinavAdi, setYeniSinavAdi] = useState('')
+  const [yeniSinavTarihi, setYeniSinavTarihi] = useState('')
+  // "+ Yeni sınav ekle" ile bir toplu kaydetme sırasında (hepsiniKaydet)
+  // sınav SADECE BİR KEZ oluşturulsun diye — satirKaydet her satır için ayrı
+  // ayrı çağrıldığında React'in "stale closure" davranışı yüzünden
+  // seciliSinavId state'i loop içinde hemen güncellenmiş gibi GÖRÜNMEYEBİLİR,
+  // bu yüzden gerçek oluşturma işlemini bu ref üzerinden TEK SEFERLİK
+  // (paylaşılan bir Promise ile) yapıyoruz.
+  const yeniSinavOlusturmaRef = useRef(null)
   const [satirlar, setSatirlar] = useState(() => {
     try {
       const kayitli = localStorage.getItem(SATIRLAR_ANAHTARI)
@@ -78,6 +92,75 @@ export default function SinavYukle() {
     kayitliSonuclariYukle(seciliSinavId)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [seciliSinavId])
+
+  // PDF'ten çıkan sınav adını (veri.sinavAdi — parser bunu sayfa 1'in üst
+  // bilgisinden zaten çıkarıyor) mevcut sınavlar listesiyle eşleştirmeye
+  // çalışır. SADECE TAM eşleşme varsa otomatik seçiyoruz — admin'in "Sınav
+  // Kitapçıkları"nda kitapçığa verdiği kısa isim (ör. "2") ile PDF'teki uzun
+  // resmi isim çoğu zaman BİREBİR aynı olmayacağı için, emin olamadığımızda
+  // YANLIŞ bir sınavla eşleştirip Hata Kitapçığı bağlantısını (kitapçık↔sonuç
+  // sinav_id'si) bozmak yerine elle seçime bırakıyoruz. Eşleşme yoksa, en
+  // azından "+ Yeni sınav ekle" seçilirse admin hiç yazmasın diye PDF'teki
+  // ismi "Yeni Sınav Adı" alanına hazır dolduruyoruz (yine de admin'in elle
+  // seçim/onay yapması gerekiyor, sessizce bir sınav OLUŞTURMUYORUZ).
+  useEffect(() => {
+    const aday = satirlar.find((s) => s.durum !== 'ayikliyor' && s.veri?.sinavAdi)
+    if (!aday) return
+    // Henüz hiçbir seçim yapılmamışsa (admin elle "+ Yeni sınav ekle"yi
+    // seçmediyse) tam eşleşme dener.
+    if (!seciliSinavId) {
+      const normalize = (s) => (s || '').toLocaleLowerCase('tr-TR').replace(/\s+/g, ' ').trim()
+      const hedef = normalize(aday.veri.sinavAdi)
+      const eslesen = sinavlar.find((sn) => normalize(sn.sinav_adi) === hedef)
+      if (eslesen) {
+        setSeciliSinavId(eslesen.id)
+        return
+      }
+    }
+    // "+ Yeni sınav ekle" seçili ama isim alanı hâlâ boşsa (elle seçilmiş ya
+    // da localStorage'dan geri gelmiş olabilir) PDF'teki adla dolduruyoruz.
+    if (seciliSinavId === '__yeni__' && !yeniSinavAdi.trim()) {
+      setYeniSinavAdi(aday.veri.sinavAdi)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [satirlar, sinavlar, seciliSinavId])
+
+  // "+ Yeni sınav ekle" seçiliyken gerçek sinav_id'yi çözer: daha önce
+  // oluşturulduysa (bu oturumda) onu, değilse yeni bir sınav satırı ekleyip
+  // onu döner. yeniSinavOlusturmaRef ile bu işlemin TOPLU KAYDETME sırasında
+  // (hepsiniKaydet → her satır için satirKaydet) sadece BİR KEZ çalışmasını
+  // garanti ediyoruz — aksi halde React'in "stale closure" davranışı yüzünden
+  // her satır ayrı bir sınav oluşturabilirdi.
+  async function sinavIdCozumle() {
+    if (seciliSinavId && seciliSinavId !== '__yeni__') return seciliSinavId
+    if (yeniSinavOlusturmaRef.current) return yeniSinavOlusturmaRef.current
+    const p = (async () => {
+      const temizAd = ilkHarfleriBuyukYap(yeniSinavAdi.trim())
+      const { data, error } = await supabase
+        .from('sinavlar')
+        .insert({ sinav_adi: temizAd, sinav_tarihi: yeniSinavTarihi || null })
+        .select()
+        .single()
+      let sinavRow = data
+      if (error && error.code === '23505') {
+        // Bu isimde bir sınav zaten var — hata vermek yerine var olanı bulup ONA kaydediyoruz.
+        const { data: mevcutSinav, error: bulmaHatasi } = await supabase
+          .from('sinavlar')
+          .select('*')
+          .eq('sinav_adi', temizAd)
+          .single()
+        if (bulmaHatasi || !mevcutSinav) throw error
+        sinavRow = mevcutSinav
+      } else if (error) {
+        throw error
+      }
+      setSeciliSinavId(sinavRow.id)
+      setSinavlar((liste) => (liste.some((s) => s.id === sinavRow.id) ? liste : [sinavRow, ...liste]))
+      return sinavRow.id
+    })()
+    yeniSinavOlusturmaRef.current = p
+    return p
+  }
 
   // Kaydedilmiş bir sonucu (ör. deneme/test amaçlı yüklenmiş, yanlış öğrenciye
   // bağlanmış vb.) kalıcı olarak siler — önce ona bağlı ders/soru detaylarını,
@@ -193,19 +276,24 @@ export default function SinavYukle() {
       satirGuncelle(satir.id, { durum: 'hata', hata: 'Önce üstten bu sonuçların ait olduğu sınavı seçin.' })
       return
     }
+    if (seciliSinavId === '__yeni__' && !yeniSinavAdi.trim()) {
+      satirGuncelle(satir.id, { durum: 'hata', hata: 'Yeni sınavın adını girin.' })
+      return
+    }
     if (!satir.ogrenciId) {
       satirGuncelle(satir.id, { durum: 'hata', hata: 'Bu PDF için bir öğrenci seçilmedi.' })
       return
     }
     satirGuncelle(satir.id, { durum: 'kaydediliyor', hata: '' })
     try {
+      const sinavId = await sinavIdCozumle()
       const veri = satir.veri
       const { data: sonucVerisi, error: sonucHatasi } = await supabase
         .from('ogrenci_sinav_sonuclari')
         .upsert(
           {
             ogrenci_id: satir.ogrenciId,
-            sinav_id: seciliSinavId,
+            sinav_id: sinavId,
             kitapcik: veri.kitapcik || null,
             toplam_soru: veri.ozet.toplamSoru,
             toplam_dogru: veri.ozet.toplamDogru,
@@ -256,7 +344,7 @@ export default function SinavYukle() {
       }
 
       satirGuncelle(satir.id, { durum: 'kaydedildi', kaydedildi: true, sonucId: sonucVerisi.id })
-      kayitliSonuclariYukle(seciliSinavId)
+      kayitliSonuclariYukle(sinavId)
     } catch (e) {
       satirGuncelle(satir.id, { durum: 'hata', hata: 'Kayıt hatası: ' + e.message })
     }
@@ -304,19 +392,49 @@ export default function SinavYukle() {
             <label className="block text-sm font-medium text-gray-700 mb-1">Bu sonuçlar hangi sınava ait?</label>
             <select
               value={seciliSinavId}
-              onChange={(e) => setSeciliSinavId(e.target.value)}
+              onChange={(e) => {
+                const deger = e.target.value
+                // "+ Yeni sınav ekle" ELLE yeniden seçilirse, önceki bir
+                // toplu kaydetmeden kalmış olabilecek (farklı bir sınava ait)
+                // önbelleği sıfırlıyoruz — yoksa yanlışlıkla ESKİ sınava kaydedebilir.
+                if (deger === '__yeni__') yeniSinavOlusturmaRef.current = null
+                setSeciliSinavId(deger)
+              }}
               className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue bg-white"
             >
               <option value="">Seçiniz...</option>
+              <option value="__yeni__">+ Yeni sınav ekle</option>
               {sinavlar.map((s) => (
                 <option key={s.id} value={s.id}>{s.sinav_adi}</option>
               ))}
             </select>
             {sinavlar.length === 0 && (
               <p className="text-xs text-gray-400 mt-1">
-                Henüz kayıtlı sınav yok — önce "Sınav Kitapçıkları" sayfasından bir kitapçık kaydedin, sınav orada
-                otomatik oluşur.
+                Henüz kayıtlı sınav yok — "+ Yeni sınav ekle"yi seçip sonuçları kaydedebilirsiniz, kitapçığı daha
+                sonra "Sınav Kitapçıkları" sayfasından AYNI sınava ekleyebilirsiniz.
               </p>
+            )}
+            {seciliSinavId === '__yeni__' && (
+              <div className="flex flex-wrap gap-3 items-end mt-2 bg-gray-50 border border-gray-100 rounded-lg p-3">
+                <div className="flex-1 min-w-[180px]">
+                  <label className="block text-xs font-medium text-gray-500 mb-1">Yeni Sınav Adı</label>
+                  <input
+                    value={yeniSinavAdi}
+                    onChange={(e) => setYeniSinavAdi(e.target.value)}
+                    placeholder="örn. 2. TYT Denemesi"
+                    className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue"
+                  />
+                </div>
+                <div className="min-w-[140px]">
+                  <label className="block text-xs font-medium text-gray-500 mb-1">Tarih (opsiyonel)</label>
+                  <input
+                    type="date"
+                    value={yeniSinavTarihi}
+                    onChange={(e) => setYeniSinavTarihi(e.target.value)}
+                    className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue"
+                  />
+                </div>
+              </div>
             )}
           </div>
           <div className="flex-1 min-w-[240px]">
@@ -493,7 +611,7 @@ export default function SinavYukle() {
                       <button
                         type="button"
                         onClick={() => satirKaydet(s)}
-                        disabled={!s.ogrenciId || !seciliSinavId}
+                        disabled={!s.ogrenciId || !seciliSinavId || (seciliSinavId === '__yeni__' && !yeniSinavAdi.trim())}
                         className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-navy text-white hover:opacity-90 disabled:opacity-40"
                       >
                         Kaydet
