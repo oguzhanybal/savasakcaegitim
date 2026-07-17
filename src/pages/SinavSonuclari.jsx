@@ -18,6 +18,14 @@ function dersSiraPuani(dersAdi) {
   return i === -1 ? 999 : i
 }
 
+// Net/puan gibi ondalıklı değerler PDF'te HER ZAMAN 2 basamaklı gösterilir
+// (ör. "58,50") — JS bu tür sayılarda sondaki sıfırı otomatik düşürdüğü için
+// (58.50 → 58.5) gösterirken her zaman 2 ondalık basamağa sabitliyoruz, PDF
+// ile ekran birebir aynı görünsün diye.
+function netFormat(n) {
+  return n == null ? '-' : Number(n).toFixed(2)
+}
+
 export default function SinavSonuclari() {
   const [sinavlar, setSinavlar] = useState([])
   const [seciliSinavId, setSeciliSinavId] = useState('')
@@ -175,14 +183,14 @@ export default function SinavSonuclari() {
                       <p className="text-xs text-gray-500">
                         Genel — Doğru: <b className="text-green-700">{k.toplam_dogru}</b> · Yanlış:{' '}
                         <b className="text-red-700">{k.toplam_yanlis}</b> · Boş: <b className="text-gray-500">{k.toplam_bos}</b> ·
-                        Net: <b className="text-navy">{k.toplam_net}</b>
+                        Net: <b className="text-navy">{netFormat(k.toplam_net)}</b>
                       </p>
                       {k.puanlar && k.puanlar.length > 0 && (
                         <p className="text-xs text-orange font-medium mt-0.5">
                           {k.puanlar
                             .map(
                               (p) =>
-                                `${p.puan_turu} Puan: ${p.puan ?? '-'}` +
+                                `${p.puan_turu} Puan: ${netFormat(p.puan)}` +
                                 (p.genel_siralama != null ? ` · Genel Sıralama: ${p.genel_siralama.toLocaleString('tr-TR')}` : '') +
                                 (p.kurum_siralama != null ? ` · Kurum: ${p.kurum_siralama}` : '') +
                                 (p.sube_siralama != null ? ` · Şube: ${p.sube_siralama}` : '') +
@@ -249,7 +257,7 @@ export default function SinavSonuclari() {
                               <td className="text-right py-1 px-2 text-green-700">{d.dogru}</td>
                               <td className="text-right py-1 px-2 text-red-700">{d.yanlis}</td>
                               <td className="text-right py-1 px-2 text-gray-500">{d.bos}</td>
-                              <td className="text-right py-1 pl-2 text-navy font-semibold">{d.net}</td>
+                              <td className="text-right py-1 pl-2 text-navy font-semibold">{netFormat(d.net)}</td>
                             </tr>
                           ))}
                         </tbody>

@@ -36,6 +36,13 @@ function dersSiraPuani(dersAdi) {
   return i === -1 ? 999 : i
 }
 
+// Net gibi ondalıklı değerler PDF'te HER ZAMAN 2 basamaklı gösterilir (ör.
+// "58,50") — JS bu sayılarda sondaki sıfırı otomatik düşürdüğü için (58.50 →
+// 58.5) gösterirken her zaman 2 ondalık basamağa sabitliyoruz.
+function netFormat(n) {
+  return n == null ? '-' : Number(n).toFixed(2)
+}
+
 export default function SinavYukle() {
   const [sinavlar, setSinavlar] = useState([])
   const [seciliSinavId, setSeciliSinavId] = useState(() => {
@@ -595,7 +602,7 @@ export default function SinavYukle() {
                       <span>Doğru: <b className="text-green-700">{s.veri.ozet.toplamDogru}</b></span>
                       <span>Yanlış: <b className="text-red-700">{s.veri.ozet.toplamYanlis}</b></span>
                       <span>Boş: <b className="text-gray-500">{s.veri.ozet.toplamBos}</b></span>
-                      <span>Net: <b className="text-navy">{s.veri.ozet.toplamNet}</b></span>
+                      <span>Net: <b className="text-navy">{netFormat(s.veri.ozet.toplamNet)}</b></span>
                     </div>
 
                     <div className="flex gap-2 ml-auto">

@@ -19,6 +19,16 @@ function dersSiraPuani(dersAdi) {
   return i === -1 ? 999 : i
 }
 
+// Net/puan gibi ondalıklı değerler PDF'te HER ZAMAN 2 basamaklı gösterilir
+// (ör. "58,50") — JS'te bu tür sayıları olduğu gibi tutarsak sondaki sıfır
+// otomatik düşer (58.50 → 58.5) ve karne ile ekrandaki sayı görsel olarak
+// farklı görünür. Bu yüzden gösterirken her zaman 2 ondalık basamağa
+// yuvarlayıp öyle yazdırıyoruz — hesaplanan değer aynı, sadece görünüm PDF'teki
+// gibi sabit 2 basamaklı oluyor.
+function netFormat(n) {
+  return n == null ? '-' : Number(n).toFixed(2)
+}
+
 // Öğrenci/veli için "kendi sınav sonuçlarını görme" sayfası — SinavYukle.jsx'te
 // yöneticinin kaydettiği ogrenci_sinav_sonuclari + sinav_ders_sonuclari
 // verilerini, admin panelinden ayrı, sade bir "karne" görünümünde gösterir.
@@ -216,7 +226,7 @@ export default function Karnem() {
                       Boş: <b className="text-gray-500">{s.toplam_bos}</b>
                     </span>
                     <span>
-                      Net: <b className="text-navy">{s.toplam_net}</b>
+                      Net: <b className="text-navy">{netFormat(s.toplam_net)}</b>
                     </span>
                   </div>
                   {s.karne_pdf_yolu && (
@@ -249,7 +259,7 @@ export default function Karnem() {
                 <div className="px-5 py-3 bg-orange/5 border-b border-orange/10 flex flex-wrap gap-x-6 gap-y-1">
                   {s.puanlar.map((p) => (
                     <div key={p.id} className="text-sm">
-                      <span className="font-semibold text-orange">{p.puan_turu} Puan: {p.puan ?? '-'}</span>
+                      <span className="font-semibold text-orange">{p.puan_turu} Puan: {netFormat(p.puan)}</span>
                       {p.genel_siralama != null && (
                         <span className="text-gray-600"> · Genel Sıralama: <b>{p.genel_siralama.toLocaleString('tr-TR')}</b></span>
                       )}
@@ -281,7 +291,7 @@ export default function Karnem() {
                           <td className="px-5 py-2 text-center text-green-700">{d.dogru}</td>
                           <td className="px-5 py-2 text-center text-red-700">{d.yanlis}</td>
                           <td className="px-5 py-2 text-center text-gray-500">{d.bos}</td>
-                          <td className="px-5 py-2 text-center font-semibold text-navy">{d.net}</td>
+                          <td className="px-5 py-2 text-center font-semibold text-navy">{netFormat(d.net)}</td>
                         </tr>
                       ))}
                     </tbody>
