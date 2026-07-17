@@ -173,7 +173,7 @@ function NoktaIsaretlemeKatmani({ sayfaGoruntusu, buSayfadakiNoktalar, onNoktaEk
 // hepsine birden otomatik dağıtır. Admin'e sadece İSTİSNALARI (yanlış yerdeki
 // birkaç kutu) tek tek düzeltmek kalır.
 // ============================================================================
-function TopluDersAtamaPaneli({ toplamSoru, onUygula, onVazgec }) {
+function TopluDersAtamaPaneli({ toplamSoru, onUygula, onVazgec, onGeriDon }) {
   const [bloklar, setBloklar] = useState([{ id: 1, ders: '', sayi: '' }])
 
   const toplamGirilen = bloklar.reduce((t, b) => t + (Number(b.sayi) || 0), 0)
@@ -202,6 +202,13 @@ function TopluDersAtamaPaneli({ toplamSoru, onUygula, onVazgec }) {
         sona). Her birini tek tek doldurmak yerine, hangi dersten kaç soru olduğunu aşağıya sırayla yazın —
         sistem hepsine otomatik ders adı ve soru numarası verecek. Sonra sadece nadir hatalı kutuları tek tek
         düzeltirsiniz.
+      </p>
+      <p className="text-xs text-orange bg-orange/10 border border-orange/20 rounded-lg px-3 py-2 mb-4">
+        Önemli: "Sosyal" ve "Fen" bloklarını TEK satırda toplamayın — sonuç karnesindeki Konu Analizi tablosu
+        bunları ayrı ayrı sayar (Tarih, Coğrafya, Felsefe, Din Kültürü / Fizik, Kimya, Biyoloji), her biri kendi
+        içinde 1'den başlar. Hata kitapçığı oluşturulurken ders adı BİREBİR eşleşmesi gerektiği için, buraya da
+        aynı ayrı ders adlarını (ör. Tarih: 5, Coğrafya: 5, Felsefe: 5, Din Kültürü: 5, Fizik: 7, Kimya: 7,
+        Biyoloji: 6) girin — yazarken önerilerden seçebilirsiniz.
       </p>
 
       <div className="space-y-2 mb-3">
@@ -253,6 +260,15 @@ function TopluDersAtamaPaneli({ toplamSoru, onUygula, onVazgec }) {
           >
             Toplam: {toplamGirilen} / {toplamSoru} soru
           </span>
+          {onGeriDon && (
+            <button
+              type="button"
+              onClick={onGeriDon}
+              className="text-xs text-orange font-semibold hover:underline"
+            >
+              ↺ Soru Noktalarına Dön (Eksik Soru Ekle)
+            </button>
+          )}
         </div>
         <div className="flex gap-2">
           <button
@@ -292,6 +308,15 @@ export default function SinavKitapciklari() {
   const [kitapcikTuru, setKitapcikTuru] = useState('A')
   const [dosya, setDosya] = useState(null)
 
+  // Zaten kaydedilmiş bir kitapçığı DÜZENLEME modunda mı çalışıyoruz —
+  // doluysa kaydet() PDF'i yeniden yüklemek yerine mevcut pdf_yolu'nu
+  // kullanır (admin sadece ders adı/soru no gibi hataları düzeltiyor,
+  // dosyanın kendisi değişmiyor).
+  const [duzenlenenKitapcik, setDuzenlenenKitapcik] = useState(null)
+  // Hangi kitapçığın (id'si) şu an açılmakta olduğu — sadece o satırdaki
+  // "Düzenle" butonunu "Açılıyor..." göstermek için kullanılıyor.
+  const [duzenlemeYukleniyorId, setDuzenlemeYukleniyorId] = useState(null)
+
   const [analizEdiliyor, setAnalizEdiliyor] = useState(false)
   const [analizDurumu, setAnalizDurumu] = useState('')
   const [sayfaGoruntuleri, setSayfaGoruntuleri] = useState([])
@@ -309,6 +334,12 @@ export default function SinavKitapciklari() {
   const [elleIsaretlemeModu, setElleIsaretlemeModu] = useState(false)
   const [elleNoktalar, setElleNoktalar] = useState([])
   const [elleSayfaIndex, setElleSayfaIndex] = useState(0)
+
+  // Sayfaların hangi ölçekte (kaç kat) görüntüye çevrildiği — OCR modu 3,
+  // Hızlı Elle İşaretleme modu 2 kullanıyor. Kaydederken sinav_kitapciklari.olcek
+  // sütununa yazılır; hata kitapçığı oluşturma ekranı sayfayı doğru kesebilmek
+  // için sayfayı AYNI ölçekte tekrar üretmek zorunda, bu yüzden saklanması şart.
+  const [kullanilanOlcek, setKullanilanOlcek] = useState(null)
 
   const [kaydediliyor, setKaydediliyor] = useState(false)
   const [hata, setHata] = useState('')
@@ -356,6 +387,110 @@ export default function SinavKitapciklari() {
     } finally {
       setSilinenKitapcikId(null)
     }
+  }
+
+  // Daha önce kaydedilmiş bir kitapçığı DÜZENLEMEK için açar: kayıtlı PDF'i
+  // Storage'dan indirip kaydedildiği ÖLÇEKTE (sinav_kitapciklari.olcek —
+  // eski kayıtlarda bu sütun yoksa/boşsa varsayılan 3, çünkü eski kayıtlar
+  // hep OCR ile yapılıyordu) tekrar görüntüye çevirir, mevcut soru haritasını
+  // (sinav_kitapcik_sorulari) tek tek düzenleme ekranına yükler. Admin
+  // sadece hatalı ders adı/soru no'ları düzeltip tekrar kaydeder — 125
+  // soruyu yeniden tıklamasına gerek kalmaz.
+  async function kitapcikDuzenle(k) {
+    setHata('')
+    setBasari('')
+    setDuzenlemeYukleniyorId(k.id)
+    try {
+      const { data: pdfBlobu, error: indirmeHatasi } = await supabase.storage
+        .from('sinav-kitapciklari')
+        .download(k.pdf_yolu)
+      if (indirmeHatasi) throw indirmeHatasi
+
+      // NOT: BURADA ders_adi/soru_no'ya göre değil, FİZİKSEL OKUMA SIRASINA
+      // göre sıralıyoruz (sayfa → sütun → yukarıdan aşağı). Sebep: admin
+      // düzenleme ekranında "Toplu Ders Ataması"nı TEKRAR çalıştırabilsin
+      // istiyoruz (topluAta() `sorular` dizisini SIRAYLA dolduruyor) — eğer
+      // burada ders_adi'ye göre alfabetik sıralasaydık, toplu atama fiziksel
+      // sayfa sırasıyla UYUŞMAYAN bir sıraya soru no/ders adı yazardı.
+      const { data: mevcutSorular, error: soruHatasi } = await supabase
+        .from('sinav_kitapcik_sorulari')
+        .select('*')
+        .eq('kitapcik_id', k.id)
+      if (soruHatasi) throw soruHatasi
+
+      const olcek = Number(k.olcek) || 3
+      const belge = await pdfBelgesiAc(pdfBlobu)
+      const sayfaSayisi = belge.numPages
+      const goruntuler = []
+      for (let s = 1; s <= sayfaSayisi; s++) {
+        setAnalizDurumu(`Sayfa ${s}/${sayfaSayisi} açılıyor...`)
+        const { dataUrl, genislik, yukseklik } = await sayfayiGoruntuyeCevir(belge, s, olcek)
+        goruntuler.push({ sayfaNo: s, dataUrl, genislik, yukseklik })
+      }
+      const genislikMap = new Map(goruntuler.map((g) => [g.sayfaNo, g.genislik]))
+
+      const fizikselSirali = (mevcutSorular || [])
+        .slice()
+        .sort((a, b) => {
+          if (a.sayfa_no !== b.sayfa_no) return a.sayfa_no - b.sayfa_no
+          const genislikA = genislikMap.get(a.sayfa_no) || 0
+          const sutunA = Number(a.x) < genislikA / 2 ? 0 : 1
+          const sutunB = Number(b.x) < genislikA / 2 ? 0 : 1
+          if (sutunA !== sutunB) return sutunA - sutunB
+          return Number(a.y) - Number(b.y)
+        })
+
+      setSayfaGoruntuleri(goruntuler)
+      setSorular(
+        fizikselSirali.map((s) => ({
+          gecici_id: s.id,
+          ders_adi: s.ders_adi || '',
+          soru_no: s.soru_no,
+          sayfa_no: s.sayfa_no,
+          x: Number(s.x),
+          y: Number(s.y),
+          genislik: Number(s.genislik),
+          yukseklik: Number(s.yukseklik),
+        }))
+      )
+      setSeciliIndex(0)
+      setKullanilanOlcek(olcek)
+      setElleNoktalar([])
+      setElleIsaretlemeModu(false)
+      // Doğrudan Toplu Ders Ataması paneline açıyoruz — soru KUTULARI zaten
+      // fiziksel sırayla hazır, admin genelde "Sosyal"/"Fen" gibi hatalı
+      // lump'lanmış dersleri hızlıca Tarih/Coğrafya/... gibi ayrı bloklara
+      // bölüp TEK SEFERDE düzeltmek istiyor — 125 soruyu tek tek açıp
+      // düzeltmesine gerek yok. İsterse "Bunu atla, tek tek gireceğim" ile
+      // yine tek tek düzenleme ekranına geçebilir.
+      setBlokPaneliGoster(true)
+      setCizimModu(false)
+      setDosya(null)
+      setSeciliSinavId(k.sinav_id)
+      setKitapcikTuru(k.kitapcik)
+      setDuzenlenenKitapcik({ id: k.id, pdf_yolu: k.pdf_yolu, sinav_id: k.sinav_id })
+      setAnalizDurumu('')
+      setBasari(
+        `"${k.sinavlar?.sinav_adi || 'Kitapçık'}" — ${k.kitapcik} kitapçığı düzenleme için açıldı (${
+          (mevcutSorular || []).length
+        } soru, fiziksel sayfa sırasına göre dizildi). Aşağıdan Toplu Ders Ataması ile hızlıca yeniden atayabilir ya da ` +
+          `"Bunu atla, tek tek gireceğim" deyip tek tek düzeltebilirsiniz. Dosyanın kendisi yeniden yüklenmeyecek.`
+      )
+      window.scrollTo({ top: window.innerHeight, behavior: 'smooth' })
+    } catch (e) {
+      setHata('Düzenleme için açılamadı: ' + e.message)
+    } finally {
+      setDuzenlemeYukleniyorId(null)
+    }
+  }
+
+  function duzenlemeyiIptalEt() {
+    setDuzenlenenKitapcik(null)
+    setSayfaGoruntuleri([])
+    setSorular([])
+    setKullanilanOlcek(null)
+    setSeciliSinavId('')
+    setDosya(null)
   }
 
   useEffect(() => {
@@ -429,6 +564,7 @@ export default function SinavKitapciklari() {
     setSayfaGoruntuleri([])
     setSorular([])
     setElleNoktalar([])
+    setKullanilanOlcek(2)
     try {
       setAnalizDurumu('PDF açılıyor...')
       const belge = await pdfBelgesiAc(dosya)
@@ -452,6 +588,33 @@ export default function SinavKitapciklari() {
 
   function elleNoktaEkle(sayfaNo, nokta) {
     setElleNoktalar((liste) => [...liste, { sayfaNo, x: nokta.x, y: nokta.y }])
+  }
+
+  // Admin, kutulara çevirip ders adı/soru no doldurmaya başladıktan SONRA
+  // aslında bazı soruları hiç işaretlemediğini fark edebilir (ör. "8 soru
+  // işaretledim ama testte 40 soru var"). Bu fonksiyon, ÖNCEDEN tıklanan
+  // noktaları KORUYARAK (elleNoktalar silinmiyor) tekrar işaretleme moduna
+  // dönmeyi sağlıyor — admin eksik soruları ekleyip "Tamamla → Kutulara Çevir"e
+  // tekrar basabilir. Kutulara çevirme İŞLEMİ TÜM noktaları sıfırdan kutuya
+  // çevirdiği için, o ana kadar tek tek girilmiş ders adı/soru no bilgileri
+  // sıfırlanır — bu yüzden önceden doldurulmuş bir şey varsa admin'i uyarıyoruz.
+  function elleIsaretlemeyeGeriDon() {
+    const doldurulmusVarMi = sorular.some((s) => s.ders_adi && s.ders_adi.trim())
+    if (
+      doldurulmusVarMi &&
+      !confirm(
+        'Soru noktalarına dönüp yeni nokta eklersen, "Kutulara Çevir"e tekrar bastığında şu ana kadar girdiğin ' +
+          'ders adı / soru no bilgileri sıfırlanır (hepsi yeniden boş kutu olarak gelir, Toplu Ders Ataması ile ' +
+          'tekrar hızlıca doldurabilirsin). Devam edilsin mi?'
+      )
+    ) {
+      return
+    }
+    const sonNokta = elleNoktalar[elleNoktalar.length - 1]
+    const hedefIndex = sonNokta ? sayfaGoruntuleri.findIndex((g) => g.sayfaNo === sonNokta.sayfaNo) : 0
+    setElleSayfaIndex(hedefIndex === -1 ? 0 : hedefIndex)
+    setElleIsaretlemeModu(true)
+    setBlokPaneliGoster(false)
   }
 
   function elleSonNoktayiGeriAl() {
@@ -525,6 +688,7 @@ export default function SinavKitapciklari() {
     setAnalizEdiliyor(true)
     setSayfaGoruntuleri([])
     setSorular([])
+    setKullanilanOlcek(3)
     try {
       setAnalizDurumu('PDF açılıyor...')
       const belge = await pdfBelgesiAc(dosya)
@@ -712,16 +876,33 @@ export default function SinavKitapciklari() {
         }
       }
 
-      const dosyaYolu = `${sinavId}/${kitapcikTuru}-${Date.now()}.pdf`
-      const { error: yuklemeHatasi } = await supabase.storage
-        .from('sinav-kitapciklari')
-        .upload(dosyaYolu, dosya, { contentType: 'application/pdf' })
-      if (yuklemeHatasi) throw yuklemeHatasi
+      // Düzenleme modunda (mevcut bir kitapçığı düzeltiyorsak) ve admin YENİ
+      // bir dosya seçmediyse, PDF'i tekrar yüklemeye gerek yok — zaten
+      // Storage'da duran dosyanın yolunu (pdf_yolu) aynen koruyoruz. Sadece
+      // yeni PDF seçilmişse (ör. yanlış dosya yüklenmiş, düzeltiliyor) gerçek
+      // bir yükleme yapılır.
+      let dosyaYolu = duzenlenenKitapcik?.pdf_yolu || null
+      if (dosya) {
+        dosyaYolu = `${sinavId}/${kitapcikTuru}-${Date.now()}.pdf`
+        const { error: yuklemeHatasi } = await supabase.storage
+          .from('sinav-kitapciklari')
+          .upload(dosyaYolu, dosya, { contentType: 'application/pdf' })
+        if (yuklemeHatasi) throw yuklemeHatasi
+      } else if (!dosyaYolu) {
+        throw new Error('Lütfen bir PDF seçin.')
+      }
 
       const { data: kitapcikVerisi, error: kitapcikHatasi } = await supabase
         .from('sinav_kitapciklari')
         .upsert(
-          { sinav_id: sinavId, kitapcik: kitapcikTuru, pdf_yolu: dosyaYolu, sayfa_sayisi: sayfaGoruntuleri.length, onaylandi: true },
+          {
+            sinav_id: sinavId,
+            kitapcik: kitapcikTuru,
+            pdf_yolu: dosyaYolu,
+            sayfa_sayisi: sayfaGoruntuleri.length,
+            onaylandi: true,
+            olcek: kullanilanOlcek || 3,
+          },
           { onConflict: 'sinav_id,kitapcik' }
         )
         .select()
@@ -751,6 +932,8 @@ export default function SinavKitapciklari() {
       setDosya(null)
       setSayfaGoruntuleri([])
       setSorular([])
+      setKullanilanOlcek(null)
+      setDuzenlenenKitapcik(null)
       veriyiYenile()
     } catch (e) {
       setHata('Hata: ' + e.message)
@@ -766,12 +949,34 @@ export default function SinavKitapciklari() {
 
   return (
     <div>
+      {/* Ders adı önerileri — hem Toplu Ders Ataması paneli hem de tek tek
+          düzenleme ekranındaki "Ders Adı" kutuları bunu kullanıyor. Burada,
+          bileşenin en üstünde, HER ZAMAN render edildiği için hangi panel
+          açık olursa olsun öneriler çalışır. */}
+      <datalist id="ders-onerileri">
+        {DERS_ONERILERI.map((d) => (
+          <option key={d} value={d} />
+        ))}
+      </datalist>
       <h1 className="text-2xl font-bold text-navy mb-2">Sınav Kitapçıkları</h1>
       <p className="text-sm text-gray-500 mb-6">
         Bir kitapçığın (A/B) taranmış PDF'ini yükleyin, sistem soruların yaklaşık yerini otomatik bulmaya çalışır,
         siz her birini kontrol edip onaylarsınız. Bu işlem her kitapçık için SADECE BİR KERE yapılır — sonra o
         sınavı giren her öğrencinin yanlış sorularını buradan otomatik kesip kişiye özel kitapçık üretebiliriz.
       </p>
+
+      {duzenlenenKitapcik && (
+        <div className="bg-navy/5 border border-navy/20 rounded-2xl p-4 mb-6 flex items-center justify-between flex-wrap gap-3">
+          <p className="text-sm text-navy font-semibold">✎ Düzenleme modu — mevcut bir kitapçığın soru haritası düzeltiliyor, PDF yeniden yüklenmeyecek.</p>
+          <button
+            type="button"
+            onClick={duzenlemeyiIptalEt}
+            className="text-xs font-semibold text-gray-500 hover:underline"
+          >
+            Düzenlemeyi İptal Et
+          </button>
+        </div>
+      )}
 
       {kitapciklar.length > 0 && (
         <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-x-auto mb-6">
@@ -801,7 +1006,14 @@ export default function SinavKitapciklari() {
                       <span className="text-xs font-semibold bg-yellow-100 text-yellow-700 px-2 py-1 rounded-full">Onay bekliyor</span>
                     )}
                   </td>
-                  <td className="px-4 py-2 text-right">
+                  <td className="px-4 py-2 text-right whitespace-nowrap">
+                    <button
+                      onClick={() => kitapcikDuzenle(k)}
+                      disabled={duzenlemeYukleniyorId !== null}
+                      className="text-navy text-sm font-semibold hover:underline disabled:opacity-50 mr-4"
+                    >
+                      {duzenlemeYukleniyorId === k.id ? 'Açılıyor...' : 'Düzenle'}
+                    </button>
                     <button
                       onClick={() => kitapcikSil(k)}
                       disabled={silinenKitapcikId === k.id}
@@ -990,6 +1202,7 @@ export default function SinavKitapciklari() {
           toplamSoru={sorular.length}
           onUygula={topluAta}
           onVazgec={() => setBlokPaneliGoster(false)}
+          onGeriDon={elleNoktalar.length > 0 ? elleIsaretlemeyeGeriDon : null}
         />
       )}
 
@@ -1013,13 +1226,24 @@ export default function SinavKitapciklari() {
               <p className="font-semibold text-gray-700">
                 Soru {seciliIndex + 1} / {sorular.length} — {tamamlananSayisi} tanesi dolduruldu
               </p>
-              <button
-                type="button"
-                onClick={() => setBlokPaneliGoster(true)}
-                className="text-xs text-navy font-semibold hover:underline"
-              >
-                ↺ Toplu Ders Atamaya Dön
-              </button>
+              <div className="flex gap-3">
+                <button
+                  type="button"
+                  onClick={() => setBlokPaneliGoster(true)}
+                  className="text-xs text-navy font-semibold hover:underline"
+                >
+                  ↺ Toplu Ders Atamaya Dön
+                </button>
+                {elleNoktalar.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={elleIsaretlemeyeGeriDon}
+                    className="text-xs text-orange font-semibold hover:underline"
+                  >
+                    ↺ Soru Noktalarına Dön (Eksik Soru Ekle)
+                  </button>
+                )}
+              </div>
             </div>
             <div className="flex gap-2">
               <button
@@ -1076,11 +1300,6 @@ export default function SinavKitapciklari() {
                   placeholder="örn. Türkçe"
                   className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue"
                 />
-                <datalist id="ders-onerileri">
-                  {DERS_ONERILERI.map((d) => (
-                    <option key={d} value={d} />
-                  ))}
-                </datalist>
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Soru No (bu ders içinde)</label>
