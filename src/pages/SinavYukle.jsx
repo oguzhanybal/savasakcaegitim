@@ -2,7 +2,6 @@ import { useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { sinavSonucPdfIndenTumOgrencileriCikar } from '../lib/sinavPdfParse'
-import { ilkHarfleriBuyukYap } from '../lib/adSoyadFormat'
 
 // Bir sınavı giren TÜM öğrencilerin sonuç PDF'lerini TEK SEFERDE yükleyip
 // otomatik ayrıştırmayı sağlayan sayfa. Okulun tarama/analiz yazılımı "tüm

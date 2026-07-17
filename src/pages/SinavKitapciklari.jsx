@@ -516,7 +516,10 @@ export default function SinavKitapciklari() {
       const { error } = await supabase
         .from('sinavlar')
         .update({
-          sinav_adi: ilkHarfleriBuyukYap(duzenlenenSinavAdi.trim()),
+          // Sınav adı BİLEREK büyük harf düzeltmesinden geçirilmiyor — admin
+          // tam olarak yazdığı gibi kaydedilsin istiyor (öğrenci adı gibi
+          // diğer alanlarda bu düzeltme aynen devam ediyor).
+          sinav_adi: duzenlenenSinavAdi.trim(),
           sinav_tarihi: duzenlenenSinavTarihi || null,
         })
         .eq('id', id)
@@ -1023,9 +1026,11 @@ export default function SinavKitapciklari() {
     try {
       let sinavId = seciliSinavId
       if (sinavId === '__yeni__') {
+        // Sınav adı BİLEREK büyük harf düzeltmesinden geçirilmiyor — admin
+        // tam olarak yazdığı gibi (manuel) kaydetmek istiyor.
         const { data, error } = await supabase
           .from('sinavlar')
-          .insert({ sinav_adi: ilkHarfleriBuyukYap(yeniSinavAdi.trim()), sinav_tarihi: yeniSinavTarihi || null })
+          .insert({ sinav_adi: yeniSinavAdi.trim(), sinav_tarihi: yeniSinavTarihi || null })
           .select()
           .single()
         if (error && error.code === '23505') {
