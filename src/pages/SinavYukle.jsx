@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { Link } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { sinavSonucPdfIndenCikar } from '../lib/sinavPdfParse'
 
@@ -145,7 +146,7 @@ export default function SinavYukle() {
         if (error) throw error
       }
 
-      satirGuncelle(satir.id, { durum: 'kaydedildi', kaydedildi: true })
+      satirGuncelle(satir.id, { durum: 'kaydedildi', kaydedildi: true, sonucId: sonucVerisi.id })
     } catch (e) {
       satirGuncelle(satir.id, { durum: 'hata', hata: 'Kayıt hatası: ' + e.message })
     }
@@ -239,7 +240,19 @@ export default function SinavYukle() {
                   )}
                   {s.durum === 'kaydediliyor' && <span className="text-xs font-semibold text-blue">Kaydediliyor...</span>}
                   {s.durum === 'kaydedildi' && (
-                    <span className="text-xs font-semibold bg-green-100 text-green-700 px-2 py-1 rounded-full">✓ Kaydedildi</span>
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs font-semibold bg-green-100 text-green-700 px-2 py-1 rounded-full">✓ Kaydedildi</span>
+                      {s.sonucId && (
+                        <Link
+                          to={`/hata-kitapcigi/${s.sonucId}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-xs font-semibold bg-orange text-white px-2 py-1 rounded-full hover:opacity-90"
+                        >
+                          Hata Kitapçığı Oluştur
+                        </Link>
+                      )}
+                    </div>
                   )}
                 </div>
 
