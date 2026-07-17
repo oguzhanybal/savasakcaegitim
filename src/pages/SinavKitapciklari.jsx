@@ -54,9 +54,10 @@ function KutuKatmani({ sayfaGoruntusu, sorularBuSayfada, seciliGeciciId, cizimMo
   }
 
   return (
+    <div className="flex justify-center overflow-auto">
     <div
       ref={containerRef}
-      className="relative w-full select-none"
+      className="relative inline-block select-none"
       style={{ cursor: cizimModu ? 'crosshair' : 'default' }}
       onMouseDown={mouseDown}
       onMouseMove={mouseMove}
@@ -71,7 +72,7 @@ function KutuKatmani({ sayfaGoruntusu, sorularBuSayfada, seciliGeciciId, cizimMo
       <img
         src={sayfaGoruntusu.dataUrl}
         alt={`Sayfa ${sayfaGoruntusu.sayfaNo}`}
-        className="w-full block rounded-lg border border-gray-200"
+        className="max-h-[72vh] w-auto block rounded-lg border border-gray-200"
         draggable={false}
       />
       {sorularBuSayfada.map((s) => (
@@ -108,6 +109,7 @@ function KutuKatmani({ sayfaGoruntusu, sorularBuSayfada, seciliGeciciId, cizimMo
         />
       )}
     </div>
+    </div>
   )
 }
 
@@ -132,16 +134,17 @@ function NoktaIsaretlemeKatmani({ sayfaGoruntusu, buSayfadakiNoktalar, onNoktaEk
   }
 
   return (
+    <div className="flex justify-center overflow-auto">
     <div
       ref={containerRef}
-      className="relative w-full select-none"
+      className="relative inline-block select-none"
       style={{ cursor: 'crosshair' }}
       onClick={tiklandi}
     >
       <img
         src={sayfaGoruntusu.dataUrl}
         alt={`Sayfa ${sayfaGoruntusu.sayfaNo}`}
-        className="w-full block rounded-lg border border-gray-200"
+        className="max-h-[72vh] w-auto block rounded-lg border border-gray-200"
         draggable={false}
       />
       {buSayfadakiNoktalar.map((n, i) => (
@@ -156,6 +159,7 @@ function NoktaIsaretlemeKatmani({ sayfaGoruntusu, buSayfadakiNoktalar, onNoktaEk
           {n.globalSira}
         </div>
       ))}
+    </div>
     </div>
   )
 }
@@ -357,6 +361,45 @@ export default function SinavKitapciklari() {
   useEffect(() => {
     veriyiYenile()
   }, [])
+
+  // Elle işaretleme modundayken ok tuşlarıyla sayfa arasında gezinmeyi ve
+  // Backspace/Delete ile son noktayı geri almayı sağlıyor — admin her sayfada
+  // fareyle "Sonraki Sayfa" butonuna tıklamak zorunda kalmadan, klavyeden
+  // sağ/sol oklarla hızlıca ilerleyebilsin diye.
+  useEffect(() => {
+    if (!elleIsaretlemeModu) return
+    function tusaBasildi(e) {
+      if (e.key === 'ArrowRight') {
+        e.preventDefault()
+        setElleSayfaIndex((i) => Math.min(sayfaGoruntuleri.length - 1, i + 1))
+      } else if (e.key === 'ArrowLeft') {
+        e.preventDefault()
+        setElleSayfaIndex((i) => Math.max(0, i - 1))
+      } else if (e.key === 'Backspace' || e.key === 'Delete') {
+        e.preventDefault()
+        elleSonNoktayiGeriAl()
+      }
+    }
+    window.addEventListener('keydown', tusaBasildi)
+    return () => window.removeEventListener('keydown', tusaBasildi)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [elleIsaretlemeModu, sayfaGoruntuleri.length])
+
+  // Kaydedilmemiş iş varken (nokta işaretlenmiş ya da OCR/elle sonucu sorular
+  // listesi dolmuş ama henüz "Onayla ve Kaydet"e basılmamışsa) sekmeyi/
+  // pencereyi kapatmaya çalışınca tarayıcının kendi "Bu sayfadan ayrılmak
+  // istediğinize emin misiniz?" uyarısını göstermesini sağlıyor — yanlışlıkla
+  // saatlerce süren işaretleme emeğinin kaybolmaması için.
+  useEffect(() => {
+    const kayitsizVeriVarMi = elleNoktalar.length > 0 || sorular.length > 0
+    function ayrilmadanOnce(e) {
+      if (!kayitsizVeriVarMi) return
+      e.preventDefault()
+      e.returnValue = ''
+    }
+    window.addEventListener('beforeunload', ayrilmadanOnce)
+    return () => window.removeEventListener('beforeunload', ayrilmadanOnce)
+  }, [elleNoktalar, sorular])
 
   function girdileriDogrula() {
     if (!dosya) {
