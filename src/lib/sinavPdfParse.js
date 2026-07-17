@@ -244,18 +244,17 @@ function sayfa2Ayikla(satirlar) {
   return soruSonuclari
 }
 
-// Ana giriş noktası: bir sonuç PDF'i (File/Blob) alır, yapılandırılmış
-// sınav sonucu verisini döner.
-export async function sinavSonucPdfIndenCikar(dosya) {
-  const belge = await pdfBelgesiAc(dosya)
-  if (belge.numPages < 1) throw new Error('PDF boş görünüyor.')
-
-  const sayfa1Ogeleri = await sayfaMetinOgeleriniAl(belge, 1)
+// Zaten açık bir pdf.js belgesinden, BELİRLİ bir sayfa çiftini (bir
+// öğrencinin 2 sayfalık karnesini) ayrıştırır. Hem tek öğrencilik hem de
+// çok öğrencilik (aşağıdaki sinavSonucPdfIndenTumOgrencileriCikar) giriş
+// noktaları bu ortak fonksiyonu kullanır.
+async function belgedenOgrenciCikar(belge, sayfa1No, sayfa2No) {
+  const sayfa1Ogeleri = await sayfaMetinOgeleriniAl(belge, sayfa1No)
   const sayfa1 = sayfa1Ayikla(satirlaraGrupla(sayfa1Ogeleri))
 
   let soruSonuclari = []
-  if (belge.numPages >= 2) {
-    const sayfa2Ogeleri = await sayfaMetinOgeleriniAl(belge, 2)
+  if (sayfa2No <= belge.numPages) {
+    const sayfa2Ogeleri = await sayfaMetinOgeleriniAl(belge, sayfa2No)
     soruSonuclari = sayfa2Ayikla(satirlaraGrupla(sayfa2Ogeleri))
   }
 
@@ -277,4 +276,37 @@ export async function sinavSonucPdfIndenCikar(dosya) {
       toplamNet: Math.round(toplamNet * 100) / 100,
     },
   }
+}
+
+// Ana giriş noktası: bir sonuç PDF'i (File/Blob) alır, yapılandırılmış
+// sınav sonucu verisini döner. SADECE İLK 2 SAYFAYI okur — bu yüzden birden
+// fazla öğrencinin karnesi art arda birleştirilmiş bir PDF için
+// sinavSonucPdfIndenTumOgrencileriCikar kullanılmalı (SinavYukle.jsx bunu
+// kullanıyor).
+export async function sinavSonucPdfIndenCikar(dosya) {
+  const belge = await pdfBelgesiAc(dosya)
+  if (belge.numPages < 1) throw new Error('PDF boş görünüyor.')
+  return belgedenOgrenciCikar(belge, 1, 2)
+}
+
+// Okulun tarama/analiz yazılımı "tüm sınıfın" karnesini TEK PDF olarak dışa
+// aktarınca, her öğrencinin 2 sayfalık raporu ART ARDA birleştirilmiş oluyor
+// (22 sayfalık dosya = 11 öğrenci gibi). Bu fonksiyon PDF'i TEK SEFERDE açıp
+// her 2 sayfayı ayrı bir öğrenci karnesi olarak ayrıştırır ve bir DİZİ döner
+// — tek öğrencilik bir PDF için de (numPages<=2) sorunsuz çalışır, dizide
+// tek bir eleman döner.
+export async function sinavSonucPdfIndenTumOgrencileriCikar(dosya) {
+  const belge = await pdfBelgesiAc(dosya)
+  if (belge.numPages < 1) throw new Error('PDF boş görünüyor.')
+
+  const sonuclar = []
+  for (let sayfa = 1; sayfa <= belge.numPages; sayfa += 2) {
+    try {
+      const ogrenci = await belgedenOgrenciCikar(belge, sayfa, sayfa + 1)
+      sonuclar.push({ basariliMi: true, baslangicSayfa: sayfa, veri: ogrenci })
+    } catch (e) {
+      sonuclar.push({ basariliMi: false, baslangicSayfa: sayfa, hata: e.message })
+    }
+  }
+  return sonuclar
 }
