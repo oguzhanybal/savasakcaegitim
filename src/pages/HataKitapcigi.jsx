@@ -284,26 +284,44 @@ export default function HataKitapcigi() {
               </div>
             )}
 
-            <div className="space-y-4">
-              {sorular.map((s, i) => (
-                <div key={s.id} className="soru-karti bg-white rounded-2xl border border-gray-100 shadow-sm p-4">
-                  <p className="text-xs font-semibold text-navy mb-1">
-                    {i + 1}. {s.ders_adi} — Soru {s.soru_no}
-                    {s.konu && <span className="text-gray-400 font-normal"> · {s.konu}</span>}
+            {/* İki sütunlu, derse göre gruplanmış kompakt düzen — tek sütunda
+                her soru kendi kartıyla dururken kağıt israfı çok fazlaydı
+                (bir öğrenci için onlarca sayfa çıkıyordu). Ders değişince
+                başlık tam genişlikte (col-span-full) araya giriyor, sorular
+                onun altında 2'şerli sıralanıyor. */}
+            <div className="grid grid-cols-2 gap-3">
+              {sorular.flatMap((s, i) => {
+                const dersBasligiGoster = i === 0 || sorular[i - 1].ders_adi !== s.ders_adi
+                const kart = (
+                  <div key={s.id} className="soru-karti bg-white rounded-lg border border-gray-200 p-2">
+                    <p className="text-[11px] font-semibold text-navy leading-tight">
+                      Soru {s.soru_no}
+                      {s.konu && <span className="text-gray-400 font-normal"> · {s.konu}</span>}
+                    </p>
+                    <p className="text-[10px] text-gray-400 mb-1 leading-tight">
+                      {s.sonuc === 'bos'
+                        ? 'Boş bırakılmış'
+                        : `Yanlış — İşaretlenen: ${s.ogrenci_cevap || '—'}, Doğru: ${s.dogru_cevap || '—'}`}
+                    </p>
+                    <img
+                      src={s.dataUrl}
+                      alt={`${s.ders_adi} soru ${s.soru_no}`}
+                      className="border border-gray-200 rounded"
+                      style={{ maxWidth: '100%', width: `${Math.min(s.genislikPt, 250)}pt`, height: 'auto' }}
+                    />
+                  </div>
+                )
+                if (!dersBasligiGoster) return [kart]
+                const baslik = (
+                  <p
+                    key={`baslik-${s.id}`}
+                    className="col-span-2 text-sm font-bold text-navy border-b border-navy/20 pb-1 mt-1 first:mt-0"
+                  >
+                    {s.ders_adi}
                   </p>
-                  <p className="text-xs text-gray-400 mb-2">
-                    {s.sonuc === 'bos'
-                      ? 'Boş bırakılmış'
-                      : `Yanlış — İşaretlenen: ${s.ogrenci_cevap || '—'}, Doğru Cevap: ${s.dogru_cevap || '—'}`}
-                  </p>
-                  <img
-                    src={s.dataUrl}
-                    alt={`${s.ders_adi} soru ${s.soru_no}`}
-                    className="border border-gray-200 rounded-lg"
-                    style={{ maxWidth: '100%', width: `${Math.min(s.genislikPt, 500)}pt`, height: 'auto' }}
-                  />
-                </div>
-              ))}
+                )
+                return [baslik, kart]
+              })}
             </div>
           </>
         )}

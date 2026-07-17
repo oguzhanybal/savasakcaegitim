@@ -173,8 +173,16 @@ function NoktaIsaretlemeKatmani({ sayfaGoruntusu, buSayfadakiNoktalar, onNoktaEk
 // hepsine birden otomatik dağıtır. Admin'e sadece İSTİSNALARI (yanlış yerdeki
 // birkaç kutu) tek tek düzeltmek kalır.
 // ============================================================================
-function TopluDersAtamaPaneli({ toplamSoru, onUygula, onVazgec, onGeriDon }) {
-  const [bloklar, setBloklar] = useState([{ id: 1, ders: '', sayi: '', baslangic: '1' }])
+function TopluDersAtamaPaneli({ toplamSoru, onUygula, onVazgec, onGeriDon, baslangicBloklari }) {
+  // Düzenleme modunda (mevcut bir kitapçık açılmışsa) baştan boş satırla
+  // başlamak yerine, sorular dizisindeki HÂLİHAZIRDA atanmış ders adı/soru
+  // no'lardan bloklar tahmin edilip buraya hazır gelir — admin sadece
+  // yanlış olan birkaç bloğu düzeltir, hepsini yeniden yazmak zorunda kalmaz.
+  const [bloklar, setBloklar] = useState(
+    baslangicBloklari && baslangicBloklari.length > 0
+      ? baslangicBloklari
+      : [{ id: 1, ders: '', sayi: '', baslangic: '1' }]
+  )
 
   const toplamGirilen = bloklar.reduce((t, b) => t + (Number(b.sayi) || 0), 0)
 
@@ -820,6 +828,32 @@ export default function SinavKitapciklari() {
     }
   }
 
+  // Mevcut `sorular` dizisindeki (zaten fiziksel sırada duran) ders_adi
+  // değerlerine bakıp, ART ARDA aynı dersten olan grupları TEK bir Toplu
+  // Ders Ataması bloğuna çevirir — böylece "Düzenle" ile açılan bir
+  // kitapçıkta admin baştan bütün dersleri yeniden yazmak zorunda kalmaz,
+  // sadece hatalı olan tek tük bloğu düzeltir. soru_no'ların GERÇEKTEN
+  // ardışık olup olmadığını kontrol etmiyoruz (admin zaten "Başlangıç No"yu
+  // görüp gerekirse elle düzeltebilir) — sadece ders_adi'ye göre grupluyoruz.
+  function dersBloklariniTahminEt(sorularListesi) {
+    const bloklar = []
+    for (const s of sorularListesi) {
+      const son = bloklar[bloklar.length - 1]
+      if (son && son.ders === (s.ders_adi || '')) {
+        son.sayi += 1
+      } else {
+        bloklar.push({
+          id: `${s.gecici_id}-blok`,
+          ders: s.ders_adi || '',
+          sayi: 1,
+          baslangic: String(s.soru_no || 1),
+        })
+      }
+    }
+    if (bloklar.length === 0) return [{ id: 1, ders: '', sayi: '', baslangic: '1' }]
+    return bloklar.map((b) => ({ ...b, sayi: String(b.sayi) }))
+  }
+
   // TopluDersAtamaPaneli'nden gelen [{ders, sayi}, ...] blok listesini,
   // `sorular` dizisindeki (zaten okuma sırasında olan) kutulara sırayla
   // dağıtır. Örn. [{ders:'Türkçe', sayi:40}, {ders:'Matematik', sayi:40}]
@@ -1245,6 +1279,7 @@ export default function SinavKitapciklari() {
           onUygula={topluAta}
           onVazgec={() => setBlokPaneliGoster(false)}
           onGeriDon={elleNoktalar.length > 0 ? elleIsaretlemeyeGeriDon : null}
+          baslangicBloklari={dersBloklariniTahminEt(sorular)}
         />
       )}
 
