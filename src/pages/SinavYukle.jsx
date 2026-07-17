@@ -80,6 +80,7 @@ export default function SinavYukle() {
   const [kayitliSonuclar, setKayitliSonuclar] = useState([])
   const [kayitliSonuclarYukleniyor, setKayitliSonuclarYukleniyor] = useState(false)
   const [silinenSonucId, setSilinenSonucId] = useState(null)
+  const [karnePdfIndiriliyorId, setKarnePdfIndiriliyorId] = useState(null)
 
   useEffect(() => {
     supabase.from('sinavlar').select('*').order('sinav_tarihi', { ascending: false }).then(({ data }) => setSinavlar(data || []))
@@ -94,7 +95,9 @@ export default function SinavYukle() {
     setKayitliSonuclarYukleniyor(true)
     const { data } = await supabase
       .from('ogrenci_sinav_sonuclari')
-      .select('id, kitapcik, toplam_net, toplam_dogru, toplam_yanlis, toplam_bos, created_at, ogrenciler(ad_soyad)')
+      .select(
+        'id, kitapcik, toplam_net, toplam_dogru, toplam_yanlis, toplam_bos, created_at, karne_pdf_yolu, ogrenciler(ad_soyad)'
+      )
       .eq('sinav_id', sinavId)
       .order('created_at', { ascending: false })
     const liste = data || []
@@ -219,12 +222,37 @@ export default function SinavYukle() {
     }
   }
 
+  // Öğrencinin orijinal "Konu Analizli Karne" PDF'ini indirir — Storage
+  // bucket'ı private olduğu için önce kısa ömürlü (60 sn) imzalı bir bağlantı
+  // istiyoruz, sonra onu yeni sekmede açıyoruz.
+  async function karnePdfIndir(k) {
+    if (!k.karne_pdf_yolu) return
+    setKarnePdfIndiriliyorId(k.id)
+    try {
+      const { data, error } = await supabase.storage
+        .from('sinav-sonuc-pdfleri')
+        .createSignedUrl(k.karne_pdf_yolu, 60)
+      if (error) throw error
+      window.open(data.signedUrl, '_blank', 'noopener,noreferrer')
+    } catch (e) {
+      alert('PDF indirilemedi: ' + e.message)
+    } finally {
+      setKarnePdfIndiriliyorId(null)
+    }
+  }
+
   // satirlar/seciliSinavId her değiştiğinde localStorage'a yaz — böylece
   // sayfadan çıkıp geri dönüldüğünde (hatta sekme kapatılıp yeniden
   // açıldığında) liste olduğu gibi durur.
   useEffect(() => {
     try {
-      localStorage.setItem(SATIRLAR_ANAHTARI, JSON.stringify(satirlar))
+      // veri.karnePdfBlob bir Blob nesnesi — JSON'a düzgün yazılamaz (ve zaten
+      // gerek yok, sadece "Kaydet" anında Storage'a yüklenip hemen atılıyor).
+      // localStorage'a yazmadan önce her satırdan çıkarıyoruz.
+      const temizlenmis = satirlar.map((s) =>
+        s.veri?.karnePdfBlob ? { ...s, veri: { ...s.veri, karnePdfBlob: undefined } } : s
+      )
+      localStorage.setItem(SATIRLAR_ANAHTARI, JSON.stringify(temizlenmis))
     } catch {
       // localStorage dolu/erişilemez olsa bile uygulama çalışmaya devam etsin
     }
@@ -320,6 +348,26 @@ export default function SinavYukle() {
     try {
       const sinavId = await sinavIdCozumle()
       const veri = satir.veri
+
+      // Orijinal "Konu Analizli Karne" PDF'i (2 sayfa, ayrıştırma sırasında
+      // önceden kesilmişti — bkz. sinavPdfParse.js) varsa Storage'a yükle.
+      // Yol kuralı "{ogrenci_id}/{sinav_id}.pdf" — aynı öğrenci/sınav için
+      // tekrar kaydedilirse (upsert:true) eskisinin üzerine yazılır.
+      let karnePdfYolu = null
+      if (veri.karnePdfBlob) {
+        karnePdfYolu = `${satir.ogrenciId}/${sinavId}.pdf`
+        const { error: pdfHatasi } = await supabase.storage
+          .from('sinav-sonuc-pdfleri')
+          .upload(karnePdfYolu, veri.karnePdfBlob, { contentType: 'application/pdf', upsert: true })
+        if (pdfHatasi) {
+          // PDF yüklenemese bile (ör. bağlantı sorunu) asıl sonuç verisinin
+          // kaydedilmesini ENGELLEMEsin — sadece "PDF İndir" o satır için
+          // eksik kalır, admin isterse tekrar dener.
+          console.error('Karne PDF\'i yüklenemedi:', pdfHatasi.message)
+          karnePdfYolu = null
+        }
+      }
+
       const { data: sonucVerisi, error: sonucHatasi } = await supabase
         .from('ogrenci_sinav_sonuclari')
         .upsert(
@@ -333,6 +381,10 @@ export default function SinavYukle() {
             toplam_bos: veri.ozet.toplamBos,
             toplam_net: veri.ozet.toplamNet,
             yuklenen_pdf_adi: satir.dosyaAdi,
+            // Sadece bu seferde başarıyla yeni bir PDF yüklendiyse gönderiyoruz
+            // — yoksa (ör. bu satır localStorage'dan geri geldi, blob elde
+            // yok) daha önce kaydedilmiş yol varsa onun ÜZERİNE YAZMIYORUZ.
+            ...(karnePdfYolu ? { karne_pdf_yolu: karnePdfYolu } : {}),
           },
           { onConflict: 'ogrenci_id,sinav_id' }
         )
@@ -522,7 +574,17 @@ export default function SinavYukle() {
                         Net: <b className="text-navy">{k.toplam_net}</b>
                       </p>
                     </div>
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-2 flex-wrap justify-end">
+                      {k.karne_pdf_yolu && (
+                        <button
+                          type="button"
+                          onClick={() => karnePdfIndir(k)}
+                          disabled={karnePdfIndiriliyorId === k.id}
+                          className="text-xs font-semibold text-navy border border-navy/20 px-3 py-1.5 rounded-full hover:bg-navy/5 disabled:opacity-40"
+                        >
+                          {karnePdfIndiriliyorId === k.id ? 'Açılıyor...' : 'Karne PDF İndir'}
+                        </button>
+                      )}
                       <Link
                         to={`/hata-kitapcigi/${k.id}`}
                         target="_blank"
@@ -542,19 +604,35 @@ export default function SinavYukle() {
                     </div>
                   </div>
                   {k.dersler && k.dersler.length > 0 && (
-                    <div className="flex flex-wrap gap-1.5 mt-2">
-                      {k.dersler.map((d) => (
-                        <span
-                          key={d.id}
-                          className="text-[11px] bg-gray-50 border border-gray-100 rounded-lg px-2 py-1 whitespace-nowrap"
-                        >
-                          <b className="text-gray-700">{d.ders_adi}</b>
-                          <span className="text-green-700"> D:{d.dogru}</span>
-                          <span className="text-red-700"> Y:{d.yanlis}</span>
-                          <span className="text-gray-500"> B:{d.bos}</span>
-                          <span className="text-navy font-semibold"> N:{d.net}</span>
-                        </span>
-                      ))}
+                    <div className="mt-2 overflow-x-auto">
+                      <table className="w-full text-xs border-collapse">
+                        <thead>
+                          <tr className="text-gray-400 border-b border-gray-100">
+                            <th className="text-left font-medium py-1 pr-2">Ders</th>
+                            <th className="text-right font-medium py-1 px-2">Soru</th>
+                            <th className="text-right font-medium py-1 px-2">Doğru</th>
+                            <th className="text-right font-medium py-1 px-2">Yanlış</th>
+                            <th className="text-right font-medium py-1 px-2">Boş</th>
+                            <th className="text-right font-medium py-1 pl-2">Net</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {k.dersler.map((d) => (
+                            <tr key={d.id} className="border-b border-gray-50 last:border-0">
+                              <td className="text-left py-1 pr-2 text-gray-700 font-medium whitespace-nowrap">
+                                {d.ders_adi}
+                              </td>
+                              <td className="text-right py-1 px-2 text-gray-500">
+                                {(d.dogru || 0) + (d.yanlis || 0) + (d.bos || 0)}
+                              </td>
+                              <td className="text-right py-1 px-2 text-green-700">{d.dogru}</td>
+                              <td className="text-right py-1 px-2 text-red-700">{d.yanlis}</td>
+                              <td className="text-right py-1 px-2 text-gray-500">{d.bos}</td>
+                              <td className="text-right py-1 pl-2 text-navy font-semibold">{d.net}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
                     </div>
                   )}
                 </div>

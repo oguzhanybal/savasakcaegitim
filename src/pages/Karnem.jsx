@@ -29,6 +29,23 @@ export default function Karnem() {
   const [seciliId, setSeciliId] = useState('')
   const [sonuclar, setSonuclar] = useState([])
   const [loading, setLoading] = useState(true)
+  const [pdfIndiriliyorId, setPdfIndiriliyorId] = useState(null)
+
+  async function karnePdfIndir(s) {
+    if (!s.karne_pdf_yolu) return
+    setPdfIndiriliyorId(s.id)
+    try {
+      const { data, error } = await supabase.storage
+        .from('sinav-sonuc-pdfleri')
+        .createSignedUrl(s.karne_pdf_yolu, 60)
+      if (error) throw error
+      window.open(data.signedUrl, '_blank', 'noopener,noreferrer')
+    } catch (e) {
+      alert('PDF indirilemedi: ' + e.message)
+    } finally {
+      setPdfIndiriliyorId(null)
+    }
+  }
 
   useEffect(() => {
     if (!profile) return
@@ -137,19 +154,31 @@ export default function Karnem() {
                     {s.kitapcik && ` · Kitapçık ${s.kitapcik}`}
                   </p>
                 </div>
-                <div className="text-sm flex gap-4 flex-wrap">
-                  <span>
-                    Doğru: <b className="text-green-700">{s.toplam_dogru}</b>
-                  </span>
-                  <span>
-                    Yanlış: <b className="text-red-700">{s.toplam_yanlis}</b>
-                  </span>
-                  <span>
-                    Boş: <b className="text-gray-500">{s.toplam_bos}</b>
-                  </span>
-                  <span>
-                    Net: <b className="text-navy">{s.toplam_net}</b>
-                  </span>
+                <div className="flex items-center gap-4 flex-wrap">
+                  <div className="text-sm flex gap-4 flex-wrap">
+                    <span>
+                      Doğru: <b className="text-green-700">{s.toplam_dogru}</b>
+                    </span>
+                    <span>
+                      Yanlış: <b className="text-red-700">{s.toplam_yanlis}</b>
+                    </span>
+                    <span>
+                      Boş: <b className="text-gray-500">{s.toplam_bos}</b>
+                    </span>
+                    <span>
+                      Net: <b className="text-navy">{s.toplam_net}</b>
+                    </span>
+                  </div>
+                  {s.karne_pdf_yolu && (
+                    <button
+                      type="button"
+                      onClick={() => karnePdfIndir(s)}
+                      disabled={pdfIndiriliyorId === s.id}
+                      className="text-xs font-semibold text-navy border border-navy/20 px-3 py-1.5 rounded-full hover:bg-navy/5 disabled:opacity-40"
+                    >
+                      {pdfIndiriliyorId === s.id ? 'Açılıyor...' : 'Karne PDF İndir'}
+                    </button>
+                  )}
                 </div>
               </div>
               {s.dersler.length > 0 && (
