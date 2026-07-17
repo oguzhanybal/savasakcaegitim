@@ -348,6 +348,12 @@ export default function SinavKitapciklari() {
   const [kitapciklar, setKitapciklar] = useState([])
   const [silinenKitapcikId, setSilinenKitapcikId] = useState(null)
   const [silinenSinavId, setSilinenSinavId] = useState(null)
+  // Sınavlar tablosundaki inline "Düzenle" — hangi sınavın adı/tarihi o an
+  // düzenleniyor (id) ve o satırın taslak değerleri.
+  const [duzenlenenSinavId, setDuzenlenenSinavId] = useState(null)
+  const [duzenlenenSinavAdi, setDuzenlenenSinavAdi] = useState('')
+  const [duzenlenenSinavTarihi, setDuzenlenenSinavTarihi] = useState('')
+  const [sinavAdiKaydediliyor, setSinavAdiKaydediliyor] = useState(false)
   const [seciliSinavId, setSeciliSinavId] = useState('')
   const [yeniSinavAdi, setYeniSinavAdi] = useState('')
   const [yeniSinavTarihi, setYeniSinavTarihi] = useState('')
@@ -483,6 +489,44 @@ export default function SinavKitapciklari() {
       alert('Hata: ' + e.message)
     } finally {
       setSilinenSinavId(null)
+    }
+  }
+
+  // Sınav adı/tarihini DÜZENLEME — ör. PDF'ten otomatik ayrıştırılırken
+  // metin tekrarlanmış ("...Tyt-0)(...Tyt-0)" gibi) ya da admin baştan farklı
+  // bir isim yazmak istiyor. Kitapçıklara/sonuçlara DOKUNMAZ, sadece sinavlar
+  // satırının kendi ad/tarih alanlarını günceller.
+  function sinavDuzenlemeyeBasla(s) {
+    setDuzenlenenSinavId(s.id)
+    setDuzenlenenSinavAdi(s.sinav_adi)
+    setDuzenlenenSinavTarihi(s.sinav_tarihi || '')
+  }
+
+  function sinavDuzenlemeyiVazgec() {
+    setDuzenlenenSinavId(null)
+  }
+
+  async function sinavDuzenlemeyiKaydet(id) {
+    if (!duzenlenenSinavAdi.trim()) {
+      alert('Sınav adı boş olamaz.')
+      return
+    }
+    setSinavAdiKaydediliyor(true)
+    try {
+      const { error } = await supabase
+        .from('sinavlar')
+        .update({
+          sinav_adi: ilkHarfleriBuyukYap(duzenlenenSinavAdi.trim()),
+          sinav_tarihi: duzenlenenSinavTarihi || null,
+        })
+        .eq('id', id)
+      if (error) throw error
+      setDuzenlenenSinavId(null)
+      veriyiYenile()
+    } catch (e) {
+      alert('Hata: ' + e.message)
+    } finally {
+      setSinavAdiKaydediliyor(false)
     }
   }
 
@@ -1124,23 +1168,66 @@ export default function SinavKitapciklari() {
               </tr>
             </thead>
             <tbody>
-              {sinavlar.map((s) => (
-                <tr key={s.id} className="border-t border-gray-50">
-                  <td className="px-4 py-2 font-medium text-gray-800">{s.sinav_adi}</td>
-                  <td className="px-4 py-2 text-gray-500">
-                    {s.sinav_tarihi ? new Date(s.sinav_tarihi).toLocaleDateString('tr-TR') : '—'}
-                  </td>
-                  <td className="px-4 py-2 text-right">
-                    <button
-                      onClick={() => sinavSil(s)}
-                      disabled={silinenSinavId === s.id}
-                      className="text-red-500 text-sm hover:underline disabled:opacity-50"
-                    >
-                      {silinenSinavId === s.id ? 'Siliniyor...' : 'Sil'}
-                    </button>
-                  </td>
-                </tr>
-              ))}
+              {sinavlar.map((s) =>
+                duzenlenenSinavId === s.id ? (
+                  <tr key={s.id} className="border-t border-gray-50 bg-blue/5">
+                    <td className="px-4 py-2">
+                      <input
+                        value={duzenlenenSinavAdi}
+                        onChange={(e) => setDuzenlenenSinavAdi(e.target.value)}
+                        className="w-full px-2 py-1 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue"
+                        autoFocus
+                      />
+                    </td>
+                    <td className="px-4 py-2">
+                      <input
+                        type="date"
+                        value={duzenlenenSinavTarihi}
+                        onChange={(e) => setDuzenlenenSinavTarihi(e.target.value)}
+                        className="w-full px-2 py-1 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue"
+                      />
+                    </td>
+                    <td className="px-4 py-2 text-right whitespace-nowrap">
+                      <button
+                        onClick={() => sinavDuzenlemeyiKaydet(s.id)}
+                        disabled={sinavAdiKaydediliyor}
+                        className="text-navy text-sm font-semibold hover:underline disabled:opacity-50 mr-4"
+                      >
+                        {sinavAdiKaydediliyor ? 'Kaydediliyor...' : 'Kaydet'}
+                      </button>
+                      <button
+                        onClick={sinavDuzenlemeyiVazgec}
+                        disabled={sinavAdiKaydediliyor}
+                        className="text-gray-400 text-sm hover:underline disabled:opacity-50"
+                      >
+                        Vazgeç
+                      </button>
+                    </td>
+                  </tr>
+                ) : (
+                  <tr key={s.id} className="border-t border-gray-50">
+                    <td className="px-4 py-2 font-medium text-gray-800">{s.sinav_adi}</td>
+                    <td className="px-4 py-2 text-gray-500">
+                      {s.sinav_tarihi ? new Date(s.sinav_tarihi).toLocaleDateString('tr-TR') : '—'}
+                    </td>
+                    <td className="px-4 py-2 text-right whitespace-nowrap">
+                      <button
+                        onClick={() => sinavDuzenlemeyeBasla(s)}
+                        className="text-navy text-sm font-semibold hover:underline mr-4"
+                      >
+                        Düzenle
+                      </button>
+                      <button
+                        onClick={() => sinavSil(s)}
+                        disabled={silinenSinavId === s.id}
+                        className="text-red-500 text-sm hover:underline disabled:opacity-50"
+                      >
+                        {silinenSinavId === s.id ? 'Siliniyor...' : 'Sil'}
+                      </button>
+                    </td>
+                  </tr>
+                )
+              )}
             </tbody>
           </table>
         </div>
