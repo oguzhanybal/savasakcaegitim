@@ -81,11 +81,33 @@ export default function SinavYukle() {
   const [kayitliSonuclarYukleniyor, setKayitliSonuclarYukleniyor] = useState(false)
   const [silinenSonucId, setSilinenSonucId] = useState(null)
   const [karnePdfIndiriliyorId, setKarnePdfIndiriliyorId] = useState(null)
+  const [sinavlarYuklendi, setSinavlarYuklendi] = useState(false)
 
   useEffect(() => {
-    supabase.from('sinavlar').select('*').order('sinav_tarihi', { ascending: false }).then(({ data }) => setSinavlar(data || []))
+    supabase
+      .from('sinavlar')
+      .select('*')
+      .order('sinav_tarihi', { ascending: false })
+      .then(({ data }) => {
+        setSinavlar(data || [])
+        setSinavlarYuklendi(true)
+      })
     supabase.from('ogrenciler').select('id, ad_soyad').order('ad_soyad').then(({ data }) => setOgrenciler(data || []))
   }, [])
+
+  // localStorage'da kalmış seçili sınav ID'si, o sınav BAŞKA BİR SAYFADAN
+  // (Sınav Kitapçıkları → "Sınavlar" tablosu → Sil) silinmişse artık geçersiz
+  // olabilir — bu durumda kaydet'e basınca "sinav_id_fkey" hatası alınır.
+  // Sınav listesi yüklendikten sonra seçili ID gerçekten var mı diye
+  // kontrol edip yoksa sessizce sıfırlıyoruz (dropdown zaten "Seçiniz..."
+  // gösteriyordu, kullanıcı için görünür bir değişiklik yok).
+  useEffect(() => {
+    if (!sinavlarYuklendi) return
+    if (!seciliSinavId || seciliSinavId === '__yeni__') return
+    if (!sinavlar.some((s) => s.id === seciliSinavId)) {
+      setSeciliSinavId('')
+    }
+  }, [sinavlar, sinavlarYuklendi, seciliSinavId])
 
   async function kayitliSonuclariYukle(sinavId) {
     if (!sinavId || sinavId === '__yeni__') {
