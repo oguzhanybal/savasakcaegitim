@@ -50,6 +50,7 @@ export default function SinavYukle() {
   // buradan da doğrudan Hata Kitapçığı oluşturabilir.
   const [kayitliSonuclar, setKayitliSonuclar] = useState([])
   const [kayitliSonuclarYukleniyor, setKayitliSonuclarYukleniyor] = useState(false)
+  const [silinenSonucId, setSilinenSonucId] = useState(null)
 
   useEffect(() => {
     supabase.from('sinavlar').select('*').order('sinav_tarihi', { ascending: false }).then(({ data }) => setSinavlar(data || []))
@@ -77,6 +78,31 @@ export default function SinavYukle() {
     kayitliSonuclariYukle(seciliSinavId)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [seciliSinavId])
+
+  // Kaydedilmiş bir sonucu (ör. deneme/test amaçlı yüklenmiş, yanlış öğrenciye
+  // bağlanmış vb.) kalıcı olarak siler — önce ona bağlı ders/soru detaylarını,
+  // sonra sonuç satırının kendisini kaldırır.
+  async function sonucSil(k) {
+    if (
+      !confirm(
+        `"${k.ogrenciler?.ad_soyad || 'Bu öğrenci'}" için bu sınavın sonucunu kalıcı olarak silmek istediğinize ` +
+          `emin misiniz? Bu işlem GERİ ALINAMAZ.`
+      )
+    )
+      return
+    setSilinenSonucId(k.id)
+    try {
+      await supabase.from('sinav_ders_sonuclari').delete().eq('sonuc_id', k.id)
+      await supabase.from('sinav_soru_sonuclari').delete().eq('sonuc_id', k.id)
+      const { error } = await supabase.from('ogrenci_sinav_sonuclari').delete().eq('id', k.id)
+      if (error) throw error
+      setKayitliSonuclar((liste) => liste.filter((s) => s.id !== k.id))
+    } catch (e) {
+      alert('Silme hatası: ' + e.message)
+    } finally {
+      setSilinenSonucId(null)
+    }
+  }
 
   // satirlar/seciliSinavId her değiştiğinde localStorage'a yaz — böylece
   // sayfadan çıkıp geri dönüldüğünde (hatta sekme kapatılıp yeniden
@@ -345,14 +371,24 @@ export default function SinavYukle() {
                       Net: <b className="text-navy">{k.toplam_net}</b>
                     </p>
                   </div>
-                  <Link
-                    to={`/hata-kitapcigi/${k.id}`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-xs font-semibold bg-orange text-white px-3 py-1.5 rounded-full hover:opacity-90"
-                  >
-                    Hata Kitapçığı Oluştur
-                  </Link>
+                  <div className="flex items-center gap-2">
+                    <Link
+                      to={`/hata-kitapcigi/${k.id}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-xs font-semibold bg-orange text-white px-3 py-1.5 rounded-full hover:opacity-90"
+                    >
+                      Hata Kitapçığı Oluştur
+                    </Link>
+                    <button
+                      type="button"
+                      onClick={() => sonucSil(k)}
+                      disabled={silinenSonucId === k.id}
+                      className="text-xs font-semibold text-red-600 border border-red-200 px-3 py-1.5 rounded-full hover:bg-red-50 disabled:opacity-40"
+                    >
+                      {silinenSonucId === k.id ? 'Siliniyor...' : 'Sil'}
+                    </button>
+                  </div>
                 </div>
               ))}
             </div>
