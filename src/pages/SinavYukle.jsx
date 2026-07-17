@@ -22,6 +22,21 @@ import { ilkHarfleriBuyukYap } from '../lib/adSoyadFormat'
 const SATIRLAR_ANAHTARI = 'sinavYukleSatirlari'
 const SINAV_ANAHTARI = 'sinavYukleSeciliSinavId'
 
+// Ders bazında sonuçlar HANGİ SIRAYLA görünsün — sinav_ders_sonuclari tablosu
+// kendi başına bir sıra garanti etmediğinden, gerçek bir TYT/AYT karnesindeki
+// sırayla aynı, sabit bir öncelik listesiyle diziyoruz (bkz. Karnem.jsx'teki
+// aynı mantık).
+const DERS_SIRASI = [
+  'Türkçe', 'Matematik', 'Geometri',
+  'Tarih', 'Coğrafya', 'Felsefe', 'Din Kültürü',
+  'Fizik', 'Kimya', 'Biyoloji',
+  'Sosyal Bilimler', 'Fen Bilimleri',
+]
+function dersSiraPuani(dersAdi) {
+  const i = DERS_SIRASI.indexOf(dersAdi)
+  return i === -1 ? 999 : i
+}
+
 export default function SinavYukle() {
   const [sinavlar, setSinavlar] = useState([])
   const [seciliSinavId, setSeciliSinavId] = useState(() => {
@@ -71,21 +86,38 @@ export default function SinavYukle() {
     supabase.from('ogrenciler').select('id, ad_soyad').order('ad_soyad').then(({ data }) => setOgrenciler(data || []))
   }, [])
 
-  function kayitliSonuclariYukle(sinavId) {
+  async function kayitliSonuclariYukle(sinavId) {
     if (!sinavId || sinavId === '__yeni__') {
       setKayitliSonuclar([])
       return
     }
     setKayitliSonuclarYukleniyor(true)
-    supabase
+    const { data } = await supabase
       .from('ogrenci_sinav_sonuclari')
       .select('id, kitapcik, toplam_net, toplam_dogru, toplam_yanlis, toplam_bos, created_at, ogrenciler(ad_soyad)')
       .eq('sinav_id', sinavId)
       .order('created_at', { ascending: false })
-      .then(({ data }) => {
-        setKayitliSonuclar(data || [])
-        setKayitliSonuclarYukleniyor(false)
-      })
+    const liste = data || []
+    // Genel toplamın yanında DERS DERS (Türkçe, Matematik, ...) doğru/yanlış/
+    // boş/net dökümü de gösterilsin diye sinav_ders_sonuclari'nı da çekip
+    // sonuc_id'ye göre gruplayıp her satıra ekliyoruz.
+    const sonucIdleri = liste.map((s) => s.id)
+    const { data: dersVerileri } =
+      sonucIdleri.length > 0
+        ? await supabase.from('sinav_ders_sonuclari').select('*').in('sonuc_id', sonucIdleri)
+        : { data: [] }
+    const dersMap = new Map()
+    for (const d of dersVerileri || []) {
+      if (!dersMap.has(d.sonuc_id)) dersMap.set(d.sonuc_id, [])
+      dersMap.get(d.sonuc_id).push(d)
+    }
+    setKayitliSonuclar(
+      liste.map((s) => ({
+        ...s,
+        dersler: (dersMap.get(s.id) || []).slice().sort((a, b) => dersSiraPuani(a.ders_adi) - dersSiraPuani(b.ders_adi)),
+      }))
+    )
+    setKayitliSonuclarYukleniyor(false)
   }
 
   useEffect(() => {
@@ -477,36 +509,54 @@ export default function SinavYukle() {
           ) : (
             <div className="divide-y divide-gray-100">
               {kayitliSonuclar.map((k) => (
-                <div key={k.id} className="p-3 flex flex-wrap items-center justify-between gap-2">
-                  <div>
-                    <p className="text-sm font-medium text-gray-800">
-                      {k.ogrenciler?.ad_soyad || 'Bilinmeyen öğrenci'}
-                      {k.kitapcik && <span className="text-gray-400 font-normal"> · Kitapçık {k.kitapcik}</span>}
-                    </p>
-                    <p className="text-xs text-gray-500">
-                      Doğru: <b className="text-green-700">{k.toplam_dogru}</b> · Yanlış:{' '}
-                      <b className="text-red-700">{k.toplam_yanlis}</b> · Boş: <b className="text-gray-500">{k.toplam_bos}</b> ·
-                      Net: <b className="text-navy">{k.toplam_net}</b>
-                    </p>
+                <div key={k.id} className="p-3">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div>
+                      <p className="text-sm font-medium text-gray-800">
+                        {k.ogrenciler?.ad_soyad || 'Bilinmeyen öğrenci'}
+                        {k.kitapcik && <span className="text-gray-400 font-normal"> · Kitapçık {k.kitapcik}</span>}
+                      </p>
+                      <p className="text-xs text-gray-500">
+                        Genel — Doğru: <b className="text-green-700">{k.toplam_dogru}</b> · Yanlış:{' '}
+                        <b className="text-red-700">{k.toplam_yanlis}</b> · Boş: <b className="text-gray-500">{k.toplam_bos}</b> ·
+                        Net: <b className="text-navy">{k.toplam_net}</b>
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Link
+                        to={`/hata-kitapcigi/${k.id}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-xs font-semibold bg-orange text-white px-3 py-1.5 rounded-full hover:opacity-90"
+                      >
+                        Hata Kitapçığı Oluştur
+                      </Link>
+                      <button
+                        type="button"
+                        onClick={() => sonucSil(k)}
+                        disabled={silinenSonucId === k.id}
+                        className="text-xs font-semibold text-red-600 border border-red-200 px-3 py-1.5 rounded-full hover:bg-red-50 disabled:opacity-40"
+                      >
+                        {silinenSonucId === k.id ? 'Siliniyor...' : 'Sil'}
+                      </button>
+                    </div>
                   </div>
-                  <div className="flex items-center gap-2">
-                    <Link
-                      to={`/hata-kitapcigi/${k.id}`}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-xs font-semibold bg-orange text-white px-3 py-1.5 rounded-full hover:opacity-90"
-                    >
-                      Hata Kitapçığı Oluştur
-                    </Link>
-                    <button
-                      type="button"
-                      onClick={() => sonucSil(k)}
-                      disabled={silinenSonucId === k.id}
-                      className="text-xs font-semibold text-red-600 border border-red-200 px-3 py-1.5 rounded-full hover:bg-red-50 disabled:opacity-40"
-                    >
-                      {silinenSonucId === k.id ? 'Siliniyor...' : 'Sil'}
-                    </button>
-                  </div>
+                  {k.dersler && k.dersler.length > 0 && (
+                    <div className="flex flex-wrap gap-1.5 mt-2">
+                      {k.dersler.map((d) => (
+                        <span
+                          key={d.id}
+                          className="text-[11px] bg-gray-50 border border-gray-100 rounded-lg px-2 py-1 whitespace-nowrap"
+                        >
+                          <b className="text-gray-700">{d.ders_adi}</b>
+                          <span className="text-green-700"> D:{d.dogru}</span>
+                          <span className="text-red-700"> Y:{d.yanlis}</span>
+                          <span className="text-gray-500"> B:{d.bos}</span>
+                          <span className="text-navy font-semibold"> N:{d.net}</span>
+                        </span>
+                      ))}
+                    </div>
+                  )}
                 </div>
               ))}
             </div>
