@@ -126,8 +126,70 @@ function satirMetni(satir) {
 }
 
 // ============================================================================
+// PUAN VE SIRALAMALAR tablosu — DERS ANALİZİ'nin hemen altında, AYNI sayfada
+// yer alıyor (bkz. gerçek örnek PDF, sandbox'ta pdf.js ile satır satır
+// doğrulandı). Üniversiteye yerleşmede belirleyici olan asıl bilgi bu tablo
+// (sadece net değil) — puan türü (TYT / AYT-SAY / AYT-EA / AYT-SÖZ gibi
+// birden fazla satır olabilir) bazında puan + genel/kurum/şube/sınıf
+// sıralaması. Sütun başlıkları ("PUAN TÜRÜ", "PUAN", "GENEL", "KURUM",
+// "SUBE", "SİNİF") gerçek PDF'te DERS ANALİZİ ile AYNI şekilde TEK birer
+// metin öğesi olarak geliyor, o yüzden aynı x-ankraj yöntemini kullanıyoruz.
+// "KATILIMCI SAYILARI" satırına gelince duruyoruz — o öğrencinin DEĞİL, o
+// sınava giren TOPLAM kişi sayısını gösteriyor, atlıyoruz.
+// ============================================================================
+function puanSiralamaAyikla(satirlar) {
+  const baslikIdx = satirlar.findIndex(
+    (r) => r.items.some((i) => i.str === 'PUAN TÜRÜ') && r.items.some((i) => i.str === 'GENEL')
+  )
+  if (baslikIdx === -1) return []
+
+  const ankraj = {}
+  for (const it of satirlar[baslikIdx].items) ankraj[it.str] = it.x
+  const kolonlar = ['PUAN TÜRÜ', 'PUAN', 'GENEL', 'KURUM', 'SUBE', 'SİNİF']
+  function enYakinKolon(x) {
+    let en = kolonlar[0]
+    let enFark = Infinity
+    for (const k of kolonlar) {
+      if (ankraj[k] === undefined) continue
+      const fark = Math.abs(ankraj[k] - x)
+      if (fark < enFark) { enFark = fark; en = k }
+    }
+    return en
+  }
+  // "5.630" → binlik ayıracı "." önce siliniyor, sonra "241,49" gibi ondalık
+  // virgülü noktaya çevriliyor — bu sırayla hem tam sayı sıralamalar hem de
+  // ondalıklı puan değeri doğru ayrışıyor.
+  const sayiTemizle = (metin) => (metin || '').replace(/\./g, '').replace(',', '.').trim()
+
+  const sonuclar = []
+  for (let i = baslikIdx + 1; i < satirlar.length; i++) {
+    const satir = satirlar[i]
+    const siraliOgeler = satir.items.slice().sort((a, b) => a.x - b.x)
+    const ilkMetin = siraliOgeler[0]?.str || ''
+    if (ilkMetin === 'KATILIMCI SAYILARI' || ilkMetin.startsWith('SON ')) break
+
+    const degerler = {}
+    for (const it of satir.items) {
+      const kolon = enYakinKolon(it.x)
+      degerler[kolon] = degerler[kolon] ? degerler[kolon] + ' ' + it.str : it.str
+    }
+    if (!degerler['PUAN TÜRÜ']) continue
+
+    sonuclar.push({
+      puan_turu: degerler['PUAN TÜRÜ'],
+      puan: parseFloat(sayiTemizle(degerler.PUAN)) || null,
+      genel_siralama: parseInt(sayiTemizle(degerler.GENEL), 10) || null,
+      kurum_siralama: parseInt(sayiTemizle(degerler.KURUM), 10) || null,
+      sube_siralama: parseInt(sayiTemizle(degerler.SUBE), 10) || null,
+      sinif_siralama: parseInt(sayiTemizle(degerler.SİNİF), 10) || null,
+    })
+  }
+  return sonuclar
+}
+
+// ============================================================================
 // SAYFA 1: Üst bilgi (öğrenci adı, sınav adı, tarihi, kitapçık) + DERS ANALİZİ
-// tablosu (ders bazında soru/doğru/yanlış/boş/net).
+// tablosu (ders bazında soru/doğru/yanlış/boş/net) + PUAN VE SIRALAMALAR.
 // ============================================================================
 function sayfa1Ayikla(satirlar) {
   const adSoyadIdx = satirlar.findIndex((r) => r.items.some((i) => i.str === 'Ad Soyad'))
@@ -204,7 +266,9 @@ function sayfa1Ayikla(satirlar) {
     })
   }
 
-  return { ogrenciAdSoyad, sinavAdi, sinavTarihi, kitapcik, dersSonuclari }
+  const puanSonuclari = puanSiralamaAyikla(satirlar)
+
+  return { ogrenciAdSoyad, sinavAdi, sinavTarihi, kitapcik, dersSonuclari, puanSonuclari }
 }
 
 // ============================================================================
