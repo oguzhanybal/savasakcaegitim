@@ -41,6 +41,134 @@ function dosyaGoruntuleLinki(dosyaYolu) {
   return supabase.storage.from('odev-ekleri').getPublicUrl(dosyaYolu).data.publicUrl
 }
 
+// Bir ödev satırının dosyasını GÖRÜNTÜLEMEK için kullanılacak linki ve buton
+// metnini belirler: dosya hâlâ Supabase Storage'daysa oradaki link, 2
+// haftadan eski olup Google Drive'a arşivlendiyse Drive linki, ikisi de
+// yoksa null döner.
+function odevDosyaLinkBilgisi(o) {
+  if (o.dosya_yolu) {
+    return { url: dosyaGoruntuleLinki(o.dosya_yolu), etiket: 'Dosyayı Gör' }
+  }
+  if (o.arsiv_link) {
+    return { url: o.arsiv_link, etiket: 'Drive Arşivinde Gör' }
+  }
+  return null
+}
+
+// ============================================================================
+// YÖNETİCİ — Google Drive bağlantısını kurma/durumunu gösterme paneli. 2
+// haftadan eski ödev dosyaları her gece otomatik olarak buraya bağlanan
+// Google Drive hesabına taşınıyor (bkz. api/odev-arsivle.js). Bağlantı, bu
+// butona basılıp Google'ın kendi izin ekranından onay verilerek KURULUYOR —
+// hiçbir şifre bu siteye girilmiyor.
+// ============================================================================
+function GoogleDriveBaglanti() {
+  const [durum, setDurum] = useState(null) // null: yükleniyor, {bagli, baglantiTarihi}
+  const [baglaniyor, setBaglaniyor] = useState(false)
+  const [banner, setBanner] = useState(null) // 'baglandi' | 'hata' | null
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search)
+    const drive = params.get('drive')
+    if (drive === 'baglandi' || drive === 'hata') {
+      setBanner(drive)
+      params.delete('drive')
+      const yeniUrl = window.location.pathname + (params.toString() ? '?' + params.toString() : '')
+      window.history.replaceState({}, '', yeniUrl)
+    }
+    durumYukle()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  async function durumYukle() {
+    const { data: oturum } = await supabase.auth.getSession()
+    const token = oturum?.session?.access_token
+    if (!token) return
+    try {
+      const yanit = await fetch('/api/google-baglanti-durumu', {
+        headers: { Authorization: `Bearer ${token}` },
+      })
+      const veri = await yanit.json()
+      setDurum(veri)
+    } catch {
+      setDurum({ bagli: false })
+    }
+  }
+
+  async function baglan() {
+    setBaglaniyor(true)
+    try {
+      const { data: oturum } = await supabase.auth.getSession()
+      const token = oturum?.session?.access_token
+      const yanit = await fetch('/api/google-oauth-baslat', {
+        headers: { Authorization: `Bearer ${token}` },
+      })
+      const veri = await yanit.json()
+      if (veri.url) {
+        window.location.href = veri.url
+      } else {
+        alert('Hata: ' + (veri.error || 'Bağlantı adresi alınamadı.'))
+        setBaglaniyor(false)
+      }
+    } catch (err) {
+      alert('Hata: ' + err.message)
+      setBaglaniyor(false)
+    }
+  }
+
+  return (
+    <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5 mb-6">
+      <p className="font-semibold text-gray-700 mb-1">Google Drive Arşivleme</p>
+      <p className="text-sm text-gray-500 mb-3">
+        2 haftadan eski ödev dosyaları, Supabase depolama alanı dolmasın diye otomatik olarak buraya bağlı Google
+        Drive hesabına taşınır (her gece otomatik çalışır).
+      </p>
+
+      {banner === 'baglandi' && (
+        <p className="text-sm text-green-700 bg-green-50 rounded-lg px-3 py-2 mb-3">
+          ✓ Google Drive bağlantısı başarıyla kuruldu.
+        </p>
+      )}
+      {banner === 'hata' && (
+        <p className="text-sm text-red-700 bg-red-50 rounded-lg px-3 py-2 mb-3">
+          ⚠️ Google Drive bağlantısı kurulamadı. Lütfen tekrar deneyin.
+        </p>
+      )}
+
+      {durum === null ? (
+        <p className="text-sm text-gray-400">Durum kontrol ediliyor...</p>
+      ) : durum.bagli ? (
+        <div className="flex items-center justify-between flex-wrap gap-2">
+          <p className="text-sm text-green-700 font-medium">
+            ✓ Bağlı
+            {durum.baglantiTarihi && (
+              <span className="text-gray-400 font-normal">
+                {' '}
+                ({new Date(durum.baglantiTarihi).toLocaleDateString('tr-TR')} tarihinde bağlandı)
+              </span>
+            )}
+          </p>
+          <button
+            onClick={baglan}
+            disabled={baglaniyor}
+            className="text-sm text-gray-500 hover:underline disabled:opacity-50"
+          >
+            Farklı Hesapla Yeniden Bağlan
+          </button>
+        </div>
+      ) : (
+        <button
+          onClick={baglan}
+          disabled={baglaniyor}
+          className="bg-orange text-white font-semibold px-5 py-2 rounded-lg hover:opacity-90 transition-opacity disabled:opacity-50"
+        >
+          {baglaniyor ? 'Yönlendiriliyor...' : "Google Drive'a Bağlan"}
+        </button>
+      )}
+    </div>
+  )
+}
+
 // ============================================================================
 // YÖNETİCİ / ÖĞRETMEN — Ödev Ver formu. Tek bir öğrenciye ya da (sınıf/grup
 // filtrelenip) birden fazla öğrenciye TOPLU ödev girilebilir. Ödev eklendikten
@@ -480,18 +608,18 @@ function VerilenOdevlerListesi({ odevler, isYonetici, onDegisti }) {
             </tr>
           )}
           {odevler.map((o) => {
-            const link = dosyaGoruntuleLinki(o.dosya_yolu)
+            const linkBilgi = odevDosyaLinkBilgisi(o)
             return (
               <tr key={o.id} className="border-t border-gray-50">
                 <td className="px-4 py-2 font-medium text-gray-800">{o.ogrenci_adi || '—'}</td>
                 <td className="px-4 py-2 text-gray-500">{o.ders || '—'}</td>
                 <td className="px-4 py-2">
                   {o.baslik}
-                  {link && (
+                  {linkBilgi && (
                     <>
                       {' '}
-                      <a href={link} target="_blank" rel="noreferrer" className="text-blue text-xs hover:underline">
-                        (Dosyayı Gör)
+                      <a href={linkBilgi.url} target="_blank" rel="noreferrer" className="text-blue text-xs hover:underline">
+                        ({linkBilgi.etiket})
                       </a>
                     </>
                   )}
@@ -579,7 +707,7 @@ function OdevlerimListesi({ odevler, birdenFazlaCocukMu }) {
   const sonuclananlar = odevler.filter((o) => o.durum !== 'bekliyor')
 
   function OdevKarti({ o }) {
-    const link = dosyaGoruntuleLinki(o.dosya_yolu)
+    const linkBilgi = odevDosyaLinkBilgisi(o)
     const bugundenSonraMi = o.son_tarih && o.son_tarih < yerelBugunTarihi() && o.durum === 'bekliyor'
     return (
       <div className={`px-4 py-3 flex items-start justify-between gap-3 flex-wrap ${bugundenSonraMi ? 'bg-red-50' : ''}`}>
@@ -597,9 +725,9 @@ function OdevlerimListesi({ odevler, birdenFazlaCocukMu }) {
               : 'Son tarih belirtilmemiş'}
             {bugundenSonraMi && <span className="text-red-600 font-semibold"> (Süresi geçti)</span>}
           </p>
-          {link && (
-            <a href={link} target="_blank" rel="noreferrer" className="text-blue text-xs hover:underline">
-              Ödev Dosyasını Gör
+          {linkBilgi && (
+            <a href={linkBilgi.url} target="_blank" rel="noreferrer" className="text-blue text-xs hover:underline">
+              {linkBilgi.etiket === 'Drive Arşivinde Gör' ? 'Ödev Dosyasını Gör (Drive Arşivinde)' : 'Ödev Dosyasını Gör'}
             </a>
           )}
         </div>
@@ -940,6 +1068,7 @@ export default function Odev() {
 
       {(isYonetici || isOgretmen) && (
         <>
+          {isYonetici && <GoogleDriveBaglanti />}
           <OdevVerForm
             ogrenciler={ogrenciler}
             ogretmenProfileId={profile.id}
