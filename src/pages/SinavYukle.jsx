@@ -12,18 +12,90 @@ import { sinavSonucPdfIndenTumOgrencileriCikar } from '../lib/sinavPdfParse'
 // dosyadan birden fazla satır (öğrenci) çıkabiliyor. Sistem her öğrenciyi
 // isimden eşleştirmeye çalışır — siz eşleşmeyi kontrol edip onayladıktan
 // sonra sonuçlar kaydedilir.
+// Sayfadan çıkıp geri dönüldüğünde (ör. "Hata Kitapçığı Oluştur" yeni
+// sekmede açılınca, ya da yanlışlıkla başka bir menüye tıklanınca) henüz
+// "Kaydet"e basılmamış satırların TAMAMEN kaybolup PDF'lerin en baştan
+// yüklenmesi gerekmesin diye, ayrıştırma sonuçları localStorage'a da
+// yazılıyor. Kaydedilen (veritabanına yazılmış) satırlar zaten kalıcı; bu
+// sadece "henüz kaydedilmemiş ama ayrıştırılmış" satırlar için bir güvenlik ağı.
+const SATIRLAR_ANAHTARI = 'sinavYukleSatirlari'
+const SINAV_ANAHTARI = 'sinavYukleSeciliSinavId'
+
 export default function SinavYukle() {
   const [sinavlar, setSinavlar] = useState([])
-  const [seciliSinavId, setSeciliSinavId] = useState('')
+  const [seciliSinavId, setSeciliSinavId] = useState(() => {
+    try {
+      return localStorage.getItem(SINAV_ANAHTARI) || ''
+    } catch {
+      return ''
+    }
+  })
   const [ogrenciler, setOgrenciler] = useState([])
-  const [satirlar, setSatirlar] = useState([]) // her biri bir yüklenen PDF'in durumu
+  const [satirlar, setSatirlar] = useState(() => {
+    try {
+      const kayitli = localStorage.getItem(SATIRLAR_ANAHTARI)
+      return kayitli ? JSON.parse(kayitli) : []
+    } catch {
+      return []
+    }
+  }) // her biri bir yüklenen PDF'in durumu
   const [ayikliyor, setAyikliyor] = useState(false)
   const [genelHata, setGenelHata] = useState('')
+
+  // Seçili sınav için VERİTABANINDA zaten kayıtlı olan sonuçlar — yukarıdaki
+  // "Yüklenen Dosyalar" listesinin aksine bu, tarayıcı hafızasına/localStorage'a
+  // değil doğrudan veritabanına bakar. Admin "kaydete basmıştım ama nerede o"
+  // diye endişelendiğinde (ör. sayfa/tarayıcı state'i bir şekilde sıfırlansa
+  // BİLE) kaydedilmiş bir sonucun kaybolmadığını buradan görebilir, ayrıca
+  // buradan da doğrudan Hata Kitapçığı oluşturabilir.
+  const [kayitliSonuclar, setKayitliSonuclar] = useState([])
+  const [kayitliSonuclarYukleniyor, setKayitliSonuclarYukleniyor] = useState(false)
 
   useEffect(() => {
     supabase.from('sinavlar').select('*').order('sinav_tarihi', { ascending: false }).then(({ data }) => setSinavlar(data || []))
     supabase.from('ogrenciler').select('id, ad_soyad').order('ad_soyad').then(({ data }) => setOgrenciler(data || []))
   }, [])
+
+  function kayitliSonuclariYukle(sinavId) {
+    if (!sinavId || sinavId === '__yeni__') {
+      setKayitliSonuclar([])
+      return
+    }
+    setKayitliSonuclarYukleniyor(true)
+    supabase
+      .from('ogrenci_sinav_sonuclari')
+      .select('id, kitapcik, toplam_net, toplam_dogru, toplam_yanlis, toplam_bos, created_at, ogrenciler(ad_soyad)')
+      .eq('sinav_id', sinavId)
+      .order('created_at', { ascending: false })
+      .then(({ data }) => {
+        setKayitliSonuclar(data || [])
+        setKayitliSonuclarYukleniyor(false)
+      })
+  }
+
+  useEffect(() => {
+    kayitliSonuclariYukle(seciliSinavId)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [seciliSinavId])
+
+  // satirlar/seciliSinavId her değiştiğinde localStorage'a yaz — böylece
+  // sayfadan çıkıp geri dönüldüğünde (hatta sekme kapatılıp yeniden
+  // açıldığında) liste olduğu gibi durur.
+  useEffect(() => {
+    try {
+      localStorage.setItem(SATIRLAR_ANAHTARI, JSON.stringify(satirlar))
+    } catch {
+      // localStorage dolu/erişilemez olsa bile uygulama çalışmaya devam etsin
+    }
+  }, [satirlar])
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(SINAV_ANAHTARI, seciliSinavId || '')
+    } catch {
+      // yok say
+    }
+  }, [seciliSinavId])
 
   // PDF'ten çıkan ismi mevcut öğrenci listesiyle eşleştirmeye çalışır —
   // önce tam eşleşme, olmazsa "içeriyor" bazlı yaklaşık eşleşme dener.
@@ -158,6 +230,7 @@ export default function SinavYukle() {
       }
 
       satirGuncelle(satir.id, { durum: 'kaydedildi', kaydedildi: true, sonucId: sonucVerisi.id })
+      kayitliSonuclariYukle(seciliSinavId)
     } catch (e) {
       satirGuncelle(satir.id, { durum: 'hata', hata: 'Kayıt hatası: ' + e.message })
     }
@@ -168,6 +241,24 @@ export default function SinavYukle() {
     for (const satir of kaydedilecekler) {
       await satirKaydet(satir)
     }
+  }
+
+  // Listeyi tamamen temizler (ör. bambaşka bir sınavın dosyalarını yüklemeye
+  // başlamadan önce eski listeyi silmek için). Zaten "Kaydet"e basılmış
+  // satırlar veritabanında güvende kalır, sadece bu ekrandaki liste temizlenir.
+  function listeyiTemizle() {
+    if (satirlar.length === 0) return
+    const kaydedilmemis = satirlar.filter((s) => s.durum !== 'kaydedildi').length
+    if (
+      kaydedilmemis > 0 &&
+      !confirm(
+        `Listede henüz kaydedilmemiş ${kaydedilmemis} satır var — temizlerseniz bunlar için PDF'i tekrar ` +
+          `yüklemeniz gerekir. Kaydedilmiş olanlar zaten güvende. Yine de listeyi temizlemek istiyor musunuz?`
+      )
+    ) {
+      return
+    }
+    setSatirlar([])
   }
 
   const hazirSayisi = satirlar.filter((s) => s.durum === 'hazir' && s.ogrenciId).length
@@ -217,19 +308,80 @@ export default function SinavYukle() {
         {genelHata && <p className="text-sm text-red-600">{genelHata}</p>}
       </div>
 
+      {/* Bu, YUKARIDAKİ "Yüklenen Dosyalar" listesinden FARKLI — o liste
+          tarayıcı hafızasında/localStorage'da tutulan, henüz bu oturumda
+          yüklenmiş dosyaların durumu. Bu bölüm ise doğrudan veritabanına
+          bakıyor: "Kaydet"e basılmış her sonuç burada KALICI olarak görünür,
+          tarayıcı/sekme durumu ne olursa olsun kaybolmaz. Admin "kaydettim
+          ama nerede" diye endişelenirse buradan kontrol edip, gerekirse
+          doğrudan Hata Kitapçığı da oluşturabilir. */}
+      {seciliSinavId && seciliSinavId !== '__yeni__' && (
+        <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden mb-6">
+          <div className="px-4 py-3 border-b border-gray-100 bg-gray-50">
+            <h2 className="font-semibold text-gray-700">
+              Bu Sınav İçin Daha Önce Kaydedilmiş Sonuçlar ({kayitliSonuclar.length})
+            </h2>
+            <p className="text-xs text-gray-400 mt-0.5">
+              Bu liste veritabanından geliyor — "Kaydet"e bastığınız her sonuç burada kalıcı olarak durur, sayfadan
+              çıkıp geri dönseniz de kaybolmaz.
+            </p>
+          </div>
+          {kayitliSonuclarYukleniyor ? (
+            <p className="text-sm text-gray-400 p-4">Yükleniyor...</p>
+          ) : kayitliSonuclar.length === 0 ? (
+            <p className="text-sm text-gray-400 p-4">Bu sınav için henüz kaydedilmiş bir sonuç yok.</p>
+          ) : (
+            <div className="divide-y divide-gray-100">
+              {kayitliSonuclar.map((k) => (
+                <div key={k.id} className="p-3 flex flex-wrap items-center justify-between gap-2">
+                  <div>
+                    <p className="text-sm font-medium text-gray-800">
+                      {k.ogrenciler?.ad_soyad || 'Bilinmeyen öğrenci'}
+                      {k.kitapcik && <span className="text-gray-400 font-normal"> · Kitapçık {k.kitapcik}</span>}
+                    </p>
+                    <p className="text-xs text-gray-500">
+                      Doğru: <b className="text-green-700">{k.toplam_dogru}</b> · Yanlış:{' '}
+                      <b className="text-red-700">{k.toplam_yanlis}</b> · Boş: <b className="text-gray-500">{k.toplam_bos}</b> ·
+                      Net: <b className="text-navy">{k.toplam_net}</b>
+                    </p>
+                  </div>
+                  <Link
+                    to={`/hata-kitapcigi/${k.id}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-xs font-semibold bg-orange text-white px-3 py-1.5 rounded-full hover:opacity-90"
+                  >
+                    Hata Kitapçığı Oluştur
+                  </Link>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
       {satirlar.length > 0 && (
         <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
           <div className="px-4 py-3 border-b border-gray-100 bg-gray-50 flex items-center justify-between flex-wrap gap-2">
             <h2 className="font-semibold text-gray-700">Yüklenen Dosyalar ({satirlar.length})</h2>
-            {hazirSayisi > 0 && (
+            <div className="flex items-center gap-2">
               <button
                 type="button"
-                onClick={hepsiniKaydet}
-                className="bg-orange text-white font-semibold px-4 py-2 rounded-lg text-sm hover:opacity-90 transition-opacity"
+                onClick={listeyiTemizle}
+                className="text-xs text-gray-400 font-semibold hover:text-gray-600 hover:underline px-2"
               >
-                Hazır Olan {hazirSayisi} Sonucu Kaydet
+                Listeyi Temizle
               </button>
-            )}
+              {hazirSayisi > 0 && (
+                <button
+                  type="button"
+                  onClick={hepsiniKaydet}
+                  className="bg-orange text-white font-semibold px-4 py-2 rounded-lg text-sm hover:opacity-90 transition-opacity"
+                >
+                  Hazır Olan {hazirSayisi} Sonucu Kaydet
+                </button>
+              )}
+            </div>
           </div>
           <div className="divide-y divide-gray-100">
             {satirlar.map((s) => (
