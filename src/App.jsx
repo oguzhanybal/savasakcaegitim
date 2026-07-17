@@ -24,6 +24,7 @@ import Kantin from './pages/Kantin'
 import SinavKitapciklari from './pages/SinavKitapciklari'
 import SinavYukle from './pages/SinavYukle'
 import HataKitapcigi from './pages/HataKitapcigi'
+import Karnem from './pages/Karnem'
 import Sozlesme from './pages/Sozlesme'
 import SifreSifirla from './pages/SifreSifirla'
 import SifremiDegistir from './pages/SifremiDegistir'
@@ -291,6 +292,14 @@ function AnaUygulama() {
             element={
               <Korumali izinliRoller={['yonetici']}>
                 <SinavYukle />
+              </Korumali>
+            }
+          />
+          <Route
+            path="karnem"
+            element={
+              <Korumali izinliRoller={['veli', 'ogrenci']}>
+                <Karnem />
               </Korumali>
             }
           />
