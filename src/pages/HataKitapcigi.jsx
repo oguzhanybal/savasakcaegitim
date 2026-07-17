@@ -70,8 +70,6 @@ export default function HataKitapcigi() {
           .select('*')
           .eq('sonuc_id', sonucId)
           .in('sonuc', ['yanlis', 'bos'])
-          .order('ders_adi', { ascending: true })
-          .order('soru_no', { ascending: true })
         if (soruHatasi) throw soruHatasi
 
         if (!soruSonuclari || soruSonuclari.length === 0) {
@@ -112,6 +110,33 @@ export default function HataKitapcigi() {
         const belge = await pdfBelgesiAc(pdfBlobu)
         const olcek = Number(kitapcikVerisi.olcek) || 3
 
+        // Yanlış/boş soruları KARNENİN alfabetik ders sırasında değil,
+        // kitapçıktaki GERÇEK okuma sırasında (sayfa → sütun → yukarıdan
+        // aşağı) göstermek için — admin Toplu Ders Ataması'nı hangi sırayla
+        // yaptıysa o sıra esas alınıyor. sinav_kitapcik_sorulari tablosu
+        // satır sırasını garanti etmediğinden, x/y konumlarından kendimiz
+        // hesaplıyoruz (Sınav Kitapçıkları > Düzenle'deki mantıkla aynı).
+        const siraMap = new Map()
+        if (kutular && kutular.length > 0) {
+          const benzersizSayfalar = [...new Set(kutular.map((k) => k.sayfa_no))]
+          const genislikMap = new Map()
+          for (const sayfaNo of benzersizSayfalar) {
+            const sayfa = await belge.getPage(sayfaNo)
+            genislikMap.set(sayfaNo, sayfa.getViewport({ scale: olcek }).width)
+          }
+          kutular
+            .slice()
+            .sort((a, b) => {
+              if (a.sayfa_no !== b.sayfa_no) return a.sayfa_no - b.sayfa_no
+              const genislik = genislikMap.get(a.sayfa_no) || 0
+              const sutunA = Number(a.x) < genislik / 2 ? 0 : 1
+              const sutunB = Number(b.x) < genislik / 2 ? 0 : 1
+              if (sutunA !== sutunB) return sutunA - sutunB
+              return Number(a.y) - Number(b.y)
+            })
+            .forEach((k, i) => siraMap.set(`${normalize(k.ders_adi)}|${k.soru_no}`, i))
+        }
+
         const sayfaCanvasOnbellek = new Map()
         async function sayfaCanvasGetir(sayfaNo) {
           if (sayfaCanvasOnbellek.has(sayfaNo)) return sayfaCanvasOnbellek.get(sayfaNo)
@@ -148,6 +173,17 @@ export default function HataKitapcigi() {
           })
         }
         if (iptalEdildi) return
+        // Kitapçıktaki gerçek sıraya göre diz (bkz. yukarıdaki siraMap) —
+        // eşleşmesi bulunamayan (dolayısıyla siraMap'te yeri olmayan)
+        // sorular listenin sonuna düşer.
+        hazirSorular.sort((a, b) => {
+          const ia = siraMap.get(`${normalize(a.ders_adi)}|${a.soru_no}`)
+          const ib = siraMap.get(`${normalize(b.ders_adi)}|${b.soru_no}`)
+          if (ia === undefined && ib === undefined) return 0
+          if (ia === undefined) return 1
+          if (ib === undefined) return -1
+          return ia - ib
+        })
         setSorular(hazirSorular)
         setEslesmeyenler(bulunamayanlar)
         // hazirSorular boş ama aslında yanlış/boş soru VARDI (hepsi eşleşme
