@@ -446,6 +446,35 @@ export function aylikBorcDurumHesapla(borc, tumAylikBorclar, odemeler) {
 }
 
 // ============================================================================
+// AYLIK KALEM BORÇLARI TABLOSU İÇİN GRUPLAMA — bireBirBorclariOlustur ve
+// kantinBorclariOlustur, HER dersi/alışı ayrı bir sentetik satır olarak
+// üretiyor (ör. bir öğrenci bir ayda 15 bire bir dersi aldıysa, 15 ayrı satır).
+// Muhasebe.jsx'teki "Aylık Kalem Borçları" tablosu bunları tek tek gösterirse
+// çok uzun bir liste oluyor — bu fonksiyon AYNI kalem + AYNI ay içindeki tüm
+// satırları TEK bir toplam satıra indirger (tutar toplanır). Alttaki "Bire Bir
+// Ders Dökümü" bölümü zaten tek tek dersleri (tarih/saat/öğretmen ile) ayrıca
+// gösterdiği için, bu tablo artık sadece ay bazında ÖZET gösteriyor. Yeni bir
+// ders/alış eklendikçe (veriyiYenile ile) otomatik güncellenir.
+// ============================================================================
+export function aylikBorclariKalemAyaGoreGrupla(aylikBorclar) {
+  const gruplar = new Map()
+  for (const a of aylikBorclar || []) {
+    const donemAyi = String(a.donem).slice(0, 7) // "YYYY-MM"
+    const anahtar = `${a.kalem}|${donemAyi}`
+    if (!gruplar.has(anahtar)) {
+      gruplar.set(anahtar, { id: `grp-${anahtar}`, kalem: a.kalem, donem: a.donem, tutar: 0, satirlar: [] })
+    }
+    const g = gruplar.get(anahtar)
+    g.tutar += Number(a.tutar) || 0
+    g.satirlar.push(a)
+  }
+  return Array.from(gruplar.values()).sort((x, y) => {
+    if (x.donem !== y.donem) return x.donem < y.donem ? -1 : 1
+    return x.kalem.localeCompare(y.kalem, 'tr')
+  })
+}
+
+// ============================================================================
 // BİRE BİR DERS ÜCRETİ — Bir öğrencinin bire bir atamasına (öğretmen + ders
 // ücreti) göre alınan yoklama ('geldi') kayıtlarını, aylik_borclar tablosuyla
 // AYNI ŞEKİLDE ({kalem, tutar, donem}) sentetik satırlara çevirir. Bu sayede
