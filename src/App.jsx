@@ -127,7 +127,7 @@ function AnaUygulama() {
         <Route
           path="/hata-kitapcigi/:sonucId"
           element={
-            <Korumali izinliRoller={['yonetici']}>
+            <Korumali izinliRoller={['yonetici', 'veli', 'ogrenci']}>
               <HataKitapcigi />
             </Korumali>
           }
