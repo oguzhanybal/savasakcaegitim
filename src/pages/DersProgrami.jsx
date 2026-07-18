@@ -699,16 +699,12 @@ function GunlukProgramListesi({ program, ogretmenler, atamalar, yoklamalar, ogre
                       className={`border-t border-l border-gray-100 text-center align-top py-1 leading-tight ${h.dolu ? h.dolu.renk : ''}`}
                     >
                       {h.dolu && (
-                        // Dar mobil sütunlarda uzun öğrenci adları ("Tural Hamid" gibi) sade
-                        // break-words ile tek harfin yalnız bir satırda kalmasına (ör. "Hami" /
-                        // "d") yol açabiliyordu — en fazla 2 satır gösterip fazlasını kırpıyoruz,
-                        // sığmayan kelime son satırda "…" ile kesiliyor, tek harf yalnız kalmıyor.
-                        <span
-                          className="block break-words px-0.5 overflow-hidden"
-                          style={{ display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' }}
-                        >
-                          {h.dolu.etiket}
-                        </span>
+                        // Dar mobil sütunlarda uzun öğrenci adları ("Tural Hamid" gibi) 2 satıra
+                        // sardırmak bile ortadan kelimeyi bölüp çirkin görünüyordu (ör. "Tura" /
+                        // "l..." gibi) — masaüstündeki AYNI yöntemle TEK SATIRDA, sığmayan kısmı
+                        // "…" ile keserek gösteriyoruz; tam ad zaten hücreye dokunca/basılı
+                        // tutunca çıkan başlıkta (title) görünüyor.
+                        <span className="block truncate px-0.5">{h.dolu.etiket}</span>
                       )}
                     </td>
                   ))}
