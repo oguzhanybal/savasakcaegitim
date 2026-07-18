@@ -498,8 +498,11 @@ function GunlukProgramListesi({ program, ogretmenler, atamalar, yoklamalar, ogre
         ogretmenId: d.ogretmen_profile_id,
         baslangic: saatKisalt(d.baslangic_saat),
         bitis: saatKisalt(d.bitis_saat),
-        etiket: d.ders_adi || d.sinif_adi || 'Sınıf dersi',
-        altEtiket: d.sinif_adi,
+        // Hangi sınıfa girdiği asıl bilinmek istenen — branş/ders adı zaten
+        // öğretmenden belli oluyor, o yüzden önce sınıf adı gösteriliyor.
+        etiket: d.sinif_adi || d.ders_adi || 'Sınıf dersi',
+        altEtiket: d.ders_adi,
+        tur: 'sinif',
         renk: 'bg-blue-200 text-blue-900 border-l-4 border-l-blue-600',
       })
     }
@@ -510,7 +513,8 @@ function GunlukProgramListesi({ program, ogretmenler, atamalar, yoklamalar, ogre
         baslangic: saatKisalt(a.baslangic_saat),
         bitis: saatKisalt(a.bitis_saat),
         etiket: a.ogrenci_adi || 'Bire bir',
-        altEtiket: 'Bire bir',
+        altEtiket: null,
+        tur: 'birebir',
         renk: 'bg-orange-200 text-orange-900 border-l-4 border-l-orange-600',
       })
     }
@@ -522,7 +526,8 @@ function GunlukProgramListesi({ program, ogretmenler, atamalar, yoklamalar, ogre
         baslangic: saatKisalt(y.baslangic_saat),
         bitis: saatKisalt(y.bitis_saat),
         etiket: (ogrenciAdMap && ogrenciAdMap.get(y.ogrenci_id)) || 'Bire bir',
-        altEtiket: 'Bire bir',
+        altEtiket: null,
+        tur: 'birebir',
         renk: 'bg-orange-200 text-orange-900 border-l-4 border-l-orange-600',
       })
     }
@@ -629,11 +634,12 @@ function GunlukProgramListesi({ program, ogretmenler, atamalar, yoklamalar, ogre
                       className={`border-t border-l border-gray-100 text-center align-middle py-1 ${h.dolu ? h.dolu.renk : ''}`}
                     >
                       {h.dolu && (
+                        // Sadece BAŞLICA bilgi gösteriliyor: sınıf dersiyse sınıf adı, bire
+                        // birse öğrenci adı — branş/"Bire bir" gibi ikinci bir satır artık
+                        // tekrar yazılmıyor (renk zaten hangisi olduğunu ayırt ediyor, tam
+                        // detay hücreye dokununca/basılı tutunca çıkan başlıkta duruyor).
                         <span className="leading-none block px-0.5">
                           <span className="block truncate text-[11px] font-semibold">{h.dolu.etiket}</span>
-                          {h.dolu.altEtiket && (
-                            <span className="block text-[9px] opacity-70 truncate">{h.dolu.altEtiket}</span>
-                          )}
                         </span>
                       )}
                     </td>
@@ -699,12 +705,15 @@ function GunlukProgramListesi({ program, ogretmenler, atamalar, yoklamalar, ogre
                       className={`border-t border-l border-gray-100 text-center align-top py-1 leading-tight ${h.dolu ? h.dolu.renk : ''}`}
                     >
                       {h.dolu && (
-                        // Dar mobil sütunlarda uzun öğrenci adları ("Tural Hamid" gibi) 2 satıra
-                        // sardırmak bile ortadan kelimeyi bölüp çirkin görünüyordu (ör. "Tura" /
-                        // "l..." gibi) — masaüstündeki AYNI yöntemle TEK SATIRDA, sığmayan kısmı
-                        // "…" ile keserek gösteriyoruz; tam ad zaten hücreye dokunca/basılı
-                        // tutunca çıkan başlıkta (title) görünüyor.
-                        <span className="block truncate px-0.5">{h.dolu.etiket}</span>
+                        // Sütunlar telefonda o kadar dar ki (9 sütun tek ekranda) tam ad+soyad
+                        // hâlâ "Tu..." gibi anlamsız kesiliyordu. Bire bir hücrelerinde artık
+                        // sadece İSİM (ilk kelime) gösteriliyor — "Tural" gibi kısa bir ad genelde
+                        // sığıyor ve tek başına yeterince tanımlayıcı; tam ad+soyad zaten hücreye
+                        // basılı tutunca çıkan başlıkta (title) duruyor. Sınıf dersi hücrelerinde
+                        // (sınıf adı zaten kısa, ör. "12-SAYISAL") değişiklik yok.
+                        <span className="block truncate px-0.5">
+                          {h.dolu.tur === 'birebir' ? h.dolu.etiket.split(' ')[0] : h.dolu.etiket}
+                        </span>
                       )}
                     </td>
                   ))}
