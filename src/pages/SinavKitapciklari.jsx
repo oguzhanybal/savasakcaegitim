@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { ilkHarfleriBuyukYap } from '../lib/adSoyadFormat'
+import { levenshteinMesafesi } from '../lib/sinavPdfParse'
+import { KONU_REFERANS } from '../lib/konuReferansListesi'
 import {
   pdfBelgesiAc,
   sayfayiGoruntuyeCevir,
@@ -17,6 +19,13 @@ const DERS_ONERILERI = [
   'Türkçe', 'Matematik', 'Tarih', 'Coğrafya', 'Felsefe', 'Din Kültürü',
   'Fizik', 'Kimya', 'Biyoloji', 'Sosyal Bilimler', 'Fen Bilimleri', 'Geometri',
 ]
+
+// KONU_REFERANS ders adlarına göre büyük/küçük harf duyarsız aranabilsin diye
+// (sinav_soru_sonuclari.ders_adi tam olarak aynı yazımda gelmeyebilir) —
+// küçük harfli ders adına göre bir kere burada indeksleniyor.
+const KONU_REFERANS_LOWER = Object.fromEntries(
+  Object.entries(KONU_REFERANS).map(([ders, konular]) => [ders.toLocaleLowerCase('tr-TR'), konular])
+)
 
 // Sayfa üzerine soru kutularını çizen / kutu yeniden çizmeyi (mouse ile
 // sürükle-bırak) yöneten katman. Koordinatlar her zaman sayfanın DOĞAL piksel
@@ -358,6 +367,25 @@ export default function SinavKitapciklari() {
   // oluşturulmuş, otomatik "Diğer" gelen) sınavları geriye dönük etiketlemek için.
   const [duzenlenenSinavTuru, setDuzenlenenSinavTuru] = useState('Diğer')
   const [sinavAdiKaydediliyor, setSinavAdiKaydediliyor] = useState(false)
+  // "Konu Adları" paneli — PDF'i üreten programın (Edesis) font kodlaması
+  // bazen bir harfi bozuk yazıyor (ör. "Paragraf" yerine "Paragraa"). Konu
+  // adları serbest metin olduğu için (ders adları gibi sabit bir listeyle
+  // otomatik düzeltilemiyor), admin burada bir sınava ait TÜM farklı konu
+  // adlarını görüp hatalı olanı DÜZELTEBİLİYOR — düzeltme, o sınava giren
+  // TÜM öğrencilerin kaydında aynı anda uygulanıyor (tek tek uğraşmıyor).
+  const [konuPaneliSinavId, setKonuPaneliSinavId] = useState(null)
+  const [konuPaneliYukleniyor, setKonuPaneliYukleniyor] = useState(false)
+  const [konuGruplari, setKonuGruplari] = useState([])
+  const [konuSonucIdleri, setKonuSonucIdleri] = useState([])
+  const [duzenlenenKonuAnahtari, setDuzenlenenKonuAnahtari] = useState(null)
+  const [duzenlenenKonuMetni, setDuzenlenenKonuMetni] = useState('')
+  const [konuKaydediliyor, setKonuKaydediliyor] = useState(false)
+  const [topluDuzeltmeYukleniyor, setTopluDuzeltmeYukleniyor] = useState(false)
+  // Öneri kaynağı: SİSTEMDEKİ TÜM sınavlardaki (sadece bu sınav değil) konu
+  // adları — aynı konu genelde birden fazla sınavda/öğrencide geçtiği için,
+  // birinde bozuk gelen bir isim başka bir kayıtta doğru yazılmış olabilir.
+  // Panel her açıldığında bir kere çekilip admin panel açıkken bellekte tutulur.
+  const [tumKonuVocab, setTumKonuVocab] = useState([]) // [{dersAdi, konu}]
   const [seciliSinavId, setSeciliSinavId] = useState('')
   const [yeniSinavAdi, setYeniSinavAdi] = useState('')
   const [yeniSinavTarihi, setYeniSinavTarihi] = useState('')
@@ -537,6 +565,216 @@ export default function SinavKitapciklari() {
       alert('Hata: ' + e.message)
     } finally {
       setSinavAdiKaydediliyor(false)
+    }
+  }
+
+  // Bir sınava ait TÜM öğrenci sonuçlarındaki (sinav_soru_sonuclari) farklı
+  // konu adlarını toplayıp listeler — "Konu Analizli Karne" formatında
+  // yüklenmemiş sınavlarda hiç veri gelmeyebilir, bu normal. Aynı konu farklı
+  // öğrencilerde ufak boşluk/büyük-küçük harf farkıyla gelmiş olabileceği için
+  // NORMALİZE edilmiş anahtarla gruplanıyor, ama düzeltme kaydedilirken o
+  // gruba giren TÜM ham (orijinal) ders_adi/konu varyasyonları hedefleniyor
+  // (dersAdiOrijinalleri/konuOrijinalleri) — yoksa küçük bir yazım farkı olan
+  // satırlar düzeltmenin dışında kalırdı.
+  async function konuPaneliniAc(sinavId) {
+    setKonuPaneliSinavId(sinavId)
+    setKonuPaneliYukleniyor(true)
+    setKonuGruplari([])
+    setDuzenlenenKonuAnahtari(null)
+    try {
+      const { data: sonuclar, error: sonucHatasi } = await supabase
+        .from('ogrenci_sinav_sonuclari')
+        .select('id')
+        .eq('sinav_id', sinavId)
+      if (sonucHatasi) throw sonucHatasi
+      const sonucIdleri = (sonuclar || []).map((s) => s.id)
+      setKonuSonucIdleri(sonucIdleri)
+      if (sonucIdleri.length === 0) {
+        setKonuPaneliYukleniyor(false)
+        return
+      }
+      const { data: soruVerileri, error: soruHatasi } = await supabase
+        .from('sinav_soru_sonuclari')
+        .select('ders_adi, konu')
+        .in('sonuc_id', sonucIdleri)
+      if (soruHatasi) throw soruHatasi
+
+      const harita = new Map()
+      for (const s of soruVerileri || []) {
+        const dersAdiHam = (s.ders_adi || '').trim()
+        const konuHam = (s.konu || '').trim()
+        if (!konuHam) continue
+        const anahtar = `${dersAdiHam.toLocaleLowerCase('tr-TR')}|${konuHam.toLocaleLowerCase('tr-TR')}`
+        if (!harita.has(anahtar)) {
+          harita.set(anahtar, {
+            anahtar,
+            dersAdi: dersAdiHam,
+            konu: konuHam,
+            soruSayisi: 0,
+            dersAdiOrijinalleri: new Set(),
+            konuOrijinalleri: new Set(),
+          })
+        }
+        const kayit = harita.get(anahtar)
+        kayit.soruSayisi += 1
+        kayit.dersAdiOrijinalleri.add(s.ders_adi)
+        kayit.konuOrijinalleri.add(s.konu)
+      }
+      const liste = [...harita.values()]
+        .map((k) => ({
+          ...k,
+          dersAdiOrijinalleri: [...k.dersAdiOrijinalleri],
+          konuOrijinalleri: [...k.konuOrijinalleri],
+        }))
+        .sort((a, b) => a.dersAdi.localeCompare(b.dersAdi, 'tr-TR') || a.konu.localeCompare(b.konu, 'tr-TR'))
+      setKonuGruplari(liste)
+
+      // Öneri havuzu: SADECE bu sınav değil, sistemdeki TÜM konu adları —
+      // admin doğru yazılışı bilmeyebilir, ama aynı konu başka bir sınav/
+      // öğrencide doğru yazılmış olabilir. Panel her açıldığında bir kere
+      // çekiliyor (her tuşa basışta değil), sadece ders_adi+konu (küçük,
+      // hafif) çekildiği için büyük bir yük oluşturmuyor.
+      const { data: tumVeri, error: vocabHatasi } = await supabase
+        .from('sinav_soru_sonuclari')
+        .select('ders_adi, konu')
+      if (!vocabHatasi) {
+        const gorulmus = new Set()
+        const vocab = []
+        for (const v of tumVeri || []) {
+          const dersAdiHam = (v.ders_adi || '').trim()
+          const konuHam = (v.konu || '').trim()
+          if (!konuHam) continue
+          const anahtar = `${dersAdiHam.toLocaleLowerCase('tr-TR')}|${konuHam.toLocaleLowerCase('tr-TR')}`
+          if (gorulmus.has(anahtar)) continue
+          gorulmus.add(anahtar)
+          vocab.push({ dersAdi: dersAdiHam, konu: konuHam })
+        }
+        setTumKonuVocab(vocab)
+      }
+    } catch (e) {
+      setHata('Konu adları yüklenemedi: ' + e.message)
+    } finally {
+      setKonuPaneliYukleniyor(false)
+    }
+  }
+
+  function konuPaneliniKapat() {
+    setKonuPaneliSinavId(null)
+    setKonuGruplari([])
+    setDuzenlenenKonuAnahtari(null)
+    setTumKonuVocab([])
+  }
+
+  // Bozuk gelen bir konu adına en BENZER (Levenshtein mesafesi en küçük)
+  // adayları bulur — iki kaynaktan: (1) SİSTEMDEKİ diğer kayıtlar (tumKonuVocab
+  // — aynı konu başka bir öğrenci/sınavda doğru yazılmış olabilir), (2) TYT/AYT
+  // müfredatındaki BİLİNEN konu adları listesi (KONU_REFERANS — sistemde hiç
+  // doğru örneği olmasa bile, standart müfredat konu adlarıyla karşılaştırılır).
+  // Aynı ders içinden, kendisiyle birebir aynı olmayan, ve makul ölçüde benzer
+  // olanları (mesafe, metnin yarısından uzun olamaz — yoksa alakasız bir öneri
+  // çıkıp kafa karıştırır) döndürür — mesafeye göre sıralı.
+  function konuAdaylariniBul(dersAdi, hamMetin) {
+    const dersAnahtari = dersAdi.toLocaleLowerCase('tr-TR')
+    const hedefTemiz = hamMetin.toLocaleLowerCase('tr-TR')
+    const havuz = [
+      ...tumKonuVocab,
+      ...(KONU_REFERANS_LOWER[dersAnahtari] || []).map((konu) => ({ dersAdi, konu })),
+    ]
+    const adaylar = new Map() // konuAnahtari -> {konu, mesafe}
+    for (const v of havuz) {
+      if (v.dersAdi.toLocaleLowerCase('tr-TR') !== dersAnahtari) continue
+      const adayAnahtari = v.konu.toLocaleLowerCase('tr-TR')
+      if (adayAnahtari === hedefTemiz) continue
+      if (adaylar.has(adayAnahtari)) continue
+      const mesafe = levenshteinMesafesi(hedefTemiz, adayAnahtari)
+      if (mesafe > Math.max(hedefTemiz.length, adayAnahtari.length) * 0.5) continue
+      adaylar.set(adayAnahtari, { konu: v.konu, mesafe })
+    }
+    return [...adaylar.values()].sort((a, b) => a.mesafe - b.mesafe)
+  }
+
+  function konuOnerileriniBul(dersAdi, hamMetin) {
+    return konuAdaylariniBul(dersAdi, hamMetin).slice(0, 4).map((a) => a.konu)
+  }
+
+  // "Tümünü Otomatik Düzelt" — her konu için en iyi adayı bulur, sadece ÇOK
+  // YAKIN (mesafe <= 2, yani 1-2 harflik bir fark) eşleşmeleri "güvenli" kabul
+  // edip otomatik uygular. Emin olunamayan (daha uzak) eşleşmeler dokunulmadan
+  // bırakılır — admin onları elle/öneri butonlarıyla tek tek kontrol eder. Bu
+  // sayede admin'in HER konuyu tek tek açıp düzeltmesi gerekmez, sadece
+  // sistemin emin olmadıklarına bakması yeterli olur.
+  async function topluOtomatikDuzelt() {
+    const guvenliDuzeltmeler = []
+    for (const k of konuGruplari) {
+      const adaylar = konuAdaylariniBul(k.dersAdi, k.konu)
+      const enIyi = adaylar[0]
+      if (enIyi && enIyi.mesafe > 0 && enIyi.mesafe <= 2) {
+        guvenliDuzeltmeler.push({ k, yeni: enIyi.konu })
+      }
+    }
+    if (guvenliDuzeltmeler.length === 0) {
+      alert('Otomatik düzeltilecek kadar emin (çok yakın) bir eşleşme bulunamadı. Kalan konuları "Düzenle" ile tek tek, önerilerden seçerek düzeltebilirsiniz.')
+      return
+    }
+    const onayMetni = guvenliDuzeltmeler.map((d) => `• "${d.k.konu}"  →  "${d.yeni}"`).join('\n')
+    if (
+      !confirm(
+        `${guvenliDuzeltmeler.length} konu adı aşağıdaki gibi OTOMATİK düzeltilecek (bu sınava giren tüm öğrencilerde):\n\n${onayMetni}\n\nOnaylıyor musunuz?`
+      )
+    )
+      return
+    setTopluDuzeltmeYukleniyor(true)
+    try {
+      for (const d of guvenliDuzeltmeler) {
+        const { error } = await supabase
+          .from('sinav_soru_sonuclari')
+          .update({ konu: d.yeni })
+          .in('sonuc_id', konuSonucIdleri)
+          .in('ders_adi', d.k.dersAdiOrijinalleri)
+          .in('konu', d.k.konuOrijinalleri)
+        if (error) throw error
+      }
+      await konuPaneliniAc(konuPaneliSinavId)
+    } catch (e) {
+      alert('Hata: ' + e.message)
+    } finally {
+      setTopluDuzeltmeYukleniyor(false)
+    }
+  }
+
+  function konuDuzenlemeyeBasla(k) {
+    setDuzenlenenKonuAnahtari(k.anahtar)
+    setDuzenlenenKonuMetni(k.konu)
+  }
+
+  function konuDuzenlemeyiVazgec() {
+    setDuzenlenenKonuAnahtari(null)
+  }
+
+  async function konuDuzenlemeyiKaydet(k) {
+    const yeniMetin = duzenlenenKonuMetni.trim()
+    if (!yeniMetin) {
+      alert('Konu adı boş olamaz.')
+      return
+    }
+    setKonuKaydediliyor(true)
+    try {
+      // Aynı sınavın TÜM öğrencilerindeki bu konuyu birden düzeltiyoruz —
+      // sonuc_id bu sınava ait olanlarla, ders_adi/konu de bu gruba giren
+      // TÜM ham varyasyonlarla sınırlanıyor.
+      const { error } = await supabase
+        .from('sinav_soru_sonuclari')
+        .update({ konu: yeniMetin })
+        .in('sonuc_id', konuSonucIdleri)
+        .in('ders_adi', k.dersAdiOrijinalleri)
+        .in('konu', k.konuOrijinalleri)
+      if (error) throw error
+      setDuzenlenenKonuAnahtari(null)
+      await konuPaneliniAc(konuPaneliSinavId)
+    } catch (e) {
+      alert('Hata: ' + e.message)
+    } finally {
+      setKonuKaydediliyor(false)
     }
   }
 
@@ -1246,6 +1484,12 @@ export default function SinavKitapciklari() {
                     </td>
                     <td className="px-4 py-2 text-right whitespace-nowrap">
                       <button
+                        onClick={() => konuPaneliniAc(s.id)}
+                        className="text-blue text-sm font-semibold hover:underline mr-4"
+                      >
+                        Konu Adları
+                      </button>
+                      <button
                         onClick={() => sinavDuzenlemeyeBasla(s)}
                         className="text-navy text-sm font-semibold hover:underline mr-4"
                       >
@@ -1264,6 +1508,126 @@ export default function SinavKitapciklari() {
               )}
             </tbody>
           </table>
+        </div>
+      )}
+
+      {konuPaneliSinavId && (
+        <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5 mb-6">
+          <div className="flex items-center justify-between gap-3 mb-1">
+            <p className="font-semibold text-gray-700">
+              Konu Adları — {sinavlar.find((s) => s.id === konuPaneliSinavId)?.sinav_adi}
+            </p>
+            <button onClick={konuPaneliniKapat} className="text-xs text-gray-400 hover:underline shrink-0">
+              Kapat
+            </button>
+          </div>
+          <p className="text-xs text-gray-400 mb-3">
+            Bu sınava ("Konu Analizli Karne" formatında) yüklenmiş öğrenci sonuçlarındaki tüm konu adları —
+            PDF'i üreten programın (Edesis) font kodlaması bazen bir harfi bozuk yazabiliyor (ör. "Paragraf"
+            yerine "Paragraa"). Öneriler hem sistemdeki DİĞER kayıtlardan hem de TYT/AYT müfredatındaki bilinen
+            konu adları listesinden geliyor. Buradan bir konu adını düzeltirseniz, bu sınava girmiş TÜM
+            öğrencilerin kaydında aynı anda düzelir — tek tek uğraşmanıza gerek kalmaz.
+          </p>
+          {!konuPaneliYukleniyor && konuGruplari.length > 0 && (
+            <div className="mb-4">
+              <button
+                type="button"
+                onClick={topluOtomatikDuzelt}
+                disabled={topluDuzeltmeYukleniyor}
+                className="bg-orange text-white text-sm font-semibold px-4 py-2 rounded-lg hover:opacity-90 disabled:opacity-50"
+              >
+                {topluDuzeltmeYukleniyor ? 'Düzeltiliyor...' : '⚡ Tümünü Otomatik Düzelt (emin olunanlar)'}
+              </button>
+              <p className="text-[11px] text-gray-400 mt-1.5">
+                Sadece ÇOK YAKIN (1-2 harflik fark) eşleşmeleri otomatik düzeltir, uygulamadan önce size
+                tam olarak neyin neye değişeceğini gösterip onay ister. Emin olunamayanlar dokunulmadan
+                kalır, onları aşağıdan "Düzenle" ile tek tek (önerilerden seçerek) düzeltebilirsiniz.
+              </p>
+            </div>
+          )}
+          {konuPaneliYukleniyor && <p className="text-sm text-gray-400">Yükleniyor...</p>}
+          {!konuPaneliYukleniyor && konuGruplari.length === 0 && (
+            <p className="text-sm text-gray-400">
+              Bu sınavda konu bilgisi bulunamadı — sadece "Konu Analizli Karne" formatında yüklenmiş
+              sonuçlarda bu bilgi olur.
+            </p>
+          )}
+          {!konuPaneliYukleniyor && konuGruplari.length > 0 && (
+            <div className="divide-y divide-gray-50 max-h-[420px] overflow-y-auto">
+              {konuGruplari.map((k) => {
+                const oneriler = duzenlenenKonuAnahtari === k.anahtar ? konuOnerileriniBul(k.dersAdi, k.konu) : []
+                return (
+                <div key={k.anahtar} className="py-2">
+                  <div className="flex items-center gap-3">
+                    <span className="text-xs text-gray-400 w-28 shrink-0 truncate" title={k.dersAdi}>
+                      {k.dersAdi}
+                    </span>
+                    {duzenlenenKonuAnahtari === k.anahtar ? (
+                      <>
+                        <input
+                          value={duzenlenenKonuMetni}
+                          onChange={(e) => setDuzenlenenKonuMetni(e.target.value)}
+                          autoFocus
+                          className="flex-1 min-w-0 px-2 py-1 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue"
+                        />
+                        <button
+                          onClick={() => konuDuzenlemeyiKaydet(k)}
+                          disabled={konuKaydediliyor}
+                          className="text-navy text-xs font-semibold hover:underline disabled:opacity-50 shrink-0"
+                        >
+                          {konuKaydediliyor ? 'Kaydediliyor...' : 'Kaydet'}
+                        </button>
+                        <button
+                          onClick={konuDuzenlemeyiVazgec}
+                          disabled={konuKaydediliyor}
+                          className="text-gray-400 text-xs hover:underline shrink-0"
+                        >
+                          Vazgeç
+                        </button>
+                      </>
+                    ) : (
+                      <>
+                        <span className="flex-1 min-w-0 text-sm text-gray-800 truncate" title={k.konu}>
+                          {k.konu}
+                        </span>
+                        <span className="text-xs text-gray-400 shrink-0">{k.soruSayisi} kayıt</span>
+                        <button
+                          onClick={() => konuDuzenlemeyeBasla(k)}
+                          className="text-blue text-xs font-semibold hover:underline shrink-0"
+                        >
+                          Düzenle
+                        </button>
+                      </>
+                    )}
+                  </div>
+                  {duzenlenenKonuAnahtari === k.anahtar && (
+                    <div className="flex items-center gap-1.5 flex-wrap mt-1.5 ml-[7.5rem]">
+                      {oneriler.length > 0 ? (
+                        <>
+                          <span className="text-[11px] text-gray-400 mr-0.5">Öneriler:</span>
+                          {oneriler.map((oneri) => (
+                            <button
+                              key={oneri}
+                              type="button"
+                              onClick={() => setDuzenlenenKonuMetni(oneri)}
+                              className="text-[11px] bg-blue/10 text-blue font-medium px-2 py-0.5 rounded-full hover:bg-blue/20"
+                            >
+                              {oneri}
+                            </button>
+                          ))}
+                        </>
+                      ) : (
+                        <span className="text-[11px] text-gray-300">
+                          Sistemde benzer bir konu adı bulunamadı — doğru yazılışı biliyorsanız elle yazın.
+                        </span>
+                      )}
+                    </div>
+                  )}
+                </div>
+                )
+              })}
+            </div>
+          )}
         </div>
       )}
 
