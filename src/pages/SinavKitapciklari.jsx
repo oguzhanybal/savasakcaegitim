@@ -693,22 +693,25 @@ export default function SinavKitapciklari() {
     return [...adaylar.values()].sort((a, b) => a.mesafe - b.mesafe)
   }
 
-  // Bir konu adı, sistemdeki vocab'da YA DA müfredat referans listesinde
-  // BİREBİR (normalize edilmiş — boşluk/büyük-küçük harf farkı hariç) zaten
-  // varsa, bu konu adı muhtemelen ZATEN DOĞRU demektir — ona "benzer ama
-  // FARKLI" bir konu önermek yanlış olur (ör. "İç Kuvvetler" zaten doğru
-  // yazılmışken, ona metin olarak benzeyen ama TAMAMEN FARKLI bir konu olan
-  // "Dış Kuvvetler" önerilmemeli). Bu fonksiyon, otomatik/manuel öneri
-  // üretmeden ÖNCE bu kontrolü yapmak için kullanılıyor.
+  // Bir konu adı, müfredat referans listesinde BİREBİR (normalize edilmiş —
+  // boşluk/büyük-küçük harf farkı hariç) zaten varsa, bu konu adı muhtemelen
+  // ZATEN DOĞRU demektir — ona "benzer ama FARKLI" bir konu önermek yanlış
+  // olur (ör. "İç Kuvvetler" zaten doğru yazılmışken, ona metin olarak
+  // benzeyen ama TAMAMEN FARKLI bir konu olan "Dış Kuvvetler" önerilmemeli).
+  //
+  // ÖNEMLİ: Bu kontrol SADECE müfredat referans listesine (KONU_REFERANS —
+  // elle derlenmiş, temiz/güvenilir bir liste) bakıyor, sistemin kendi
+  // vocab'ına (tumKonuVocab) BAKMIYOR — çünkü tumKonuVocab, düzeltmeye
+  // çalıştığımız BOZUK metnin KENDİSİNİ de içeriyor (aynı bozuk PDF'ten gelen
+  // 8 öğrencinin hepsinde aynı bozuk metin kayıtlı), bu yüzden vocab'a
+  // bakarsak her bozuk konu "kendi kendine" eşleşip yanlışlıkla "zaten
+  // doğru" sanılıyordu — otomatik düzeltmenin hiçbir şeyi yakalayamamasının
+  // sebebi buydu.
   function konuZatenBiliniyorMu(dersAdi, hamMetin) {
     const dersAnahtari = dersAdi.toLocaleLowerCase('tr-TR')
     const hedefTemiz = hamMetin.toLocaleLowerCase('tr-TR')
-    const referansVar = (KONU_REFERANS_LOWER[dersAnahtari] || []).some(
+    return (KONU_REFERANS_LOWER[dersAnahtari] || []).some(
       (konu) => konu.toLocaleLowerCase('tr-TR') === hedefTemiz
-    )
-    if (referansVar) return true
-    return tumKonuVocab.some(
-      (v) => v.dersAdi.toLocaleLowerCase('tr-TR') === dersAnahtari && v.konu.toLocaleLowerCase('tr-TR') === hedefTemiz
     )
   }
 
