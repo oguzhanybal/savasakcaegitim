@@ -39,7 +39,13 @@ function tarihEtiket(tarih) {
 // ekle" adımı gerektirir ve build'i bozma riski taşır), küçük, bağımlılıksız
 // bir SVG çizgi grafik — sadece şekli (yükseliyor mu, düşüyor mu) göstermek
 // yeterli, eksenlerde tam sayısal ölçek gerekmiyor.
-function MiniCizgiGrafik({ baslik, noktalar, renk = '#0f2a4a' }) {
+//
+// Tek satırlık kompakt versiyon — bir TÜR kartının (TYT/AYT/Konu Analiz)
+// İÇİNDE, "Genel Net" ve her ders için ayrı ayrı kullanılıyor. Önceki
+// tasarımda her ders ayrı bir üst düzey kart oluyordu (5-6 kart yan yana,
+// karışık görünüyordu) — artık tür başına TEK kart var, dersler o kartın
+// içinde satır satır sıralanıyor.
+function TrendSatiri({ etiket, noktalar, vurgu }) {
   if (!noktalar || noktalar.length === 0) return null
   const tekNokta = noktalar.length === 1
   const degerler = noktalar.map((n) => n.deger)
@@ -47,7 +53,7 @@ function MiniCizgiGrafik({ baslik, noktalar, renk = '#0f2a4a' }) {
   const max = Math.max(...degerler)
   const araligi = max - min || 1
   const genislik = 100
-  const yukseklik = 34
+  const yukseklik = 22
   const pad = 3
   const cizilenler = noktalar.map((n, i) => {
     const x = tekNokta ? genislik / 2 : pad + (i / (noktalar.length - 1)) * (genislik - pad * 2)
@@ -55,44 +61,49 @@ function MiniCizgiGrafik({ baslik, noktalar, renk = '#0f2a4a' }) {
     return { ...n, x, y }
   })
   const yol = cizilenler.map((p, i) => `${i === 0 ? 'M' : 'L'} ${p.x.toFixed(1)} ${p.y.toFixed(1)}`).join(' ')
-  const ilk = degerler[0]
   const son = degerler[degerler.length - 1]
-  const fark = son - ilk
+  const fark = son - degerler[0]
 
   return (
-    <div className="bg-white rounded-xl border border-gray-100 p-3">
-      <div className="flex items-center justify-between mb-1.5 gap-2">
-        <p className="text-xs font-semibold text-gray-600 truncate">{baslik}</p>
-        {tekNokta ? (
-          <span className="text-[10px] font-semibold text-gray-400 shrink-0">İlk sonuç</span>
-        ) : (
-          <span
-            className={`text-xs font-bold shrink-0 ${
-              fark > 0 ? 'text-green-600' : fark < 0 ? 'text-red-500' : 'text-gray-400'
-            }`}
-          >
-            {fark > 0 ? '▲' : fark < 0 ? '▼' : '–'} {Math.abs(fark).toFixed(2)}
-          </span>
-        )}
-      </div>
-      <svg viewBox={`0 0 ${genislik} ${yukseklik}`} className="w-full h-14" preserveAspectRatio="none">
-        <path d={yol} fill="none" stroke={renk} strokeWidth="1.5" vectorEffect="non-scaling-stroke" />
+    <div className="flex items-center gap-2.5">
+      <span className={`text-xs w-24 sm:w-28 shrink-0 truncate ${vurgu ? 'font-bold text-gray-800' : 'text-gray-500'}`}>
+        {etiket}
+      </span>
+      <svg viewBox={`0 0 ${genislik} ${yukseklik}`} className="flex-1 h-6 min-w-0" preserveAspectRatio="none">
+        <path d={yol} fill="none" stroke="#0f2a4a" strokeWidth="1.5" vectorEffect="non-scaling-stroke" />
         {cizilenler.map((p, i) => (
-          <circle key={i} cx={p.x} cy={p.y} r="1.6" fill={renk} />
+          <circle key={i} cx={p.x} cy={p.y} r="1.4" fill="#0f2a4a" />
         ))}
       </svg>
+      <span className="text-xs font-semibold text-gray-700 w-11 text-right shrink-0">{netFormat(son)}</span>
       {tekNokta ? (
-        <p className="text-center text-[10px] text-gray-400 mt-1">
-          {cizilenler[0].etiket} · <span className="font-semibold text-gray-600">Net {netFormat(son)}</span> — ikinci
-          sonuçla birlikte trend çizgisi oluşur
-        </p>
+        <span className="text-[10px] text-gray-400 w-9 text-right shrink-0">ilk</span>
       ) : (
-        <div className="flex justify-between text-[10px] text-gray-400 mt-1">
-          <span>{cizilenler[0].etiket}</span>
-          <span className="font-semibold text-gray-600">{netFormat(son)}</span>
-          <span>{cizilenler[cizilenler.length - 1].etiket}</span>
-        </div>
+        <span
+          className={`text-[10px] font-bold w-9 text-right shrink-0 ${
+            fark > 0 ? 'text-green-600' : fark < 0 ? 'text-red-500' : 'text-gray-400'
+          }`}
+        >
+          {fark > 0 ? '▲' : fark < 0 ? '▼' : '–'}{Math.abs(fark).toFixed(1)}
+        </span>
       )}
+    </div>
+  )
+}
+
+// Tür başına TEK kart (en fazla TYT / AYT / Konu Analiz / Diğer — yani en
+// fazla 4 kutu). İçinde varsa "Genel Net" satırı, altında her dersin kendi
+// satırı sıralanıyor.
+function TurKarti({ tur, genel, dersSerileri }) {
+  return (
+    <div className="bg-white rounded-xl border border-gray-100 p-4">
+      <p className="text-sm font-bold text-navy mb-3">{tur}</p>
+      <div className="space-y-2">
+        {genel.length > 0 && <TrendSatiri etiket="Genel Net" noktalar={genel} vurgu />}
+        {dersSerileri.map((d) => (
+          <TrendSatiri key={d.dersAdi} etiket={d.dersAdi} noktalar={d.noktalar} />
+        ))}
+      </div>
     </div>
   )
 }
@@ -224,48 +235,50 @@ export default function Karnem() {
   // AYT'nin neti ya da tek dersli bir Konu Analiz testinin neti tamamen
   // farklı ölçeklerde olduğundan hepsini aynı çizgide karşılaştırmak
   // yanıltıcı olurdu (bkz. SinavYukle.jsx / SinavKitapciklari.jsx'teki
-  // "Sınav Türü" alanı). TYT/AYT/Diğer için toplam net trend edilir; "Konu
-  // Analiz" içinse HER DERS ayrı bir çizgi olur (bir konu analiz sınavı
-  // genelde tek bir dersi hedeflediği, farklı derslerin netini birbirine
-  // karıştırmamak için).
+  // "Sınav Türü" alanı). Tür başına EN FAZLA BİR KART var (yani en çok 4
+  // kutu: TYT / AYT / Konu Analiz / Diğer) — önceki tasarımda her ders ayrı
+  // bir üst düzey kart oluyordu, çok kalabalık görünüyordu. Artık dersler o
+  // tek kartın İÇİNDE satır satır sıralanıyor. "Konu Analiz" kartında genel
+  // toplam net GÖSTERİLMİYOR (bir konu analiz sınavı genelde tek dersi
+  // hedeflediği için, farklı derslerin karışık bir "genel net"i anlamsız
+  // olurdu) — sadece ders satırları var.
+  const TUR_SIRASI = ['TYT', 'AYT', 'Konu Analiz', 'Diğer']
   const trendGruplari = useMemo(() => {
     const siraliSonuclar = [...sonuclar].sort((a, b) => {
       const ta = a.sinavlar?.sinav_tarihi || a.created_at || ''
       const tb = b.sinavlar?.sinav_tarihi || b.created_at || ''
       return ta < tb ? -1 : ta > tb ? 1 : 0
     })
-    const turGruplari = new Map()
+    const turHaritasi = new Map() // tur -> { genel: [], dersHaritasi: Map(dersAdi -> noktalar[]) }
     for (const s of siraliSonuclar) {
       const tur = s.sinavlar?.tur || 'Diğer'
-      if (!turGruplari.has(tur)) turGruplari.set(tur, [])
-      turGruplari.get(tur).push(s)
-    }
-    const grafikler = []
-    for (const [tur, liste] of turGruplari) {
-      if (tur === 'Konu Analiz') {
-        const dersGruplari = new Map()
-        for (const s of liste) {
-          for (const d of s.dersler || []) {
-            if (d.net == null) continue
-            if (!dersGruplari.has(d.ders_adi)) dersGruplari.set(d.ders_adi, [])
-            dersGruplari.get(d.ders_adi).push({
-              etiket: tarihEtiket(s.sinavlar?.sinav_tarihi),
-              deger: Number(d.net),
-            })
-          }
-        }
-        for (const [dersAdi, noktalar] of dersGruplari) {
-          if (noktalar.length < 1) continue
-          grafikler.push({ baslik: `Konu Analiz — ${dersAdi}`, noktalar })
-        }
-      } else {
-        const noktalar = liste
-          .filter((s) => s.toplam_net != null)
-          .map((s) => ({ etiket: tarihEtiket(s.sinavlar?.sinav_tarihi), deger: Number(s.toplam_net) }))
-        if (noktalar.length >= 1) grafikler.push({ baslik: tur, noktalar })
+      if (!turHaritasi.has(tur)) turHaritasi.set(tur, { genel: [], dersHaritasi: new Map() })
+      const grup = turHaritasi.get(tur)
+      if (s.toplam_net != null) {
+        grup.genel.push({ etiket: tarihEtiket(s.sinavlar?.sinav_tarihi), deger: Number(s.toplam_net) })
+      }
+      for (const d of s.dersler || []) {
+        if (d.net == null) continue
+        if (!grup.dersHaritasi.has(d.ders_adi)) grup.dersHaritasi.set(d.ders_adi, [])
+        grup.dersHaritasi.get(d.ders_adi).push({ etiket: tarihEtiket(s.sinavlar?.sinav_tarihi), deger: Number(d.net) })
       }
     }
-    return grafikler
+    const turAdlari = [...turHaritasi.keys()].sort((a, b) => {
+      const ia = TUR_SIRASI.indexOf(a)
+      const ib = TUR_SIRASI.indexOf(b)
+      return (ia === -1 ? 999 : ia) - (ib === -1 ? 999 : ib)
+    })
+    const gruplar = []
+    for (const tur of turAdlari) {
+      const grup = turHaritasi.get(tur)
+      const dersSerileri = [...grup.dersHaritasi.entries()]
+        .sort((a, b) => dersSiraPuani(a[0]) - dersSiraPuani(b[0]))
+        .map(([dersAdi, noktalar]) => ({ dersAdi, noktalar }))
+      const genel = tur === 'Konu Analiz' ? [] : grup.genel
+      if (genel.length === 0 && dersSerileri.length === 0) continue
+      gruplar.push({ tur, genel, dersSerileri })
+    }
+    return gruplar
   }, [sonuclar])
 
   return (
@@ -311,9 +324,9 @@ export default function Karnem() {
             Aynı türdeki sınavların netleri zaman içinde nasıl değiştiğini gösterir — tek sonuç varken sadece o
             değer görünür, ikinci sonuçla birlikte çizgi oluşur.
           </p>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-            {trendGruplari.map((g, i) => (
-              <MiniCizgiGrafik key={i} baslik={g.baslik} noktalar={g.noktalar} />
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+            {trendGruplari.map((g) => (
+              <TurKarti key={g.tur} tur={g.tur} genel={g.genel} dersSerileri={g.dersSerileri} />
             ))}
           </div>
         </div>
