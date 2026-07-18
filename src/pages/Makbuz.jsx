@@ -5,7 +5,7 @@ import { tutarYaziyla } from '../lib/sayiYaziyla'
 
 function MakbuzGovdesi({ nusha, odeme, ogrenciAdi }) {
   return (
-    <div className="border border-gray-200 rounded-xl overflow-hidden">
+    <div className="makbuz-karti border border-gray-200 rounded-xl overflow-hidden">
       <div className="bg-navy text-white py-4 px-5 flex items-center gap-3">
         <div className="bg-white rounded-lg p-1 shrink-0">
           <img src="/logo.png" alt="Savaş Akça Eğitim" className="w-10 h-10 object-contain" />
@@ -76,6 +76,13 @@ export default function Makbuz() {
   return (
     <div className="min-h-screen bg-cream py-8 px-4">
       <style>{`
+        /* Bir nüsha kartı (öğrenci/kurum kopyası) sayfa sonuna denk gelirse
+           yazdırırken/PDF'e kaydederken ORTASINDAN kesilip ikinci sayfaya
+           taşmasın diye — sığmıyorsa kart BÜTÜN halde bir sonraki sayfaya geçer. */
+        .makbuz-karti {
+          break-inside: avoid;
+          page-break-inside: avoid;
+        }
         @media print {
           .no-print { display: none !important; }
           body { background: white !important; }
