@@ -2005,7 +2005,12 @@ export default function BireBir() {
     Promise.all([
       isYonetici ? supabase.from('ogrenciler').select('*').order('ad_soyad') : Promise.resolve({ data: [] }),
       isYonetici ? supabase.from('profiles').select('*').eq('rol', 'ogretmen').order('ad_soyad') : Promise.resolve({ data: [] }),
-      isYonetici ? supabase.from('ders_programi').select('*') : Promise.resolve({ data: [] }),
+      // NOT: sinif_adi, ders_programi tablosunda gerçek bir sütun DEĞİL — sınıfın
+      // adı siniflar tablosunda duruyor, buradan JOIN edip aşağıda map() ile
+      // d.sinif_adi olarak ekliyoruz (bkz. DersProgrami.jsx'teki aynı desen).
+      // Bu join eksik olduğu için Müsaitlik Tablosu'nda (bu sayfadaki) sınıf
+      // dersleri, ders_adi boşsa hep "Sınıf dersi" yazıyordu.
+      isYonetici ? supabase.from('ders_programi').select('*, siniflar(ad)') : Promise.resolve({ data: [] }),
       supabase
         .from('bire_bir_atamalari')
         // "Ders Hatırlatması Gönder" paneli için öğrencinin kendi telefonu ile
@@ -2027,7 +2032,7 @@ export default function BireBir() {
     ]).then(([o, og, dp, a, y, t]) => {
       setOgrenciler(o.data || [])
       setOgretmenler(og.data || [])
-      setDersProgrami(dp.data || [])
+      setDersProgrami((dp.data || []).map((d) => ({ ...d, sinif_adi: d.siniflar?.ad })))
       setAtamalar(
         (a.data || []).map((d) => ({
           ...d,
