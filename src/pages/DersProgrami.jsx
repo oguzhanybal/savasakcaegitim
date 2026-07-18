@@ -1079,13 +1079,24 @@ export default function DersProgrami() {
     else veriyiYenile()
   }
 
-  const gunlereGore = GUNLER.map((_, gun) => program.filter((p) => p.gun === gun)).slice(1)
+  // Öğretmen rolü "Ders Programı" sayfasını açtığında, aşağıdaki Tablo/Liste
+  // görünümü eskiden HAM "program"ı (okulun TÜM sınıflarının, TÜM
+  // öğretmenlerinin dersleri) gösteriyordu — öğretmen kendi programına
+  // baktığını sanırken aslında herkesin programını görüyordu. Artık öğretmen
+  // için sadece KENDİ atandığı ders saatleri süzülüyor. (Yönetici tarafındaki
+  // Ders Ekleme Aracı / Günlük Program Listesi / Müsaitlik Tablosu hâlâ ham
+  // "program"ı kullanıyor — orada müsaitlik kontrolü için okulun tamamını
+  // görmesi gerekiyor, bkz. aşağıdaki MusaitlikTablosu/GunlukProgramListesi.)
+  const isOgretmen = profile?.rol === 'ogretmen'
+  const kendiProgram = isOgretmen ? program.filter((p) => p.ogretmen_profile_id === profile.id) : program
+
+  const gunlereGore = GUNLER.map((_, gun) => kendiProgram.filter((p) => p.gun === gun)).slice(1)
 
   // Tablo görünümü için: programdaki tüm benzersiz başlangıç saatleri, sıralı satırlar olarak.
-  const saatSatirlari = [...new Set(program.map((p) => saatKisalt(p.baslangic_saat)))].sort()
+  const saatSatirlari = [...new Set(kendiProgram.map((p) => saatKisalt(p.baslangic_saat)))].sort()
 
   function hucreDersleri(gun, saat) {
-    return program.filter((p) => p.gun === gun && saatKisalt(p.baslangic_saat) === saat)
+    return kendiProgram.filter((p) => p.gun === gun && saatKisalt(p.baslangic_saat) === saat)
   }
 
   // Veli/öğrenci için sınıf ders programı (tablo/liste) sadece bu sekme
@@ -1211,13 +1222,13 @@ export default function DersProgrami() {
 
       {loading && <p className="text-gray-400">Yükleniyor...</p>}
 
-      {sinifProgramiGoster && !loading && program.length === 0 && (
+      {sinifProgramiGoster && !loading && kendiProgram.length === 0 && (
         <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6">
           <p className="text-gray-400">Görüntülenecek ders programı bulunamadı.</p>
         </div>
       )}
 
-      {sinifProgramiGoster && !loading && program.length > 0 && gorunum === 'tablo' && (
+      {sinifProgramiGoster && !loading && kendiProgram.length > 0 && gorunum === 'tablo' && (
         // touch-pan-x + overscroll-x-contain: mobil tarayıcılarda sayfa dikey
         // kaydırılabilirken bu tablonun YATAY kaydırılabilir olduğunu tarayıcıya
         // açıkça belirtiyoruz. Bazı mobil tarayıcılarda iç içe bir yatay kaydırma
@@ -1266,7 +1277,11 @@ export default function DersProgrami() {
                                 </div>
                               )}
                               <p className="font-semibold text-navy text-xs leading-tight">{d.ders_adi || d.sinif_adi}</p>
-                              <p className="text-[11px] text-gray-500 leading-tight">{d.sinif_adi}</p>
+                              {/* ders_adi boşsa başlık zaten sinif_adi oluyor — aynı metni burada
+                                  tekrar basmıyoruz (ör. "12-EŞİT AĞIRLIK" iki kez görünmesin diye). */}
+                              {d.ders_adi && d.sinif_adi && (
+                                <p className="text-[11px] text-gray-500 leading-tight">{d.sinif_adi}</p>
+                              )}
                               {d.ogretmen_adi && <p className="text-[11px] text-gray-400 leading-tight">{d.ogretmen_adi}</p>}
                               <p className="text-[10px] text-gray-400 leading-tight">
                                 {saatKisalt(d.baslangic_saat)}–{saatKisalt(d.bitis_saat)}
@@ -1284,7 +1299,7 @@ export default function DersProgrami() {
         </div>
       )}
 
-      {sinifProgramiGoster && !loading && program.length > 0 && gorunum === 'liste' && (
+      {sinifProgramiGoster && !loading && kendiProgram.length > 0 && gorunum === 'liste' && (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {gunlereGore.map((dersler, i) =>
             dersler.length === 0 ? null : (
@@ -1296,8 +1311,8 @@ export default function DersProgrami() {
                       <div>
                         <p className="font-medium text-gray-800">{d.ders_adi || d.sinif_adi}</p>
                         <p className="text-xs text-gray-400">
-                          {d.sinif_adi}
-                          {d.ogretmen_adi ? ` · ${d.ogretmen_adi}` : ''}
+                          {d.ders_adi && d.sinif_adi ? d.sinif_adi : ''}
+                          {d.ogretmen_adi ? `${d.ders_adi && d.sinif_adi ? ' · ' : ''}${d.ogretmen_adi}` : ''}
                         </p>
                         <p className="text-sm text-gray-500">
                           {saatKisalt(d.baslangic_saat)} – {saatKisalt(d.bitis_saat)}
