@@ -53,6 +53,10 @@ export default function SinifDetay() {
   const [hata, setHata] = useState('')
   const [ekleniyor, setEkleniyor] = useState(false)
   const [loading, setLoading] = useState(true)
+  // Aşağıdaki listede "Düzenle"ye basılınca bu, düzenlenen kaydın id'sine
+  // ayarlanır — form o zaman "ekleme" değil "güncelleme" moduna geçer (tek
+  // gün, tek kayıt). Boşsa (null) form normal "ekle" modunda çalışır.
+  const [duzenlenenId, setDuzenlenenId] = useState(null)
 
   async function yukle() {
     setLoading(true)
@@ -133,13 +137,46 @@ export default function SinifDetay() {
   }
 
   function gunSecToggle(g) {
+    // Düzenleme modunda tek bir kayıt güncelleniyor, o yüzden gün TEK
+    // seçilebilir (tıklanan gün direkt seçili günün yerine geçer) — ekleme
+    // modundaki gibi birden fazla gün birikmeli seçilemez.
+    if (duzenlenenId) {
+      setSeciliGunler([g])
+      return
+    }
     setSeciliGunler((prev) => (prev.includes(g) ? prev.filter((x) => x !== g) : [...prev, g]))
   }
 
+  function duzenle(p) {
+    setDuzenlenenId(p.id)
+    setDersAdi(p.ders_adi || '')
+    setDersOgretmen(p.ogretmen_profile_id || '')
+    setSeciliGunler([p.gun])
+    setBaslangic(saatKisalt(p.baslangic_saat))
+    setBitis(saatKisalt(p.bitis_saat))
+    setHata('')
+    requestAnimationFrame(() => {
+      document.getElementById('ders-saati-formu')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    })
+  }
+
+  function duzenlemeyiIptalEt() {
+    setDuzenlenenId(null)
+    setSeciliGunler([])
+    setDersAdi('')
+    setDersOgretmen('')
+    setBaslangic('09:00')
+    setBitis('10:00')
+    setHata('')
+  }
+
   // Seçilen her gün için: aynı sınıfta, aynı öğretmende BAŞKA bir sınıf dersinde
-  // ya da öğretmenin haftalık bire bir dersinde çakışma var mı?
-  function cakismaBul(gun) {
+  // ya da öğretmenin haftalık bire bir dersinde çakışma var mı? haricId
+  // verilirse (düzenleme modunda, düzenlenen kaydın kendisiyle çakışıyor
+  // sayılmasın diye) o kayıt kontrolden hariç tutulur.
+  function cakismaBul(gun, haricId) {
     for (const p of tumProgram) {
+      if (haricId && p.id === haricId) continue
       if (p.gun !== gun) continue
       const ayniSinif = p.sinif_id === sinifId
       const ayniOgretmen = !!dersOgretmen && p.ogretmen_profile_id === dersOgretmen
@@ -166,6 +203,42 @@ export default function SinifDetay() {
     }
     if (baslangic >= bitis) {
       setHata('Başlangıç saati bitiş saatinden önce olmalı.')
+      return
+    }
+
+    // DÜZENLEME MODU: tek kayıt güncelleniyor (insert değil update), çakışma
+    // kontrolü kendi kaydı hariç tutularak yapılır.
+    if (duzenlenenId) {
+      const gun = seciliGunler[0]
+      const cakisma = cakismaBul(gun, duzenlenenId)
+      if (cakisma) {
+        setHata(
+          cakisma.tur === 'ogretmen'
+            ? `Çakışma var: bu öğretmenin ${GUNLER[gun]} günü ${saatKisalt(baslangic)}–${saatKisalt(bitis)} arasında zaten başka bir dersi var.`
+            : cakisma.tur === 'birebir'
+            ? `Çakışma var: bu öğretmenin ${GUNLER[gun]} günü ${saatKisalt(baslangic)}–${saatKisalt(bitis)} arasında "${cakisma.ogrenciAdi || 'bir öğrenci'}" ile haftalık bire bir dersi var.`
+            : `Çakışma var: bu sınıfın ${GUNLER[gun]} günü ${saatKisalt(baslangic)}–${saatKisalt(bitis)} arasında zaten başka bir dersi var.`
+        )
+        return
+      }
+      setEkleniyor(true)
+      const { error } = await supabase
+        .from('ders_programi')
+        .update({
+          gun,
+          baslangic_saat: baslangic,
+          bitis_saat: bitis,
+          ders_adi: dersAdi.trim() ? ilkHarfleriBuyukYap(dersAdi.trim()) : null,
+          ogretmen_profile_id: dersOgretmen || null,
+        })
+        .eq('id', duzenlenenId)
+      setEkleniyor(false)
+      if (!error) {
+        duzenlemeyiIptalEt()
+        yukle()
+      } else {
+        setHata('Hata: ' + error.message)
+      }
       return
     }
 
@@ -303,7 +376,17 @@ export default function SinifDetay() {
         <div>
           <h2 className="font-semibold text-gray-700 mb-3">Ders Saatleri</h2>
 
-          <form onSubmit={dersSaatiEkle} className="bg-white rounded-2xl border border-gray-100 shadow-sm p-4 mb-4 space-y-3">
+          <form
+            id="ders-saati-formu"
+            onSubmit={dersSaatiEkle}
+            className={`bg-white rounded-2xl border shadow-sm p-4 mb-4 space-y-3 ${duzenlenenId ? 'border-orange ring-1 ring-orange/30' : 'border-gray-100'}`}
+          >
+            {duzenlenenId && (
+              <div className="flex items-center justify-between bg-orange/10 text-orange text-xs font-semibold px-3 py-1.5 rounded-lg -mt-1">
+                <span>Bir ders saatini düzenliyorsunuz</span>
+                <button type="button" onClick={duzenlemeyiIptalEt} className="hover:underline">Vazgeç</button>
+              </div>
+            )}
             <div className="grid grid-cols-2 gap-2">
               <div>
                 <label className="block text-xs font-medium text-gray-500 mb-1">Ders Adı</label>
@@ -334,7 +417,9 @@ export default function SinifDetay() {
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">Günler (birden fazla seçebilirsiniz)</label>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                {duzenlenenId ? 'Gün' : 'Günler (birden fazla seçebilirsiniz)'}
+              </label>
               <div className="flex flex-wrap gap-2">
                 {GUNLER.slice(1).map((g, i) => {
                   const gunNo = i + 1
@@ -381,17 +466,34 @@ export default function SinifDetay() {
               </div>
             </div>
             {hata && <p className="text-red-600 text-sm">{hata}</p>}
-            <button
-              type="submit"
-              disabled={ekleniyor}
-              className="w-full bg-navy text-white font-semibold px-4 py-2 rounded-lg hover:bg-blue transition-colors disabled:opacity-50"
-            >
-              {ekleniyor
-                ? 'Ekleniyor...'
-                : seciliGunler.length > 1
-                ? `${seciliGunler.length} Güne Birden Ekle`
-                : 'Ders Saati Ekle'}
-            </button>
+            <div className="flex gap-2">
+              <button
+                type="submit"
+                disabled={ekleniyor}
+                className={`flex-1 text-white font-semibold px-4 py-2 rounded-lg transition-colors disabled:opacity-50 ${
+                  duzenlenenId ? 'bg-orange hover:opacity-90' : 'bg-navy hover:bg-blue'
+                }`}
+              >
+                {ekleniyor
+                  ? duzenlenenId
+                    ? 'Güncelleniyor...'
+                    : 'Ekleniyor...'
+                  : duzenlenenId
+                  ? 'Güncelle'
+                  : seciliGunler.length > 1
+                  ? `${seciliGunler.length} Güne Birden Ekle`
+                  : 'Ders Saati Ekle'}
+              </button>
+              {duzenlenenId && (
+                <button
+                  type="button"
+                  onClick={duzenlemeyiIptalEt}
+                  className="px-4 py-2 rounded-lg text-sm font-semibold text-gray-500 bg-gray-50 hover:bg-gray-100"
+                >
+                  Vazgeç
+                </button>
+              )}
+            </div>
           </form>
 
           <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
@@ -399,16 +501,26 @@ export default function SinifDetay() {
               <p className="px-4 py-6 text-center text-gray-400 text-sm">Henüz ders saati belirlenmedi.</p>
             )}
             {program.map((p, i) => (
-              <div key={p.id} className={`px-4 py-3 flex items-center justify-between ${i % 2 ? 'bg-gray-50' : ''}`}>
+              <div
+                key={p.id}
+                className={`px-4 py-3 flex items-center justify-between ${
+                  duzenlenenId === p.id ? 'bg-orange/10' : i % 2 ? 'bg-gray-50' : ''
+                }`}
+              >
                 <div>
                   <p className="font-medium text-gray-800">
                     {p.ders_adi || 'Ders'} <span className="font-normal text-gray-400">— {GUNLER[p.gun]} · {saatKisalt(p.baslangic_saat)}–{saatKisalt(p.bitis_saat)}</span>
                   </p>
                   {p.profiles?.ad_soyad && <p className="text-xs text-gray-400">{p.profiles.ad_soyad}</p>}
                 </div>
-                <button onClick={() => dersSaatiSil(p.id)} className="text-red-500 text-sm hover:underline shrink-0">
-                  Sil
-                </button>
+                <div className="flex items-center gap-3 shrink-0">
+                  <button onClick={() => duzenle(p)} className="text-blue text-sm hover:underline">
+                    Düzenle
+                  </button>
+                  <button onClick={() => dersSaatiSil(p.id)} className="text-red-500 text-sm hover:underline">
+                    Sil
+                  </button>
+                </div>
               </div>
             ))}
           </div>
