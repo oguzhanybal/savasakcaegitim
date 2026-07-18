@@ -63,7 +63,9 @@ function MiniCizgiGrafik({ baslik, noktalar, renk = '#0f2a4a' }) {
     <div className="bg-white rounded-xl border border-gray-100 p-3">
       <div className="flex items-center justify-between mb-1.5 gap-2">
         <p className="text-xs font-semibold text-gray-600 truncate">{baslik}</p>
-        {!tekNokta && (
+        {tekNokta ? (
+          <span className="text-[10px] font-semibold text-gray-400 shrink-0">İlk sonuç</span>
+        ) : (
           <span
             className={`text-xs font-bold shrink-0 ${
               fark > 0 ? 'text-green-600' : fark < 0 ? 'text-red-500' : 'text-gray-400'
@@ -79,11 +81,18 @@ function MiniCizgiGrafik({ baslik, noktalar, renk = '#0f2a4a' }) {
           <circle key={i} cx={p.x} cy={p.y} r="1.6" fill={renk} />
         ))}
       </svg>
-      <div className="flex justify-between text-[10px] text-gray-400 mt-1">
-        <span>{cizilenler[0].etiket}</span>
-        <span className="font-semibold text-gray-600">{netFormat(son)}</span>
-        <span>{cizilenler[cizilenler.length - 1].etiket}</span>
-      </div>
+      {tekNokta ? (
+        <p className="text-center text-[10px] text-gray-400 mt-1">
+          {cizilenler[0].etiket} · <span className="font-semibold text-gray-600">Net {netFormat(son)}</span> — ikinci
+          sonuçla birlikte trend çizgisi oluşur
+        </p>
+      ) : (
+        <div className="flex justify-between text-[10px] text-gray-400 mt-1">
+          <span>{cizilenler[0].etiket}</span>
+          <span className="font-semibold text-gray-600">{netFormat(son)}</span>
+          <span>{cizilenler[cizilenler.length - 1].etiket}</span>
+        </div>
+      )}
     </div>
   )
 }
@@ -246,14 +255,14 @@ export default function Karnem() {
           }
         }
         for (const [dersAdi, noktalar] of dersGruplari) {
-          if (noktalar.length < 2) continue
+          if (noktalar.length < 1) continue
           grafikler.push({ baslik: `Konu Analiz — ${dersAdi}`, noktalar })
         }
       } else {
         const noktalar = liste
           .filter((s) => s.toplam_net != null)
           .map((s) => ({ etiket: tarihEtiket(s.sinavlar?.sinav_tarihi), deger: Number(s.toplam_net) }))
-        if (noktalar.length >= 2) grafikler.push({ baslik: tur, noktalar })
+        if (noktalar.length >= 1) grafikler.push({ baslik: tur, noktalar })
       }
     }
     return grafikler
@@ -299,7 +308,8 @@ export default function Karnem() {
         <div className="mb-6">
           <h2 className="font-semibold text-gray-700 mb-1">Gelişim Grafiği</h2>
           <p className="text-xs text-gray-400 mb-3">
-            Aynı türdeki sınavların netleri zaman içinde nasıl değiştiğini gösterir (en az 2 sınav gerekir).
+            Aynı türdeki sınavların netleri zaman içinde nasıl değiştiğini gösterir — tek sonuç varken sadece o
+            değer görünür, ikinci sonuçla birlikte çizgi oluşur.
           </p>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
             {trendGruplari.map((g, i) => (
