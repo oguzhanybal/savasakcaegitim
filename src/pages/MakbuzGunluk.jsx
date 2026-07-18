@@ -11,27 +11,27 @@ function paraFormat(n) {
 function MakbuzGovdesi({ nusha, odemeler, ogrenciAdi, tarihMetni, toplam }) {
   return (
     <div className="makbuz-karti border border-gray-200 rounded-xl overflow-hidden">
-      <div className="bg-navy text-white py-4 px-5 flex items-center gap-3">
+      <div className="bg-navy text-white py-2.5 px-4 flex items-center gap-2.5">
         <div className="bg-white rounded-lg p-1 shrink-0">
-          <img src="/logo.png" alt="Savaş Akça Eğitim" className="w-10 h-10 object-contain" />
+          <img src="/logo.png" alt="Savaş Akça Eğitim" className="w-8 h-8 object-contain" />
         </div>
         <div>
-          <p className="font-bold text-lg tracking-wide">SAVAŞ AKÇA EĞİTİM</p>
-          <p className="text-sm text-white/80 mt-0.5">TAHSİLAT MAKBUZU</p>
+          <p className="font-bold text-base tracking-wide leading-tight">SAVAŞ AKÇA EĞİTİM</p>
+          <p className="text-xs text-white/80 leading-tight">TAHSİLAT MAKBUZU</p>
         </div>
       </div>
-      <div className="p-5">
-        <p className="text-xs text-gray-400 mb-3">Nüsha: {nusha}</p>
+      <div className="p-4">
+        <p className="text-xs text-gray-400 mb-2">Nüsha: {nusha}</p>
 
-        <table className="w-full text-sm border border-gray-200 rounded-lg overflow-hidden mb-3">
+        <table className="w-full text-sm border border-gray-200 rounded-lg overflow-hidden mb-2">
           <tbody>
             <tr className="bg-gray-50">
-              <td className="px-3 py-2 font-semibold text-gray-600 w-1/3">Öğrenci</td>
-              <td className="px-3 py-2 font-bold text-navy">{ogrenciAdi}</td>
+              <td className="px-3 py-1.5 font-semibold text-gray-600 w-1/3">Öğrenci</td>
+              <td className="px-3 py-1.5 font-bold text-navy">{ogrenciAdi}</td>
             </tr>
             <tr>
-              <td className="px-3 py-2 font-semibold text-gray-600">Tarih</td>
-              <td className="px-3 py-2">{tarihMetni}</td>
+              <td className="px-3 py-1.5 font-semibold text-gray-600">Tarih</td>
+              <td className="px-3 py-1.5">{tarihMetni}</td>
             </tr>
           </tbody>
         </table>
@@ -39,26 +39,26 @@ function MakbuzGovdesi({ nusha, odemeler, ogrenciAdi, tarihMetni, toplam }) {
         <table className="w-full text-sm border border-gray-200 rounded-lg overflow-hidden">
           <thead>
             <tr className="bg-gray-50 text-left text-gray-600">
-              <th className="px-3 py-2 font-semibold">Kalem</th>
-              <th className="px-3 py-2 font-semibold text-right">Tutar</th>
+              <th className="px-3 py-1.5 font-semibold">Kalem</th>
+              <th className="px-3 py-1.5 font-semibold text-right">Tutar</th>
             </tr>
           </thead>
           <tbody>
             {odemeler.map((o) => (
               <tr key={o.id} className="border-t border-gray-100">
-                <td className="px-3 py-2">{o.kalem || '—'}</td>
-                <td className="px-3 py-2 text-right">{paraFormat(o.tutar)}</td>
+                <td className="px-3 py-1.5">{o.kalem || '—'}</td>
+                <td className="px-3 py-1.5 text-right">{paraFormat(o.tutar)}</td>
               </tr>
             ))}
             <tr className="border-t border-gray-200 bg-orange/10">
-              <td className="px-3 py-2 font-bold text-orange">TOPLAM</td>
-              <td className="px-3 py-2 font-bold text-orange text-right">{paraFormat(toplam)}</td>
+              <td className="px-3 py-1.5 font-bold text-orange">TOPLAM</td>
+              <td className="px-3 py-1.5 font-bold text-orange text-right">{paraFormat(toplam)}</td>
             </tr>
           </tbody>
         </table>
 
-        <p className="text-sm text-gray-600 mt-3">{tutarYaziyla(toplam)}</p>
-        <p className="text-right text-sm text-gray-500 mt-6">Ad Soyad / İmza</p>
+        <p className="text-sm text-gray-600 mt-2">{tutarYaziyla(toplam)}</p>
+        <p className="text-right text-sm text-gray-500 mt-3">Ad Soyad / İmza</p>
       </div>
     </div>
   )
@@ -105,6 +105,11 @@ export default function MakbuzGunluk() {
         @media print {
           .no-print { display: none !important; }
           body { background: white !important; }
+          /* Sayfa kenar boşluklarını daraltıyoruz ki iki nüsha da (öğrenci +
+             kurum kopyası) TEK sayfaya sığsın — tarayıcının varsayılan ~2cm'lik
+             boşluğu, kartlar tam sığacakken bile ikinci sayfaya taşmasına
+             sebep olabiliyordu. */
+          @page { margin: 8mm; }
         }
       `}</style>
       <div className="max-w-xl mx-auto">
@@ -118,7 +123,7 @@ export default function MakbuzGunluk() {
           </button>
         </div>
 
-        <div className="space-y-4">
+        <div className="space-y-3">
           <MakbuzGovdesi nusha="ÖĞRENCİ KOPYASI" odemeler={odemeler} ogrenciAdi={ogrenciAdi} tarihMetni={tarihMetni} toplam={toplam} />
           <p className="text-center text-xs text-gray-400">--------------------------- KESİM ALANI ---------------------------</p>
           <MakbuzGovdesi nusha="KURUM KOPYASI" odemeler={odemeler} ogrenciAdi={ogrenciAdi} tarihMetni={tarihMetni} toplam={toplam} />

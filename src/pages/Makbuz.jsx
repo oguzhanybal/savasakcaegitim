@@ -6,46 +6,46 @@ import { tutarYaziyla } from '../lib/sayiYaziyla'
 function MakbuzGovdesi({ nusha, odeme, ogrenciAdi }) {
   return (
     <div className="makbuz-karti border border-gray-200 rounded-xl overflow-hidden">
-      <div className="bg-navy text-white py-4 px-5 flex items-center gap-3">
+      <div className="bg-navy text-white py-2.5 px-4 flex items-center gap-2.5">
         <div className="bg-white rounded-lg p-1 shrink-0">
-          <img src="/logo.png" alt="Savaş Akça Eğitim" className="w-10 h-10 object-contain" />
+          <img src="/logo.png" alt="Savaş Akça Eğitim" className="w-8 h-8 object-contain" />
         </div>
         <div>
-          <p className="font-bold text-lg tracking-wide">SAVAŞ AKÇA EĞİTİM</p>
-          <p className="text-sm text-white/80 mt-0.5">TAHSİLAT MAKBUZU</p>
+          <p className="font-bold text-base tracking-wide leading-tight">SAVAŞ AKÇA EĞİTİM</p>
+          <p className="text-xs text-white/80 leading-tight">TAHSİLAT MAKBUZU</p>
         </div>
       </div>
-      <div className="p-5">
-        <p className="text-xs text-gray-400 mb-3">Nüsha: {nusha}</p>
+      <div className="p-4">
+        <p className="text-xs text-gray-400 mb-2">Nüsha: {nusha}</p>
         <table className="w-full text-sm border border-gray-200 rounded-lg overflow-hidden">
           <tbody>
             <tr className="bg-gray-50">
-              <td className="px-3 py-2 font-semibold text-gray-600 w-1/3">Öğrenci</td>
-              <td className="px-3 py-2 font-bold text-navy">{ogrenciAdi}</td>
+              <td className="px-3 py-1.5 font-semibold text-gray-600 w-1/3">Öğrenci</td>
+              <td className="px-3 py-1.5 font-bold text-navy">{ogrenciAdi}</td>
             </tr>
             <tr>
-              <td className="px-3 py-2 font-semibold text-gray-600">Ödeme Tarihi</td>
-              <td className="px-3 py-2">{new Date(odeme.tarih).toLocaleString('tr-TR')}</td>
+              <td className="px-3 py-1.5 font-semibold text-gray-600">Ödeme Tarihi</td>
+              <td className="px-3 py-1.5">{new Date(odeme.tarih).toLocaleString('tr-TR')}</td>
             </tr>
             <tr className="bg-gray-50">
-              <td className="px-3 py-2 font-semibold text-gray-600">Kalem</td>
-              <td className="px-3 py-2">{odeme.kalem || '—'}</td>
+              <td className="px-3 py-1.5 font-semibold text-gray-600">Kalem</td>
+              <td className="px-3 py-1.5">{odeme.kalem || '—'}</td>
             </tr>
             <tr>
-              <td className="px-3 py-2 font-semibold text-gray-600">İşlem Açıklaması</td>
-              <td className="px-3 py-2">{odeme.odeme_turu || '—'}</td>
+              <td className="px-3 py-1.5 font-semibold text-gray-600">İşlem Açıklaması</td>
+              <td className="px-3 py-1.5">{odeme.odeme_turu || '—'}</td>
             </tr>
             <tr className="bg-orange/10">
-              <td className="px-3 py-2 font-semibold text-orange">Tahsil Edilen Tutar</td>
-              <td className="px-3 py-2 font-bold text-orange">{tutarYaziyla(odeme.tutar)}</td>
+              <td className="px-3 py-1.5 font-semibold text-orange">Tahsil Edilen Tutar</td>
+              <td className="px-3 py-1.5 font-bold text-orange">{tutarYaziyla(odeme.tutar)}</td>
             </tr>
             <tr>
-              <td className="px-3 py-2 font-semibold text-gray-600">Makbuz #</td>
-              <td className="px-3 py-2">{odeme.makbuz_no || '—'}</td>
+              <td className="px-3 py-1.5 font-semibold text-gray-600">Makbuz #</td>
+              <td className="px-3 py-1.5">{odeme.makbuz_no || '—'}</td>
             </tr>
           </tbody>
         </table>
-        <p className="text-right text-sm text-gray-500 mt-6">Ad Soyad / İmza</p>
+        <p className="text-right text-sm text-gray-500 mt-3">Ad Soyad / İmza</p>
       </div>
     </div>
   )
@@ -86,6 +86,9 @@ export default function Makbuz() {
         @media print {
           .no-print { display: none !important; }
           body { background: white !important; }
+          /* Sayfa kenar boşluklarını daraltıyoruz ki iki nüsha da (öğrenci +
+             kurum kopyası) TEK sayfaya sığsın. */
+          @page { margin: 8mm; }
         }
       `}</style>
       <div className="max-w-xl mx-auto">
@@ -99,7 +102,7 @@ export default function Makbuz() {
           </button>
         </div>
 
-        <div className="space-y-4">
+        <div className="space-y-3">
           <MakbuzGovdesi nusha="ÖĞRENCİ KOPYASI" odeme={odeme} ogrenciAdi={ogrenciAdi} />
           <p className="text-center text-xs text-gray-400">--------------------------- KESİM ALANI ---------------------------</p>
           <MakbuzGovdesi nusha="KURUM KOPYASI" odeme={odeme} ogrenciAdi={ogrenciAdi} />
