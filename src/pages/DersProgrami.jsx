@@ -718,15 +718,13 @@ function GunlukProgramListesi({ program, ogretmenler, atamalar, yoklamalar, ogre
                       className={`border-t border-l border-gray-100 text-center align-top py-1 leading-tight ${h.dolu ? h.dolu.renk : ''}`}
                     >
                       {h.dolu && (
-                        // Sütunlar telefonda o kadar dar ki (9 sütun tek ekranda) tam ad+soyad
-                        // hâlâ "Tu..." gibi anlamsız kesiliyordu. Bire bir hücrelerinde artık
-                        // sadece İSİM (ilk kelime) gösteriliyor — "Tural" gibi kısa bir ad genelde
-                        // sığıyor ve tek başına yeterince tanımlayıcı; tam ad+soyad zaten hücreye
-                        // basılı tutunca çıkan başlıkta (title) duruyor. Sınıf dersi hücrelerinde
-                        // (sınıf adı zaten kısa, ör. "12-SAYISAL") değişiklik yok.
-                        <span className="block truncate px-0.5">
-                          {h.dolu.tur === 'birebir' ? h.dolu.etiket.split(' ')[0] : h.dolu.etiket}
-                        </span>
+                        // Gün artık 3 sekmeye bölündüğü için (en kalabalık sekmede 5 sütun,
+                        // eskiden 9'du) her sütun için yaklaşık iki katı yer var — ad soyad
+                        // artık tam gösterilebiliyor. Yine de aşırı uzun bir isim/soyisim
+                        // gelirse diye truncate (tek satır, ...ile kesme) güvenlik amaçlı
+                        // kalıyor; aynı isimde birden fazla kişi olduğunda soyadın hep
+                        // görünmesi önemli olduğu için artık ilk isimle sınırlamıyoruz.
+                        <span className="block truncate px-0.5">{h.dolu.etiket}</span>
                       )}
                     </td>
                   ))}
