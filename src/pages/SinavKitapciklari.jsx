@@ -694,29 +694,52 @@ export default function SinavKitapciklari() {
   }
 
   function konuOnerileriniBul(dersAdi, hamMetin) {
-    return konuAdaylariniBul(dersAdi, hamMetin).slice(0, 4).map((a) => a.konu)
+    const hedefTemiz = hamMetin.toLocaleLowerCase('tr-TR')
+    return konuAdaylariniBul(dersAdi, hamMetin)
+      .slice(0, 4)
+      .map((a) => ({ konu: a.konu, yuzde: benzerlikYuzdesi(hedefTemiz, a.konu.toLocaleLowerCase('tr-TR')) }))
   }
 
-  // "Tümünü Otomatik Düzelt" — her konu için en iyi adayı bulur, sadece ÇOK
-  // YAKIN (mesafe <= 2, yani 1-2 harflik bir fark) eşleşmeleri "güvenli" kabul
-  // edip otomatik uygular. Emin olunamayan (daha uzak) eşleşmeler dokunulmadan
-  // bırakılır — admin onları elle/öneri butonlarıyla tek tek kontrol eder. Bu
-  // sayede admin'in HER konuyu tek tek açıp düzeltmesi gerekmez, sadece
-  // sistemin emin olmadıklarına bakması yeterli olur.
+  // İki metnin ne kadar BENZER olduğunu YÜZDE olarak verir (100 = birebir
+  // aynı, 0 = alakasız) — mesafe/uzunluk oranından hesaplanır. Sabit bir
+  // "en fazla 2 harf farkı" kuralı yerine yüzde kullanmamızın sebebi: kısa
+  // bir konu adında 2 harflik fark büyük bir bozulma sayılırken, uzun bir
+  // konu adında (ör. "Eşeye Bağlı Kalıtım") aynı 2 harflik fark oransal
+  // olarak çok küçük kalır — yüzde, konu adının uzunluğuna göre adil bir
+  // eşik sağlıyor.
+  function benzerlikYuzdesi(a, b) {
+    const mesafe = levenshteinMesafesi(a, b)
+    const uzunluk = Math.max(a.length, b.length) || 1
+    return Math.round((1 - mesafe / uzunluk) * 100)
+  }
+
+  // "Tümünü Otomatik Düzelt" — her konu için en iyi adayı bulur, BENZERLİK
+  // YÜZDESİ en az %75 olanları "güvenli" kabul edip otomatik uygular (bkz.
+  // benzerlikYuzdesi üstündeki not — bu, sabit "en fazla 2 harf" kuralından
+  // daha isabetli, özellikle uzun konu adlarında). Eşiğin altında kalan
+  // (daha uzak/emin olunamayan) eşleşmeler dokunulmadan bırakılır — admin
+  // onları elle/öneri butonlarıyla tek tek kontrol eder.
+  const OTOMATIK_DUZELTME_ESIGI = 75
   async function topluOtomatikDuzelt() {
     const guvenliDuzeltmeler = []
     for (const k of konuGruplari) {
       const adaylar = konuAdaylariniBul(k.dersAdi, k.konu)
       const enIyi = adaylar[0]
-      if (enIyi && enIyi.mesafe > 0 && enIyi.mesafe <= 2) {
-        guvenliDuzeltmeler.push({ k, yeni: enIyi.konu })
+      if (!enIyi || enIyi.mesafe === 0) continue
+      const yuzde = benzerlikYuzdesi(k.konu.toLocaleLowerCase('tr-TR'), enIyi.konu.toLocaleLowerCase('tr-TR'))
+      if (yuzde >= OTOMATIK_DUZELTME_ESIGI) {
+        guvenliDuzeltmeler.push({ k, yeni: enIyi.konu, yuzde })
       }
     }
     if (guvenliDuzeltmeler.length === 0) {
-      alert('Otomatik düzeltilecek kadar emin (çok yakın) bir eşleşme bulunamadı. Kalan konuları "Düzenle" ile tek tek, önerilerden seçerek düzeltebilirsiniz.')
+      alert(
+        `Otomatik düzeltilecek kadar benzer (%${OTOMATIK_DUZELTME_ESIGI}+ benzerlik) bir eşleşme bulunamadı. Kalan konuları "Düzenle" ile tek tek, önerilerden seçerek düzeltebilirsiniz.`
+      )
       return
     }
-    const onayMetni = guvenliDuzeltmeler.map((d) => `• "${d.k.konu}"  →  "${d.yeni}"`).join('\n')
+    const onayMetni = guvenliDuzeltmeler
+      .map((d) => `• "${d.k.konu}"  →  "${d.yeni}"  (%${d.yuzde} benzer)`)
+      .join('\n')
     if (
       !confirm(
         `${guvenliDuzeltmeler.length} konu adı aşağıdaki gibi OTOMATİK düzeltilecek (bu sınava giren tüm öğrencilerde):\n\n${onayMetni}\n\nOnaylıyor musunuz?`
@@ -1539,9 +1562,10 @@ export default function SinavKitapciklari() {
                 {topluDuzeltmeYukleniyor ? 'Düzeltiliyor...' : '⚡ Tümünü Otomatik Düzelt (emin olunanlar)'}
               </button>
               <p className="text-[11px] text-gray-400 mt-1.5">
-                Sadece ÇOK YAKIN (1-2 harflik fark) eşleşmeleri otomatik düzeltir, uygulamadan önce size
-                tam olarak neyin neye değişeceğini gösterip onay ister. Emin olunamayanlar dokunulmadan
-                kalır, onları aşağıdan "Düzenle" ile tek tek (önerilerden seçerek) düzeltebilirsiniz.
+                Sadece %{OTOMATIK_DUZELTME_ESIGI}+ benzer eşleşmeleri otomatik düzeltir, uygulamadan önce
+                size tam olarak neyin neye (kaç yüzde benzerlikle) değişeceğini gösterip onay ister. Eşiğin
+                altında kalanlar dokunulmadan bırakılır, onları aşağıdan "Düzenle" ile tek tek (önerilerden
+                seçerek) düzeltebilirsiniz.
               </p>
             </div>
           )}
@@ -1607,12 +1631,16 @@ export default function SinavKitapciklari() {
                           <span className="text-[11px] text-gray-400 mr-0.5">Öneriler:</span>
                           {oneriler.map((oneri) => (
                             <button
-                              key={oneri}
+                              key={oneri.konu}
                               type="button"
-                              onClick={() => setDuzenlenenKonuMetni(oneri)}
-                              className="text-[11px] bg-blue/10 text-blue font-medium px-2 py-0.5 rounded-full hover:bg-blue/20"
+                              onClick={() => setDuzenlenenKonuMetni(oneri.konu)}
+                              className={`text-[11px] font-medium px-2 py-0.5 rounded-full ${
+                                oneri.yuzde >= OTOMATIK_DUZELTME_ESIGI
+                                  ? 'bg-green-100 text-green-700 hover:bg-green-200'
+                                  : 'bg-blue/10 text-blue hover:bg-blue/20'
+                              }`}
                             >
-                              {oneri}
+                              {oneri.konu} (%{oneri.yuzde})
                             </button>
                           ))}
                         </>
