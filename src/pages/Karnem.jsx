@@ -112,20 +112,25 @@ function TurKarti({ tur, genel, dersSerileri }) {
 // bilgisi — bu bilgi sınavın TÜRÜNE (TYT/AYT/Konu Analiz) bağlı DEĞİL, o
 // sınavın PDF'i o formatta yüklenmişse gelir (bkz. sinavPdfParse.js, sayfa 2
 // "Konu Analizi" ayrıştırması). Bu yüzden burada tür ayrımı yapmadan, hangi
-// sınavda konu bilgisi varsa hepsini tek havuzda topluyoruz.
-function ZayifKonuSatiri({ dersAdi, konu, dogru, yanlis, bos, toplam }) {
+// sınavda konu bilgisi varsa hepsini tek havuzda topluyoruz — ama ders ders
+// AYRI kartlarda gösteriyoruz (bkz. ZayifKonuKarti), tek liste karışık olmasın.
+//
+// Sıralama SAYIYA değil ORANA göre: 9 sorudan 3'ü yanlış (%33) ile 2 sorudan
+// 2'si yanlış (%100) karşılaştırıldığında, ikincisi daha zayıf konu — düz
+// "kaç tane yanlış" sayısı bunu yanlış sıralardı (9 soruluk konu üstte
+// görünürdü). Bu yüzden başarısızlık oranı = (yanlış+boş)/toplam esas alınıyor,
+// eşitlik halinde soru sayısı daha çok olan (daha güvenilir örneklem) öne alınıyor.
+function ZayifKonuSatiri({ konu, dogru, yanlis, bos, toplam }) {
   const yanlisYuzde = toplam > 0 ? (yanlis / toplam) * 100 : 0
   const bosYuzde = toplam > 0 ? (bos / toplam) * 100 : 0
   const dogruYuzde = Math.max(0, 100 - yanlisYuzde - bosYuzde)
+  const basarisizOrani = toplam > 0 ? Math.round(((yanlis + bos) / toplam) * 100) : 0
   return (
     <div className="py-2.5 border-b border-gray-50 last:border-0">
       <div className="flex items-start justify-between gap-2 mb-1.5">
-        <div className="min-w-0">
-          <span className="text-sm font-medium text-gray-800">{konu}</span>
-          <span className="text-xs text-gray-400 ml-1.5">· {dersAdi}</span>
-        </div>
+        <span className="text-sm font-medium text-gray-800 min-w-0">{konu}</span>
         <span className="text-xs text-gray-500 shrink-0 text-right">
-          <b className="text-red-600">{yanlis} yanlış</b>
+          <b className="text-red-600">%{basarisizOrani}</b> · {yanlis} yanlış
           {bos > 0 ? `, ${bos} boş` : ''} / {toplam} soru
         </span>
       </div>
@@ -133,6 +138,22 @@ function ZayifKonuSatiri({ dersAdi, konu, dogru, yanlis, bos, toplam }) {
         <div className="bg-green-400 h-full" style={{ width: `${dogruYuzde}%` }} />
         <div className="bg-gray-300 h-full" style={{ width: `${bosYuzde}%` }} />
         <div className="bg-red-400 h-full" style={{ width: `${yanlisYuzde}%` }} />
+      </div>
+    </div>
+  )
+}
+
+// Ders başına TEK kart — içinde o dersin en zayıf konuları (oran sırasına
+// göre) satır satır listeleniyor. Gelişim Grafiği'ndeki TurKarti ile aynı
+// mantık, sadece tür yerine ders bazında gruplama var.
+function ZayifKonuKarti({ dersAdi, konular }) {
+  return (
+    <div className="bg-white rounded-xl border border-gray-100 p-4">
+      <p className="text-sm font-bold text-navy mb-1 px-0">{dersAdi}</p>
+      <div>
+        {konular.map((k) => (
+          <ZayifKonuSatiri key={k.konu} {...k} />
+        ))}
       </div>
     </div>
   )
@@ -341,30 +362,46 @@ export default function Karnem() {
   }, [sonuclar])
 
   // Zayıf Konu Analizi — TÜM geçmiş sınavlardaki (bu öğrencinin şimdiye kadar
-  // girdiği, tür fark etmeksizin) konu bazlı soru sonuçlarını tek havuzda
-  // toplayıp, en çok yanlış+boş yapılan konuları listeler. Sadece "Konu
+  // girdiği, tür fark etmeksizin) konu bazlı soru sonuçlarını DERS DERS AYRI
+  // gruplayıp, her dersin içinde en zayıf konularını listeler. Sadece "Konu
   // Analizli Karne" formatında yüklenmiş sınavlarda veri olur — hiç yoksa
   // (ör. sadece düz karne yüklendiyse) bu bölüm hiç görünmez.
-  const zayifKonular = useMemo(() => {
-    const harita = new Map()
+  const zayifKonuGruplari = useMemo(() => {
+    const dersHaritasi = new Map() // dersAnahtari -> { dersAdi, konuHaritasi: Map(konuAnahtari -> kayit) }
     for (const s of konuVerileri) {
       const konuAdi = (s.konu || '').trim()
       if (!konuAdi) continue
       const dersAdi = (s.ders_adi || '').trim()
-      const anahtar = `${dersAdi.toLocaleLowerCase('tr-TR')}|${konuAdi.toLocaleLowerCase('tr-TR')}`
-      if (!harita.has(anahtar)) {
-        harita.set(anahtar, { anahtar, dersAdi, konu: konuAdi, dogru: 0, yanlis: 0, bos: 0, toplam: 0 })
+      const dersAnahtari = dersAdi.toLocaleLowerCase('tr-TR')
+      if (!dersHaritasi.has(dersAnahtari)) dersHaritasi.set(dersAnahtari, { dersAdi, konuHaritasi: new Map() })
+      const dersGrubu = dersHaritasi.get(dersAnahtari)
+      const konuAnahtari = konuAdi.toLocaleLowerCase('tr-TR')
+      if (!dersGrubu.konuHaritasi.has(konuAnahtari)) {
+        dersGrubu.konuHaritasi.set(konuAnahtari, { konu: konuAdi, dogru: 0, yanlis: 0, bos: 0, toplam: 0 })
       }
-      const kayit = harita.get(anahtar)
+      const kayit = dersGrubu.konuHaritasi.get(konuAnahtari)
       kayit.toplam += 1
       if (s.sonuc === 'dogru') kayit.dogru += 1
       else if (s.sonuc === 'yanlis') kayit.yanlis += 1
       else if (s.sonuc === 'bos') kayit.bos += 1
     }
-    return [...harita.values()]
-      .filter((k) => k.yanlis + k.bos > 0)
-      .sort((a, b) => (b.yanlis + b.bos) - (a.yanlis + a.bos) || b.yanlis - a.yanlis)
-      .slice(0, 10)
+    const gruplar = []
+    for (const { dersAdi, konuHaritasi } of dersHaritasi.values()) {
+      // Sıralama SAYIYA değil ORANA göre — bkz. ZayifKonuSatiri üstündeki
+      // not (2 sorudan 2 yanlış, 9 sorudan 3 yanlıştan daha zayıf konudur).
+      // Eşit oranda, soru sayısı daha çok olan (daha güvenilir örneklem) öne.
+      const konular = [...konuHaritasi.values()]
+        .filter((k) => k.yanlis + k.bos > 0)
+        .sort((a, b) => {
+          const oranA = (a.yanlis + a.bos) / a.toplam
+          const oranB = (b.yanlis + b.bos) / b.toplam
+          return oranB - oranA || b.toplam - a.toplam
+        })
+        .slice(0, 6)
+      if (konular.length === 0) continue
+      gruplar.push({ dersAdi, konular })
+    }
+    return gruplar.sort((a, b) => dersSiraPuani(a.dersAdi) - dersSiraPuani(b.dersAdi))
   }, [konuVerileri])
 
   return (
@@ -546,17 +583,19 @@ export default function Karnem() {
         </div>
       )}
 
-      {!loading && zayifKonular.length > 0 && (
+      {!loading && zayifKonuGruplari.length > 0 && (
         <div className="mt-8">
           <h2 className="font-semibold text-gray-700 mb-1">Zayıf Konu Analizi</h2>
           <p className="text-xs text-gray-400 mb-3">
-            "Konu Analizli Karne" formatında yüklenen sınavlardaki tüm sorular taranarak, şimdiye kadarki
-            sonuçlarda en çok yanlış/boş yapılan konular listelenmiştir. Bu bilgi sınav türünden (TYT/AYT/Konu
-            Analiz) bağımsızdır — sadece bu formatta yüklenmiş sınavlarda bulunur, her sınavda olmayabilir.
+            "Konu Analizli Karne" formatında yüklenen sınavlardaki tüm sorular taranarak, ders ders en zayıf
+            konular listelenmiştir. Sıralama YÜZDEYE göredir (kaç yanlış değil, o konudaki sorunun yüzde kaçı
+            yanlış/boş) — ör. 2 sorudan 2'si yanlış (%100), 9 sorudan 3'ü yanlış (%33) olan bir konudan daha
+            zayıftır. Bu bilgi sınav türünden (TYT/AYT/Konu Analiz) bağımsızdır — sadece "Konu Analizli Karne"
+            formatında yüklenmiş sınavlarda bulunur, her sınavda olmayabilir.
           </p>
-          <div className="bg-white rounded-xl border border-gray-100 px-4">
-            {zayifKonular.map((k) => (
-              <ZayifKonuSatiri key={k.anahtar} {...k} />
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+            {zayifKonuGruplari.map((g) => (
+              <ZayifKonuKarti key={g.dersAdi} dersAdi={g.dersAdi} konular={g.konular} />
             ))}
           </div>
         </div>
