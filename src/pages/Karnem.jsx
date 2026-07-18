@@ -348,21 +348,6 @@ export default function Karnem() {
         </p>
       )}
 
-      {!loading && trendGruplari.length > 0 && (
-        <div className="mb-6">
-          <h2 className="font-semibold text-gray-700 mb-1">Gelişim Grafiği</h2>
-          <p className="text-xs text-gray-400 mb-3">
-            Aynı türdeki sınavların netleri zaman içinde nasıl değiştiğini gösterir — tek sonuç varken sadece o
-            değer görünür, ikinci sonuçla birlikte çizgi oluşur.
-          </p>
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
-            {trendGruplari.map((g) => (
-              <TurKarti key={g.tur} tur={g.tur} genel={g.genel} dersSerileri={g.dersSerileri} />
-            ))}
-          </div>
-        </div>
-      )}
-
       {!loading && sonuclar.length > 0 && (
         <div className="space-y-5">
           {sonuclar.map((s) => {
@@ -476,6 +461,22 @@ export default function Karnem() {
             </div>
             )
           })}
+        </div>
+      )}
+
+      {!loading && trendGruplari.length > 0 && (
+        <div className="mt-8">
+          <h2 className="font-semibold text-gray-700 mb-1">Gelişim Grafiği</h2>
+          <p className="text-xs text-gray-400 mb-3">
+            Yukarıdaki sınav sonuçlarının özeti — aynı türdeki (TYT/AYT/Konu Analiz) sınavların netleri zaman
+            içinde nasıl değiştiğini gösterir. Yeşil ok net yükseldiğini, kırmızı ok düştüğünü, "İlk sonuç"
+            etiketi ise o türde/derste henüz TEK sonuç girildiğini (ikincisiyle birlikte çizgi oluşacağını) belirtir.
+          </p>
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+            {trendGruplari.map((g) => (
+              <TurKarti key={g.tur} tur={g.tur} genel={g.genel} dersSerileri={g.dersSerileri} />
+            ))}
+          </div>
         </div>
       )}
     </div>
