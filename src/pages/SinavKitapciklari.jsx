@@ -353,10 +353,15 @@ export default function SinavKitapciklari() {
   const [duzenlenenSinavId, setDuzenlenenSinavId] = useState(null)
   const [duzenlenenSinavAdi, setDuzenlenenSinavAdi] = useState('')
   const [duzenlenenSinavTarihi, setDuzenlenenSinavTarihi] = useState('')
+  // Öğrenci/veli tarafındaki gelişim grafiğinin (Karnem.jsx) türlere göre
+  // ayrı çizgiler çizebilmesi için — özellikle eski (bu alan eklenmeden önce
+  // oluşturulmuş, otomatik "Diğer" gelen) sınavları geriye dönük etiketlemek için.
+  const [duzenlenenSinavTuru, setDuzenlenenSinavTuru] = useState('Diğer')
   const [sinavAdiKaydediliyor, setSinavAdiKaydediliyor] = useState(false)
   const [seciliSinavId, setSeciliSinavId] = useState('')
   const [yeniSinavAdi, setYeniSinavAdi] = useState('')
   const [yeniSinavTarihi, setYeniSinavTarihi] = useState('')
+  const [yeniSinavTuru, setYeniSinavTuru] = useState('TYT')
   const [kitapcikTuru, setKitapcikTuru] = useState('A')
   const [dosya, setDosya] = useState(null)
 
@@ -500,6 +505,7 @@ export default function SinavKitapciklari() {
     setDuzenlenenSinavId(s.id)
     setDuzenlenenSinavAdi(s.sinav_adi)
     setDuzenlenenSinavTarihi(s.sinav_tarihi || '')
+    setDuzenlenenSinavTuru(s.tur || 'Diğer')
   }
 
   function sinavDuzenlemeyiVazgec() {
@@ -521,6 +527,7 @@ export default function SinavKitapciklari() {
           // diğer alanlarda bu düzeltme aynen devam ediyor).
           sinav_adi: duzenlenenSinavAdi.trim(),
           sinav_tarihi: duzenlenenSinavTarihi || null,
+          tur: duzenlenenSinavTuru,
         })
         .eq('id', id)
       if (error) throw error
@@ -1030,7 +1037,7 @@ export default function SinavKitapciklari() {
         // tam olarak yazdığı gibi (manuel) kaydetmek istiyor.
         const { data, error } = await supabase
           .from('sinavlar')
-          .insert({ sinav_adi: yeniSinavAdi.trim(), sinav_tarihi: yeniSinavTarihi || null })
+          .insert({ sinav_adi: yeniSinavAdi.trim(), sinav_tarihi: yeniSinavTarihi || null, tur: yeniSinavTuru })
           .select()
           .single()
         if (error && error.code === '23505') {
@@ -1169,6 +1176,7 @@ export default function SinavKitapciklari() {
               <tr className="text-left text-gray-500">
                 <th className="px-4 py-2 font-medium">Sınav</th>
                 <th className="px-4 py-2 font-medium">Tarih</th>
+                <th className="px-4 py-2 font-medium">Tür</th>
                 <th className="px-4 py-2 font-medium text-right">İşlemler</th>
               </tr>
             </thead>
@@ -1192,6 +1200,18 @@ export default function SinavKitapciklari() {
                         className="w-full px-2 py-1 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue"
                       />
                     </td>
+                    <td className="px-4 py-2">
+                      <select
+                        value={duzenlenenSinavTuru}
+                        onChange={(e) => setDuzenlenenSinavTuru(e.target.value)}
+                        className="w-full px-2 py-1 border border-gray-200 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue"
+                      >
+                        <option value="TYT">TYT</option>
+                        <option value="AYT">AYT</option>
+                        <option value="Konu Analiz">Konu Analiz</option>
+                        <option value="Diğer">Diğer</option>
+                      </select>
+                    </td>
                     <td className="px-4 py-2 text-right whitespace-nowrap">
                       <button
                         onClick={() => sinavDuzenlemeyiKaydet(s.id)}
@@ -1214,6 +1234,15 @@ export default function SinavKitapciklari() {
                     <td className="px-4 py-2 font-medium text-gray-800">{s.sinav_adi}</td>
                     <td className="px-4 py-2 text-gray-500">
                       {s.sinav_tarihi ? new Date(s.sinav_tarihi).toLocaleDateString('tr-TR') : '—'}
+                    </td>
+                    <td className="px-4 py-2">
+                      <span
+                        className={`text-xs font-semibold px-2 py-0.5 rounded-full ${
+                          !s.tur || s.tur === 'Diğer' ? 'bg-gray-100 text-gray-500' : 'bg-blue/10 text-blue'
+                        }`}
+                      >
+                        {s.tur || 'Diğer'}
+                      </span>
                     </td>
                     <td className="px-4 py-2 text-right whitespace-nowrap">
                       <button
@@ -1346,6 +1375,19 @@ export default function SinavKitapciklari() {
                 onChange={(e) => setYeniSinavTarihi(e.target.value)}
                 className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue"
               />
+            </div>
+            <div className="min-w-[140px]">
+              <label className="block text-sm font-medium text-gray-700 mb-1">Sınav Türü</label>
+              <select
+                value={yeniSinavTuru}
+                onChange={(e) => setYeniSinavTuru(e.target.value)}
+                className="w-full px-3 py-2 border border-gray-200 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-blue"
+              >
+                <option value="TYT">TYT</option>
+                <option value="AYT">AYT</option>
+                <option value="Konu Analiz">Konu Analiz</option>
+                <option value="Diğer">Diğer</option>
+              </select>
             </div>
           </div>
         )}

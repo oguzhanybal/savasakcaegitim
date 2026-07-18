@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../lib/AuthContext'
@@ -27,6 +27,65 @@ function dersSiraPuani(dersAdi) {
 // gibi sabit 2 basamaklı oluyor.
 function netFormat(n) {
   return n == null ? '-' : Number(n).toFixed(2)
+}
+
+function tarihEtiket(tarih) {
+  if (!tarih) return '—'
+  return new Date(tarih + 'T12:00:00').toLocaleDateString('tr-TR', { day: '2-digit', month: 'short' })
+}
+
+// Dışarıdan bir chart kütüphanesi eklemeden (npm paketi eklemek, dosyayı elle
+// GitHub'a sürükleyip yükleyen kullanıcı için ekstra bir "package.json'a da
+// ekle" adımı gerektirir ve build'i bozma riski taşır), küçük, bağımlılıksız
+// bir SVG çizgi grafik — sadece şekli (yükseliyor mu, düşüyor mu) göstermek
+// yeterli, eksenlerde tam sayısal ölçek gerekmiyor.
+function MiniCizgiGrafik({ baslik, noktalar, renk = '#0f2a4a' }) {
+  if (!noktalar || noktalar.length === 0) return null
+  const tekNokta = noktalar.length === 1
+  const degerler = noktalar.map((n) => n.deger)
+  const min = Math.min(...degerler)
+  const max = Math.max(...degerler)
+  const araligi = max - min || 1
+  const genislik = 100
+  const yukseklik = 34
+  const pad = 3
+  const cizilenler = noktalar.map((n, i) => {
+    const x = tekNokta ? genislik / 2 : pad + (i / (noktalar.length - 1)) * (genislik - pad * 2)
+    const y = yukseklik - pad - ((n.deger - min) / araligi) * (yukseklik - pad * 2)
+    return { ...n, x, y }
+  })
+  const yol = cizilenler.map((p, i) => `${i === 0 ? 'M' : 'L'} ${p.x.toFixed(1)} ${p.y.toFixed(1)}`).join(' ')
+  const ilk = degerler[0]
+  const son = degerler[degerler.length - 1]
+  const fark = son - ilk
+
+  return (
+    <div className="bg-white rounded-xl border border-gray-100 p-3">
+      <div className="flex items-center justify-between mb-1.5 gap-2">
+        <p className="text-xs font-semibold text-gray-600 truncate">{baslik}</p>
+        {!tekNokta && (
+          <span
+            className={`text-xs font-bold shrink-0 ${
+              fark > 0 ? 'text-green-600' : fark < 0 ? 'text-red-500' : 'text-gray-400'
+            }`}
+          >
+            {fark > 0 ? '▲' : fark < 0 ? '▼' : '–'} {Math.abs(fark).toFixed(2)}
+          </span>
+        )}
+      </div>
+      <svg viewBox={`0 0 ${genislik} ${yukseklik}`} className="w-full h-14" preserveAspectRatio="none">
+        <path d={yol} fill="none" stroke={renk} strokeWidth="1.5" vectorEffect="non-scaling-stroke" />
+        {cizilenler.map((p, i) => (
+          <circle key={i} cx={p.x} cy={p.y} r="1.6" fill={renk} />
+        ))}
+      </svg>
+      <div className="flex justify-between text-[10px] text-gray-400 mt-1">
+        <span>{cizilenler[0].etiket}</span>
+        <span className="font-semibold text-gray-600">{netFormat(son)}</span>
+        <span>{cizilenler[cizilenler.length - 1].etiket}</span>
+      </div>
+    </div>
+  )
 }
 
 // Öğrenci/veli için "kendi sınav sonuçlarını görme" sayfası — SinavYukle.jsx'te
@@ -92,7 +151,7 @@ export default function Karnem() {
     setLoading(true)
     supabase
       .from('ogrenci_sinav_sonuclari')
-      .select('*, sinavlar(sinav_adi, sinav_tarihi)')
+      .select('*, sinavlar(sinav_adi, sinav_tarihi, tur)')
       .eq('ogrenci_id', seciliId)
       .order('created_at', { ascending: false })
       .then(async ({ data }) => {
@@ -152,6 +211,54 @@ export default function Karnem() {
   const seciciGoster = ogrenciler.length > 1
   const seciliOgrenci = ogrenciler.find((o) => o.id === seciliId)
 
+  // Gelişim grafiği için sonuçları TÜRE göre ayırıyoruz — TYT'nin neti ile
+  // AYT'nin neti ya da tek dersli bir Konu Analiz testinin neti tamamen
+  // farklı ölçeklerde olduğundan hepsini aynı çizgide karşılaştırmak
+  // yanıltıcı olurdu (bkz. SinavYukle.jsx / SinavKitapciklari.jsx'teki
+  // "Sınav Türü" alanı). TYT/AYT/Diğer için toplam net trend edilir; "Konu
+  // Analiz" içinse HER DERS ayrı bir çizgi olur (bir konu analiz sınavı
+  // genelde tek bir dersi hedeflediği, farklı derslerin netini birbirine
+  // karıştırmamak için).
+  const trendGruplari = useMemo(() => {
+    const siraliSonuclar = [...sonuclar].sort((a, b) => {
+      const ta = a.sinavlar?.sinav_tarihi || a.created_at || ''
+      const tb = b.sinavlar?.sinav_tarihi || b.created_at || ''
+      return ta < tb ? -1 : ta > tb ? 1 : 0
+    })
+    const turGruplari = new Map()
+    for (const s of siraliSonuclar) {
+      const tur = s.sinavlar?.tur || 'Diğer'
+      if (!turGruplari.has(tur)) turGruplari.set(tur, [])
+      turGruplari.get(tur).push(s)
+    }
+    const grafikler = []
+    for (const [tur, liste] of turGruplari) {
+      if (tur === 'Konu Analiz') {
+        const dersGruplari = new Map()
+        for (const s of liste) {
+          for (const d of s.dersler || []) {
+            if (d.net == null) continue
+            if (!dersGruplari.has(d.ders_adi)) dersGruplari.set(d.ders_adi, [])
+            dersGruplari.get(d.ders_adi).push({
+              etiket: tarihEtiket(s.sinavlar?.sinav_tarihi),
+              deger: Number(d.net),
+            })
+          }
+        }
+        for (const [dersAdi, noktalar] of dersGruplari) {
+          if (noktalar.length < 2) continue
+          grafikler.push({ baslik: `Konu Analiz — ${dersAdi}`, noktalar })
+        }
+      } else {
+        const noktalar = liste
+          .filter((s) => s.toplam_net != null)
+          .map((s) => ({ etiket: tarihEtiket(s.sinavlar?.sinav_tarihi), deger: Number(s.toplam_net) }))
+        if (noktalar.length >= 2) grafikler.push({ baslik: tur, noktalar })
+      }
+    }
+    return grafikler
+  }, [sonuclar])
+
   return (
     <div>
       <h1 className="text-2xl font-bold text-navy mb-2">{seciciGoster ? 'Sınav Sonuçları' : 'Sınav Sonuçlarım'}</h1>
@@ -186,6 +293,20 @@ export default function Karnem() {
         <p className="text-gray-400">
           {seciliOgrenci?.ad_soyad ? `${seciliOgrenci.ad_soyad} için ` : ''}henüz kaydedilmiş bir sınav sonucu yok.
         </p>
+      )}
+
+      {!loading && trendGruplari.length > 0 && (
+        <div className="mb-6">
+          <h2 className="font-semibold text-gray-700 mb-1">Gelişim Grafiği</h2>
+          <p className="text-xs text-gray-400 mb-3">
+            Aynı türdeki sınavların netleri zaman içinde nasıl değiştiğini gösterir (en az 2 sınav gerekir).
+          </p>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+            {trendGruplari.map((g, i) => (
+              <MiniCizgiGrafik key={i} baslik={g.baslik} noktalar={g.noktalar} />
+            ))}
+          </div>
+        </div>
       )}
 
       {!loading && sonuclar.length > 0 && (

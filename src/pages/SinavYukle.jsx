@@ -59,6 +59,11 @@ export default function SinavYukle() {
   // AYNI sınava eklenebilir).
   const [yeniSinavAdi, setYeniSinavAdi] = useState('')
   const [yeniSinavTarihi, setYeniSinavTarihi] = useState('')
+  // Trend grafiği (Karnem.jsx) TYT/AYT/Konu Analiz sınavlarını birbirinden
+  // ayırmak için bu alana bakıyor — farklı ölçekteki sınavların netini aynı
+  // çizgide karşılaştırmak yanıltıcı olduğundan varsayılan olarak en sık
+  // kullanılan "TYT" seçili geliyor, admin gerekirse değiştirir.
+  const [yeniSinavTuru, setYeniSinavTuru] = useState('TYT')
   // "+ Yeni sınav ekle" ile bir toplu kaydetme sırasında (hepsiniKaydet)
   // sınav SADECE BİR KEZ oluşturulsun diye — satirKaydet her satır için ayrı
   // ayrı çağrıldığında React'in "stale closure" davranışı yüzünden
@@ -161,7 +166,7 @@ export default function SinavYukle() {
       const temizAd = yeniSinavAdi.trim()
       const { data, error } = await supabase
         .from('sinavlar')
-        .insert({ sinav_adi: temizAd, sinav_tarihi: yeniSinavTarihi || null })
+        .insert({ sinav_adi: temizAd, sinav_tarihi: yeniSinavTarihi || null, tur: yeniSinavTuru })
         .select()
         .single()
       let sinavRow = data
@@ -476,6 +481,22 @@ export default function SinavYukle() {
                     onChange={(e) => setYeniSinavTarihi(e.target.value)}
                     className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue"
                   />
+                </div>
+                <div className="min-w-[140px]">
+                  <label className="block text-xs font-medium text-gray-500 mb-1">Sınav Türü</label>
+                  <select
+                    value={yeniSinavTuru}
+                    onChange={(e) => setYeniSinavTuru(e.target.value)}
+                    className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue"
+                  >
+                    <option value="TYT">TYT</option>
+                    <option value="AYT">AYT</option>
+                    <option value="Konu Analiz">Konu Analiz</option>
+                    <option value="Diğer">Diğer</option>
+                  </select>
+                  <p className="text-[11px] text-gray-400 mt-1">
+                    Öğrenci/veli tarafındaki gelişim grafiğinde farklı türler ayrı çizgide gösterilir.
+                  </p>
                 </div>
               </div>
             )}
