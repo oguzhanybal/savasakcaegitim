@@ -115,6 +115,11 @@ function TurKarti({ tur, genel, dersSerileri }) {
 // o hâlâ sadece yönetici tarafında, "Sınav Sonucu Yükle" sayfasından üretiliyor.
 export default function Karnem() {
   const { profile } = useAuth()
+  // Yönetici de bu sayfayı (özellikle Gelişim Grafiği'ni) görebilsin diye
+  // rota izni genişletildi (bkz. App.jsx). Veli/öğrenci sadece KENDİ bağlı
+  // olduğu öğrenci(ler)i görürken, yönetici İSTEDİĞİ HERHANGİ BİR öğrenciyi
+  // seçebilmeli — aşağıdaki öğrenci sorgusu buna göre dallanıyor.
+  const isYonetici = profile?.rol === 'yonetici'
   const [ogrenciler, setOgrenciler] = useState([])
   const [seciliId, setSeciliId] = useState('')
   const [sonuclar, setSonuclar] = useState([])
@@ -259,8 +264,15 @@ export default function Karnem() {
       }
       for (const d of s.dersler || []) {
         if (d.net == null) continue
-        if (!grup.dersHaritasi.has(d.ders_adi)) grup.dersHaritasi.set(d.ders_adi, [])
-        grup.dersHaritasi.get(d.ders_adi).push({ etiket: tarihEtiket(s.sinavlar?.sinav_tarihi), deger: Number(d.net) })
+        // Aynı ders farklı sınavlarda büyük/küçük harf ya da baş/son boşlukla
+        // biraz farklı yazılmış olabilir (ör. "Matematik " ile "matematik") —
+        // haftalık "kası" takibinde bu, aynı dersin YANLIŞLIKLA iki ayrı
+        // çizgiye bölünmesine yol açardı. Gruplamayı normalize edilmiş
+        // (boşluksuz, küçük harf) anahtarla yapıyoruz; ekranda ilk görülen
+        // yazım şekli gösteriliyor.
+        const anahtar = (d.ders_adi || '').trim().toLocaleLowerCase('tr-TR')
+        if (!grup.dersHaritasi.has(anahtar)) grup.dersHaritasi.set(anahtar, { etiket: d.ders_adi.trim(), noktalar: [] })
+        grup.dersHaritasi.get(anahtar).noktalar.push({ etiket: tarihEtiket(s.sinavlar?.sinav_tarihi), deger: Number(d.net) })
       }
     }
     const turAdlari = [...turHaritasi.keys()].sort((a, b) => {
@@ -271,9 +283,9 @@ export default function Karnem() {
     const gruplar = []
     for (const tur of turAdlari) {
       const grup = turHaritasi.get(tur)
-      const dersSerileri = [...grup.dersHaritasi.entries()]
-        .sort((a, b) => dersSiraPuani(a[0]) - dersSiraPuani(b[0]))
-        .map(([dersAdi, noktalar]) => ({ dersAdi, noktalar }))
+      const dersSerileri = [...grup.dersHaritasi.values()]
+        .sort((a, b) => dersSiraPuani(a.etiket) - dersSiraPuani(b.etiket))
+        .map((d) => ({ dersAdi: d.etiket, noktalar: d.noktalar }))
       const genel = tur === 'Konu Analiz' ? [] : grup.genel
       if (genel.length === 0 && dersSerileri.length === 0) continue
       gruplar.push({ tur, genel, dersSerileri })

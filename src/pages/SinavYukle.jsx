@@ -43,6 +43,30 @@ function netFormat(n) {
   return n == null ? '-' : Number(n).toFixed(2)
 }
 
+// Sınav türü (TYT/AYT) ile PDF'ten ayrıştırılan ders adları TUTARSIZ olabilir
+// — ör. sınav "AYT" olarak işaretlenmiş ama PDF'te "Türkçe" dersi çıkmış (AYT'de
+// Türkçe diye bir ders yoktur, TYT'ye özeldir). Bu genelde ya yanlış PDF
+// yüklendiğinin ya da sınavın türünün yanlış seçildiğinin işareti — admin'i
+// ENGELLEMEDEN (belki gerçekten farklı bir kullanım vardır), sadece uyarıyoruz.
+const TYT_OZEL_DERSLER = ['türkçe', 'sosyal bilimler', 'fen bilimleri']
+const AYT_OZEL_DERSLER = [
+  'fizik', 'kimya', 'biyoloji', 'felsefe', 'din kültürü', 'edebiyat',
+  'tarih-1', 'tarih-2', 'coğrafya-1', 'coğrafya-2',
+]
+function turUyusmazlikUyarisi(dersSonuclari, tur) {
+  if (!dersSonuclari || dersSonuclari.length === 0) return null
+  const normalize = (s) => (s || '').toLocaleLowerCase('tr-TR')
+  if (tur === 'AYT') {
+    const bulunan = dersSonuclari.find((d) => TYT_OZEL_DERSLER.some((x) => normalize(d.ders_adi).includes(x)))
+    if (bulunan) return `"${bulunan.ders_adi}" normalde AYT'de olmaz (TYT dersi gibi görünüyor) — sınav türünü ya da yüklenen PDF'i kontrol edin.`
+  }
+  if (tur === 'TYT') {
+    const bulunan = dersSonuclari.find((d) => AYT_OZEL_DERSLER.some((x) => normalize(d.ders_adi).includes(x)))
+    if (bulunan) return `"${bulunan.ders_adi}" normalde TYT'de olmaz (AYT dersi gibi görünüyor) — sınav türünü ya da yüklenen PDF'i kontrol edin.`
+  }
+  return null
+}
+
 export default function SinavYukle() {
   const [sinavlar, setSinavlar] = useState([])
   const [seciliSinavId, setSeciliSinavId] = useState(() => {
@@ -425,6 +449,13 @@ export default function SinavYukle() {
 
   const hazirSayisi = satirlar.filter((s) => s.durum === 'hazir' && s.ogrenciId).length
 
+  // Uyarı kontrolü için o an seçili sınavın türü — yeni sınavsa formdaki
+  // seçim, mevcut bir sınavsa veritabanındaki kayıtlı tür.
+  const seciliSinavTuru =
+    seciliSinavId === '__yeni__'
+      ? yeniSinavTuru
+      : sinavlar.find((sn) => sn.id === seciliSinavId)?.tur || 'Diğer'
+
   return (
     <div>
       <h1 className="text-2xl font-bold text-navy mb-2">Sınav Sonucu Yükle</h1>
@@ -591,6 +622,12 @@ export default function SinavYukle() {
                     </div>
                   )}
                 </div>
+
+                {s.veri && s.durum !== 'kaydedildi' && turUyusmazlikUyarisi(s.veri.dersSonuclari, seciliSinavTuru) && (
+                  <p className="mt-2 text-xs text-yellow-800 bg-yellow-50 border border-yellow-300 rounded-lg px-3 py-1.5">
+                    ⚠ {turUyusmazlikUyarisi(s.veri.dersSonuclari, seciliSinavTuru)}
+                  </p>
+                )}
 
                 {s.veri && s.durum !== 'kaydedildi' && (
                   <div className="mt-3 flex flex-wrap items-end gap-3">
