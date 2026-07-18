@@ -693,7 +693,27 @@ export default function SinavKitapciklari() {
     return [...adaylar.values()].sort((a, b) => a.mesafe - b.mesafe)
   }
 
+  // Bir konu adı, sistemdeki vocab'da YA DA müfredat referans listesinde
+  // BİREBİR (normalize edilmiş — boşluk/büyük-küçük harf farkı hariç) zaten
+  // varsa, bu konu adı muhtemelen ZATEN DOĞRU demektir — ona "benzer ama
+  // FARKLI" bir konu önermek yanlış olur (ör. "İç Kuvvetler" zaten doğru
+  // yazılmışken, ona metin olarak benzeyen ama TAMAMEN FARKLI bir konu olan
+  // "Dış Kuvvetler" önerilmemeli). Bu fonksiyon, otomatik/manuel öneri
+  // üretmeden ÖNCE bu kontrolü yapmak için kullanılıyor.
+  function konuZatenBiliniyorMu(dersAdi, hamMetin) {
+    const dersAnahtari = dersAdi.toLocaleLowerCase('tr-TR')
+    const hedefTemiz = hamMetin.toLocaleLowerCase('tr-TR')
+    const referansVar = (KONU_REFERANS_LOWER[dersAnahtari] || []).some(
+      (konu) => konu.toLocaleLowerCase('tr-TR') === hedefTemiz
+    )
+    if (referansVar) return true
+    return tumKonuVocab.some(
+      (v) => v.dersAdi.toLocaleLowerCase('tr-TR') === dersAnahtari && v.konu.toLocaleLowerCase('tr-TR') === hedefTemiz
+    )
+  }
+
   function konuOnerileriniBul(dersAdi, hamMetin) {
+    if (konuZatenBiliniyorMu(dersAdi, hamMetin)) return []
     const hedefTemiz = hamMetin.toLocaleLowerCase('tr-TR')
     return konuAdaylariniBul(dersAdi, hamMetin)
       .slice(0, 4)
@@ -723,6 +743,10 @@ export default function SinavKitapciklari() {
   async function topluOtomatikDuzelt() {
     const guvenliDuzeltmeler = []
     for (const k of konuGruplari) {
+      // Zaten bilinen (referans listesinde ya da sistemde birebir var olan)
+      // bir konu adına DOKUNMUYORUZ — ona metin olarak benzeyen ama farklı
+      // bir konu önerip yanlışlıkla DEĞİŞTİRMEK, hiç değiştirmemekten kötü.
+      if (konuZatenBiliniyorMu(k.dersAdi, k.konu)) continue
       const adaylar = konuAdaylariniBul(k.dersAdi, k.konu)
       const enIyi = adaylar[0]
       if (!enIyi || enIyi.mesafe === 0) continue
@@ -1644,6 +1668,10 @@ export default function SinavKitapciklari() {
                             </button>
                           ))}
                         </>
+                      ) : konuZatenBiliniyorMu(k.dersAdi, k.konu) ? (
+                        <span className="text-[11px] text-green-600">
+                          ✓ Bu konu adı bilinen listede birebir var — muhtemelen zaten doğru yazılmış.
+                        </span>
                       ) : (
                         <span className="text-[11px] text-gray-300">
                           Sistemde benzer bir konu adı bulunamadı — doğru yazılışı biliyorsanız elle yazın.
