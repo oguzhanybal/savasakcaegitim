@@ -477,16 +477,21 @@ function GunlukProgramListesi({ program, ogretmenler, atamalar, yoklamalar, ogre
   const [tarih, setTarih] = useState(() => new Date().toISOString().slice(0, 10))
   const gun = gunNumaraTarihten(tarih)
   // Mobilde 14 sütunu kaydırmadan, okunaklı göstermek mümkün olmadığı için
-  // günü ikiye bölüyoruz: sabah (09:00–13:25, öğle arasından ÖNCE) ve öğleden
-  // sonra (14:15–22:20, öğle arasından SONRA) — bu ikisi zaten okulun kendi
-  // saat düzenindeki doğal ayrım noktası (bkz. dersPeriyotlari.js), rastgele
-  // bir bölme değil. Masaüstünde bu ayrım kullanılmaz, tüm gün tek tabloda görünür.
+  // günü ÜÇE bölüyoruz: sabah (09:00–13:25), erken öğleden sonra (14:15–18:40)
+  // ve akşam (18:50–22:20). Önceden iki parçaya bölünüyordu (5+9 sütun) ama
+  // 9 sütunluk kısımda hücreler o kadar daralıyordu ki kısa bir isim bile
+  // ("Tural" gibi) bazen sığıp bazen "Tu..." diye kesiliyordu — üçe bölünce
+  // en kalabalık parça 5 sütuna iniyor, isimler tutarlı şekilde sığıyor.
+  // Masaüstünde bu ayrım kullanılmaz, tüm gün tek tabloda görünür.
   //
-  // Varsayılan sekme, sayfa AÇILDIĞI ANDAKİ saate göre otomatik seçilir: saat
-  // 14:00 ile 00:00 arasıysa (öğleden sonra/akşam saatleri) doğrudan "14:15"
-  // sekmesi, 00:00 ile 14:00 arasıysa "09:00" sekmesi açık gelir — kullanıcı
-  // günün hangi bölümündeyse muhtemelen onu görmek istiyordur diye.
-  const [mobilYariGun, setMobilYariGun] = useState(() => (new Date().getHours() >= 14 ? 'ogleden_sonra' : 'sabah'))
+  // Varsayılan sekme, sayfa AÇILDIĞI ANDAKİ saate göre otomatik seçilir —
+  // kullanıcı günün hangi bölümündeyse muhtemelen onu görmek istiyordur diye.
+  const [mobilYariGun, setMobilYariGun] = useState(() => {
+    const saat = new Date().getHours()
+    if (saat < 14) return 'sabah'
+    if (saat < 19) return 'ogle1'
+    return 'ogle2'
+  })
 
   // O günün TÜM olaylarını (sınıf dersi + haftalık bire bir + tek seferlik
   // bire bir) tek listede topluyoruz.
@@ -538,11 +543,12 @@ function GunlukProgramListesi({ program, ogretmenler, atamalar, yoklamalar, ogre
   // DEĞİL, okulun sabit ders periyotları (45dk ders + 10dk teneffüs, bkz.
   // dersPeriyotlari.js) — Müsaitlik Tablosu ile aynı sütun yapısı.
   const dilimler = DERS_PERIYOTLARI
-  // İlk 5 periyot sabah (09:00–13:25), kalan 9'u öğleden sonra (14:15–22:20) —
-  // sadece mobil görünümde kullanılır (bkz. mobilYariGun).
+  // 5+5+4 olarak üçe bölünüyor — sadece mobil görünümde kullanılır (bkz. mobilYariGun).
   const sabahDilimleri = DERS_PERIYOTLARI.slice(0, 5)
-  const ogledenSonraDilimleri = DERS_PERIYOTLARI.slice(5)
-  const mobilDilimler = mobilYariGun === 'sabah' ? sabahDilimleri : ogledenSonraDilimleri
+  const ogle1Dilimleri = DERS_PERIYOTLARI.slice(5, 10)
+  const ogle2Dilimleri = DERS_PERIYOTLARI.slice(10)
+  const mobilDilimler =
+    mobilYariGun === 'sabah' ? sabahDilimleri : mobilYariGun === 'ogle1' ? ogle1Dilimleri : ogle2Dilimleri
 
   // Sadece o gün en az bir olayı (dersi) olan öğretmenler gösterilir.
   const gorunecekOgretmenler = useMemo(() => {
@@ -672,10 +678,17 @@ function GunlukProgramListesi({ program, ogretmenler, atamalar, yoklamalar, ogre
           </button>
           <button
             type="button"
-            onClick={() => setMobilYariGun('ogleden_sonra')}
-            className={`flex-1 py-2 font-medium transition-colors ${mobilYariGun === 'ogleden_sonra' ? 'bg-navy text-white' : 'text-gray-500 hover:bg-gray-50'}`}
+            onClick={() => setMobilYariGun('ogle1')}
+            className={`flex-1 py-2 font-medium transition-colors ${mobilYariGun === 'ogle1' ? 'bg-navy text-white' : 'text-gray-500 hover:bg-gray-50'}`}
           >
-            {ogledenSonraDilimleri[0].baslangic}–{ogledenSonraDilimleri[ogledenSonraDilimleri.length - 1].bitis}
+            {ogle1Dilimleri[0].baslangic}–{ogle1Dilimleri[ogle1Dilimleri.length - 1].bitis}
+          </button>
+          <button
+            type="button"
+            onClick={() => setMobilYariGun('ogle2')}
+            className={`flex-1 py-2 font-medium transition-colors ${mobilYariGun === 'ogle2' ? 'bg-navy text-white' : 'text-gray-500 hover:bg-gray-50'}`}
+          >
+            {ogle2Dilimleri[0].baslangic}–{ogle2Dilimleri[ogle2Dilimleri.length - 1].bitis}
           </button>
         </div>
         <table className="border-collapse text-[9px] w-full table-fixed">
