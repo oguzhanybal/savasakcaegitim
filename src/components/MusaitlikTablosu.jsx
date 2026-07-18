@@ -219,7 +219,11 @@ export default function MusaitlikTablosu({
       harita.get(d.ogretmen_profile_id).push({
         baslangic: d.baslangic_saat,
         bitis: d.bitis_saat,
-        etiket: d.ders_adi || d.sinif_adi || 'Sınıf dersi',
+        // Öğretmen adı zaten satırda göründüğü için hangi dersi/branşı olduğu
+        // belli oluyor — burada asıl bilinmek istenen HANGİ SINIFA girdiği,
+        // o yüzden önce sınıf adı, o yoksa (bire bir ya da isimsiz kayıt) ders
+        // adı gösteriliyor.
+        etiket: d.sinif_adi || d.ders_adi || 'Sınıf dersi',
         renk: 'bg-blue-200 text-blue-900 border-l-4 border-l-blue-600',
       })
     }
