@@ -481,7 +481,12 @@ function GunlukProgramListesi({ program, ogretmenler, atamalar, yoklamalar, ogre
   // sonra (14:15–22:20, öğle arasından SONRA) — bu ikisi zaten okulun kendi
   // saat düzenindeki doğal ayrım noktası (bkz. dersPeriyotlari.js), rastgele
   // bir bölme değil. Masaüstünde bu ayrım kullanılmaz, tüm gün tek tabloda görünür.
-  const [mobilYariGun, setMobilYariGun] = useState('sabah')
+  //
+  // Varsayılan sekme, sayfa AÇILDIĞI ANDAKİ saate göre otomatik seçilir: saat
+  // 14:00 ile 00:00 arasıysa (öğleden sonra/akşam saatleri) doğrudan "14:15"
+  // sekmesi, 00:00 ile 14:00 arasıysa "09:00" sekmesi açık gelir — kullanıcı
+  // günün hangi bölümündeyse muhtemelen onu görmek istiyordur diye.
+  const [mobilYariGun, setMobilYariGun] = useState(() => (new Date().getHours() >= 14 ? 'ogleden_sonra' : 'sabah'))
 
   // O günün TÜM olaylarını (sınıf dersi + haftalık bire bir + tek seferlik
   // bire bir) tek listede topluyoruz.
@@ -693,7 +698,14 @@ function GunlukProgramListesi({ program, ogretmenler, atamalar, yoklamalar, ogre
                       title={h.dolu ? `${h.dolu.etiket}${h.dolu.altEtiket ? ' — ' + h.dolu.altEtiket : ''}` : ''}
                       className={`border-t border-l border-gray-100 text-center align-top py-1 leading-tight ${h.dolu ? h.dolu.renk : ''}`}
                     >
-                      {h.dolu && <span className="block break-words px-0.5">{h.dolu.etiket}</span>}
+                      {h.dolu && (
+                        // Dar mobil sütunlarda uzun öğrenci adları ("Tural Hamid" gibi) 2 satıra
+                        // sardırmak bile ortadan kelimeyi bölüp çirkin görünüyordu (ör. "Tura" /
+                        // "l..." gibi) — masaüstündeki AYNI yöntemle TEK SATIRDA, sığmayan kısmı
+                        // "…" ile keserek gösteriyoruz; tam ad zaten hücreye dokunca/basılı
+                        // tutunca çıkan başlıkta (title) görünüyor.
+                        <span className="block truncate px-0.5">{h.dolu.etiket}</span>
+                      )}
                     </td>
                   ))}
                 </tr>
