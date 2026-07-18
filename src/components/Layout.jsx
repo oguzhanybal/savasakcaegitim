@@ -63,6 +63,7 @@ function menuOlustur(rol) {
           { to: '/sinav-kitapciklari', label: 'Sınav Kitapçıkları' },
           { to: '/sinav-yukle', label: 'Sınav Sonucu Yükle' },
           { to: '/sinav-sonuclari', label: 'Sınav Sonuçları' },
+          { to: '/karnem', label: 'Gelişim Grafiği' },
         ],
       },
     ]
