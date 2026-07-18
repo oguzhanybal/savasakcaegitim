@@ -155,6 +155,14 @@ export default function Karnem() {
       .order('ad_soyad')
       .then(({ data }) => {
         const tumu = data || []
+        if (isYonetici) {
+          // Yönetici okuldaki HERHANGİ BİR öğrenciyi seçebilmeli — otomatik
+          // seçim yapmıyoruz (100'e yakın öğrenci arasından "ilk" öğrenciyi
+          // göstermenin bir anlamı yok), aşağıdaki dropdown'dan kendisi seçer.
+          setOgrenciler(tumu)
+          setLoading(false)
+          return
+        }
         // GÜVENLİK: Muhasebe/Odev/DersProgrami'ndeki AYNI kanıtlanmış yöntem —
         // sunucudaki RLS'ye körü körüne güvenmek yerine, İSTEMCİ TARAFINDA da
         // sadece kendi bağlı olduğu öğrenci(ler)i listeye/otomatik seçime alıyoruz.
@@ -233,7 +241,7 @@ export default function Karnem() {
       })
   }, [seciliId])
 
-  const seciciGoster = ogrenciler.length > 1
+  const seciciGoster = isYonetici || ogrenciler.length > 1
   const seciliOgrenci = ogrenciler.find((o) => o.id === seciliId)
 
   // Gelişim grafiği için sonuçları TÜRE göre ayırıyoruz — TYT'nin neti ile
@@ -295,19 +303,26 @@ export default function Karnem() {
 
   return (
     <div>
-      <h1 className="text-2xl font-bold text-navy mb-2">{seciciGoster ? 'Sınav Sonuçları' : 'Sınav Sonuçlarım'}</h1>
+      <h1 className="text-2xl font-bold text-navy mb-2">
+        {isYonetici ? 'Öğrenci Gelişim Grafiği' : seciciGoster ? 'Sınav Sonuçları' : 'Sınav Sonuçlarım'}
+      </h1>
       <p className="text-sm text-gray-500 mb-6">
-        Girdiğiniz sınavların sonuçları ve ders bazında doğru/yanlış/boş dökümü.
+        {isYonetici
+          ? 'Bir öğrenci seçin — sınav sonuçları ve türe göre (TYT/AYT/Konu Analiz) gelişim grafiği görünsün.'
+          : 'Girdiğiniz sınavların sonuçları ve ders bazında doğru/yanlış/boş dökümü.'}
       </p>
 
       {seciciGoster && (
         <div className="mb-6">
-          <label className="block text-sm font-medium text-gray-700 mb-1">Çocuğunuzu Seçin</label>
+          <label className="block text-sm font-medium text-gray-700 mb-1">
+            {isYonetici ? 'Öğrenci Seçin' : 'Çocuğunuzu Seçin'}
+          </label>
           <select
             value={seciliId}
             onChange={(e) => setSeciliId(e.target.value)}
             className="w-full max-w-sm px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue bg-white"
           >
+            {isYonetici && <option value="">Seçiniz...</option>}
             {ogrenciler.map((o) => (
               <option key={o.id} value={o.id}>{o.ad_soyad}</option>
             ))}
@@ -315,7 +330,11 @@ export default function Karnem() {
         </div>
       )}
 
-      {ogrenciler.length === 0 && !loading && (
+      {isYonetici && !seciliId && !loading && (
+        <p className="text-gray-400">Sonuçlarını görmek istediğiniz öğrenciyi yukarıdan seçin.</p>
+      )}
+
+      {!isYonetici && ogrenciler.length === 0 && !loading && (
         <p className="text-gray-400">
           Size bağlı bir öğrenci kaydı bulunamadı. Lütfen okul yönetimiyle iletişime geçin.
         </p>
