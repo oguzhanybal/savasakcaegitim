@@ -3,6 +3,12 @@
 // 13:25'te biter (öğle arası 13:25–14:15); öğleden sonra 14:15'te devam edip
 // 22:20'de son bulur.
 //
+// 13:30–14:15 periyodu öğle arasının İÇİNDE, ekstra/opsiyonel bir sütun —
+// normalde öğle arası olsa da, program sıkışınca bu saate de ders
+// konulabiliyor. Diğer periyotlarla zaman olarak çakışmıyor (bir önceki
+// periyot 13:25'te bitiyor, bir sonraki 14:15'te başlıyor), o yüzden
+// eklenmesi başka hiçbir periyodu etkilemez.
+//
 // Bu liste, Müsaitlik Tablosu ve Günlük Program Listesi gibi görünümlerdeki
 // saat SÜTUNLARINI belirler — yani sadece GÖRÜNTÜLEME amaçlı sabit bir
 // referanstır. Veritabanındaki ders_programi / bire_bir_atamalari /
@@ -17,6 +23,7 @@ export const DERS_PERIYOTLARI = [
   { baslangic: '10:50', bitis: '11:35' },
   { baslangic: '11:45', bitis: '12:30' },
   { baslangic: '12:40', bitis: '13:25' },
+  { baslangic: '13:30', bitis: '14:15' },
   { baslangic: '14:15', bitis: '15:00' },
   { baslangic: '15:10', bitis: '15:55' },
   { baslangic: '16:05', bitis: '16:50' },
