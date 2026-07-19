@@ -60,10 +60,7 @@ const BILINEN_DERSLER = [
   'Fizik', 'Kimya', 'Biyoloji', 'Geometri', 'Sosyal Bilimler', 'Fen Bilimleri',
 ]
 
-// Not: export ediliyor — SinavKitapciklari.jsx'teki "Konu Adları" düzenleme
-// panelinde de KONU önerileri üretmek için (bilinen sabit bir ders listesiyle
-// değil, sistemdeki DİĞER konu adlarıyla karşılaştırarak) aynen kullanılıyor.
-export function levenshteinMesafesi(a, b) {
+function levenshteinMesafesi(a, b) {
   const dp = Array.from({ length: a.length + 1 }, (_, i) => {
     const satir = new Array(b.length + 1).fill(0)
     satir[0] = i
