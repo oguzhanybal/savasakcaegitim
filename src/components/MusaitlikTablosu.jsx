@@ -133,7 +133,28 @@ export default function MusaitlikTablosu({
     if (!hizliPopup || !secilen) return
     setHpHata('')
 
-    if (secilen.tur === 'sinif') {
+    if (secilen.tur === 'soru_cozumu') {
+      // Soru Çözümü: öğrenciye bağlı değil, fiyatlandırılmaz — sadece öğretmen +
+      // tarih + saat kaydedilir. Öğretmenin ekstresinde görünsün diye
+      // bire_bir_yoklama'ya "tur: soru_cozumu" ile, ücretsiz bir satır olarak
+      // eklenir (bkz. ekstreHesap.js bireBirBorclariOlustur — bu tur asla
+      // borç oluşturmaz).
+      setHpGonderiliyor(true)
+      const { error } = await supabase.from('bire_bir_yoklama').insert({
+        ogretmen_profile_id: hizliPopup.ogretmenId,
+        tur: 'soru_cozumu',
+        tutar: 0,
+        tarih: hizliPopup.tarih,
+        durum: 'geldi',
+        baslangic_saat: hizliPopup.baslangic,
+        bitis_saat: hizliPopup.bitis,
+      })
+      setHpGonderiliyor(false)
+      if (error) {
+        setHpHata('Hata: ' + error.message)
+        return
+      }
+    } else if (secilen.tur === 'sinif') {
       // Bu sınıfın bu gün/saatte (farklı bir öğretmenle bile olsa) başka dersi var mı?
       const cakisan = (dersProgrami || []).find(
         (d) =>
@@ -418,6 +439,13 @@ export default function MusaitlikTablosu({
                             </div>
                             {!secilen ? (
                               <>
+                                <button
+                                  type="button"
+                                  onClick={() => oneriSecildi({ tur: 'soru_cozumu', id: null, ad: 'Soru Çözümü' })}
+                                  className="w-full text-left px-2 py-1.5 mb-1.5 rounded-lg text-xs font-medium bg-purple-50 text-purple-700 hover:bg-purple-100 border border-purple-100"
+                                >
+                                  🧠 Soru Çözümü olarak ekle (ücretsiz)
+                                </button>
                                 <input
                                   autoFocus
                                   type="text"
@@ -449,7 +477,7 @@ export default function MusaitlikTablosu({
                             ) : (
                               <>
                                 <p className="text-xs font-medium text-gray-700 mb-1.5">
-                                  {secilen.tur === 'ogrenci' ? '🎓 ' : '🏫 '}
+                                  {secilen.tur === 'ogrenci' ? '🎓 ' : secilen.tur === 'sinif' ? '🏫 ' : '🧠 '}
                                   {secilen.ad}
                                 </p>
                                 {secilen.tur === 'ogrenci' && (
