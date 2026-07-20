@@ -40,6 +40,57 @@ function ogrenciyiFormaCevir(o) {
   }
 }
 
+// Veli hesabının "Hoş geldiniz, ..." ekranında görünecek ismi için üç seçenek
+// üretir — anne kayıtlıysa anne adı, baba kayıtlıysa baba adı, ikisi de yoksa
+// (ya da admin özellikle genel bir isim istiyorsa) "{Öğrenci Adı} Veli Hesabı"
+// gibi nötr bir isim. Hem otomatik veli hesabı oluştururken hem de sonradan
+// "Veli İsmini Değiştir" ile kullanılan ORTAK fonksiyon — böylece ikisinde de
+// aynı üç seçenek, aynı sırada görünür.
+function veliGorunenIsimSecenekleri(o) {
+  return {
+    anne: o.anne_adi_soyadi || null,
+    baba: o.baba_adi_soyadi || null,
+    hesap: `${o.ad_soyad} Veli Hesabı`,
+  }
+}
+
+// anne/baba'dan hangisi varsa onu varsayılan seçili getirir (ikisi de varsa
+// baba — Sözleşme.jsx'teki "ikisi de kayıtlıysa baba düzenlenebilir varsayılan"
+// deseniyle aynı mantık); hiçbiri yoksa nötr "Veli Hesabı" seçeneğine düşer.
+function veliGorunenIsimVarsayilanSecim(secenekler) {
+  if (secenekler.baba) return 'baba'
+  if (secenekler.anne) return 'anne'
+  return 'hesap'
+}
+
+// Otomatik veli hesabı oluştururken VE sonradan ismi değiştirirken kullanılan
+// ortak 3'lü seçim arayüzü (radyo düğmeleri). Kayıtlı olmayan (anne ya da
+// baba adı boş) seçenekler hiç gösterilmez — seçilemeyen bir seçeneği
+// göstermenin anlamı yok.
+function VeliGorunenIsimSecici({ o, secim, setSecim }) {
+  const secenekler = veliGorunenIsimSecenekleri(o)
+  return (
+    <div className="flex flex-wrap gap-3 mt-1.5">
+      {secenekler.anne && (
+        <label className="flex items-center gap-1.5 text-xs text-gray-600 select-none">
+          <input type="radio" checked={secim === 'anne'} onChange={() => setSecim('anne')} />
+          Anne — {secenekler.anne}
+        </label>
+      )}
+      {secenekler.baba && (
+        <label className="flex items-center gap-1.5 text-xs text-gray-600 select-none">
+          <input type="radio" checked={secim === 'baba'} onChange={() => setSecim('baba')} />
+          Baba — {secenekler.baba}
+        </label>
+      )}
+      <label className="flex items-center gap-1.5 text-xs text-gray-600 select-none">
+        <input type="radio" checked={secim === 'hesap'} onChange={() => setSecim('hesap')} />
+        Veli Hesabı — {secenekler.hesap}
+      </label>
+    </div>
+  )
+}
+
 // Hem "Öğrenci Ekle" formunda hem "Düzenle" satırında AYNI alan setini
 // tekrar tekrar yazmamak için ortak bir alan grubu — kayıt formundaki
 // sırayla: öğrenci bilgileri, veli (anne/baba) bilgileri, notlar.
@@ -210,6 +261,22 @@ export default function Ogrenciler() {
   // bu değer önerilir. Öğrenci daha sonra "Şifremi Değiştir" sayfasından
   // kendi şifresini değiştirebilir.
   const VARSAYILAN_SIFRE = '123456'
+  // "Otomatik Veli Hesabı Oluştur" — öğrenci akışıyla BİREBİR aynı önizleme/
+  // onay deseni, tek farkı: kullanıcı adı sonuna "veli" eklenir (ör.
+  // "yigitatikveli") ve görünen isim (profiles.ad_soyad, "Hoş geldiniz, ..."
+  // ekranında görünür) anne/baba/"Veli Hesabı" arasından seçiliyor —
+  // bkz. VeliGorunenIsimSecici.
+  const [otomatikVeliBaglanan, setOtomatikVeliBaglanan] = useState(null)
+  const [otomatikVeliKullaniciAdi, setOtomatikVeliKullaniciAdi] = useState('')
+  const [otomatikVeliSifre, setOtomatikVeliSifre] = useState('')
+  const [otomatikVeliGorunenIsimSecim, setOtomatikVeliGorunenIsimSecim] = useState('hesap')
+  const [otomatikVeliIslemde, setOtomatikVeliIslemde] = useState(false)
+  // "Veli İsmini Değiştir" — hesap ZATEN bağlıyken, görünen ismi (anne/baba/
+  // Veli Hesabı arasında) sonradan değiştirebilmek için. Ör. "baba daha çok
+  // ilgileniyor, anneden baba adına geçireyim" gibi durumlar için.
+  const [veliIsimDegistiren, setVeliIsimDegistiren] = useState(null)
+  const [veliIsimGuncelSecim, setVeliIsimGuncelSecim] = useState('hesap')
+  const [veliIsimIslemde, setVeliIsimIslemde] = useState(false)
 
   async function yukle() {
     setLoading(true)
@@ -441,6 +508,91 @@ export default function Ogrenciler() {
     }
   }
 
+  function otomatikVeliOnizlemeyeBasla(o) {
+    setOtomatikVeliBaglanan(o.id)
+    setOtomatikVeliKullaniciAdi(`${kullaniciAdiOner(o.ad_soyad)}veli`)
+    setOtomatikVeliSifre(VARSAYILAN_SIFRE)
+    setOtomatikVeliGorunenIsimSecim(veliGorunenIsimVarsayilanSecim(veliGorunenIsimSecenekleri(o)))
+  }
+
+  async function otomatikVeliHesabiOnayla(o) {
+    const kullaniciAdi = otomatikVeliKullaniciAdi.trim()
+    const sifre = otomatikVeliSifre
+    const secenekler = veliGorunenIsimSecenekleri(o)
+    const gorunenAd = secenekler[otomatikVeliGorunenIsimSecim] || secenekler.hesap
+    if (!kullaniciAdi) {
+      alert('Kullanıcı adı boş olamaz.')
+      return
+    }
+    if (!sifre || sifre.length < 6) {
+      alert('Şifre en az 6 karakter olmalı.')
+      return
+    }
+    setOtomatikVeliIslemde(true)
+    try {
+      const telefon =
+        otomatikVeliGorunenIsimSecim === 'anne' ? o.anne_telefon : otomatikVeliGorunenIsimSecim === 'baba' ? o.baba_telefon : ''
+      const yanit = await fetch('/api/kullanici-olustur', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ adSoyad: gorunenAd, kullaniciAdi, sifre, rol: 'veli', telefon: telefon || '' }),
+      })
+      const veri = await yanit.json()
+      if (!yanit.ok) {
+        alert('Hesap oluşturulamadı: ' + (veri.error || 'Bilinmeyen bir hata oluştu.'))
+        setOtomatikVeliIslemde(false)
+        return
+      }
+      const { error: baglamaHatasi } = await supabase
+        .from('ogrenciler')
+        .update({ veli_profile_id: veri.userId })
+        .eq('id', o.id)
+      if (baglamaHatasi) {
+        alert('Hesap oluşturuldu ama öğrenciye bağlanamadı: ' + baglamaHatasi.message)
+        setOtomatikVeliIslemde(false)
+        return
+      }
+      alert(
+        `Hesap oluşturuldu ve "${o.ad_soyad}" öğrencisine veli olarak bağlandı.\n\n` +
+        `Giriş adı: ${veri.kullaniciAdi}\nŞifre: ${sifre}${veri.kullaniciAdi !== kullaniciAdi ? '\n\n(Not: yazdığınız kullanıcı adı doluydu, sonuna numara eklendi.)' : ''}`
+      )
+      setOtomatikVeliIslemde(false)
+      setOtomatikVeliBaglanan(null)
+      yukle()
+    } catch (err) {
+      alert('Bağlantı hatası: ' + err.message)
+      setOtomatikVeliIslemde(false)
+    }
+  }
+
+  // "Görünen isim" (profiles.ad_soyad) bağlantı KURULDUKTAN SONRA da
+  // değiştirilebilsin diye — ör. "başta anne adına açmıştık ama baba daha
+  // çok ilgileniyor, ona geçirelim" gibi durumlar için. Ogretmenler.jsx'teki
+  // "pasif yap" ile aynı, kanıtlanmış desen: yönetici doğrudan profiles
+  // tablosunu (başka bir kullanıcının satırını) update edebiliyor.
+  function veliIsmiDegistirmeyeBasla(o) {
+    setVeliIsimDegistiren(o.id)
+    const secenekler = veliGorunenIsimSecenekleri(o)
+    const mevcutAd = o.veli?.ad_soyad
+    const tahmin = mevcutAd === secenekler.anne ? 'anne' : mevcutAd === secenekler.baba ? 'baba' : 'hesap'
+    setVeliIsimGuncelSecim(tahmin)
+  }
+
+  async function veliIsmiDegistirmeyiKaydet(o) {
+    if (!o.veli_profile_id) return
+    const secenekler = veliGorunenIsimSecenekleri(o)
+    const yeniAd = secenekler[veliIsimGuncelSecim] || secenekler.hesap
+    setVeliIsimIslemde(true)
+    const { error } = await supabase.from('profiles').update({ ad_soyad: yeniAd }).eq('id', o.veli_profile_id)
+    setVeliIsimIslemde(false)
+    if (!error) {
+      setVeliIsimDegistiren(null)
+      yukle()
+    } else {
+      alert('Hata: ' + error.message)
+    }
+  }
+
   function faturaBaglamayaBasla(o) {
     setFaturaBaglanan(o.id)
     setSeciliFaturaSahibi(o.fatura_sahibi_id || '')
@@ -557,6 +709,8 @@ export default function Ogrenciler() {
               const ogrenciHesabiBagli = ogrenciHesabiBaglanan === o.id
               const faturaBagli = faturaBaglanan === o.id
               const otomatikHesapBagli = otomatikHesapBaglanan === o.id
+              const otomatikVeliBagli = otomatikVeliBaglanan === o.id
+              const veliIsimDegistiriliyor = veliIsimDegistiren === o.id
 
               if (duzenleniyor) {
                 return (
@@ -720,6 +874,97 @@ export default function Ogrenciler() {
                 )
               }
 
+              if (otomatikVeliBagli) {
+                return (
+                  <tr key={o.id} className="bg-orange/10">
+                    <td className="px-4 py-3 font-medium text-gray-800">{o.ad_soyad}</td>
+                    <td className="px-4 py-3 text-gray-500">{o.telefon || '—'}</td>
+                    <td className="px-4 py-2" colSpan={5}>
+                      <div className="flex flex-wrap gap-3">
+                        <div className="flex-1 min-w-[160px]">
+                          <label className="block text-xs font-medium text-gray-500 mb-1">Kullanıcı Adı</label>
+                          <input
+                            value={otomatikVeliKullaniciAdi}
+                            onChange={(e) => setOtomatikVeliKullaniciAdi(e.target.value)}
+                            autoCapitalize="none"
+                            autoCorrect="off"
+                            className="w-full px-2 py-1.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue"
+                          />
+                        </div>
+                        <div className="flex-1 min-w-[140px]">
+                          <label className="block text-xs font-medium text-gray-500 mb-1">Şifre</label>
+                          <input
+                            value={otomatikVeliSifre}
+                            onChange={(e) => setOtomatikVeliSifre(e.target.value)}
+                            className="w-full px-2 py-1.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue"
+                          />
+                        </div>
+                      </div>
+                      <div>
+                        <label className="block text-xs font-medium text-gray-500 mt-2">
+                          Giriş yapınca "Hoş geldiniz, ..." ekranında görünecek isim
+                        </label>
+                        <VeliGorunenIsimSecici o={o} secim={otomatikVeliGorunenIsimSecim} setSecim={setOtomatikVeliGorunenIsimSecim} />
+                      </div>
+                      <p className="text-xs text-gray-500 mt-1.5">
+                        Kullanıcı adı/şifre otomatik önerildi, isterseniz değiştirebilirsiniz. "Oluştur"a basınca bu bilgilerle
+                        veli girişi açılır ve {o.ad_soyad} öğrencisine bağlanır. Görünen ismi daha sonra da değiştirebilirsiniz.
+                      </p>
+                    </td>
+                    <td className="px-4 py-2 text-right space-x-3 whitespace-nowrap">
+                      <button
+                        onClick={() => otomatikVeliHesabiOnayla(o)}
+                        disabled={otomatikVeliIslemde}
+                        className="text-green-600 text-sm font-semibold hover:underline disabled:opacity-50"
+                      >
+                        {otomatikVeliIslemde ? 'Oluşturuluyor...' : 'Oluştur'}
+                      </button>
+                      <button
+                        onClick={() => setOtomatikVeliBaglanan(null)}
+                        disabled={otomatikVeliIslemde}
+                        className="text-gray-500 text-sm hover:underline disabled:opacity-50"
+                      >
+                        Vazgeç
+                      </button>
+                    </td>
+                  </tr>
+                )
+              }
+
+              if (veliIsimDegistiriliyor) {
+                return (
+                  <tr key={o.id} className="bg-orange/10">
+                    <td className="px-4 py-3 font-medium text-gray-800">{o.ad_soyad}</td>
+                    <td className="px-4 py-3 text-gray-500">{o.telefon || '—'}</td>
+                    <td className="px-4 py-2" colSpan={5}>
+                      <label className="block text-xs font-medium text-gray-500 mb-1">
+                        Şu an: <span className="font-semibold text-gray-700">{o.veli?.ad_soyad || '—'}</span> — yeni görünen isim:
+                      </label>
+                      <VeliGorunenIsimSecici o={o} secim={veliIsimGuncelSecim} setSecim={setVeliIsimGuncelSecim} />
+                      <p className="text-xs text-gray-500 mt-1.5">
+                        Bu, sadece velinin giriş yaptığında gördüğü "Hoş geldiniz, ..." ismini değiştirir — kullanıcı adı/şifre aynı kalır.
+                      </p>
+                    </td>
+                    <td className="px-4 py-2 text-right space-x-3 whitespace-nowrap">
+                      <button
+                        onClick={() => veliIsmiDegistirmeyiKaydet(o)}
+                        disabled={veliIsimIslemde}
+                        className="text-green-600 text-sm font-semibold hover:underline disabled:opacity-50"
+                      >
+                        {veliIsimIslemde ? 'Kaydediliyor...' : 'Kaydet'}
+                      </button>
+                      <button
+                        onClick={() => setVeliIsimDegistiren(null)}
+                        disabled={veliIsimIslemde}
+                        className="text-gray-500 text-sm hover:underline disabled:opacity-50"
+                      >
+                        Vazgeç
+                      </button>
+                    </td>
+                  </tr>
+                )
+              }
+
               return (
                 <tr key={o.id} className={i % 2 ? 'bg-gray-50' : ''}>
                   <td className="px-4 py-3 font-medium">
@@ -768,6 +1013,23 @@ export default function Ogrenciler() {
                       <button onClick={() => veliBaglamayaBasla(o)} className="text-purple-600 text-sm hover:underline">
                         Veli Bağla
                       </button>
+                      {!o.veli_profile_id ? (
+                        <button
+                          onClick={() => otomatikVeliOnizlemeyeBasla(o)}
+                          className="text-orange text-sm hover:underline"
+                          title="İsimden kullanıcı adı (...veli) ve varsayılan şifre önerir, görünen ismi anne/baba/Veli Hesabı arasından seçebilirsiniz"
+                        >
+                          Otomatik Veli Hesabı Oluştur
+                        </button>
+                      ) : (
+                        <button
+                          onClick={() => veliIsmiDegistirmeyeBasla(o)}
+                          className="text-orange text-sm hover:underline"
+                          title="Bağlı velinin giriş yaptığında gördüğü ismi (anne/baba/Veli Hesabı) sonradan değiştirir"
+                        >
+                          Veli İsmini Değiştir
+                        </button>
+                      )}
                       <button onClick={() => ogrenciHesabiBaglamayaBasla(o)} className="text-purple-600 text-sm hover:underline">
                         Öğrenci Hesabı Bağla
                       </button>
@@ -814,7 +1076,10 @@ export default function Ogrenciler() {
         içindir: bir öğrenciyi diğerine bağlarsanız, bağlanan öğrencinin tüm borç/ödemeleri diğerinin ekstresinde
         toplu görünür; ders programları yine ayrı ayrı kalır. "Otomatik Hesap Oluştur" ise öğrencinin kendi girişi
         (kullanıcı adı+şifre) yoksa, isminden bir kullanıcı adı ve varsayılan "123456" şifresini önerir — onaylamadan
-        önce ikisini de satırda değiştirebilirsiniz — sonra hesabı açıp doğrudan bu öğrenciye bağlar.
+        önce ikisini de satırda değiştirebilirsiniz — sonra hesabı açıp doğrudan bu öğrenciye bağlar. "Otomatik Veli
+        Hesabı Oluştur" aynı şekilde çalışır (kullanıcı adı isim+"veli", ör. "yigitatikveli"), farkı velinin giriş
+        yaptığında göreceği ismi anne/baba/"Veli Hesabı" arasından seçebilmenizdir — bu seçimi hesap açıldıktan
+        sonra da "Veli İsmini Değiştir" ile istediğiniz zaman değiştirebilirsiniz.
       </p>
     </div>
   )
