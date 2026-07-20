@@ -70,18 +70,47 @@ export default async function handler(req, res) {
   const admin = createClient(supabaseUrl, serviceKey)
 
   const temizKullaniciAdi = kullaniciAdi.trim()
-  const email = temizKullaniciAdi.includes('@')
-    ? temizKullaniciAdi
-    : `${temizKullaniciAdi.toLowerCase()}@savasakcaegitim.giris`
+  const ozelEposta = temizKullaniciAdi.includes('@')
 
-  const { data: olusturulan, error: olusturmaHatasi } = await admin.auth.admin.createUser({
-    email,
-    password: sifre,
-    email_confirm: true,
-  })
+  // Örn. "Öğrenciler" sayfasından "Otomatik Hesap Oluştur" ile isimden
+  // otomatik türetilen kullanıcı adları (ör. "yigitatik") çakışabilir — aynı
+  // isimde iki öğrenci varsa. Bu durumda kullanıcıyı hatayla geri çevirmek
+  // yerine, sonuna 2, 3, 4... ekleyerek boş bir kullanıcı adı bulana kadar
+  // otomatik deniyoruz. Yönetici gerçek bir e-posta girdiyse (ozelEposta)
+  // bu şekilde numara EKLEMİYORUZ — bir e-postanın sonuna rastgele rakam
+  // eklemek anlamsız/yanlış olurdu, o durumda normal şekilde hata dönüyoruz.
+  let deneme = 0
+  let olusturulan = null
+  let sonHata = null
+  let kullanilanKullaniciAdi = temizKullaniciAdi
+  let kullanilanEposta = ozelEposta ? temizKullaniciAdi : `${temizKullaniciAdi.toLowerCase()}@savasakcaegitim.giris`
+  const MAX_DENEME = ozelEposta ? 1 : 30
 
-  if (olusturmaHatasi) {
-    res.status(400).json({ error: 'Hesap oluşturulamadı: ' + olusturmaHatasi.message })
+  while (deneme < MAX_DENEME) {
+    const adayKullaniciAdi = deneme === 0 ? temizKullaniciAdi.toLowerCase() : `${temizKullaniciAdi.toLowerCase()}${deneme + 1}`
+    const adayEposta = ozelEposta ? temizKullaniciAdi : `${adayKullaniciAdi}@savasakcaegitim.giris`
+
+    const sonuc = await admin.auth.admin.createUser({
+      email: adayEposta,
+      password: sifre,
+      email_confirm: true,
+    })
+
+    if (!sonuc.error) {
+      olusturulan = sonuc.data
+      kullanilanKullaniciAdi = adayKullaniciAdi
+      kullanilanEposta = adayEposta
+      break
+    }
+
+    sonHata = sonuc.error
+    const zatenKayitli = /already.*registered|already exists/i.test(sonuc.error.message || '')
+    if (!zatenKayitli) break // Başka türden bir hataysa (ör. şifre kuralı) numarayla tekrar denemenin anlamı yok.
+    deneme++
+  }
+
+  if (!olusturulan) {
+    res.status(400).json({ error: 'Hesap oluşturulamadı: ' + (sonHata?.message || 'Bilinmeyen hata.') })
     return
   }
 
@@ -100,5 +129,5 @@ export default async function handler(req, res) {
     return
   }
 
-  res.status(200).json({ ok: true, userId: olusturulan.user.id, email })
+  res.status(200).json({ ok: true, userId: olusturulan.user.id, email: kullanilanEposta, kullaniciAdi: kullanilanKullaniciAdi })
 }
