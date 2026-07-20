@@ -21,6 +21,7 @@ export default function Sozlesme() {
   const [bireBirVarMi, setBireBirVarMi] = useState(false)
   const [loading, setLoading] = useState(true)
   const [hata, setHata] = useState('')
+  const [veliSecimi, setVeliSecimi] = useState('baba') // hem anne hem baba varsa hangisi gösterilsin
 
   useEffect(() => {
     async function yukle() {
@@ -59,14 +60,26 @@ export default function Sozlesme() {
   const finalSinif = sozlesme.sinif_metni || sinifAdi || (bireBirVarMi ? 'Bire Bir' : '—')
   const sozlesmeTarihiMetni = tarihFormat(sozlesme.sozlesme_tarihi || sozlesme.created_at?.slice(0, 10))
   const egitimDonemi = sozlesme.egitim_donemi || '—'
-  // Öncelik: babanın plain-text bilgileri, sonra annenin, sonra bağlı veli hesabı.
+  // Hem anne hem baba bilgisi kayıtlıysa kullanıcıya sorulur (aşağıdaki no-print seçim kutusu);
+  // seçim yoksa/tek taraf varsa öncelik: baba → anne → bağlı veli hesabı.
   // Öğrencinin kendi telefonu iletişim bilgisi olarak asla kullanılmaz.
-  const veliAdSoyad = ogrenci.baba_adi_soyadi || ogrenci.anne_adi_soyadi || ogrenci.veli?.ad_soyad || ''
-  const iletisim = ogrenci.baba_adi_soyadi
-    ? (ogrenci.baba_telefon || '')
-    : ogrenci.anne_adi_soyadi
-      ? (ogrenci.anne_telefon || '')
-      : (ogrenci.veli?.telefon || '')
+  const ikiVeliVar = !!(ogrenci.anne_adi_soyadi && ogrenci.baba_adi_soyadi)
+  let veliAdSoyad = ''
+  let iletisim = ''
+  if (ikiVeliVar && veliSecimi === 'anne') {
+    veliAdSoyad = ogrenci.anne_adi_soyadi
+    iletisim = ogrenci.anne_telefon || ''
+  } else if (ikiVeliVar) {
+    veliAdSoyad = ogrenci.baba_adi_soyadi
+    iletisim = ogrenci.baba_telefon || ''
+  } else {
+    veliAdSoyad = ogrenci.baba_adi_soyadi || ogrenci.anne_adi_soyadi || ogrenci.veli?.ad_soyad || ''
+    iletisim = ogrenci.baba_adi_soyadi
+      ? (ogrenci.baba_telefon || '')
+      : ogrenci.anne_adi_soyadi
+        ? (ogrenci.anne_telefon || '')
+        : (ogrenci.veli?.telefon || '')
+  }
 
   const yayinBedeli = sozlesme.kalem === 'Kitap' ? toplamTutar : null
   const egitimBedeli = sozlesme.kalem === 'Kurs' || sozlesme.kalem === 'Okul' ? toplamTutar : null
@@ -80,22 +93,18 @@ export default function Sozlesme() {
           .sozlesme-sayfa { page-break-after: always; }
           .sozlesme-sayfa:last-child { page-break-after: auto; }
           .sozlesme-maddeler {
-            columns: 2;
-            column-gap: 22px;
             font-size: 8px;
-            line-height: 1.28;
+            line-height: 1.18;
           }
           .sozlesme-maddeler h3 {
-            margin-top: 5px;
-            margin-bottom: 2px;
-            break-after: avoid;
+            margin-top: 4px;
+            margin-bottom: 1px;
             font-size: 8.5px;
           }
           .sozlesme-maddeler p {
-            margin-bottom: 3px;
-            break-inside: avoid;
+            margin-bottom: 1.5px;
           }
-          .sozlesme-imza { break-inside: avoid; margin-top: 10px !important; }
+          .sozlesme-imza { margin-top: 8px !important; }
         }
       `}</style>
 
@@ -117,6 +126,28 @@ export default function Sozlesme() {
             {!ogrenci.tc_kimlik_no && 'TC Kimlik No, '}
             {!ogrenci.adres && 'Adres, '}
             bunları Öğrenciler sayfasından tamamlayabilirsiniz.
+          </div>
+        )}
+
+        {ikiVeliVar && (
+          <div className="no-print bg-blue-50 border border-blue-200 rounded-xl p-4 mb-4 text-sm text-blue-800 flex flex-wrap items-center gap-3">
+            <span>Bu öğrencinin hem anne hem baba bilgisi kayıtlı. Sözleşmede hangisi görünsün?</span>
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={() => setVeliSecimi('baba')}
+                className={`px-3 py-1.5 rounded-lg font-medium transition-colors ${veliSecimi === 'baba' ? 'bg-blue text-white' : 'bg-white border border-blue-200 text-blue-800'}`}
+              >
+                Baba: {ogrenci.baba_adi_soyadi}
+              </button>
+              <button
+                type="button"
+                onClick={() => setVeliSecimi('anne')}
+                className={`px-3 py-1.5 rounded-lg font-medium transition-colors ${veliSecimi === 'anne' ? 'bg-blue text-white' : 'bg-white border border-blue-200 text-blue-800'}`}
+              >
+                Anne: {ogrenci.anne_adi_soyadi}
+              </button>
+            </div>
           </div>
         )}
 
@@ -219,12 +250,12 @@ export default function Sozlesme() {
 
         {/* SAYFA 2 — Genel şartlar (aynı 23 madde, sadece görünüm iyileştirildi) */}
         <div className="sozlesme-sayfa bg-white rounded-2xl print:rounded-none shadow-sm print:shadow-none border border-gray-100 print:border-0 p-8 print:p-5 text-[11.5px] leading-relaxed text-gray-700 text-justify">
-          <h2 className="text-center text-lg font-bold text-navy mb-4">KAYIT SÖZLEŞMESİ GENEL ŞARTLARI</h2>
-          <p className="text-center text-xs text-gray-400 mb-1">{egitimDonemi !== '—' ? egitimDonemi : ''} ÖĞRETİM YILI</p>
-          <p className="text-center font-semibold text-gray-800 mb-4">
+          <h2 className="text-center text-lg font-bold text-navy mb-4 print:text-sm print:mb-1">KAYIT SÖZLEŞMESİ GENEL ŞARTLARI</h2>
+          <p className="text-center text-xs text-gray-400 mb-1 print:text-[8px]">{egitimDonemi !== '—' ? egitimDonemi : ''} ÖĞRETİM YILI</p>
+          <p className="text-center font-semibold text-gray-800 mb-4 print:text-[8.5px] print:mb-1">
             SAVAŞ AKÇA ÖZEL KİŞİSEL GELİŞİM KURSU ÖĞRENCİ KAYIT SÖZLEŞMESİ
           </p>
-          <p className="mb-4">
+          <p className="mb-4 print:text-[8px] print:leading-snug print:mb-1.5">
             Savaş Akça Özel Kişisel Gelişim Kursu (bundan sonra "Kurs" olarak anılacaktır), işbu kayıt sözleşmesinin
             sonunda adı, soyadı ve adresi bulunan kursta öğrenim görmek isteyen öğrencinin velisi (bundan sonra
             "Veli" olarak anılacaktır) ile; kurs tarafından veliye sunulan bu sözleşme konusu işlem ve hizmetlere
