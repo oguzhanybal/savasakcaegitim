@@ -3,6 +3,7 @@ import { useParams, Link } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../lib/AuthContext'
 import BireBirDersDokumu from '../components/BireBirDersDokumu'
+import KantinAlisDokumu from '../components/KantinAlisDokumu'
 import {
   paraFormat,
   ogrenciSatirlariHesapla,
@@ -21,6 +22,7 @@ export default function Ekstre() {
   const [aylikBorclar, setAylikBorclar] = useState([])
   const [odemeler, setOdemeler] = useState([])
   const [bireBirDersleri, setBireBirDersleri] = useState([])
+  const [kantinAlislari, setKantinAlislari] = useState([])
   const [seciliAy, setSeciliAy] = useState(() => new Date().toISOString().slice(0, 7))
   const [loading, setLoading] = useState(true)
   // Fatura Ortağı (ör. ikiz kardeşler): bu öğrenci başka birine bağlıysa
@@ -84,6 +86,21 @@ export default function Ekstre() {
                 setAylikBorclar([...(a.data || []), ...bireBirBorclar, ...kantinBorclar])
                 setOdemeler(od.data || [])
                 setBireBirDersleri(bireBirDersDetaylariOlustur(atamalar, tumYoklamalar))
+                // kantin_alislar satırları zaten ürün adı/adet/birim fiyatını
+                // kendi üzerinde tutuyor (alış anında damgalanmış) — ayrıca
+                // bir join gerekmeden doğrudan döküm satırına çevriliyor.
+                setKantinAlislari(
+                  (kantin.data || [])
+                    .map((k) => ({
+                      id: k.id,
+                      tarih: k.tarih,
+                      urunAdi: k.urun_adi,
+                      adet: k.adet,
+                      birimFiyat: Number(k.birim_fiyat) || 0,
+                      tutar: Number(k.tutar) || 0,
+                    }))
+                    .sort((a, b) => (a.tarih < b.tarih ? 1 : -1))
+                )
                 setLoading(false)
               })
             })
@@ -283,6 +300,13 @@ export default function Ekstre() {
                   {...(faturaDigerleri.length > 0 ? { ikinciTarafBasligi: 'Öğrenci' } : {})}
                   hedefDonem={`${seciliAy}-01`}
                 />
+              </div>
+            )}
+
+            {kantinAlislari.length > 0 && (
+              <div className="mt-6 bire-bir-baslik-blok">
+                <p className="font-semibold text-navy mb-2">Kantin Alış Dökümü</p>
+                <KantinAlisDokumu alislar={kantinAlislari} hedefDonem={`${seciliAy}-01`} />
               </div>
             )}
 

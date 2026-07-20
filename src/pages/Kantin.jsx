@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { Link } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../lib/AuthContext'
 import { paraFormat } from '../lib/ekstreHesap'
@@ -258,9 +259,18 @@ function UrunYonetimi({ urunler, onDegisti }) {
 
   return (
     <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-x-auto mb-6">
-      <div className="px-4 py-3 border-b border-gray-100 bg-gray-50">
-        <h2 className="font-semibold text-gray-700">Ürün Yönetimi</h2>
-        <p className="text-xs text-gray-400 mt-0.5">Kantin görevlisi satış ekranında sadece "Aktif" ürünleri görür.</p>
+      <div className="px-4 py-3 border-b border-gray-100 bg-gray-50 flex items-center justify-between flex-wrap gap-3">
+        <div>
+          <h2 className="font-semibold text-gray-700">Ürün Yönetimi</h2>
+          <p className="text-xs text-gray-400 mt-0.5">Kantin görevlisi satış ekranında sadece "Aktif" ürünleri görür.</p>
+        </div>
+        <Link
+          to="/kantin-fiyat-listesi"
+          target="_blank"
+          className="text-navy text-sm font-semibold hover:underline whitespace-nowrap"
+        >
+          Fiyat Listesini Yazdır / PDF Al →
+        </Link>
       </div>
       <div className="p-4 border-b border-gray-50">
         <UrunEkleForm onEklendi={onDegisti} />
