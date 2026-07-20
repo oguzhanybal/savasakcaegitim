@@ -526,14 +526,20 @@ function GunlukProgramListesi({ program, ogretmenler, atamalar, yoklamalar, ogre
     for (const y of yoklamalar || []) {
       if (y.atama_id || y.tarih !== tarih || !y.baslangic_saat || !y.bitis_saat || !y.ogretmen_profile_id) continue
       if (y.durum === 'gelmedi') continue // öğrenci gelmediyse o saat artık boş sayılır
+      // Soru Çözümü: öğrenciye bağlı olmadığı için ogrenciAdMap'te karşılığı
+      // yok — MusaitlikTablosu.jsx'teki aynı düzeltmeyle tutarlı olsun diye
+      // burada da ayrı etiket + renk (mor) kullanılıyor, "Bire bir" değil.
+      const soruCozumuMu = y.tur === 'soru_cozumu'
       olaylar.push({
         ogretmenId: y.ogretmen_profile_id,
         baslangic: saatKisalt(y.baslangic_saat),
         bitis: saatKisalt(y.bitis_saat),
-        etiket: (ogrenciAdMap && ogrenciAdMap.get(y.ogrenci_id)) || 'Bire bir',
+        etiket: soruCozumuMu ? 'Soru Çözümü' : (ogrenciAdMap && ogrenciAdMap.get(y.ogrenci_id)) || 'Bire bir',
         altEtiket: null,
-        tur: 'birebir',
-        renk: 'bg-orange-200 text-orange-900 border-l-4 border-l-orange-600',
+        tur: soruCozumuMu ? 'soru_cozumu' : 'birebir',
+        renk: soruCozumuMu
+          ? 'bg-purple-200 text-purple-900 border-l-4 border-l-purple-600'
+          : 'bg-orange-200 text-orange-900 border-l-4 border-l-orange-600',
       })
     }
     return olaylar
