@@ -44,3 +44,24 @@ export function adSoyadDuzelt(metin) {
 // küçük) — isim dışı metinlerde (ör. Kantin ürün adı) kullanılırken daha uygun
 // bir isimle çağrılabilsin diye aynı fonksiyona ikinci bir isim veriyoruz.
 export const ilkHarfleriBuyukYap = adSoyadDuzelt
+
+// Türkçe harf -> ASCII karşılığı (kullanıcı adı/giriş adı öneri fonksiyonu için).
+const TURKCE_ASCII_HARITASI = {
+  ç: 'c', Ç: 'c', ğ: 'g', Ğ: 'g', ı: 'i', I: 'i', İ: 'i',
+  ö: 'o', Ö: 'o', ş: 's', Ş: 's', ü: 'u', Ü: 'u',
+}
+
+// Bir ad-soyad'dan otomatik giriş (kullanıcı) adı önerir — örn. "Yiğit Atik"
+// -> "yigitatik". Boşluk/Türkçe karakter/noktalama olmadan, küçük harfle,
+// sadece harf ve rakam bırakır. "Öğrenci Hesabı Bağla" akışını hızlandırmak
+// için kullanılıyor (bkz. Ogrenciler.jsx "Otomatik Hesap Oluştur").
+export function kullaniciAdiOner(adSoyad) {
+  if (!adSoyad) return ''
+  const asciiye = adSoyad
+    .split('')
+    .map((h) => TURKCE_ASCII_HARITASI[h] || h)
+    .join('')
+  return asciiye
+    .toLowerCase()
+    .replace(/[^a-z0-9]/g, '')
+}
