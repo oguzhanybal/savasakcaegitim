@@ -39,10 +39,10 @@ function gruplaOgrenciye(satirlar, adFn) {
 // cevap verir. Sadece yönetici erişebilir (App.jsx'te kısıtlı).
 export default function AylikOzet() {
   const [seciliAy, setSeciliAy] = useState(suankiAy)
-  // Ekranda Bire Bir/Kantin tablolarını yan yana/alt alta AYNI ANDA göstermek
-  // yerine sekmeyle ayırıyoruz — hangisine bakmak istiyorsa sadece o
-  // görünsün diye. Yazdırırken (PDF) ise İKİSİ de görünmeli (patronla
-  // paylaşılacak rapor eksik olmasın) — bkz. aşağıdaki print CSS override.
+  // Bire Bir ve Kantin, üstteki özet kutusu DAHİL tamamen ayrı sekmeler —
+  // ikisi asla aynı anda görünmez. Kullanıcı bunları patrona AYRI AYRI
+  // (iki farklı PDF/ekran görüntüsü olarak) göndereceği için, "Kantin"
+  // seçiliyken Bire Bir'e ait hiçbir şey (üst kutu dahil) görünmemeli.
   const [sekme, setSekme] = useState('birebir') // 'birebir' | 'kantin'
   const [bireBirDersler, setBireBirDersler] = useState([])
   const [kantinAlislari, setKantinAlislari] = useState([])
@@ -100,7 +100,6 @@ export default function AylikOzet() {
 
   const bireBirToplamTutar = bireBirBuAy.reduce((t, d) => t + Number(d.tutar), 0)
   const kantinToplamTutar = kantinBuAy.reduce((t, k) => t + Number(k.tutar), 0)
-  const genelToplam = bireBirToplamTutar + kantinToplamTutar
 
   if (loading) return <p className="p-6 text-gray-400">Yükleniyor...</p>
 
@@ -111,9 +110,6 @@ export default function AylikOzet() {
           .no-print { display: none !important; }
           body { background: white !important; }
           .aylik-ozet-blok, .aylik-ozet-blok table, tr { break-inside: avoid; page-break-inside: avoid; }
-          /* Ekranda sekmeyle sadece biri gösterilse de, yazdırırken/PDF'te
-             hem Bire Bir hem Kantin görünsün — rapor patronla paylaşılınca eksik olmasın. */
-          .sekme-birebir, .sekme-kantin { display: block !important; }
         }
       `}</style>
       <div className="max-w-3xl mx-auto">
@@ -155,30 +151,6 @@ export default function AylikOzet() {
           <div className="p-6">
             <p className="text-lg font-bold text-navy capitalize mb-4">{ayEtiketiUret(seciliAy)}</p>
 
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-6">
-              <div className="border border-gray-200 rounded-lg p-4">
-                <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Bire Bir</p>
-                <p className="text-lg font-bold text-navy mt-1">{bireBirBuAy.length} ders</p>
-                <p className="text-sm text-gray-600">{paraFormat(bireBirToplamTutar)}</p>
-              </div>
-              <div className="border border-gray-200 rounded-lg p-4">
-                <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Kantin</p>
-                <p className="text-lg font-bold text-navy mt-1">{kantinBuAy.length} alış</p>
-                <p className="text-sm text-gray-600">{paraFormat(kantinToplamTutar)}</p>
-              </div>
-              <div className="border-2 border-navy rounded-lg p-4 bg-navy/5">
-                <p className="text-xs font-semibold text-navy uppercase tracking-wide">Genel Toplam</p>
-                <p className="text-lg font-bold text-navy mt-1">{paraFormat(genelToplam)}</p>
-              </div>
-            </div>
-
-            {soruCozumuSayisi > 0 && (
-              <p className="text-xs text-purple-700 bg-purple-50 border border-purple-100 rounded-lg px-3 py-2 mb-6">
-                Bu ay ayrıca <b>{soruCozumuSayisi}</b> Soru Çözümü seansı verildi (ücretsiz, yukarıdaki
-                toplamlara dahil değil).
-              </p>
-            )}
-
             <div className="no-print flex gap-1.5 mb-4">
               <button
                 type="button"
@@ -200,10 +172,28 @@ export default function AylikOzet() {
               </button>
             </div>
 
-            <div
-              className="mb-8 aylik-ozet-blok sekme-birebir"
-              style={{ display: sekme === 'birebir' ? 'block' : 'none' }}
-            >
+            {sekme === 'birebir' ? (
+              <div className="border-2 border-navy rounded-lg p-4 bg-navy/5 inline-block min-w-[220px] mb-6">
+                <p className="text-xs font-semibold text-navy uppercase tracking-wide">Bire Bir</p>
+                <p className="text-lg font-bold text-navy mt-1">{bireBirBuAy.length} ders</p>
+                <p className="text-sm text-gray-600">{paraFormat(bireBirToplamTutar)}</p>
+              </div>
+            ) : (
+              <div className="border-2 border-navy rounded-lg p-4 bg-navy/5 inline-block min-w-[220px] mb-6">
+                <p className="text-xs font-semibold text-navy uppercase tracking-wide">Kantin</p>
+                <p className="text-lg font-bold text-navy mt-1">{kantinBuAy.length} alış</p>
+                <p className="text-sm text-gray-600">{paraFormat(kantinToplamTutar)}</p>
+              </div>
+            )}
+
+            {sekme === 'birebir' && soruCozumuSayisi > 0 && (
+              <p className="text-xs text-purple-700 bg-purple-50 border border-purple-100 rounded-lg px-3 py-2 mb-6">
+                Bu ay ayrıca <b>{soruCozumuSayisi}</b> Soru Çözümü seansı verildi (ücretsiz, yukarıdaki
+                toplamlara dahil değil).
+              </p>
+            )}
+
+            <div className={`aylik-ozet-blok ${sekme === 'birebir' ? '' : 'hidden'}`}>
               <p className="font-bold text-navy mb-2">Bire Bir Dersler — Öğrenci Bazında</p>
               {bireBirOgrenciler.length === 0 ? (
                 <p className="text-sm text-gray-400">Bu ay bire bir ders kaydı yok.</p>
@@ -236,10 +226,7 @@ export default function AylikOzet() {
               )}
             </div>
 
-            <div
-              className="aylik-ozet-blok sekme-kantin"
-              style={{ display: sekme === 'kantin' ? 'block' : 'none' }}
-            >
+            <div className={`aylik-ozet-blok ${sekme === 'kantin' ? '' : 'hidden'}`}>
               <p className="font-bold text-navy mb-2">Kantin — Öğrenci Bazında</p>
               {kantinOgrenciler.length === 0 ? (
                 <p className="text-sm text-gray-400">Bu ay kantin alışı kaydı yok.</p>
