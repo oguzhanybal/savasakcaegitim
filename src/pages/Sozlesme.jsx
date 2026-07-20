@@ -93,18 +93,18 @@ export default function Sozlesme() {
           .sozlesme-sayfa { page-break-after: always; }
           .sozlesme-sayfa:last-child { page-break-after: auto; }
           .sozlesme-maddeler {
-            font-size: 8px;
-            line-height: 1.18;
+            font-size: 10.3px;
+            line-height: 1.32;
           }
           .sozlesme-maddeler h3 {
-            margin-top: 4px;
-            margin-bottom: 1px;
-            font-size: 8.5px;
+            margin-top: 7px;
+            margin-bottom: 2px;
+            font-size: 11px;
           }
           .sozlesme-maddeler p {
-            margin-bottom: 1.5px;
+            margin-bottom: 3px;
           }
-          .sozlesme-imza { margin-top: 8px !important; }
+          .sozlesme-imza { margin-top: 18px !important; }
         }
       `}</style>
 
@@ -250,12 +250,12 @@ export default function Sozlesme() {
 
         {/* SAYFA 2 — Genel şartlar (aynı 23 madde, sadece görünüm iyileştirildi) */}
         <div className="sozlesme-sayfa bg-white rounded-2xl print:rounded-none shadow-sm print:shadow-none border border-gray-100 print:border-0 p-8 print:p-5 text-[11.5px] leading-relaxed text-gray-700 text-justify">
-          <h2 className="text-center text-lg font-bold text-navy mb-4 print:text-sm print:mb-1">KAYIT SÖZLEŞMESİ GENEL ŞARTLARI</h2>
-          <p className="text-center text-xs text-gray-400 mb-1 print:text-[8px]">{egitimDonemi !== '—' ? egitimDonemi : ''} ÖĞRETİM YILI</p>
-          <p className="text-center font-semibold text-gray-800 mb-4 print:text-[8.5px] print:mb-1">
+          <h2 className="text-center text-lg font-bold text-navy mb-4 print:text-base print:mb-1.5">KAYIT SÖZLEŞMESİ GENEL ŞARTLARI</h2>
+          <p className="text-center text-xs text-gray-400 mb-1 print:text-[9.5px]">{egitimDonemi !== '—' ? egitimDonemi : ''} ÖĞRETİM YILI</p>
+          <p className="text-center font-semibold text-gray-800 mb-4 print:text-[10.5px] print:mb-1.5">
             SAVAŞ AKÇA ÖZEL KİŞİSEL GELİŞİM KURSU ÖĞRENCİ KAYIT SÖZLEŞMESİ
           </p>
-          <p className="mb-4 print:text-[8px] print:leading-snug print:mb-1.5">
+          <p className="mb-4 print:text-[10.3px] print:leading-snug print:mb-2">
             Savaş Akça Özel Kişisel Gelişim Kursu (bundan sonra "Kurs" olarak anılacaktır), işbu kayıt sözleşmesinin
             sonunda adı, soyadı ve adresi bulunan kursta öğrenim görmek isteyen öğrencinin velisi (bundan sonra
             "Veli" olarak anılacaktır) ile; kurs tarafından veliye sunulan bu sözleşme konusu işlem ve hizmetlere
