@@ -261,11 +261,18 @@ export default function MusaitlikTablosu({
       if (y.atama_id || y.tarih !== tarih || !y.baslangic_saat || !y.bitis_saat) continue
       if (y.durum === 'gelmedi') continue // öğrenci gelmediyse o saat artık boş sayılır
       if (!harita.has(y.ogretmen_profile_id)) continue
+      // Soru Çözümü: öğrenciye bağlı olmadığı için ogrenciAdMap'te karşılığı
+      // yok — eskiden bu yüzden genel "Bire bir" etiketine düşüyordu, kafa
+      // karıştırıyordu. Ayrı bir etiket ve renk (mor, Hızlı Ekle'deki 🧠
+      // butonuyla aynı ton) ile gerçek bire bir derslerden ayırıyoruz.
+      const soruCozumuMu = y.tur === 'soru_cozumu'
       harita.get(y.ogretmen_profile_id).push({
         baslangic: y.baslangic_saat,
         bitis: y.bitis_saat,
-        etiket: (ogrenciAdMap && ogrenciAdMap.get(y.ogrenci_id)) || 'Bire bir',
-        renk: 'bg-orange-200 text-orange-900 border-l-4 border-l-orange-600',
+        etiket: soruCozumuMu ? 'Soru Çözümü' : (ogrenciAdMap && ogrenciAdMap.get(y.ogrenci_id)) || 'Bire bir',
+        renk: soruCozumuMu
+          ? 'bg-purple-200 text-purple-900 border-l-4 border-l-purple-600'
+          : 'bg-orange-200 text-orange-900 border-l-4 border-l-orange-600',
       })
     }
     return harita
@@ -444,7 +451,7 @@ export default function MusaitlikTablosu({
                                   onClick={() => oneriSecildi({ tur: 'soru_cozumu', id: null, ad: 'Soru Çözümü' })}
                                   className="w-full text-left px-2 py-1.5 mb-1.5 rounded-lg text-xs font-medium bg-purple-50 text-purple-700 hover:bg-purple-100 border border-purple-100"
                                 >
-                                  🧠 Soru Çözümü olarak ekle (ücretsiz)
+                                  🧠 Soru Çözümü olarak ekle
                                 </button>
                                 <input
                                   autoFocus
@@ -539,6 +546,9 @@ export default function MusaitlikTablosu({
         </span>
         <span className="flex items-center gap-1">
           <span className="w-3 h-3 rounded bg-orange-200 border-l-4 border-l-orange-600 inline-block"></span> Bire bir
+        </span>
+        <span className="flex items-center gap-1">
+          <span className="w-3 h-3 rounded bg-purple-200 border-l-4 border-l-purple-600 inline-block"></span> Soru Çözümü
         </span>
       </div>
     </div>
