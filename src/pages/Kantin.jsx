@@ -358,6 +358,7 @@ export default function Kantin() {
 
   const [ogrenciId, setOgrenciId] = useState('')
   const [ogrenciArama, setOgrenciArama] = useState('')
+  const [ogrenciOneriAcik, setOgrenciOneriAcik] = useState(false)
   const [adet, setAdet] = useState(1)
   const [ekleniyorUrunId, setEkleniyorUrunId] = useState(null)
   // Butona hızlı hızlı basılınca ya da barkod arka arkaya okununca birden
@@ -793,25 +794,51 @@ export default function Kantin() {
       <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5 mb-6">
         <p className="font-semibold text-gray-700 mb-3">Satış Ekle</p>
         <div className="flex flex-wrap gap-3 items-end mb-4">
-          <div className="flex-1 min-w-[220px]">
+          <div className="flex-1 min-w-[220px] relative">
             <label className="block text-sm font-medium text-gray-700 mb-1">Öğrenci</label>
             <input
               type="text"
               value={ogrenciArama}
-              onChange={(e) => setOgrenciArama(e.target.value)}
+              onChange={(e) => {
+                setOgrenciArama(e.target.value)
+                // Yazmaya devam edince önceki seçim geçersiz olur — aşağıdaki
+                // listeden yeniden seçilmesi gerekir.
+                setOgrenciId('')
+                setOgrenciOneriAcik(true)
+              }}
+              onFocus={() => setOgrenciOneriAcik(true)}
+              // Öneriye tıklamayı kaçırmamak için kapatmayı biraz geciktiriyoruz
+              // (aşağıdaki butonlarda onMouseDown ile de tıklama blur'dan önce yakalanıyor).
+              onBlur={() => setTimeout(() => setOgrenciOneriAcik(false), 150)}
               placeholder="İsim yazarak ara..."
-              className="w-full px-3 py-2 border border-gray-200 rounded-lg mb-1.5 focus:outline-none focus:ring-2 focus:ring-blue"
+              autoComplete="off"
+              className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue"
             />
-            <select
-              value={ogrenciId}
-              onChange={(e) => setOgrenciId(e.target.value)}
-              className="w-full px-3 py-2 border border-gray-200 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-blue"
-            >
-              <option value="">Seçiniz...</option>
-              {gorunenOgrenciler.map((o) => (
-                <option key={o.id} value={o.id}>{o.ad_soyad}</option>
-              ))}
-            </select>
+            {ogrenciOneriAcik && ogrenciArama.trim() && (
+              <div className="absolute z-10 top-full left-0 right-0 mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-56 overflow-y-auto">
+                {gorunenOgrenciler.length === 0 ? (
+                  <p className="px-3 py-2 text-sm text-gray-400">Eşleşen öğrenci bulunamadı.</p>
+                ) : (
+                  gorunenOgrenciler.map((o) => (
+                    <button
+                      key={o.id}
+                      type="button"
+                      onMouseDown={(e) => e.preventDefault()}
+                      onClick={() => {
+                        setOgrenciId(o.id)
+                        setOgrenciArama(o.ad_soyad)
+                        setOgrenciOneriAcik(false)
+                      }}
+                      className={`w-full text-left px-3 py-2 text-sm hover:bg-orange-50 ${
+                        ogrenciId === o.id ? 'bg-orange-50 font-semibold text-navy' : 'text-gray-700'
+                      }`}
+                    >
+                      {o.ad_soyad}
+                    </button>
+                  ))
+                )}
+              </div>
+            )}
           </div>
           <div className="min-w-[160px]">
             <label className="block text-sm font-medium text-gray-700 mb-1">Adet</label>
