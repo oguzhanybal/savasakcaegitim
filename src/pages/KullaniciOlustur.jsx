@@ -14,7 +14,7 @@ const ROLLER = [
 // Ogretmenler.jsx'teki listeyle aynı — öğretmen oluştururken de branş
 // seçilebilsin diye burada da tutuluyor (iki ayrı sayfa, aynı küçük liste).
 const BRANSLAR = [
-  'Matematik', 'Türkçe', 'Türkçe/Edebiyat', 'Fen Bilimleri', 'Sosyal Bilgiler', 'İngilizce',
+  'Matematik', 'Geometri', 'Türkçe', 'Türkçe/Edebiyat', 'Fen Bilimleri', 'Sosyal Bilgiler', 'İngilizce',
   'Fizik', 'Kimya', 'Biyoloji', 'Tarih', 'Coğrafya', 'Din Kültürü',
   'Beden Eğitimi', 'Müzik', 'Görsel Sanatlar', 'Bilişim Teknolojileri', 'Diğer',
 ]

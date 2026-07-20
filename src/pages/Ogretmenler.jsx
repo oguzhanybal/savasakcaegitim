@@ -5,7 +5,7 @@ import { telefonYerelGoster } from '../lib/telefonFormat'
 import TelefonInput from '../components/TelefonInput'
 
 const BRANSLAR = [
-  'Matematik', 'Türkçe', 'Türkçe/Edebiyat', 'Fen Bilimleri', 'Sosyal Bilgiler', 'İngilizce',
+  'Matematik', 'Geometri', 'Türkçe', 'Türkçe/Edebiyat', 'Fen Bilimleri', 'Sosyal Bilgiler', 'İngilizce',
   'Fizik', 'Kimya', 'Biyoloji', 'Tarih', 'Coğrafya', 'Din Kültürü',
   'Beden Eğitimi', 'Müzik', 'Görsel Sanatlar', 'Bilişim Teknolojileri', 'Diğer',
 ]
