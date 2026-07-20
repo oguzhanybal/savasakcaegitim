@@ -23,44 +23,75 @@ export default function Ekstre() {
   const [bireBirDersleri, setBireBirDersleri] = useState([])
   const [seciliAy, setSeciliAy] = useState(() => new Date().toISOString().slice(0, 7))
   const [loading, setLoading] = useState(true)
+  // Fatura Ortağı (ör. ikiz kardeşler): bu öğrenci başka birine bağlıysa
+  // (ya da başka biri buna bağlıysa) hepsinin borç/ödemesi burada BİRLEŞİK
+  // gösterilir. faturaGrubu.length > 1 olduğunda ekranda "kimin" borcu/dersi
+  // olduğunu ayrıca gösteriyoruz (bkz. aşağıdaki render).
+  const [faturaGrubu, setFaturaGrubu] = useState([])
 
   useEffect(() => {
     setLoading(true)
-    Promise.all([
-      supabase.from('ogrenciler').select('*').eq('id', ogrenciId).single(),
-      supabase.from('sozlesmeler').select('*').eq('ogrenci_id', ogrenciId),
-      supabase.from('aylik_borclar').select('*').eq('ogrenci_id', ogrenciId),
-      supabase.from('odemeler').select('*').eq('ogrenci_id', ogrenciId).order('tarih', { ascending: false }),
-      // Öğretmen adını da (profiles join) çekiyoruz — "Bire Bir Ders Dökümü"nde
-      // "hangi öğretmenden" görebilmek için.
-      supabase.from('bire_bir_atamalari').select('*, profiles:ogretmen_profile_id(ad_soyad, brans)').eq('ogrenci_id', ogrenciId),
-      // "Ek Ders" (atamaya bağlı olmayan, tek seferlik bire bir) kayıtları
-      supabase
-        .from('bire_bir_yoklama')
-        .select('*, profiles:ogretmen_profile_id(ad_soyad, brans)')
-        .eq('ogrenci_id', ogrenciId)
-        .is('atama_id', null),
-      supabase.from('kantin_alislar').select('*').eq('ogrenci_id', ogrenciId),
-    ]).then(([o, s, a, od, bba, ekDersler, kantin]) => {
-      const atamalar = bba.data || []
-      const atamaIdleri = atamalar.map((x) => x.id)
-      const yoklamaSorgusu =
-        atamaIdleri.length > 0
-          ? supabase.from('bire_bir_yoklama').select('*').in('atama_id', atamaIdleri)
-          : Promise.resolve({ data: [] })
-      yoklamaSorgusu.then((by) => {
-        const tumYoklamalar = [...(by.data || []), ...(ekDersler.data || [])]
-        const bireBirBorclar = bireBirBorclariOlustur(atamalar, tumYoklamalar)
-        const kantinBorclar = kantinBorclariOlustur(kantin.data || [])
-        setOgrenci(o.data)
-        setSozlesmeler(s.data || [])
-        setAylikBorclar([...(a.data || []), ...bireBirBorclar, ...kantinBorclar])
-        setOdemeler(od.data || [])
-        setBireBirDersleri(bireBirDersDetaylariOlustur(atamalar, tumYoklamalar))
-        setLoading(false)
+    supabase
+      .from('ogrenciler')
+      .select('*')
+      .eq('id', ogrenciId)
+      .single()
+      .then(({ data: kendisi }) => {
+        if (!kendisi) {
+          setOgrenci(null)
+          setLoading(false)
+          return
+        }
+        const efektifId = kendisi.fatura_sahibi_id || kendisi.id
+        supabase
+          .from('ogrenciler')
+          .select('*')
+          .or(`id.eq.${efektifId},fatura_sahibi_id.eq.${efektifId}`)
+          .then(({ data: grupOgrencileri }) => {
+            const grup = (grupOgrencileri || []).map((g) => g.id)
+            Promise.all([
+              supabase.from('sozlesmeler').select('*').in('ogrenci_id', grup),
+              supabase.from('aylik_borclar').select('*').in('ogrenci_id', grup),
+              supabase.from('odemeler').select('*, ogrenciler(ad_soyad)').in('ogrenci_id', grup).order('tarih', { ascending: false }),
+              // Öğretmen adını (profiles join) ve — birden fazla öğrenci varsa
+              // dersin kime ait olduğunu gösterebilmek için öğrenci adını
+              // (ogrenciler join) da çekiyoruz.
+              supabase
+                .from('bire_bir_atamalari')
+                .select('*, profiles:ogretmen_profile_id(ad_soyad, brans), ogrenciler(ad_soyad)')
+                .in('ogrenci_id', grup),
+              // "Ek Ders" (atamaya bağlı olmayan, tek seferlik bire bir) kayıtları
+              supabase
+                .from('bire_bir_yoklama')
+                .select('*, profiles:ogretmen_profile_id(ad_soyad, brans), ogrenciler(ad_soyad)')
+                .in('ogrenci_id', grup)
+                .is('atama_id', null),
+              supabase.from('kantin_alislar').select('*').in('ogrenci_id', grup),
+            ]).then(([s, a, od, bba, ekDersler, kantin]) => {
+              const atamalar = bba.data || []
+              const atamaIdleri = atamalar.map((x) => x.id)
+              const yoklamaSorgusu =
+                atamaIdleri.length > 0
+                  ? supabase.from('bire_bir_yoklama').select('*, ogrenciler(ad_soyad)').in('atama_id', atamaIdleri)
+                  : Promise.resolve({ data: [] })
+              yoklamaSorgusu.then((by) => {
+                const tumYoklamalar = [...(by.data || []), ...(ekDersler.data || [])]
+                const bireBirBorclar = bireBirBorclariOlustur(atamalar, tumYoklamalar)
+                const kantinBorclar = kantinBorclariOlustur(kantin.data || [])
+                setOgrenci(kendisi)
+                setFaturaGrubu(grupOgrencileri || [])
+                setSozlesmeler(s.data || [])
+                setAylikBorclar([...(a.data || []), ...bireBirBorclar, ...kantinBorclar])
+                setOdemeler(od.data || [])
+                setBireBirDersleri(bireBirDersDetaylariOlustur(atamalar, tumYoklamalar))
+                setLoading(false)
+              })
+            })
+          })
       })
-    })
   }, [ogrenciId])
+
+  const faturaDigerleri = faturaGrubu.filter((o) => o.id !== ogrenciId)
 
   // İndirilen PDF/yazdırma çıktısının dosya adı (ve tarayıcı sekme başlığı)
   // öğrenci adı ve dönemi göstersin diye — "Savaş Akça Eğitim Portalı" gibi
@@ -131,6 +162,13 @@ export default function Ekstre() {
             </button>
           </div>
         </div>
+
+        {faturaDigerleri.length > 0 && (
+          <div className="no-print bg-purple-50 border border-purple-200 rounded-xl p-3 mb-4 text-sm text-purple-800">
+            Birleşik ekstre: aşağıdaki tutarlar <strong>{faturaDigerleri.map((o) => o.ad_soyad).join(', ')}</strong> ile
+            ortak tutuluyor (Fatura Ortağı bağlantısı). Bire bir ders dökümünde her satırın kime ait olduğu ayrıca gösterilir.
+          </div>
+        )}
 
         <div className="bg-white rounded-2xl shadow-sm overflow-hidden border border-gray-100">
           <div className="bg-navy text-white py-5 px-6 flex items-center gap-4">
@@ -235,8 +273,14 @@ export default function Ekstre() {
               <div className="mt-6 bire-bir-baslik-blok">
                 <p className="font-semibold text-navy mb-2">Bire Bir Ders Dökümü</p>
                 <BireBirDersDokumu
-                  dersler={bireBirDersleri.map((d) => ({ ...d, karsiTarafAdi: d.ogretmenAdi, karsiTarafBransi: d.ogretmenBransi }))}
+                  dersler={bireBirDersleri.map((d) => ({
+                    ...d,
+                    karsiTarafAdi: d.ogretmenAdi,
+                    karsiTarafBransi: d.ogretmenBransi,
+                    ikinciTarafAdi: d.ogrenciAdi,
+                  }))}
                   karsiTarafBasligi="Öğretmen"
+                  {...(faturaDigerleri.length > 0 ? { ikinciTarafBasligi: 'Öğrenci' } : {})}
                   hedefDonem={`${seciliAy}-01`}
                 />
               </div>
@@ -248,17 +292,19 @@ export default function Ekstre() {
                 <thead>
                   <tr className="bg-navy text-white text-left">
                     <th className="px-3 py-2 font-semibold">Tarih</th>
+                    {faturaDigerleri.length > 0 && <th className="px-3 py-2 font-semibold">Öğrenci</th>}
                     <th className="px-3 py-2 font-semibold">Kalem</th>
                     <th className="px-3 py-2 font-semibold text-right">Tutar</th>
                   </tr>
                 </thead>
                 <tbody>
                   {gosterilecekOdemeler.length === 0 && (
-                    <tr><td colSpan={3} className="px-3 py-3 text-center text-gray-400">Ödeme kaydı yok.</td></tr>
+                    <tr><td colSpan={faturaDigerleri.length > 0 ? 4 : 3} className="px-3 py-3 text-center text-gray-400">Ödeme kaydı yok.</td></tr>
                   )}
                   {gosterilecekOdemeler.map((o, i) => (
                     <tr key={o.id} className={i % 2 ? 'bg-gray-50' : ''}>
                       <td className="px-3 py-2">{new Date(o.tarih).toLocaleDateString('tr-TR')}</td>
+                      {faturaDigerleri.length > 0 && <td className="px-3 py-2">{o.ogrenciler?.ad_soyad || '—'}</td>}
                       <td className="px-3 py-2">{o.kalem || '—'}</td>
                       <td className="px-3 py-2 text-right">{paraFormat(o.tutar)}</td>
                     </tr>
@@ -267,7 +313,7 @@ export default function Ekstre() {
                 {gosterilecekOdemeler.length > 0 && (
                   <tfoot>
                     <tr className="bg-gray-50 font-semibold border-t border-gray-200">
-                      <td className="px-3 py-2" colSpan={2}>TOPLAM ÖDENEN</td>
+                      <td className="px-3 py-2" colSpan={faturaDigerleri.length > 0 ? 3 : 2}>TOPLAM ÖDENEN</td>
                       <td className="px-3 py-2 text-right">{paraFormat(gosterilenOdemeToplami)}</td>
                     </tr>
                   </tfoot>

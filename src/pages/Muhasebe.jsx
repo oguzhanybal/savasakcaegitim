@@ -628,20 +628,30 @@ export default function Muhasebe() {
   function veriyiYenile() {
     if (!seciliId) return
     setLoading(true)
+    // Fatura Ortağı (ör. ikiz kardeşler): ders programları ayrı kalır, ama
+    // muhasebeleri ortak tutulsun diye biri diğerine "fatura_sahibi_id" ile
+    // bağlanabilir. Hangi taraf seçilirse seçilsin AYNI birleşik ekstre
+    // görünsün diye "efektif sahip"i (kendisi fatura_sahibi_id'liyse onun
+    // işaret ettiği kişi, değilse kendisi) ve ona bağlı tüm grubu buluyoruz.
+    // Partneri olmayan bir öğrenci için grup=[seciliId] olur — yani hiçbir
+    // mevcut hesaplama/davranış değişmez.
+    const secili = ogrenciler.find((o) => o.id === seciliId)
+    const efektifId = secili?.fatura_sahibi_id || seciliId
+    const grup = [...new Set([efektifId, ...ogrenciler.filter((o) => o.fatura_sahibi_id === efektifId).map((o) => o.id)])]
     Promise.all([
-      supabase.from('sozlesmeler').select('*').eq('ogrenci_id', seciliId),
-      supabase.from('aylik_borclar').select('*').eq('ogrenci_id', seciliId).order('donem', { ascending: false }),
-      supabase.from('odemeler').select('*').eq('ogrenci_id', seciliId).order('tarih', { ascending: false }),
+      supabase.from('sozlesmeler').select('*').in('ogrenci_id', grup),
+      supabase.from('aylik_borclar').select('*').in('ogrenci_id', grup).order('donem', { ascending: false }),
+      supabase.from('odemeler').select('*').in('ogrenci_id', grup).order('tarih', { ascending: false }),
       // Öğretmen adını da (profiles join) çekiyoruz — döküm tablosunda "hangi
       // öğretmenden" görebilmek için.
-      supabase.from('bire_bir_atamalari').select('*, profiles:ogretmen_profile_id(ad_soyad, brans)').eq('ogrenci_id', seciliId),
+      supabase.from('bire_bir_atamalari').select('*, profiles:ogretmen_profile_id(ad_soyad, brans)').in('ogrenci_id', grup),
       // "Ek Ders" (atamaya bağlı olmayan, tek seferlik bire bir) kayıtları
       supabase
         .from('bire_bir_yoklama')
         .select('*, profiles:ogretmen_profile_id(ad_soyad, brans)')
-        .eq('ogrenci_id', seciliId)
+        .in('ogrenci_id', grup)
         .is('atama_id', null),
-      supabase.from('kantin_alislar').select('*').eq('ogrenci_id', seciliId),
+      supabase.from('kantin_alislar').select('*').in('ogrenci_id', grup),
     ]).then(([s, a, o, bba, ekDersler, kantin]) => {
       const atamalar = bba.data || []
       const atamaIdleri = atamalar.map((x) => x.id)
@@ -759,6 +769,12 @@ export default function Muhasebe() {
   // aralarında geçiş yapabilsin diye seçiciyi ona da gösteriyoruz.
   const seciciGoster = (isYonetici || ogrenciler.length > 1) && ogrenciler.length > 0
 
+  // Fatura Ortağı grubu (bkz. veriyiYenile) — banner göstermek için burada
+  // da hesaplıyoruz. Partneri olmayan öğrencide grup sadece kendisidir.
+  const faturaEfektifId = seciliOgrenci?.fatura_sahibi_id || seciliId
+  const faturaGrubu = ogrenciler.filter((o) => o.id === faturaEfektifId || o.fatura_sahibi_id === faturaEfektifId)
+  const faturaDigerleri = faturaGrubu.filter((o) => o.id !== seciliId)
+
   const toplamOdenen = odemeler.reduce((t, o) => t + Number(o.tutar), 0)
   const toplamSozlesme = sozlesmeler.reduce((t, s) => t + Number(s.toplam_tutar), 0)
   const toplamAylikBorc = aylikBorclar.reduce((t, a) => t + Number(a.tutar), 0)
@@ -856,6 +872,12 @@ export default function Muhasebe() {
 
       {seciliOgrenci && (
         <>
+          {faturaDigerleri.length > 0 && (
+            <div className="bg-purple-50 border border-purple-200 rounded-xl p-3 mb-4 text-sm text-purple-800">
+              Birleşik ekstre: bu görünümdeki borç/ödeme toplamları <strong>{faturaDigerleri.map((o) => o.ad_soyad).join(', ')}</strong>{' '}
+              ile ortak tutuluyor (Fatura Ortağı bağlantısı, bkz. Öğrenciler sayfası). Ders programları birbirinden bağımsız kalmaya devam eder.
+            </div>
+          )}
           {isYonetici && (
             <>
               <OdemeEkleForm ogrenciId={seciliId} onEklendi={veriyiYenile} />

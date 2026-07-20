@@ -186,13 +186,18 @@ export default function Ogrenciler() {
   const [seciliVeli, setSeciliVeli] = useState('')
   const [ogrenciHesabiBaglanan, setOgrenciHesabiBaglanan] = useState(null)
   const [seciliOgrenciHesabi, setSeciliOgrenciHesabi] = useState('')
+  // Fatura Ortağı — ör. ikiz kardeşler: ders programı/bire bir dersleri ayrı
+  // ayrı kalır, ama biri "fatura_sahibi_id" ile diğerine bağlanınca tüm
+  // borç/ödemesi o kişinin ekstresinde toplanır (bkz. Muhasebe.jsx/Ekstre.jsx).
+  const [faturaBaglanan, setFaturaBaglanan] = useState(null)
+  const [seciliFaturaSahibi, setSeciliFaturaSahibi] = useState('')
 
   async function yukle() {
     setLoading(true)
     const [o, v, oh] = await Promise.all([
       supabase
         .from('ogrenciler')
-        .select('*, veli:veli_profile_id(ad_soyad), ogrenci_hesabi:ogrenci_profile_id(ad_soyad)')
+        .select('*, veli:veli_profile_id(ad_soyad), ogrenci_hesabi:ogrenci_profile_id(ad_soyad), fatura_sahibi:fatura_sahibi_id(ad_soyad)')
         .order('ad_soyad'),
       supabase.from('profiles').select('*').eq('rol', 'veli').order('ad_soyad'),
       // "Öğrenci" rolüyle giriş yapan hesaplar — bir öğrenci kaydına bağlanmazsa
@@ -336,6 +341,24 @@ export default function Ogrenciler() {
     }
   }
 
+  function faturaBaglamayaBasla(o) {
+    setFaturaBaglanan(o.id)
+    setSeciliFaturaSahibi(o.fatura_sahibi_id || '')
+  }
+
+  async function faturaBaglamayiKaydet(ogrenciId) {
+    const { error } = await supabase
+      .from('ogrenciler')
+      .update({ fatura_sahibi_id: seciliFaturaSahibi || null })
+      .eq('id', ogrenciId)
+    if (!error) {
+      setFaturaBaglanan(null)
+      yukle()
+    } else {
+      alert('Hata: ' + error.message)
+    }
+  }
+
   const gosterilecekler = ogrenciler.filter((o) => {
     if (filtre === 'tumu') return true
     return (o.durum || 'aktif') === filtre
@@ -407,27 +430,29 @@ export default function Ogrenciler() {
               <th className="px-4 py-3 font-semibold">Sınıfı / Alanı</th>
               <th className="px-4 py-3 font-semibold">Veli</th>
               <th className="px-4 py-3 font-semibold">Öğrenci Hesabı</th>
+              <th className="px-4 py-3 font-semibold">Fatura Ortağı</th>
               <th className="px-4 py-3 font-semibold">Durum</th>
               <th className="px-4 py-3 font-semibold text-right">İşlemler</th>
             </tr>
           </thead>
           <tbody>
             {loading && (
-              <tr><td colSpan={7} className="px-4 py-6 text-center text-gray-400">Yükleniyor...</td></tr>
+              <tr><td colSpan={8} className="px-4 py-6 text-center text-gray-400">Yükleniyor...</td></tr>
             )}
             {!loading && gosterilecekler.length === 0 && (
-              <tr><td colSpan={7} className="px-4 py-6 text-center text-gray-400">Bu filtrede öğrenci bulunamadı.</td></tr>
+              <tr><td colSpan={8} className="px-4 py-6 text-center text-gray-400">Bu filtrede öğrenci bulunamadı.</td></tr>
             )}
             {gosterilecekler.map((o, i) => {
               const durum = o.durum || 'aktif'
               const duzenleniyor = duzenlenenId === o.id
               const veliBagli = veliBaglanan === o.id
               const ogrenciHesabiBagli = ogrenciHesabiBaglanan === o.id
+              const faturaBagli = faturaBaglanan === o.id
 
               if (duzenleniyor) {
                 return (
                   <tr key={o.id} className="bg-blue-50">
-                    <td colSpan={7} className="px-4 py-4">
+                    <td colSpan={8} className="px-4 py-4">
                       <KayitFormuAlanlari form={duzenleForm} alanGuncelle={duzenleAlanGuncelle} boyut="kucuk" />
                       <div className="space-x-3 whitespace-nowrap mt-3">
                         <button onClick={() => duzenlemeyiKaydet(o.id)} className="text-green-600 text-sm font-semibold hover:underline">
@@ -447,7 +472,7 @@ export default function Ogrenciler() {
                   <tr key={o.id} className="bg-purple-50">
                     <td className="px-4 py-3 font-medium text-gray-800">{o.ad_soyad}</td>
                     <td className="px-4 py-3 text-gray-500">{o.telefon || '—'}</td>
-                    <td className="px-4 py-2" colSpan={4}>
+                    <td className="px-4 py-2" colSpan={5}>
                       <select
                         value={seciliVeli}
                         onChange={(e) => setSeciliVeli(e.target.value)}
@@ -476,7 +501,7 @@ export default function Ogrenciler() {
                   <tr key={o.id} className="bg-purple-50">
                     <td className="px-4 py-3 font-medium text-gray-800">{o.ad_soyad}</td>
                     <td className="px-4 py-3 text-gray-500">{o.telefon || '—'}</td>
-                    <td className="px-4 py-2" colSpan={4}>
+                    <td className="px-4 py-2" colSpan={5}>
                       <select
                         value={seciliOgrenciHesabi}
                         onChange={(e) => setSeciliOgrenciHesabi(e.target.value)}
@@ -493,6 +518,41 @@ export default function Ogrenciler() {
                         Kaydet
                       </button>
                       <button onClick={() => setOgrenciHesabiBaglanan(null)} className="text-gray-500 text-sm hover:underline">
+                        Vazgeç
+                      </button>
+                    </td>
+                  </tr>
+                )
+              }
+
+              if (faturaBagli) {
+                return (
+                  <tr key={o.id} className="bg-purple-50">
+                    <td className="px-4 py-3 font-medium text-gray-800">{o.ad_soyad}</td>
+                    <td className="px-4 py-3 text-gray-500">{o.telefon || '—'}</td>
+                    <td className="px-4 py-2" colSpan={5}>
+                      <select
+                        value={seciliFaturaSahibi}
+                        onChange={(e) => setSeciliFaturaSahibi(e.target.value)}
+                        className="w-full px-2 py-1.5 border border-gray-300 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue"
+                      >
+                        <option value="">Fatura ortağı yok (kendi hesabı ayrı)</option>
+                        {ogrenciler
+                          .filter((diger) => diger.id !== o.id)
+                          .map((diger) => (
+                            <option key={diger.id} value={diger.id}>{diger.ad_soyad}</option>
+                          ))}
+                      </select>
+                      <p className="text-xs text-gray-500 mt-1">
+                        Burada seçilen kişi, "fatura sahibi" olur: {o.ad_soyad} adına oluşan tüm borç/ödemeler
+                        (kantin, bire bir vb.) seçilen kişinin ekstresinde toplu görünür. Ders programı ayrı kalmaya devam eder.
+                      </p>
+                    </td>
+                    <td className="px-4 py-2 text-right space-x-3 whitespace-nowrap">
+                      <button onClick={() => faturaBaglamayiKaydet(o.id)} className="text-green-600 text-sm font-semibold hover:underline">
+                        Kaydet
+                      </button>
+                      <button onClick={() => setFaturaBaglanan(null)} className="text-gray-500 text-sm hover:underline">
                         Vazgeç
                       </button>
                     </td>
@@ -524,6 +584,13 @@ export default function Ogrenciler() {
                     )}
                   </td>
                   <td className="px-4 py-3">
+                    {o.fatura_sahibi?.ad_soyad ? (
+                      <span className="text-gray-700">{o.fatura_sahibi.ad_soyad}</span>
+                    ) : (
+                      <span className="text-gray-400 text-xs">Yok</span>
+                    )}
+                  </td>
+                  <td className="px-4 py-3">
                     <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${
                       durum === 'aktif' ? 'bg-green-100 text-green-700' : 'bg-gray-200 text-gray-600'
                     }`}>
@@ -543,6 +610,9 @@ export default function Ogrenciler() {
                       </button>
                       <button onClick={() => ogrenciHesabiBaglamayaBasla(o)} className="text-purple-600 text-sm hover:underline">
                         Öğrenci Hesabı Bağla
+                      </button>
+                      <button onClick={() => faturaBaglamayaBasla(o)} className="text-purple-600 text-sm hover:underline">
+                        Fatura Ortağı Bağla
                       </button>
                       <button onClick={() => duzenlemeyeBasla(o)} className="text-blue text-sm hover:underline">
                         Düzenle
@@ -571,6 +641,9 @@ export default function Ogrenciler() {
         "Sil" işlemi geri alınamaz ve öğrencinin tüm ödeme/sözleşme/yoklama geçmişini de siler. Geçmiş yıldan
         sadece ödeme takibi kalan öğrenciler için "Sil" yerine "Pasif Yap" kullanmanızı öneririz. "Veli Bağla" ile
         bir veli hesabını bu öğrenciyle eşleştirebilirsiniz — veli giriş yaptığında sadece bu öğrencinin bilgilerini görür.
+        "Fatura Ortağı Bağla" ise ör. ikiz kardeşler gibi ders programı ayrı ama muhasebesi ortak olan öğrenciler
+        içindir: bir öğrenciyi diğerine bağlarsanız, bağlanan öğrencinin tüm borç/ödemeleri diğerinin ekstresinde
+        toplu görünür; ders programları yine ayrı ayrı kalır.
       </p>
     </div>
   )

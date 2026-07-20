@@ -39,15 +39,23 @@ export default function TopluEkstre() {
 
   const satirlar = ogrenciler
     .map((o) => {
-      const oSozlesmeler = sozlesmeler.filter((s) => s.ogrenci_id === o.id)
-      const oAylikBorclar = aylikBorclar.filter((a) => a.ogrenci_id === o.id)
-      const oOdemeler = odemeler.filter((od) => od.ogrenci_id === o.id)
+      // Fatura Ortağı (ör. ikiz kardeşler): bu öğrencinin borç/ödeme rakamlarını
+      // TEK BAŞINA değil, bağlı olduğu grupla birlikte hesaplıyoruz — Muhasebe
+      // ve Ekstre sayfalarındaki mantığın aynısı. Partneri olmayan öğrenci için
+      // grup=[o.id] olur, yani hesap eskisiyle birebir aynı kalır.
+      const efektifId = o.fatura_sahibi_id || o.id
+      const grup = [...new Set([efektifId, ...ogrenciler.filter((x) => x.fatura_sahibi_id === efektifId).map((x) => x.id)])]
+      const faturaOrtaklari = ogrenciler.filter((x) => x.id !== o.id && grup.includes(x.id))
+      const oSozlesmeler = sozlesmeler.filter((s) => grup.includes(s.ogrenci_id))
+      const oAylikBorclar = aylikBorclar.filter((a) => grup.includes(a.ogrenci_id))
+      const oOdemeler = odemeler.filter((od) => grup.includes(od.ogrenci_id))
       const kalemler = ogrenciSatirlariHesapla(oSozlesmeler, oAylikBorclar, oOdemeler, seciliAy)
       const buAyToplam = kalemler.reduce((t, x) => t + x.buAyTutar, 0)
       const kalanToplam = kalemler.reduce((t, x) => t + x.toplamOdenecek, 0)
       const gecmisBorc = kalemler.reduce((t, x) => t + x.gecmisBorc, 0)
       return {
         ogrenci: o,
+        faturaOrtaklari,
         buAyToplam,
         kalanToplam,
         gecmisBorc,
@@ -123,7 +131,14 @@ export default function TopluEkstre() {
             )}
             {satirlar.map((r) => (
               <tr key={r.ogrenci.id} className={`border-t border-gray-50 ${r.gecmisBorc > 0 ? 'bg-red-50/50' : ''}`}>
-                <td className="px-4 py-2 font-medium text-gray-800">{r.ogrenci.ad_soyad}</td>
+                <td className="px-4 py-2 font-medium text-gray-800">
+                  {r.ogrenci.ad_soyad}
+                  {r.faturaOrtaklari.length > 0 && (
+                    <span className="block text-xs font-normal text-purple-600">
+                      + {r.faturaOrtaklari.map((x) => x.ad_soyad).join(', ')} (birleşik)
+                    </span>
+                  )}
+                </td>
                 <td className="px-4 py-2 text-right">{paraFormat(r.buAyToplam)}</td>
                 <td className={`px-4 py-2 text-right font-semibold ${r.borcluMu ? 'text-red-700' : 'text-green-600'}`}>
                   {paraFormat(r.kalanToplam)}
