@@ -203,6 +203,30 @@ function tekSeferlikCakismaBul(
   return null
 }
 
+// Bir öğrencinin KENDİ sınıfının, seçilen gün/saatte bir dersi olup olmadığını
+// kontrol eder — cakismaBul/tekSeferlikCakismaBul'daki (öğretmen çakışması,
+// öğrencinin BAŞKA bir bire bir dersi) kontroller SERT birer engeldir, ama bu
+// kontrol öyle değil: bazı öğrenciler bilerek sınıf dersini kaçırıp bire bir
+// derse geliyor, o yüzden burada sadece bir UYARI döndürülür — admin
+// "Evet, yine de ekle" diyerek devam edebilir. sinifOgrencileri: öğrencinin
+// hangi sınıf(lar)a kayıtlı olduğunu tutan ara tablo ([{ ogrenci_id, sinif_id }]).
+function ogrenciSinifDersiUyarisiBul(ogrenciId, gun, baslangic, bitis, dersProgrami, sinifOgrencileri) {
+  if (!ogrenciId || !gun || !baslangic || !bitis) return null
+  const sinifIdleri = new Set(
+    (sinifOgrencileri || []).filter((so) => so.ogrenci_id === ogrenciId).map((so) => so.sinif_id)
+  )
+  if (sinifIdleri.size === 0) return null
+  for (const d of dersProgrami) {
+    if (!sinifIdleri.has(d.sinif_id)) continue
+    if (d.gun !== gun) continue
+    if (!araliklarCakisiyorMu(baslangic, bitis, d.baslangic_saat, d.bitis_saat)) continue
+    return {
+      aciklama: `bu öğrencinin ${GUNLER[d.gun]} günü ${saatKisalt(d.baslangic_saat)}–${saatKisalt(d.bitis_saat)} arası "${d.ders_adi || d.sinif_adi || 'sınıf'}" dersi var`,
+    }
+  }
+  return null
+}
+
 // ============================================================================
 // BİRE BİR DERS EKLE — Tek form: öğrenci, öğretmen, ücret girilir, sonra
 // "her hafta tekrarlansın mı?" sorusuna Evet/Hayır cevabı verilir.
@@ -211,7 +235,7 @@ function tekSeferlikCakismaBul(
 //  - Hayır -> sadece o tarihe özel, tek seferlik bir ders kaydı (bire_bir_yoklama,
 //             atama_id boş) oluşturulur, hemen "Geldi" olarak borç eklenir.
 // ============================================================================
-function BireBirDersEkleForm({ ogrenciler, ogretmenler, atamalar, dersProgrami, yoklamalar, onEklendi, doldurBilgisi }) {
+function BireBirDersEkleForm({ ogrenciler, ogretmenler, atamalar, dersProgrami, yoklamalar, sinifOgrencileri, onEklendi, doldurBilgisi }) {
   const { profile } = useAuth()
   const [ogrenciId, setOgrenciId] = useState('')
   const [ogretmenId, setOgretmenId] = useState('')
@@ -234,6 +258,11 @@ function BireBirDersEkleForm({ ogrenciler, ogretmenler, atamalar, dersProgrami, 
   const [hata, setHata] = useState('')
   const [basari, setBasari] = useState('')
   const [gonderiliyor, setGonderiliyor] = useState(false)
+  // Öğrencinin kendi sınıf dersiyle çakıştığı tespit edilirse (bkz.
+  // ogrenciSinifDersiUyarisiBul) buraya uyarı metni yazılır — bu SERT bir engel
+  // değil, "Evet, yine de ekle" ile devam edilebilir. Diğer çakışmalar (hata)
+  // gibi engellemez, sadece bilgilendirir.
+  const [sinifUyarisi, setSinifUyarisi] = useState('')
   const ogrenciSelectRef = useRef(null)
   const tekBaslangicRef = useRef(null)
 
@@ -312,10 +341,96 @@ function BireBirDersEkleForm({ ogrenciler, ogretmenler, atamalar, dersProgrami, 
     }
   }
 
+  // Haftalık tekrarlanan atamanın gerçek kaydını yazar — hem normal "Ekle"
+  // akışından (hard/soft kontroller geçtikten sonra), hem de sınıf dersi
+  // uyarısı gösterildiğinde "Evet, yine de ekle" butonundan çağrılır.
+  async function haftalikKaydet() {
+    setGonderiliyor(true)
+    const { error } = await supabase.from('bire_bir_atamalari').insert({
+      ogrenci_id: ogrenciId,
+      ogretmen_profile_id: ogretmenId,
+      ders_ucreti: Number(dersUcreti),
+      gun: Number(gun),
+      baslangic_saat: baslangic,
+      bitis_saat: bitis,
+    })
+    setGonderiliyor(false)
+    if (error) {
+      setHata('Hata: ' + error.message)
+    } else {
+      // Aynı öğrenci/öğretmene haftanın birden çok gününe art arda ders eklerken
+      // öğrenci, öğretmen ve ücret korunuyor, sadece saatleri temizliyoruz ve gün
+      // otomatik bir sonraki güne geçiyor.
+      setBaslangic('')
+      setBitis('')
+      setGun((g) => (Number(g) < 7 ? Number(g) + 1 : 1))
+      setBasari('✓ Her hafta tekrarlanacak şekilde eklendi — devam edebilirsiniz.')
+      setSinifUyarisi('')
+      onEklendi()
+    }
+  }
+
+  // Tek seferlik dersin gerçek kaydını yazar — bkz. haftalikKaydet üstündeki not.
+  async function tekSeferlikKaydet() {
+    // Tarih BUGÜNDEN SONRAsıysa (ileri tarihli, önceden planlanan bir ders),
+    // henüz gerçekleşmediği için doğrudan "Geldi" sayıp borç eklemiyoruz —
+    // "Bekliyor" olarak kaydediliyor, ders yapıldıktan sonra "Son Tek Seferlik
+    // Dersler" listesinden Geldi/Gelmedi işaretlenir. Bugün ya da geçmiş bir
+    // tarihse (unutulmuş/geçmiş bir dersi girme senaryosu) direkt "Geldi" olur.
+    // AMA: tarih BUGÜN olsa bile, girilen Başlangıç saati şu andan HENÜZ
+    // GELMEDİYSE (ör. şu an 12:38 iken derse 12:50 girildiyse), bu ders de
+    // henüz yaşanmamış demektir — eskiden sadece TARİH karşılaştırıldığı için
+    // böyle durumlarda da yanlışlıkla direkt "Geldi" yazılıp hemen borç
+    // ekleniyordu. Artık aynı gün için SAAT de kontrol ediliyor.
+    const ileriTarihli =
+      tarih > yerelBugunTarihi() ||
+      (tarih === yerelBugunTarihi() && tekBaslangic && tekBaslangic > yerelSuankiSaatDakika())
+    const durum = ileriTarihli ? 'bekliyor' : 'geldi'
+
+    setGonderiliyor(true)
+    const { error } = await supabase.from('bire_bir_yoklama').insert({
+      ogrenci_id: ogrenciId,
+      ogretmen_profile_id: ogretmenId,
+      tutar: Number(dersUcreti),
+      tarih,
+      durum,
+      baslangic_saat: tekBaslangic || null,
+      bitis_saat: tekBitis || null,
+    })
+    setGonderiliyor(false)
+    if (error) {
+      setHata('Hata: ' + error.message)
+    } else {
+      // Aynı öğrenci/öğretmene üst üste (aynı gün, arka arkaya) ders eklerken
+      // öğrenci/öğretmen/ücret/tarih AYNEN korunuyor — tekrar seçmeye gerek yok.
+      // Saat girilmişse, bir sonraki dersin başlangıcı otomatik olarak "bu dersin
+      // bitişi + 10 dakika ara" olarak öneriliyor (bitiş de +45dk ile hesaplanıyor).
+      // Bu sadece formu ÖNCEDEN dolduruyor — kaydetmek için yine "Ekle"ye basmak gerekiyor.
+      const bekliyorNotu = ileriTarihli
+        ? ' İleri tarihli olduğu için "Bekliyor" olarak eklendi, henüz borç eklenmedi — ders yapıldıktan sonra "Tüm Bire Bir Dersler" listesinden Geldi/Gelmedi işaretleyin.'
+        : ''
+      if (tekBitis) {
+        const yeniBaslangic = saateDakikaEkle(tekBitis, 10)
+        const yeniBitis = saateDakikaEkle(yeniBaslangic, 45)
+        setTekBaslangic(yeniBaslangic)
+        setTekBitis(yeniBitis)
+        setBasari(
+          `✓ Eklendi.${bekliyorNotu} Sıradaki ders için ${new Date(tarih + 'T12:00:00').toLocaleDateString('tr-TR')} tarihinde ${yeniBaslangic}–${yeniBitis} önerildi (10dk ara) — kontrol edip tekrar "Ekle"ye basabilirsiniz.`
+        )
+      } else {
+        setBasari(`✓ Tek seferlik ders eklendi.${bekliyorNotu}`)
+      }
+      setSinifUyarisi('')
+      tekBaslangicRef.current?.focus()
+      onEklendi()
+    }
+  }
+
   async function ekle(e) {
     e.preventDefault()
     setHata('')
     setBasari('')
+    setSinifUyarisi('')
 
     if (!ogrenciId || !ogretmenId || !dersUcreti) {
       setHata('Lütfen öğrenci, öğretmen ve ders ücretini girin.')
@@ -336,29 +451,15 @@ function BireBirDersEkleForm({ ogrenciler, ogretmenler, atamalar, dersProgrami, 
         setHata(`Çakışma var: ${cakisma.aciklama}.`)
         return
       }
-
-      setGonderiliyor(true)
-      const { error } = await supabase.from('bire_bir_atamalari').insert({
-        ogrenci_id: ogrenciId,
-        ogretmen_profile_id: ogretmenId,
-        ders_ucreti: Number(dersUcreti),
-        gun: Number(gun),
-        baslangic_saat: baslangic,
-        bitis_saat: bitis,
-      })
-      setGonderiliyor(false)
-      if (error) {
-        setHata('Hata: ' + error.message)
-      } else {
-        // Aynı öğrenci/öğretmene haftanın birden çok gününe art arda ders eklerken
-        // öğrenci, öğretmen ve ücret korunuyor, sadece saatleri temizliyoruz ve gün
-        // otomatik bir sonraki güne geçiyor.
-        setBaslangic('')
-        setBitis('')
-        setGun((g) => (Number(g) < 7 ? Number(g) + 1 : 1))
-        setBasari('✓ Her hafta tekrarlanacak şekilde eklendi — devam edebilirsiniz.')
-        onEklendi()
+      // Sınıf dersiyle çakışma SERT bir engel değil, sadece uyarı — admin
+      // "Evet, yine de ekle" ile devam edebilir (bkz. ogrenciSinifDersiUyarisiBul).
+      const sinifUyari = ogrenciSinifDersiUyarisiBul(ogrenciId, Number(gun), baslangic, bitis, dersProgrami, sinifOgrencileri)
+      if (sinifUyari) {
+        setSinifUyarisi(sinifUyari.aciklama)
+        return
       }
+
+      await haftalikKaydet()
     } else {
       if (!tarih) {
         setHata('Lütfen tarihi girin.')
@@ -381,60 +482,25 @@ function BireBirDersEkleForm({ ogrenciler, ogretmenler, atamalar, dersProgrami, 
           setHata(`Çakışma var: ${cakisma.aciklama}.`)
           return
         }
-      }
-
-      // Tarih BUGÜNDEN SONRAsıysa (ileri tarihli, önceden planlanan bir ders),
-      // henüz gerçekleşmediği için doğrudan "Geldi" sayıp borç eklemiyoruz —
-      // "Bekliyor" olarak kaydediliyor, ders yapıldıktan sonra "Son Tek Seferlik
-      // Dersler" listesinden Geldi/Gelmedi işaretlenir. Bugün ya da geçmiş bir
-      // tarihse (unutulmuş/geçmiş bir dersi girme senaryosu) direkt "Geldi" olur.
-      // AMA: tarih BUGÜN olsa bile, girilen Başlangıç saati şu andan HENÜZ
-      // GELMEDİYSE (ör. şu an 12:38 iken derse 12:50 girildiyse), bu ders de
-      // henüz yaşanmamış demektir — eskiden sadece TARİH karşılaştırıldığı için
-      // böyle durumlarda da yanlışlıkla direkt "Geldi" yazılıp hemen borç
-      // ekleniyordu. Artık aynı gün için SAAT de kontrol ediliyor.
-      const ileriTarihli =
-        tarih > yerelBugunTarihi() ||
-        (tarih === yerelBugunTarihi() && tekBaslangic && tekBaslangic > yerelSuankiSaatDakika())
-      const durum = ileriTarihli ? 'bekliyor' : 'geldi'
-
-      setGonderiliyor(true)
-      const { error } = await supabase.from('bire_bir_yoklama').insert({
-        ogrenci_id: ogrenciId,
-        ogretmen_profile_id: ogretmenId,
-        tutar: Number(dersUcreti),
-        tarih,
-        durum,
-        baslangic_saat: tekBaslangic || null,
-        bitis_saat: tekBitis || null,
-      })
-      setGonderiliyor(false)
-      if (error) {
-        setHata('Hata: ' + error.message)
-      } else {
-        // Aynı öğrenci/öğretmene üst üste (aynı gün, arka arkaya) ders eklerken
-        // öğrenci/öğretmen/ücret/tarih AYNEN korunuyor — tekrar seçmeye gerek yok.
-        // Saat girilmişse, bir sonraki dersin başlangıcı otomatik olarak "bu dersin
-        // bitişi + 10 dakika ara" olarak öneriliyor (bitiş de +45dk ile hesaplanıyor).
-        // Bu sadece formu ÖNCEDEN dolduruyor — kaydetmek için yine "Ekle"ye basmak gerekiyor.
-        const bekliyorNotu = ileriTarihli
-          ? ' İleri tarihli olduğu için "Bekliyor" olarak eklendi, henüz borç eklenmedi — ders yapıldıktan sonra "Tüm Bire Bir Dersler" listesinden Geldi/Gelmedi işaretleyin.'
-          : ''
-        if (tekBitis) {
-          const yeniBaslangic = saateDakikaEkle(tekBitis, 10)
-          const yeniBitis = saateDakikaEkle(yeniBaslangic, 45)
-          setTekBaslangic(yeniBaslangic)
-          setTekBitis(yeniBitis)
-          setBasari(
-            `✓ Eklendi.${bekliyorNotu} Sıradaki ders için ${new Date(tarih + 'T12:00:00').toLocaleDateString('tr-TR')} tarihinde ${yeniBaslangic}–${yeniBitis} önerildi (10dk ara) — kontrol edip tekrar "Ekle"ye basabilirsiniz.`
-          )
-        } else {
-          setBasari(`✓ Tek seferlik ders eklendi.${bekliyorNotu}`)
+        const gunNum = gunNumaraTarihten(tarih)
+        const sinifUyari = ogrenciSinifDersiUyarisiBul(ogrenciId, gunNum, tekBaslangic, tekBitis, dersProgrami, sinifOgrencileri)
+        if (sinifUyari) {
+          setSinifUyarisi(sinifUyari.aciklama)
+          return
         }
-        tekBaslangicRef.current?.focus()
-        onEklendi()
       }
+
+      await tekSeferlikKaydet()
     }
+  }
+
+  // "Sınıf dersi var" uyarısı gösterilirken admin'in bastığı "Evet, yine de
+  // ekle" — hard/çakışma kontrolleri az önce ekle() içinde zaten geçtiği için
+  // burada tekrar kontrol etmeden, doğrudan ilgili kaydet fonksiyonunu çağırır.
+  async function sinifUyarisinaRagmenEkle() {
+    setSinifUyarisi('')
+    if (tekrarlansin) await haftalikKaydet()
+    else await tekSeferlikKaydet()
   }
 
   // Formu doldurup henüz kesinleşmemiş bir ders için "Taslağa Kaydet" — gerçek
@@ -681,6 +747,29 @@ function BireBirDersEkleForm({ ogrenciler, ogretmenler, atamalar, dersProgrami, 
           Taslağa Kaydet
         </button>
       </div>
+
+      {sinifUyarisi && (
+        <div className="mt-3 bg-yellow-50 border border-yellow-200 rounded-lg p-3">
+          <p className="text-sm text-yellow-800">⚠ Uyarı: {sinifUyarisi}. Bire bir dersi yine de eklemek ister misiniz?</p>
+          <div className="flex gap-2 mt-2">
+            <button
+              type="button"
+              onClick={sinifUyarisinaRagmenEkle}
+              disabled={gonderiliyor}
+              className="bg-orange text-white text-sm font-semibold px-4 py-1.5 rounded-lg hover:opacity-90 disabled:opacity-50"
+            >
+              {gonderiliyor ? 'Ekleniyor...' : 'Evet, yine de ekle'}
+            </button>
+            <button
+              type="button"
+              onClick={() => setSinifUyarisi('')}
+              className="bg-white border border-gray-200 text-gray-600 text-sm font-semibold px-4 py-1.5 rounded-lg hover:bg-gray-50"
+            >
+              Vazgeç
+            </button>
+          </div>
+        </div>
+      )}
 
       {hata && <p className="text-red-600 text-sm mt-3">{hata}</p>}
       {!hata && basari && <p className="text-green-600 text-sm mt-3">{basari}</p>}
@@ -1985,6 +2074,10 @@ export default function BireBir() {
   const [sadeceAktif, setSadeceAktif] = useState(true)
   const [sadeceBugun, setSadeceBugun] = useState(true)
   const [yoklamaArama, setYoklamaArama] = useState('')
+  // Öğrencinin hangi sınıf(lar)a kayıtlı olduğunu tutan ara tablo — bire bir ders
+  // eklerken, öğrencinin KENDİ sınıf dersiyle çakışıp çakışmadığını (uyarı olarak,
+  // engellemeden) göstermek için kullanılıyor, bkz. ogrenciSinifDersiUyarisiBul.
+  const [sinifOgrencileri, setSinifOgrencileri] = useState([])
   // Müsaitlik tablosunda boş bir hücreye tıklanınca buraya { ogretmenId, tarih,
   // baslangic, bitis } yazılır; BireBirDersEkleForm bunu izleyip kendini otomatik
   // doldurur (bkz. hucreTiklandi).
@@ -2011,6 +2104,9 @@ export default function BireBir() {
       // Bu join eksik olduğu için Müsaitlik Tablosu'nda (bu sayfadaki) sınıf
       // dersleri, ders_adi boşsa hep "Sınıf dersi" yazıyordu.
       isYonetici ? supabase.from('ders_programi').select('*, siniflar(ad)') : Promise.resolve({ data: [] }),
+      // Öğrencinin hangi sınıf(lar)a kayıtlı olduğu — bire bir ders eklerken
+      // "bu öğrencinin sınıf dersi var" uyarısını gösterebilmek için.
+      isYonetici ? supabase.from('sinif_ogrenciler').select('ogrenci_id, sinif_id') : Promise.resolve({ data: [] }),
       supabase
         .from('bire_bir_atamalari')
         // "Ders Hatırlatması Gönder" paneli için öğrencinin kendi telefonu ile
@@ -2029,10 +2125,11 @@ export default function BireBir() {
       isYonetici
         ? supabase.from('taslaklar').select('*').in('tur', ['bire_bir_haftalik', 'bire_bir_tekil']).order('created_at')
         : Promise.resolve({ data: [] }),
-    ]).then(([o, og, dp, a, y, t]) => {
+    ]).then(([o, og, dp, so, a, y, t]) => {
       setOgrenciler(o.data || [])
       setOgretmenler(og.data || [])
       setDersProgrami((dp.data || []).map((d) => ({ ...d, sinif_adi: d.siniflar?.ad })))
+      setSinifOgrencileri(so.data || [])
       setAtamalar(
         (a.data || []).map((d) => ({
           ...d,
@@ -2149,6 +2246,7 @@ export default function BireBir() {
             atamalar={atamalar}
             dersProgrami={dersProgrami}
             yoklamalar={yoklamalar}
+            sinifOgrencileri={sinifOgrencileri}
             onEklendi={dersEklendiVeyaTaslaklandi}
             doldurBilgisi={doldurBilgisi}
           />
