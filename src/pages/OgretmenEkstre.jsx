@@ -55,6 +55,10 @@ export default function OgretmenEkstre() {
 
   const toplamDers = dersler.length
   const toplamTutar = dersler.reduce((t, d) => t + d.tutar, 0)
+  // Soru Çözümü seansları ücretsiz olduğu için toplam tutara katkısı yok, ama
+  // toplam ders SAYISINA dahil oluyor — "13 ders" derken kaç tanesinin ders,
+  // kaç tanesinin soru çözümü olduğu ayrıca belirtilmezse yanıltıcı olabiliyor.
+  const soruCozumuSayisi = dersler.filter((d) => d.tur === 'soru_cozumu').length
 
   return (
     <div className="min-h-screen bg-cream py-8 px-4">
@@ -105,6 +109,11 @@ export default function OgretmenEkstre() {
                 <span className="font-bold text-navy">TOPLAM VERİLEN DERS (TÜM ZAMANLAR)</span>
                 <span className="font-bold text-navy text-lg">{toplamDers} ders — {paraFormat(toplamTutar)}</span>
               </div>
+              {soruCozumuSayisi > 0 && (
+                <div className="px-4 py-2 bg-purple-50 border-t border-purple-100 text-xs text-purple-700">
+                  Bunların <b>{soruCozumuSayisi}</b> tanesi Soru Çözümü seansı (ücretsiz, tutara dahil değil).
+                </div>
+              )}
             </div>
 
             {dersler.length === 0 ? (
