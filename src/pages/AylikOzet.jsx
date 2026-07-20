@@ -39,6 +39,11 @@ function gruplaOgrenciye(satirlar, adFn) {
 // cevap verir. Sadece yönetici erişebilir (App.jsx'te kısıtlı).
 export default function AylikOzet() {
   const [seciliAy, setSeciliAy] = useState(suankiAy)
+  // Ekranda Bire Bir/Kantin tablolarını yan yana/alt alta AYNI ANDA göstermek
+  // yerine sekmeyle ayırıyoruz — hangisine bakmak istiyorsa sadece o
+  // görünsün diye. Yazdırırken (PDF) ise İKİSİ de görünmeli (patronla
+  // paylaşılacak rapor eksik olmasın) — bkz. aşağıdaki print CSS override.
+  const [sekme, setSekme] = useState('birebir') // 'birebir' | 'kantin'
   const [bireBirDersler, setBireBirDersler] = useState([])
   const [kantinAlislari, setKantinAlislari] = useState([])
   const [loading, setLoading] = useState(true)
@@ -106,6 +111,9 @@ export default function AylikOzet() {
           .no-print { display: none !important; }
           body { background: white !important; }
           .aylik-ozet-blok, .aylik-ozet-blok table, tr { break-inside: avoid; page-break-inside: avoid; }
+          /* Ekranda sekmeyle sadece biri gösterilse de, yazdırırken/PDF'te
+             hem Bire Bir hem Kantin görünsün — rapor patronla paylaşılınca eksik olmasın. */
+          .sekme-birebir, .sekme-kantin { display: block !important; }
         }
       `}</style>
       <div className="max-w-3xl mx-auto">
@@ -171,7 +179,31 @@ export default function AylikOzet() {
               </p>
             )}
 
-            <div className="mb-8 aylik-ozet-blok">
+            <div className="no-print flex gap-1.5 mb-4">
+              <button
+                type="button"
+                onClick={() => setSekme('birebir')}
+                className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors ${
+                  sekme === 'birebir' ? 'bg-navy text-white' : 'bg-white border border-gray-200 text-gray-600 hover:bg-gray-100'
+                }`}
+              >
+                Bire Bir
+              </button>
+              <button
+                type="button"
+                onClick={() => setSekme('kantin')}
+                className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors ${
+                  sekme === 'kantin' ? 'bg-navy text-white' : 'bg-white border border-gray-200 text-gray-600 hover:bg-gray-100'
+                }`}
+              >
+                Kantin
+              </button>
+            </div>
+
+            <div
+              className="mb-8 aylik-ozet-blok sekme-birebir"
+              style={{ display: sekme === 'birebir' ? 'block' : 'none' }}
+            >
               <p className="font-bold text-navy mb-2">Bire Bir Dersler — Öğrenci Bazında</p>
               {bireBirOgrenciler.length === 0 ? (
                 <p className="text-sm text-gray-400">Bu ay bire bir ders kaydı yok.</p>
@@ -204,7 +236,10 @@ export default function AylikOzet() {
               )}
             </div>
 
-            <div className="aylik-ozet-blok">
+            <div
+              className="aylik-ozet-blok sekme-kantin"
+              style={{ display: sekme === 'kantin' ? 'block' : 'none' }}
+            >
               <p className="font-bold text-navy mb-2">Kantin — Öğrenci Bazında</p>
               {kantinOgrenciler.length === 0 ? (
                 <p className="text-sm text-gray-400">Bu ay kantin alışı kaydı yok.</p>
