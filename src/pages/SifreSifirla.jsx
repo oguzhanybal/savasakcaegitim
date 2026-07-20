@@ -121,6 +121,122 @@ function SifreSifirlaSatiri({ kullanici, onTamamlandi }) {
   )
 }
 
+// Kullanıcı adları burada gerçek e-postalar DEĞİL — kullanici-olustur.js'teki
+// kuralla aynı: "@" içermeyenlerin sonuna sahte "@savasakcaegitim.giris"
+// domain'i otomatik eklenir. Admin bunu her seferinde elle yazmasın diye,
+// düzenleme kutusuna mevcut kullanıcı adını gösterirken bu sahte domain'i
+// kırpıyoruz (gerçek e-postası olan — genelde yönetici — hesaplarda dokunmadan
+// olduğu gibi gösteriyoruz).
+const SAHTE_DOMAIN = '@savasakcaegitim.giris'
+function kullaniciAdiGosterimineCevir(email) {
+  if (!email) return ''
+  return email.endsWith(SAHTE_DOMAIN) ? email.slice(0, -SAHTE_DOMAIN.length) : email
+}
+
+// Bir kullanıcının satırdaki "Kullanıcı Adı Değiştir" akışı — şifreye
+// dokunmaz, sadece giriş adını (auth.users e-postasını) değiştirir. Ör. bir
+// veli hesabı yanlış/istenmeyen bir kullanıcı adıyla açılmışsa buradan
+// düzeltilebilir.
+function KullaniciAdiDegistirSatiri({ kullanici, onTamamlandi }) {
+  const [acik, setAcik] = useState(false)
+  const [yeniKullaniciAdi, setYeniKullaniciAdi] = useState('')
+  const [gonderiliyor, setGonderiliyor] = useState(false)
+  const [hata, setHata] = useState('')
+  const [basari, setBasari] = useState('')
+
+  function ac() {
+    setYeniKullaniciAdi(kullaniciAdiGosterimineCevir(kullanici.kullanici_adi))
+    setAcik(true)
+    setHata('')
+    setBasari('')
+  }
+
+  async function kaydet() {
+    setHata('')
+    const temiz = yeniKullaniciAdi.trim()
+    if (!temiz) {
+      setHata('Kullanıcı adı boş olamaz.')
+      return
+    }
+    setGonderiliyor(true)
+    try {
+      const yanit = await fetch('/api/kullanici-adi-degistir', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: kullanici.id, yeniKullaniciAdi: temiz }),
+      })
+      const veri = await yanit.json()
+      if (!yanit.ok) {
+        setHata(veri.error || 'Bilinmeyen bir hata oluştu.')
+      } else {
+        setBasari(`✓ Kullanıcı adı "${veri.kullaniciAdi}" olarak değiştirildi.`)
+        setAcik(false)
+        onTamamlandi?.()
+      }
+    } catch (err) {
+      setHata('Bağlantı hatası: ' + err.message)
+    }
+    setGonderiliyor(false)
+  }
+
+  if (basari) {
+    return (
+      <div className="bg-green-50 border border-green-200 rounded-lg p-3 text-sm text-green-800">
+        <p>{basari}</p>
+        <button onClick={() => setBasari('')} className="text-xs text-green-700 underline mt-1 hover:no-underline">
+          Kapat
+        </button>
+      </div>
+    )
+  }
+
+  if (!acik) {
+    return (
+      <button type="button" onClick={ac} className="text-navy text-sm font-semibold hover:underline">
+        Kullanıcı Adı Değiştir
+      </button>
+    )
+  }
+
+  return (
+    <div className="bg-blue-50 border border-blue-100 rounded-lg p-3">
+      <div className="flex flex-wrap gap-2 items-end">
+        <div className="flex-1 min-w-[160px]">
+          <label className="block text-xs font-medium text-gray-500 mb-1">Yeni Kullanıcı Adı</label>
+          <input
+            type="text"
+            value={yeniKullaniciAdi}
+            onChange={(e) => setYeniKullaniciAdi(e.target.value)}
+            autoCapitalize="none"
+            autoCorrect="off"
+            className="w-full px-2 py-1.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue"
+          />
+        </div>
+        <button
+          type="button"
+          onClick={kaydet}
+          disabled={gonderiliyor}
+          className="bg-orange text-white text-sm font-semibold px-3 py-1.5 rounded-lg hover:opacity-90 transition-opacity disabled:opacity-50 whitespace-nowrap"
+        >
+          {gonderiliyor ? 'Kaydediliyor...' : 'Kaydet'}
+        </button>
+        <button
+          type="button"
+          onClick={() => { setAcik(false); setHata('') }}
+          className="text-gray-500 text-sm px-2 py-1.5 hover:text-gray-700 whitespace-nowrap"
+        >
+          Vazgeç
+        </button>
+      </div>
+      {hata && <p className="text-red-600 text-xs mt-2">{hata}</p>}
+      <p className="text-[11px] text-gray-400 mt-1.5">
+        Gerçek bir e-posta değilse (yönetici dışındaki roller genelde böyledir) sadece kullanıcı adını yazmanız
+        yeterli — "@..." kısmı otomatik eklenir.
+      </p>
+    </div>
+  )
+}
+
 export default function SifreSifirla() {
   const [kullanicilar, setKullanicilar] = useState([])
   const [loading, setLoading] = useState(true)
@@ -241,7 +357,10 @@ export default function SifreSifirla() {
                   )}
                 </td>
                 <td className="px-4 py-3 align-top min-w-[220px]">
-                  <SifreSifirlaSatiri kullanici={k} onTamamlandi={yukle} />
+                  <div className="flex flex-col items-start gap-2">
+                    <SifreSifirlaSatiri kullanici={k} onTamamlandi={yukle} />
+                    <KullaniciAdiDegistirSatiri kullanici={k} onTamamlandi={yukle} />
+                  </div>
                 </td>
               </tr>
             ))}
