@@ -902,6 +902,11 @@ export default function DersProgrami() {
   // görünümü arasında geçiş.
   const [yonetimGorunum, setYonetimGorunum] = useState('ekle')
   const ilkYuklemeTamamRef = useRef(false)
+  // Öğretmen için: yöneticinin kendisine atadığı "Soru Çözümü" seansları —
+  // öğrenciye/veliye HİÇ gösterilmez, sadece atanan öğretmen kendi Ders
+  // Programı sayfasında görsün diye. bire_bir_yoklama'dan, ogrenci_id boş
+  // olan tur='soru_cozumu' satırları çekilir.
+  const [soruCozumuSeanslarim, setSoruCozumuSeanslarim] = useState([])
 
   function veriyiYenile() {
     if (!ilkYuklemeTamamRef.current) setLoading(true)
@@ -1005,6 +1010,23 @@ export default function DersProgrami() {
           ilkYuklemeTamamRef.current = true
           setLoading(false)
         })
+      } else if (profile?.rol === 'ogretmen') {
+        // Öğretmen için: yöneticinin kendisine atadığı "Soru Çözümü" seansları —
+        // veliye/öğrenciye asla gösterilmez (bkz. yukarıdaki not), sadece
+        // atanan öğretmen kendi Ders Programı sayfasında görür.
+        supabase
+          .from('bire_bir_yoklama')
+          .select('*')
+          .eq('ogretmen_profile_id', profile.id)
+          .eq('tur', 'soru_cozumu')
+          .order('tarih')
+          .order('baslangic_saat')
+          .then((res) => {
+            if (res.error) console.error('Soru çözümü sorgusu hatası:', res.error.message)
+            setSoruCozumuSeanslarim(res.data || [])
+            ilkYuklemeTamamRef.current = true
+            setLoading(false)
+          })
       } else {
         ilkYuklemeTamamRef.current = true
         setLoading(false)
@@ -1088,7 +1110,26 @@ export default function DersProgrami() {
   // "program"ı kullanıyor — orada müsaitlik kontrolü için okulun tamamını
   // görmesi gerekiyor, bkz. aşağıdaki MusaitlikTablosu/GunlukProgramListesi.)
   const isOgretmen = profile?.rol === 'ogretmen'
-  const kendiProgram = isOgretmen ? program.filter((p) => p.ogretmen_profile_id === profile.id) : program
+  // Öğretmenin Soru Çözümü seansları, sınıf dersleriyle AYNI tabloda/listede
+  // görünsün diye (ayrı bir bölüm olarak değil) burada normal ders programı
+  // satırlarıyla aynı şekle çevrilip kendiProgram'a ekleniyor. Belirli bir
+  // TARİHE bağlı olsalar da (haftalık tekrar eden bir "gun" değil), o tarihin
+  // hangi haftanın gününe denk geldiği hesaplanıp o güne yerleştiriliyor.
+  const kendiProgram = isOgretmen
+    ? [
+        ...program.filter((p) => p.ogretmen_profile_id === profile.id),
+        ...soruCozumuSeanslarim.map((s) => ({
+          id: `sc-${s.id}`,
+          gun: gunNumaraTarihten(s.tarih),
+          baslangic_saat: s.baslangic_saat,
+          bitis_saat: s.bitis_saat,
+          ders_adi: 'Soru Çözümü',
+          sinif_adi: null,
+          ogretmen_adi: null,
+          ogretmen_profile_id: profile.id,
+        })),
+      ]
+    : program
 
   const gunlereGore = GUNLER.map((_, gun) => kendiProgram.filter((p) => p.gun === gun)).slice(1)
 
