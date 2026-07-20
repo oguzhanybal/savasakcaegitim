@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
-import { adSoyadDuzelt, ilkHarfleriBuyukYap } from '../lib/adSoyadFormat'
+import { adSoyadDuzelt, ilkHarfleriBuyukYap, kullaniciAdiOner } from '../lib/adSoyadFormat'
 import { telefonYerelGoster } from '../lib/telefonFormat'
 import TelefonInput from '../components/TelefonInput'
 
@@ -191,6 +191,25 @@ export default function Ogrenciler() {
   // borç/ödemesi o kişinin ekstresinde toplanır (bkz. Muhasebe.jsx/Ekstre.jsx).
   const [faturaBaglanan, setFaturaBaglanan] = useState(null)
   const [seciliFaturaSahibi, setSeciliFaturaSahibi] = useState('')
+  // "Öğrenci Ekle" formunda işaretliyse, kayıt tamamlandığı anda otomatik
+  // hesap önerisi satırı açılır (kullanıcı adı isimden, şifre varsayılan
+  // "123456" — ikisi de onaylamadan önce değiştirilebilir) — "teker teker
+  // hesap açmak zor" isteğine karşılık, tek adımda hem kayıt hem giriş
+  // açılabilsin diye.
+  const [otomatikHesapAc, setOtomatikHesapAc] = useState(true)
+  // Hangi öğrenci satırında "Otomatik Hesap Oluştur" önizleme/düzenleme
+  // satırı açık — kullanıcı adı ve şifre ONAYLANMADAN önce değiştirilebilsin
+  // diye (bkz. "değiştirebiliyor muyum" isteği), diğer "X Bağla" akışlarıyla
+  // aynı satır-içi düzenleme deseni kullanılıyor.
+  const [otomatikHesapBaglanan, setOtomatikHesapBaglanan] = useState(null)
+  const [otomatikKullaniciAdi, setOtomatikKullaniciAdi] = useState('')
+  const [otomatikSifre, setOtomatikSifre] = useState('')
+  const [otomatikHesapIslemde, setOtomatikHesapIslemde] = useState(false)
+  // Okulun tüm öğrencilerine tek tip, hatırlaması kolay bir varsayılan şifre
+  // verilsin isteniyor — admin isterse satırda değiştirebilir, istemezse hep
+  // bu değer önerilir. Öğrenci daha sonra "Şifremi Değiştir" sayfasından
+  // kendi şifresini değiştirebilir.
+  const VARSAYILAN_SIFRE = '123456'
 
   async function yukle() {
     setLoading(true)
@@ -227,24 +246,35 @@ export default function Ogrenciler() {
     e.preventDefault()
     if (!yeniForm.ad_soyad.trim()) return
     setEkleniyor(true)
-    const { error } = await supabase.from('ogrenciler').insert({
-      ad_soyad: adSoyadDuzelt(yeniForm.ad_soyad),
-      tc_kimlik_no: yeniForm.tc_kimlik_no.trim() || null,
-      dogum_tarihi: yeniForm.dogum_tarihi || null,
-      telefon: yeniForm.telefon.trim() || null,
-      sinif_ve_alan: yeniForm.sinif_ve_alan.trim() ? ilkHarfleriBuyukYap(yeniForm.sinif_ve_alan.trim()) : null,
-      okul: yeniForm.okul.trim() ? ilkHarfleriBuyukYap(yeniForm.okul.trim()) : null,
-      anne_adi_soyadi: yeniForm.anne_adi_soyadi.trim() ? adSoyadDuzelt(yeniForm.anne_adi_soyadi) : null,
-      anne_telefon: yeniForm.anne_telefon.trim() || null,
-      baba_adi_soyadi: yeniForm.baba_adi_soyadi.trim() ? adSoyadDuzelt(yeniForm.baba_adi_soyadi) : null,
-      baba_telefon: yeniForm.baba_telefon.trim() || null,
-      adres: yeniForm.adres.trim() ? ilkHarfleriBuyukYap(yeniForm.adres.trim()) : null,
-      notlar: yeniForm.notlar.trim() || null,
-    })
+    const { data: eklenen, error } = await supabase
+      .from('ogrenciler')
+      .insert({
+        ad_soyad: adSoyadDuzelt(yeniForm.ad_soyad),
+        tc_kimlik_no: yeniForm.tc_kimlik_no.trim() || null,
+        dogum_tarihi: yeniForm.dogum_tarihi || null,
+        telefon: yeniForm.telefon.trim() || null,
+        sinif_ve_alan: yeniForm.sinif_ve_alan.trim() ? ilkHarfleriBuyukYap(yeniForm.sinif_ve_alan.trim()) : null,
+        okul: yeniForm.okul.trim() ? ilkHarfleriBuyukYap(yeniForm.okul.trim()) : null,
+        anne_adi_soyadi: yeniForm.anne_adi_soyadi.trim() ? adSoyadDuzelt(yeniForm.anne_adi_soyadi) : null,
+        anne_telefon: yeniForm.anne_telefon.trim() || null,
+        baba_adi_soyadi: yeniForm.baba_adi_soyadi.trim() ? adSoyadDuzelt(yeniForm.baba_adi_soyadi) : null,
+        baba_telefon: yeniForm.baba_telefon.trim() || null,
+        adres: yeniForm.adres.trim() ? ilkHarfleriBuyukYap(yeniForm.adres.trim()) : null,
+        notlar: yeniForm.notlar.trim() || null,
+      })
+      .select()
+      .single()
     setEkleniyor(false)
     if (!error) {
       setYeniForm(BOS_FORM)
       yukle()
+      // "Kaydederken otomatik öğrenci girişi öner" işaretliyse, kayıt biter
+      // bitmez aynı satırda onay bekleyen hesap-oluşturma önizlemesini
+      // açıyoruz — admin ayrıca aşağı inip "Otomatik Hesap Oluştur"a
+      // basmak zorunda kalmasın diye.
+      if (otomatikHesapAc && eklenen) {
+        otomatikHesapOnizlemeyeBasla(eklenen)
+      }
     } else {
       alert('Hata: ' + error.message)
     }
@@ -341,6 +371,76 @@ export default function Ogrenciler() {
     }
   }
 
+  // "Öğrenci Hesabı Bağla" akışı (isim ara, hesap seç, kaydet) her öğrenci
+  // için teker teker yapılınca çok yavaş kalıyordu. Bu akış; isimden bir
+  // kullanıcı adı ÖNERİR (ör. "Yiğit Atik" -> "yigitatik") ve varsayılan
+  // şifreyi ("123456") satırda ONAY BEKLEYEN, İKİSİ DE DÜZENLENEBİLİR bir
+  // önizleme olarak açar — admin isterse kullanıcı adını/şifreyi değiştirip
+  // öyle onaylar. Onaylayınca /api/kullanici-olustur ile hesap oluşturulur
+  // ve doğrudan bu öğrenciye bağlanır. Kullanıcı adı çakışırsa (aynı isimde
+  // başka bir kayıt varsa) sunucu otomatik olarak sonuna 2, 3... ekleyerek
+  // çözüyor (bkz. api/kullanici-olustur.js).
+  function otomatikHesapOnizlemeyeBasla(o) {
+    setOtomatikHesapBaglanan(o.id)
+    setOtomatikKullaniciAdi(kullaniciAdiOner(o.ad_soyad))
+    setOtomatikSifre(VARSAYILAN_SIFRE)
+  }
+
+  async function otomatikHesabiOnayla(o) {
+    const kullaniciAdi = otomatikKullaniciAdi.trim()
+    const sifre = otomatikSifre
+    if (!kullaniciAdi) {
+      alert('Kullanıcı adı boş olamaz.')
+      return
+    }
+    if (!sifre || sifre.length < 6) {
+      alert('Şifre en az 6 karakter olmalı.')
+      return
+    }
+    setOtomatikHesapIslemde(true)
+    try {
+      const yanit = await fetch('/api/kullanici-olustur', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          adSoyad: o.ad_soyad,
+          kullaniciAdi,
+          sifre,
+          rol: 'ogrenci',
+          telefon: o.telefon || '',
+        }),
+      })
+      const veri = await yanit.json()
+      if (!yanit.ok) {
+        alert('Hesap oluşturulamadı: ' + (veri.error || 'Bilinmeyen bir hata oluştu.'))
+        setOtomatikHesapIslemde(false)
+        return
+      }
+      const { error: baglamaHatasi } = await supabase
+        .from('ogrenciler')
+        .update({ ogrenci_profile_id: veri.userId })
+        .eq('id', o.id)
+      if (baglamaHatasi) {
+        alert('Hesap oluşturuldu ama öğrenciye bağlanamadı: ' + baglamaHatasi.message)
+        setOtomatikHesapIslemde(false)
+        return
+      }
+      // Sunucu, çakışma varsa kullanıcı adına numara eklemiş olabilir — admin
+      // gerçekte hangi adla oluşturulduğunu görsün diye sunucudan dönen adı
+      // gösteriyoruz (kendi yazdığından farklı olabilir).
+      alert(
+        `Hesap oluşturuldu ve "${o.ad_soyad}" öğrencisine bağlandı.\n\n` +
+        `Giriş adı: ${veri.kullaniciAdi}\nŞifre: ${sifre}${veri.kullaniciAdi !== kullaniciAdi ? '\n\n(Not: yazdığınız kullanıcı adı doluydu, sonuna numara eklendi.)' : ''}`
+      )
+      setOtomatikHesapIslemde(false)
+      setOtomatikHesapBaglanan(null)
+      yukle()
+    } catch (err) {
+      alert('Bağlantı hatası: ' + err.message)
+      setOtomatikHesapIslemde(false)
+    }
+  }
+
   function faturaBaglamayaBasla(o) {
     setFaturaBaglanan(o.id)
     setSeciliFaturaSahibi(o.fatura_sahibi_id || '')
@@ -374,10 +474,18 @@ export default function Ogrenciler() {
       <form onSubmit={ogrenciEkle} className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5 mb-6">
         <p className="font-semibold text-gray-700 mb-3">Öğrenci Ekle</p>
         <KayitFormuAlanlari form={yeniForm} alanGuncelle={yeniAlanGuncelle} />
+        <label className="flex items-center gap-2 text-sm text-gray-600 select-none mt-4">
+          <input
+            type="checkbox"
+            checked={otomatikHesapAc}
+            onChange={(e) => setOtomatikHesapAc(e.target.checked)}
+          />
+          Kaydederken otomatik öğrenci girişi öner (kullanıcı adı isimden, şifre varsayılan "123456" — onaylamadan önce değiştirebilirsiniz)
+        </label>
         <button
           type="submit"
           disabled={ekleniyor}
-          className="mt-4 bg-orange text-white font-semibold px-5 py-2 rounded-lg hover:opacity-90 transition-opacity disabled:opacity-50"
+          className="mt-3 bg-orange text-white font-semibold px-5 py-2 rounded-lg hover:opacity-90 transition-opacity disabled:opacity-50"
         >
           {ekleniyor ? 'Ekleniyor...' : 'Öğrenci Ekle'}
         </button>
@@ -448,6 +556,7 @@ export default function Ogrenciler() {
               const veliBagli = veliBaglanan === o.id
               const ogrenciHesabiBagli = ogrenciHesabiBaglanan === o.id
               const faturaBagli = faturaBaglanan === o.id
+              const otomatikHesapBagli = otomatikHesapBaglanan === o.id
 
               if (duzenleniyor) {
                 return (
@@ -560,6 +669,57 @@ export default function Ogrenciler() {
                 )
               }
 
+              if (otomatikHesapBagli) {
+                return (
+                  <tr key={o.id} className="bg-orange/10">
+                    <td className="px-4 py-3 font-medium text-gray-800">{o.ad_soyad}</td>
+                    <td className="px-4 py-3 text-gray-500">{o.telefon || '—'}</td>
+                    <td className="px-4 py-2" colSpan={5}>
+                      <div className="flex flex-wrap gap-3">
+                        <div className="flex-1 min-w-[160px]">
+                          <label className="block text-xs font-medium text-gray-500 mb-1">Kullanıcı Adı</label>
+                          <input
+                            value={otomatikKullaniciAdi}
+                            onChange={(e) => setOtomatikKullaniciAdi(e.target.value)}
+                            autoCapitalize="none"
+                            autoCorrect="off"
+                            className="w-full px-2 py-1.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue"
+                          />
+                        </div>
+                        <div className="flex-1 min-w-[140px]">
+                          <label className="block text-xs font-medium text-gray-500 mb-1">Şifre</label>
+                          <input
+                            value={otomatikSifre}
+                            onChange={(e) => setOtomatikSifre(e.target.value)}
+                            className="w-full px-2 py-1.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue"
+                          />
+                        </div>
+                      </div>
+                      <p className="text-xs text-gray-500 mt-1">
+                        İkisi de otomatik önerildi, isterseniz değiştirebilirsiniz. "Oluştur"a basınca bu bilgilerle
+                        öğrenci girişi açılır ve {o.ad_soyad} öğrencisine bağlanır.
+                      </p>
+                    </td>
+                    <td className="px-4 py-2 text-right space-x-3 whitespace-nowrap">
+                      <button
+                        onClick={() => otomatikHesabiOnayla(o)}
+                        disabled={otomatikHesapIslemde}
+                        className="text-green-600 text-sm font-semibold hover:underline disabled:opacity-50"
+                      >
+                        {otomatikHesapIslemde ? 'Oluşturuluyor...' : 'Oluştur'}
+                      </button>
+                      <button
+                        onClick={() => setOtomatikHesapBaglanan(null)}
+                        disabled={otomatikHesapIslemde}
+                        className="text-gray-500 text-sm hover:underline disabled:opacity-50"
+                      >
+                        Vazgeç
+                      </button>
+                    </td>
+                  </tr>
+                )
+              }
+
               return (
                 <tr key={o.id} className={i % 2 ? 'bg-gray-50' : ''}>
                   <td className="px-4 py-3 font-medium">
@@ -611,6 +771,15 @@ export default function Ogrenciler() {
                       <button onClick={() => ogrenciHesabiBaglamayaBasla(o)} className="text-purple-600 text-sm hover:underline">
                         Öğrenci Hesabı Bağla
                       </button>
+                      {!o.ogrenci_profile_id && (
+                        <button
+                          onClick={() => otomatikHesapOnizlemeyeBasla(o)}
+                          className="text-orange text-sm hover:underline"
+                          title="İsimden kullanıcı adı ve varsayılan şifre önerir, onaylamadan önce değiştirebilirsiniz"
+                        >
+                          Otomatik Hesap Oluştur
+                        </button>
+                      )}
                       <button onClick={() => faturaBaglamayaBasla(o)} className="text-purple-600 text-sm hover:underline">
                         Fatura Ortağı Bağla
                       </button>
@@ -643,7 +812,9 @@ export default function Ogrenciler() {
         bir veli hesabını bu öğrenciyle eşleştirebilirsiniz — veli giriş yaptığında sadece bu öğrencinin bilgilerini görür.
         "Fatura Ortağı Bağla" ise ör. ikiz kardeşler gibi ders programı ayrı ama muhasebesi ortak olan öğrenciler
         içindir: bir öğrenciyi diğerine bağlarsanız, bağlanan öğrencinin tüm borç/ödemeleri diğerinin ekstresinde
-        toplu görünür; ders programları yine ayrı ayrı kalır.
+        toplu görünür; ders programları yine ayrı ayrı kalır. "Otomatik Hesap Oluştur" ise öğrencinin kendi girişi
+        (kullanıcı adı+şifre) yoksa, isminden bir kullanıcı adı ve varsayılan "123456" şifresini önerir — onaylamadan
+        önce ikisini de satırda değiştirebilirsiniz — sonra hesabı açıp doğrudan bu öğrenciye bağlar.
       </p>
     </div>
   )
