@@ -19,6 +19,7 @@ import OgretmenEkstre from './pages/OgretmenEkstre'
 import GenelBireBirEkstre from './pages/GenelBireBirEkstre'
 import TopluEkstre from './pages/TopluEkstre'
 import GelirRaporu from './pages/GelirRaporu'
+import AylikOzet from './pages/AylikOzet'
 import KullaniciOlustur from './pages/KullaniciOlustur'
 import Kantin from './pages/Kantin'
 import SinavKitapciklari from './pages/SinavKitapciklari'
@@ -227,6 +228,14 @@ function AnaUygulama() {
             element={
               <Korumali izinliRoller={['yonetici']}>
                 <GelirRaporu />
+              </Korumali>
+            }
+          />
+          <Route
+            path="aylik-ozet"
+            element={
+              <Korumali izinliRoller={['yonetici']}>
+                <AylikOzet />
               </Korumali>
             }
           />
