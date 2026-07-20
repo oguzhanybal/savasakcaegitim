@@ -41,7 +41,7 @@ export default function BireBirDersDokumu({
   hedefDonem = null,
   ikinciTarafBasligi = null,
 }) {
-  const [periyot, setPeriyot] = useState(hedefDonem ? 'ay' : baslangicPeriyot) // 'hafta' | 'ay'
+  const [periyot, setPeriyot] = useState(hedefDonem ? 'ay' : baslangicPeriyot) // 'hafta' | 'ay' | 'hepsi'
   const [gosterilenSayisi, setGosterilenSayisi] = useState(6)
 
   // İçinde bulunduğumuz haftanın/ayın anahtarını döner — AMA sadece o dönemde
@@ -73,7 +73,13 @@ export default function BireBirDersDokumu({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [hedefDonem])
 
+  // "Tüm Zamanlar" seçiliyse hafta/aya göre BÖLMEDEN, tüm dersleri tek bir
+  // sahte grupta ("tumu") topluyoruz — böyle aynı tabloYaz/gosterilenGruplar
+  // mekanizması hiç değişmeden tek tablo olarak render edilebiliyor.
   const tumGruplar = useMemo(() => {
+    if (periyot === 'hepsi') {
+      return dersler.length > 0 ? [['tumu', dersler]] : []
+    }
     const anahtarUret = periyot === 'ay' ? ayBaslangici : haftaBaslangici
     const gruplar = dersler.reduce((acc, d) => {
       const anahtar = anahtarUret(d.tarih)
@@ -87,7 +93,7 @@ export default function BireBirDersDokumu({
   const gosterilenGruplar = seciliDonem
     ? tumGruplar.filter(([anahtar]) => anahtar === seciliDonem)
     : tumGruplar.slice(0, gosterilenSayisi)
-  const etiketUret = periyot === 'ay' ? ayEtiketi : haftaEtiketi
+  const etiketUret = periyot === 'ay' ? ayEtiketi : periyot === 'hepsi' ? () => 'Tüm Zamanlar' : haftaEtiketi
 
   if (dersler.length === 0) {
     return <p className="text-sm text-gray-400">Kayıtlı ders bulunamadı.</p>
@@ -119,16 +125,30 @@ export default function BireBirDersDokumu({
         >
           Aylık
         </button>
-        <select
-          value={seciliDonem}
-          onChange={(e) => setSeciliDonem(e.target.value)}
-          className="px-2.5 py-1.5 rounded-lg text-xs font-semibold border border-gray-200 bg-white text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue"
+        <button
+          type="button"
+          onClick={() => { setPeriyot('hepsi'); setGosterilenSayisi(6); setSeciliDonem('tumu') }}
+          className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors ${
+            periyot === 'hepsi' ? 'bg-navy text-white' : 'bg-white border border-gray-200 text-gray-600 hover:bg-gray-100'
+          }`}
         >
-          <option value="">{periyot === 'ay' ? 'Bir ay seç...' : 'Bir hafta seç...'}</option>
-          {tumGruplar.map(([anahtar]) => (
-            <option key={anahtar} value={anahtar}>{etiketUret(anahtar)}</option>
-          ))}
-        </select>
+          Tüm Zamanlar
+        </button>
+        {/* "Tüm Zamanlar"da tek grup olduğu için (haftalık/aylık gibi aralarında
+            seçim yapılacak birden fazla dönem yok) dönem seçici anlamsız —
+            sadece hafta/ay modunda gösteriliyor. */}
+        {periyot !== 'hepsi' && (
+          <select
+            value={seciliDonem}
+            onChange={(e) => setSeciliDonem(e.target.value)}
+            className="px-2.5 py-1.5 rounded-lg text-xs font-semibold border border-gray-200 bg-white text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue"
+          >
+            <option value="">{periyot === 'ay' ? 'Bir ay seç...' : 'Bir hafta seç...'}</option>
+            {tumGruplar.map(([anahtar]) => (
+              <option key={anahtar} value={anahtar}>{etiketUret(anahtar)}</option>
+            ))}
+          </select>
+        )}
       </div>
 
       {gosterilenGruplar.map(([anahtar, grupDersleri]) => {
@@ -211,7 +231,9 @@ export default function BireBirDersDokumu({
         )
       })}
 
-      {seciliDonem && (
+      {/* "Tüm Zamanlar"da zaten tek grup var, geri dönülecek/sayfalanacak başka
+          bir dönem yok — bu yüzden bu iki kontrol sadece hafta/ay modunda gösterilir. */}
+      {periyot !== 'hepsi' && seciliDonem && (
         <button
           type="button"
           onClick={() => setSeciliDonem('')}
@@ -220,7 +242,7 @@ export default function BireBirDersDokumu({
           ← Tüm {periyot === 'ay' ? 'ayları' : 'haftaları'} listele
         </button>
       )}
-      {!seciliDonem && gosterilenGruplar.length < tumGruplar.length && (
+      {periyot !== 'hepsi' && !seciliDonem && gosterilenGruplar.length < tumGruplar.length && (
         <button
           type="button"
           onClick={() => setGosterilenSayisi((n) => n + 6)}
