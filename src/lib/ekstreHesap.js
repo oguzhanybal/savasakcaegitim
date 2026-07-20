@@ -515,6 +515,10 @@ export function bireBirBorclariOlustur(atamalar, yoklamalar) {
         }
       }
 
+      // Soru Çözümü — öğretmenin öğrenciye bağlı olmadan yaptığı, bilerek
+      // fiyatlandırılmayan seans. Hiçbir zaman borç oluşturmaz.
+      if (y.tur === 'soru_cozumu') return null
+
       // Ek ders — atamaya bağlı değil, ücret/öğrenci doğrudan yoklama satırında.
       if (!y.ogrenci_id) return null
       return {
@@ -542,6 +546,11 @@ export function bireBirDersDetaylariOlustur(atamalar, yoklamalar) {
     .filter((y) => y.durum === 'geldi')
     .map((y) => {
       const atama = y.atama_id ? atamaMap.get(y.atama_id) : null
+      // Soru Çözümü — öğretmenin öğrenciye bağlı olmadan yaptığı, bilerek
+      // fiyatlandırılmayan seans (bkz. bireBirBorclariOlustur). Dökümde
+      // (Öğretmen Ekstresi vs.) "öğrenci" sütununda düz metin olarak görünsün
+      // ve ücreti her zaman 0 sayılsın diye burada ayrıca ele alınıyor.
+      const soruCozumuMu = !atama && y.tur === 'soru_cozumu'
       const ogretmenAdi = atama
         ? atama.profiles?.ad_soyad || atama.ogretmen_adi
         : y.profiles?.ad_soyad || y.ogretmen_adi
@@ -555,9 +564,11 @@ export function bireBirDersDetaylariOlustur(atamalar, yoklamalar) {
       // Öğretmen ekstresinde (OgretmenEkstre.jsx) "karşı taraf" öğrenci olduğu
       // için bunu da hesaplıyoruz — atamalar/yoklamalar parametreleri bunun için
       // ayrıca "ogrenciler(ad_soyad)" join'i içermeli (içermezse ogrenci_adi'ya düşer).
-      const ogrenciAdi = atama
-        ? atama.ogrenciler?.ad_soyad || atama.ogrenci_adi
-        : y.ogrenciler?.ad_soyad || y.ogrenci_adi
+      const ogrenciAdi = soruCozumuMu
+        ? 'Soru Çözümü'
+        : atama
+          ? atama.ogrenciler?.ad_soyad || atama.ogrenci_adi
+          : y.ogrenciler?.ad_soyad || y.ogrenci_adi
       return {
         id: y.id,
         tarih: y.tarih,
@@ -566,8 +577,9 @@ export function bireBirDersDetaylariOlustur(atamalar, yoklamalar) {
         ogretmenAdi: ogretmenAdi || '—',
         ogretmenBransi: ogretmenBransi || null,
         ogrenciAdi: ogrenciAdi || '—',
-        tutar: y.tutar != null ? Number(y.tutar) : Number(atama?.ders_ucreti) || 0,
+        tutar: soruCozumuMu ? 0 : (y.tutar != null ? Number(y.tutar) : Number(atama?.ders_ucreti) || 0),
         kaynak: y.atama_id ? 'Haftalık' : 'Tekil',
+        tur: soruCozumuMu ? 'soru_cozumu' : 'ders',
       }
     })
     .sort((a, b) => (a.tarih < b.tarih ? 1 : -1))
