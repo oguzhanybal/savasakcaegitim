@@ -37,16 +37,24 @@ export default async function handler(req, res) {
   const yeniKullaniciAdiKucuk = ozelEposta ? temiz : temiz.toLowerCase()
   const yeniEposta = ozelEposta ? temiz : `${yeniKullaniciAdiKucuk}@savasakcaegitim.giris`
 
-  const { error } = await admin.auth.admin.updateUser(id, { email: yeniEposta, email_confirm: true })
-  if (error) {
-    const zatenKayitli = /already.*registered|already exists/i.test(error.message || '')
-    res.status(400).json({
-      error: zatenKayitli
-        ? 'Bu kullanıcı adı başka bir hesap tarafından zaten kullanılıyor — lütfen farklı bir tane deneyin.'
-        : 'Kullanıcı adı değiştirilemedi: ' + error.message,
-    })
-    return
+  try {
+    // ÖNEMLİ: admin namespace'inde doğru fonksiyon "updateUserById" —
+    // "updateUser(id, ...)" (id parametreli) diye bir admin fonksiyonu YOK,
+    // var olmayan bir fonksiyonu çağırmak sunucuda yakalanmamış bir hataya
+    // (ve tarayıcıda "Bağlantı hatası: Unexpected token..." gibi JSON
+    // olmayan bir yanıta) yol açıyordu.
+    const { error } = await admin.auth.admin.updateUserById(id, { email: yeniEposta, email_confirm: true })
+    if (error) {
+      const zatenKayitli = /already.*registered|already exists/i.test(error.message || '')
+      res.status(400).json({
+        error: zatenKayitli
+          ? 'Bu kullanıcı adı başka bir hesap tarafından zaten kullanılıyor — lütfen farklı bir tane deneyin.'
+          : 'Kullanıcı adı değiştirilemedi: ' + error.message,
+      })
+      return
+    }
+    res.status(200).json({ ok: true, kullaniciAdi: yeniKullaniciAdiKucuk, email: yeniEposta })
+  } catch (err) {
+    res.status(500).json({ error: 'Sunucu hatası: ' + err.message })
   }
-
-  res.status(200).json({ ok: true, kullaniciAdi: yeniKullaniciAdiKucuk, email: yeniEposta })
 }
