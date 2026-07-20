@@ -59,8 +59,14 @@ export default function Sozlesme() {
   const finalSinif = sozlesme.sinif_metni || sinifAdi || (bireBirVarMi ? 'Bire Bir' : '—')
   const sozlesmeTarihiMetni = tarihFormat(sozlesme.sozlesme_tarihi || sozlesme.created_at?.slice(0, 10))
   const egitimDonemi = sozlesme.egitim_donemi || '—'
-  const veliAdSoyad = ogrenci.veli?.ad_soyad || ''
-  const iletisim = ogrenci.veli?.telefon || ogrenci.telefon || ''
+  // Öncelik: babanın plain-text bilgileri, sonra annenin, sonra bağlı veli hesabı.
+  // Öğrencinin kendi telefonu iletişim bilgisi olarak asla kullanılmaz.
+  const veliAdSoyad = ogrenci.baba_adi_soyadi || ogrenci.anne_adi_soyadi || ogrenci.veli?.ad_soyad || ''
+  const iletisim = ogrenci.baba_adi_soyadi
+    ? (ogrenci.baba_telefon || '')
+    : ogrenci.anne_adi_soyadi
+      ? (ogrenci.anne_telefon || '')
+      : (ogrenci.veli?.telefon || '')
 
   const yayinBedeli = sozlesme.kalem === 'Kitap' ? toplamTutar : null
   const egitimBedeli = sozlesme.kalem === 'Kurs' || sozlesme.kalem === 'Okul' ? toplamTutar : null
@@ -73,6 +79,23 @@ export default function Sozlesme() {
           body { background: white !important; }
           .sozlesme-sayfa { page-break-after: always; }
           .sozlesme-sayfa:last-child { page-break-after: auto; }
+          .sozlesme-maddeler {
+            columns: 2;
+            column-gap: 22px;
+            font-size: 8px;
+            line-height: 1.28;
+          }
+          .sozlesme-maddeler h3 {
+            margin-top: 5px;
+            margin-bottom: 2px;
+            break-after: avoid;
+            font-size: 8.5px;
+          }
+          .sozlesme-maddeler p {
+            margin-bottom: 3px;
+            break-inside: avoid;
+          }
+          .sozlesme-imza { break-inside: avoid; margin-top: 10px !important; }
         }
       `}</style>
 
@@ -195,7 +218,7 @@ export default function Sozlesme() {
         </div>
 
         {/* SAYFA 2 — Genel şartlar (aynı 23 madde, sadece görünüm iyileştirildi) */}
-        <div className="sozlesme-sayfa bg-white rounded-2xl print:rounded-none shadow-sm print:shadow-none border border-gray-100 print:border-0 p-8 text-[11.5px] leading-relaxed text-gray-700 text-justify">
+        <div className="sozlesme-sayfa bg-white rounded-2xl print:rounded-none shadow-sm print:shadow-none border border-gray-100 print:border-0 p-8 print:p-5 text-[11.5px] leading-relaxed text-gray-700 text-justify">
           <h2 className="text-center text-lg font-bold text-navy mb-4">KAYIT SÖZLEŞMESİ GENEL ŞARTLARI</h2>
           <p className="text-center text-xs text-gray-400 mb-1">{egitimDonemi !== '—' ? egitimDonemi : ''} ÖĞRETİM YILI</p>
           <p className="text-center font-semibold text-gray-800 mb-4">
@@ -208,6 +231,7 @@ export default function Sozlesme() {
             aşağıdaki hükümlerin uygulanacağı konusunda anlaşmışlardır.
           </p>
 
+          <div className="sozlesme-maddeler">
           <h3 className="font-bold text-navy mt-4 mb-1">TANIMLAR</h3>
           <p className="mb-1"><b>Madde 1:</b> Bu sözleşmede adı geçen;</p>
           <p className="mb-1"><b>Kurs:</b> Savaş Akça Özel Kişisel Gelişim Kursu.</p>
@@ -319,8 +343,9 @@ export default function Sozlesme() {
             olarak kabul ediyorum. İşbu sözleşmenin bir nüshası tarafıma teslim edilmiştir.
           </p>
           <p className="mb-6">İşbu sözleşmeden doğacak mükellefiyette Ankara Mahkemeleri ve İcra Daireleri yetkilidir.</p>
+          </div>
 
-          <div className="grid grid-cols-2 gap-8 mt-8 text-sm">
+          <div className="sozlesme-imza grid grid-cols-2 gap-8 mt-8 text-sm">
             <div>
               <p className="font-semibold text-gray-800">{ogrenci.ad_soyad}</p>
               <p className="text-xs text-gray-400">Öğrenci Adı Soyadı</p>
