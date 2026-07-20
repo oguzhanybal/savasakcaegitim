@@ -810,11 +810,11 @@ export default function Kantin() {
               // Öneriye tıklamayı kaçırmamak için kapatmayı biraz geciktiriyoruz
               // (aşağıdaki butonlarda onMouseDown ile de tıklama blur'dan önce yakalanıyor).
               onBlur={() => setTimeout(() => setOgrenciOneriAcik(false), 150)}
-              placeholder="İsim yazarak ara..."
+              placeholder="Yazarak arayın ya da listeden seçin..."
               autoComplete="off"
               className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue"
             />
-            {ogrenciOneriAcik && ogrenciArama.trim() && (
+            {ogrenciOneriAcik && (
               <div className="absolute z-10 top-full left-0 right-0 mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-56 overflow-y-auto">
                 {gorunenOgrenciler.length === 0 ? (
                   <p className="px-3 py-2 text-sm text-gray-400">Eşleşen öğrenci bulunamadı.</p>
