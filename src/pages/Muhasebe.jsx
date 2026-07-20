@@ -158,7 +158,7 @@ function OdemeDagitForm({ odeme, onTamam, onVazgec }) {
   )
 }
 
-function DagitilmamisOdemelerPaneli({ odemeler, onDegisti }) {
+function DagitilmamisOdemelerPaneli({ odemeler, onDegisti, digerOgrenciAdlari }) {
   const [acikId, setAcikId] = useState(null)
   const dagitilmamislar = odemeler.filter((o) => o.kalem === DAGITILAMAYAN_ETIKET)
 
@@ -178,7 +178,12 @@ function DagitilmamisOdemelerPaneli({ odemeler, onDegisti }) {
           <div key={o.id}>
             <div className="flex items-center justify-between px-4 py-3">
               <div>
-                <p className="font-medium text-gray-800">{paraFormat(o.tutar)}</p>
+                <p className="font-medium text-gray-800">
+                  {paraFormat(o.tutar)}
+                  {digerOgrenciAdlari && (
+                    <span className="text-purple-600 font-normal text-xs ml-2">({o.ogrenciler?.ad_soyad || '—'})</span>
+                  )}
+                </p>
                 <p className="text-xs text-gray-400">{new Date(o.tarih).toLocaleDateString('tr-TR')}</p>
               </div>
               <button
@@ -641,14 +646,17 @@ export default function Muhasebe() {
     Promise.all([
       supabase.from('sozlesmeler').select('*').in('ogrenci_id', grup),
       supabase.from('aylik_borclar').select('*').in('ogrenci_id', grup).order('donem', { ascending: false }),
-      supabase.from('odemeler').select('*').in('ogrenci_id', grup).order('tarih', { ascending: false }),
+      // "ogrenciler(ad_soyad)" join'i bu sorguda zaten daha önceden (sonOdemeleriYukle
+      // fonksiyonunda) kanıtlanmış bir kalıp — Fatura Ortağı birleştirmesinde "kime
+      // ait" gösterebilmek için (Ödeme Geçmişi tablosu) burada da kullanıyoruz.
+      supabase.from('odemeler').select('*, ogrenciler(ad_soyad)').in('ogrenci_id', grup).order('tarih', { ascending: false }),
       // Öğretmen adını da (profiles join) çekiyoruz — döküm tablosunda "hangi
       // öğretmenden" görebilmek için.
-      supabase.from('bire_bir_atamalari').select('*, profiles:ogretmen_profile_id(ad_soyad, brans)').in('ogrenci_id', grup),
+      supabase.from('bire_bir_atamalari').select('*, profiles:ogretmen_profile_id(ad_soyad, brans), ogrenciler(ad_soyad)').in('ogrenci_id', grup),
       // "Ek Ders" (atamaya bağlı olmayan, tek seferlik bire bir) kayıtları
       supabase
         .from('bire_bir_yoklama')
-        .select('*, profiles:ogretmen_profile_id(ad_soyad, brans)')
+        .select('*, profiles:ogretmen_profile_id(ad_soyad, brans), ogrenciler(ad_soyad)')
         .in('ogrenci_id', grup)
         .is('atama_id', null),
       supabase.from('kantin_alislar').select('*').in('ogrenci_id', grup),
@@ -774,6 +782,12 @@ export default function Muhasebe() {
   const faturaEfektifId = seciliOgrenci?.fatura_sahibi_id || seciliId
   const faturaGrubu = ogrenciler.filter((o) => o.id === faturaEfektifId || o.fatura_sahibi_id === faturaEfektifId)
   const faturaDigerleri = faturaGrubu.filter((o) => o.id !== seciliId)
+  // Birleşik görünümde her satırın KİME ait olduğunu göstermek/doğru makbuz
+  // linki üretmek için — "ogrenciler" state'i zaten TÜM öğrencileri içeriyor,
+  // ekstra bir sorguya gerek yok.
+  function adSoyadBul(ogrenciId) {
+    return ogrenciler.find((o) => o.id === ogrenciId)?.ad_soyad || '—'
+  }
 
   const toplamOdenen = odemeler.reduce((t, o) => t + Number(o.tutar), 0)
   const toplamSozlesme = sozlesmeler.reduce((t, s) => t + Number(s.toplam_tutar), 0)
@@ -885,7 +899,7 @@ export default function Muhasebe() {
                 <SozlesmeEkleForm ogrenciId={seciliId} onEklendi={veriyiYenile} />
                 <AylikBorcEkleForm ogrenciId={seciliId} onEklendi={veriyiYenile} />
               </div>
-              <DagitilmamisOdemelerPaneli odemeler={odemeler} onDegisti={veriyiYenile} />
+              <DagitilmamisOdemelerPaneli odemeler={odemeler} onDegisti={veriyiYenile} digerOgrenciAdlari={faturaDigerleri.length > 0} />
             </>
           )}
 
@@ -918,6 +932,7 @@ export default function Muhasebe() {
               <thead>
                 <tr className="text-left text-gray-500">
                   <th className="px-4 py-2 font-medium">Kalem</th>
+                  {faturaDigerleri.length > 0 && <th className="px-4 py-2 font-medium">Öğrenci</th>}
                   <th className="px-4 py-2 font-medium">Toplam Tutar</th>
                   <th className="px-4 py-2 font-medium">Taksit Sayısı</th>
                   <th className="px-4 py-2 font-medium">İlk Taksit</th>
@@ -926,13 +941,13 @@ export default function Muhasebe() {
               </thead>
               <tbody>
                 {sozlesmeler.length === 0 && (
-                  <tr><td colSpan={5} className="px-4 py-4 text-center text-gray-400">Sözleşme bulunamadı.</td></tr>
+                  <tr><td colSpan={faturaDigerleri.length > 0 ? 6 : 5} className="px-4 py-4 text-center text-gray-400">Sözleşme bulunamadı.</td></tr>
                 )}
                 {sozlesmeler.map((s) => {
                   if (sozlesmeDuzenlenenId === s.id) {
                     return (
                       <tr key={s.id} className="bg-blue-50 border-t border-gray-50">
-                        <td colSpan={5} className="px-4 py-3">
+                        <td colSpan={faturaDigerleri.length > 0 ? 6 : 5} className="px-4 py-3">
                           <div className="flex flex-wrap gap-3 items-end mb-3">
                             <div className="flex-1 min-w-[110px]">
                               <label className="block text-xs font-medium text-gray-500 mb-1">Kalem</label>
@@ -1025,6 +1040,9 @@ export default function Muhasebe() {
                   return (
                     <tr key={s.id} className="border-t border-gray-50">
                       <td className="px-4 py-2 font-medium text-gray-800">{s.kalem}</td>
+                      {faturaDigerleri.length > 0 && (
+                        <td className="px-4 py-2 text-purple-700">{adSoyadBul(s.ogrenci_id)}</td>
+                      )}
                       <td className="px-4 py-2">{paraFormat(s.toplam_tutar)}</td>
                       <td className="px-4 py-2">{s.taksit_sayisi}</td>
                       <td className="px-4 py-2">{s.ilk_taksit_tarihi ? new Date(s.ilk_taksit_tarihi).toLocaleDateString('tr-TR') : '—'}</td>
@@ -1064,7 +1082,12 @@ export default function Muhasebe() {
                   if (taksitler.length === 0) return null
                   return (
                     <div key={s.id} className="p-4 overflow-x-auto">
-                      <p className="font-semibold text-gray-800 mb-2">{s.kalem}</p>
+                      <p className="font-semibold text-gray-800 mb-2">
+                        {s.kalem}
+                        {faturaDigerleri.length > 0 && (
+                          <span className="text-purple-600 font-normal text-sm"> — {adSoyadBul(s.ogrenci_id)}</span>
+                        )}
+                      </p>
                       <table className="w-full text-sm min-w-[440px]">
                         <thead>
                           <tr className="text-left text-gray-500">
@@ -1113,6 +1136,7 @@ export default function Muhasebe() {
               <thead>
                 <tr className="text-left text-gray-500">
                   <th className="px-4 py-2 font-medium">Kalem</th>
+                  {faturaDigerleri.length > 0 && <th className="px-4 py-2 font-medium">Öğrenci</th>}
                   <th className="px-4 py-2 font-medium">Dönem</th>
                   <th className="px-4 py-2 font-medium">Tutar</th>
                   <th className="px-4 py-2 font-medium">Durum</th>
@@ -1122,10 +1146,14 @@ export default function Muhasebe() {
               </thead>
               <tbody>
                 {aylikBorclarGruplu.length === 0 && (
-                  <tr><td colSpan={isYonetici ? 6 : 5} className="px-4 py-4 text-center text-gray-400">Aylık kalem borcu bulunamadı.</td></tr>
+                  <tr><td colSpan={isYonetici ? (faturaDigerleri.length > 0 ? 7 : 6) : (faturaDigerleri.length > 0 ? 6 : 5)} className="px-4 py-4 text-center text-gray-400">Aylık kalem borcu bulunamadı.</td></tr>
                 )}
                 {aylikBorclarGruplu.map((g) => {
                   const d = aylikBorcDurumHesapla(g, aylikBorclar, odemeler)
+                  // Bu gruptaki satırlar farklı öğrencilere ait olabilir (ör. ikisi
+                  // de aynı ay "Bire Bir" borcu doğurmuş olabilir) — hepsinin
+                  // isimlerini tekrarsız gösteriyoruz.
+                  const gOgrenciAdlari = [...new Set(g.satirlar.map((sat) => adSoyadBul(sat.ogrenci_id)))]
                   return (
                   <tr key={g.id} className={`border-t border-gray-50 ${d.durum === 'gecikti' ? 'bg-red-50' : d.durum === 'kismi' ? 'bg-amber-50' : ''}`}>
                     <td className="px-4 py-2 font-medium text-gray-800">
@@ -1134,6 +1162,9 @@ export default function Muhasebe() {
                         <span className="text-gray-400 font-normal text-xs ml-1">({g.satirlar.length} işlem)</span>
                       )}
                     </td>
+                    {faturaDigerleri.length > 0 && (
+                      <td className="px-4 py-2 text-purple-700">{gOgrenciAdlari.join(', ')}</td>
+                    )}
                     <td className="px-4 py-2">{new Date(g.donem).toLocaleDateString('tr-TR', { month: 'long', year: 'numeric' })}</td>
                     <td className="px-4 py-2">{paraFormat(g.tutar)}</td>
                     <td className="px-4 py-2"><DurumRozeti durum={d.durum} /></td>
@@ -1179,8 +1210,14 @@ export default function Muhasebe() {
               </div>
               <div className="p-4 overflow-x-auto">
                 <BireBirDersDokumu
-                  dersler={bireBirDersleri.map((d) => ({ ...d, karsiTarafAdi: d.ogretmenAdi, karsiTarafBransi: d.ogretmenBransi }))}
+                  dersler={bireBirDersleri.map((d) => ({
+                    ...d,
+                    karsiTarafAdi: d.ogretmenAdi,
+                    karsiTarafBransi: d.ogretmenBransi,
+                    ikinciTarafAdi: d.ogrenciAdi,
+                  }))}
                   karsiTarafBasligi="Öğretmen"
+                  {...(faturaDigerleri.length > 0 ? { ikinciTarafBasligi: 'Öğrenci' } : {})}
                 />
               </div>
             </div>
@@ -1192,6 +1229,7 @@ export default function Muhasebe() {
               {isYonetici && (
                 <p className="text-xs text-gray-400 mt-0.5">
                   "Makbuz Yazdır" o günün TÜM kalemlerini tek makbuzda toplu gösterir — her kalem için ayrı ayrı basmanıza gerek yok.
+                  {faturaDigerleri.length > 0 && ' Fatura Ortağı ile birleşik görünümde, makbuz her zaman ödemenin KENDİ öğrencisi adına kesilir.'}
                 </p>
               )}
             </div>
@@ -1199,6 +1237,7 @@ export default function Muhasebe() {
               <thead>
                 <tr className="text-left text-gray-500">
                   <th className="px-4 py-2 font-medium">Tarih</th>
+                  {faturaDigerleri.length > 0 && <th className="px-4 py-2 font-medium">Öğrenci</th>}
                   <th className="px-4 py-2 font-medium">Kalem</th>
                   <th className="px-4 py-2 font-medium">Tutar</th>
                   {isYonetici && <th className="px-4 py-2 font-medium text-right">Makbuz</th>}
@@ -1206,17 +1245,26 @@ export default function Muhasebe() {
               </thead>
               <tbody>
                 {odemeler.length === 0 && (
-                  <tr><td colSpan={isYonetici ? 4 : 3} className="px-4 py-4 text-center text-gray-400">Ödeme kaydı bulunamadı.</td></tr>
+                  <tr><td colSpan={isYonetici ? (faturaDigerleri.length > 0 ? 5 : 4) : (faturaDigerleri.length > 0 ? 4 : 3)} className="px-4 py-4 text-center text-gray-400">Ödeme kaydı bulunamadı.</td></tr>
                 )}
                 {odemeler.map((o) => (
                   <tr key={o.id} className="border-t border-gray-50">
                     <td className="px-4 py-2">{new Date(o.tarih).toLocaleDateString('tr-TR')}</td>
+                    {faturaDigerleri.length > 0 && (
+                      <td className="px-4 py-2 text-purple-700">{o.ogrenciler?.ad_soyad || adSoyadBul(o.ogrenci_id)}</td>
+                    )}
                     <td className="px-4 py-2">{o.kalem || '—'}</td>
                     <td className="px-4 py-2 font-medium">{paraFormat(o.tutar)}</td>
                     {isYonetici && (
                       <td className="px-4 py-2 text-right whitespace-nowrap space-x-3">
+                        {/* ÖNEMLİ: Fatura Ortağı ile birleşik görünümde bu liste
+                            İKİ öğrencinin ödemelerini birden gösterebilir — makbuz
+                            linki seçili öğrenci (seciliId) yerine HER ZAMAN o
+                            ödemenin GERÇEK sahibi olan o.ogrenci_id'yi kullanmalı,
+                            yoksa partnerin ödemesi için yanlış öğrenci adına (ya da
+                            boş) bir makbuz üretilirdi. */}
                         <Link
-                          to={`/makbuz-gun/${seciliId}/${gunAnahtari(o.tarih)}`}
+                          to={`/makbuz-gun/${o.ogrenci_id}/${gunAnahtari(o.tarih)}`}
                           target="_blank"
                           className="text-blue text-sm hover:underline"
                         >

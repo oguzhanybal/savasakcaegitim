@@ -8,7 +8,7 @@ function paraFormat(n) {
   return new Intl.NumberFormat('tr-TR', { style: 'currency', currency: 'TRY' }).format(n || 0)
 }
 
-function MakbuzGovdesi({ nusha, odemeler, ogrenciAdi, tarihMetni, toplam }) {
+function MakbuzGovdesi({ nusha, odemeler, ogrenciAdi, tarihMetni, toplam, ogrenciSutunuGoster, adBul }) {
   return (
     <div className="makbuz-karti border border-gray-200 rounded-xl overflow-hidden">
       <div className="bg-navy text-white py-2.5 px-4 flex items-center gap-2.5">
@@ -40,6 +40,7 @@ function MakbuzGovdesi({ nusha, odemeler, ogrenciAdi, tarihMetni, toplam }) {
           <thead>
             <tr className="bg-gray-50 text-left text-gray-600">
               <th className="px-3 py-1.5 font-semibold">Kalem</th>
+              {ogrenciSutunuGoster && <th className="px-3 py-1.5 font-semibold">Öğrenci</th>}
               <th className="px-3 py-1.5 font-semibold text-right">Tutar</th>
             </tr>
           </thead>
@@ -47,11 +48,12 @@ function MakbuzGovdesi({ nusha, odemeler, ogrenciAdi, tarihMetni, toplam }) {
             {odemeler.map((o) => (
               <tr key={o.id} className="border-t border-gray-100">
                 <td className="px-3 py-1.5">{o.kalem || '—'}</td>
+                {ogrenciSutunuGoster && <td className="px-3 py-1.5">{adBul(o.ogrenci_id)}</td>}
                 <td className="px-3 py-1.5 text-right">{paraFormat(o.tutar)}</td>
               </tr>
             ))}
             <tr className="border-t border-gray-200 bg-orange/10">
-              <td className="px-3 py-1.5 font-bold text-orange">TOPLAM</td>
+              <td className="px-3 py-1.5 font-bold text-orange" colSpan={ogrenciSutunuGoster ? 2 : 1}>TOPLAM</td>
               <td className="px-3 py-1.5 font-bold text-orange text-right">{paraFormat(toplam)}</td>
             </tr>
           </tbody>
@@ -68,19 +70,54 @@ export default function MakbuzGunluk() {
   const { ogrenciId, tarih } = useParams() // tarih: "YYYY-MM-DD"
   const [odemeler, setOdemeler] = useState([])
   const [ogrenciAdi, setOgrenciAdi] = useState('')
+  // Fatura Ortağı (ör. ikiz kardeşler): topluca tek makbuzda tahsilat
+  // yapılabilsin diye — bu öğrenci başka birine bağlıysa (ya da başka biri
+  // buna bağlıysa) o günkü TÜM grubun ödemeleri TEK makbuzda toplanır, ve
+  // "Öğrenci" başlığında ikisinin de adı görünür. Partneri olmayan bir
+  // öğrenci için grup tek kişiliktir, yani davranış eskisiyle birebir aynı kalır.
+  const [grupOgrencileri, setGrupOgrencileri] = useState([])
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    Promise.all([
-      supabase.from('odemeler').select('*').eq('ogrenci_id', ogrenciId).order('tarih'),
-      supabase.from('ogrenciler').select('ad_soyad').eq('id', ogrenciId).single(),
-    ]).then(([o, og]) => {
-      const gununOdemeleri = (o.data || []).filter((odm) => gunAnahtari(odm.tarih) === tarih)
-      setOdemeler(gununOdemeleri)
-      setOgrenciAdi(og.data?.ad_soyad || '')
-      setLoading(false)
-    })
+    setLoading(true)
+    supabase
+      .from('ogrenciler')
+      .select('*')
+      .eq('id', ogrenciId)
+      .single()
+      .then(({ data: kendisi }) => {
+        if (!kendisi) {
+          setLoading(false)
+          return
+        }
+        const efektifId = kendisi.fatura_sahibi_id || kendisi.id
+        supabase
+          .from('ogrenciler')
+          .select('id, ad_soyad')
+          .or(`id.eq.${efektifId},fatura_sahibi_id.eq.${efektifId}`)
+          .then(({ data: grup }) => {
+            const grupListesi = grup || [kendisi]
+            const grupIdleri = grupListesi.map((g) => g.id)
+            supabase
+              .from('odemeler')
+              .select('*')
+              .in('ogrenci_id', grupIdleri)
+              .order('tarih')
+              .then(({ data }) => {
+                const gununOdemeleri = (data || []).filter((odm) => gunAnahtari(odm.tarih) === tarih)
+                setOdemeler(gununOdemeleri)
+                setGrupOgrencileri(grupListesi)
+                setOgrenciAdi(grupListesi.map((g) => g.ad_soyad).join(' ve '))
+                setLoading(false)
+              })
+          })
+      })
   }, [ogrenciId, tarih])
+
+  function adBul(id) {
+    return grupOgrencileri.find((g) => g.id === id)?.ad_soyad || '—'
+  }
+  const ogrenciSutunuGoster = grupOgrencileri.length > 1
 
   if (loading) return <p className="p-6 text-gray-400">Yükleniyor...</p>
   if (odemeler.length === 0) return <p className="p-6 text-gray-400">Bu tarihte ödeme kaydı bulunamadı.</p>
@@ -124,9 +161,9 @@ export default function MakbuzGunluk() {
         </div>
 
         <div className="space-y-3">
-          <MakbuzGovdesi nusha="ÖĞRENCİ KOPYASI" odemeler={odemeler} ogrenciAdi={ogrenciAdi} tarihMetni={tarihMetni} toplam={toplam} />
+          <MakbuzGovdesi nusha="ÖĞRENCİ KOPYASI" odemeler={odemeler} ogrenciAdi={ogrenciAdi} tarihMetni={tarihMetni} toplam={toplam} ogrenciSutunuGoster={ogrenciSutunuGoster} adBul={adBul} />
           <p className="text-center text-xs text-gray-400">--------------------------- KESİM ALANI ---------------------------</p>
-          <MakbuzGovdesi nusha="KURUM KOPYASI" odemeler={odemeler} ogrenciAdi={ogrenciAdi} tarihMetni={tarihMetni} toplam={toplam} />
+          <MakbuzGovdesi nusha="KURUM KOPYASI" odemeler={odemeler} ogrenciAdi={ogrenciAdi} tarihMetni={tarihMetni} toplam={toplam} ogrenciSutunuGoster={ogrenciSutunuGoster} adBul={adBul} />
         </div>
       </div>
     </div>
