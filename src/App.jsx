@@ -22,6 +22,7 @@ import GelirRaporu from './pages/GelirRaporu'
 import AylikOzet from './pages/AylikOzet'
 import KullaniciOlustur from './pages/KullaniciOlustur'
 import Kantin from './pages/Kantin'
+import KantinFiyatListesi from './pages/KantinFiyatListesi'
 import SinavKitapciklari from './pages/SinavKitapciklari'
 import SinavYukle from './pages/SinavYukle'
 import SinavSonuclari from './pages/SinavSonuclari'
@@ -130,6 +131,14 @@ function AnaUygulama() {
           element={
             <Korumali izinliRoller={['yonetici', 'veli', 'ogrenci']}>
               <HataKitapcigi />
+            </Korumali>
+          }
+        />
+        <Route
+          path="/kantin-fiyat-listesi"
+          element={
+            <Korumali izinliRoller={['yonetici']}>
+              <KantinFiyatListesi />
             </Korumali>
           }
         />
