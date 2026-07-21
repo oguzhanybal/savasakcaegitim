@@ -20,6 +20,7 @@ import GenelBireBirEkstre from './pages/GenelBireBirEkstre'
 import TopluEkstre from './pages/TopluEkstre'
 import GelirRaporu from './pages/GelirRaporu'
 import AylikOzet from './pages/AylikOzet'
+import BorcYaslandirma from './pages/BorcYaslandirma'
 import KullaniciOlustur from './pages/KullaniciOlustur'
 import Kantin from './pages/Kantin'
 import KantinFiyatListesi from './pages/KantinFiyatListesi'
@@ -245,6 +246,14 @@ function AnaUygulama() {
             element={
               <Korumali izinliRoller={['yonetici']}>
                 <AylikOzet />
+              </Korumali>
+            }
+          />
+          <Route
+            path="borc-yaslandirma"
+            element={
+              <Korumali izinliRoller={['yonetici']}>
+                <BorcYaslandirma />
               </Korumali>
             }
           />
