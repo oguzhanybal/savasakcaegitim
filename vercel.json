@@ -3,9 +3,11 @@
     { "source": "/((?!api/).*)", "destination": "/index.html" }
   ],
   "crons": [
-    { "path": "/api/odev-arsivle", "schedule": "0 3 * * *" }
+    { "path": "/api/odev-arsivle", "schedule": "0 3 * * *" },
+    { "path": "/api/gunluk-yedek", "schedule": "0 1 * * *" }
   ],
   "functions": {
-    "api/odev-arsivle.js": { "maxDuration": 60 }
+    "api/odev-arsivle.js": { "maxDuration": 60 },
+    "api/gunluk-yedek.js": { "maxDuration": 60 }
   }
 }
