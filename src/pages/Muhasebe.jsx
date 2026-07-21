@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../lib/AuthContext'
@@ -599,6 +599,12 @@ export default function Muhasebe() {
 
   const [ogrenciler, setOgrenciler] = useState([])
   const [seciliId, setSeciliId] = useState('')
+  // Öğrenci Seç kutusu — Kantin.jsx'teki "yazarak arayın ya da listeden seçin"
+  // ile AYNI davranış: kutuya tıklayınca tüm liste açılır, isim yazınca
+  // filtrelenir, mobilde klavyeden yazmak zorunda kalmadan da listeden
+  // seçilebilir.
+  const [ogrenciArama, setOgrenciArama] = useState('')
+  const [ogrenciOneriAcik, setOgrenciOneriAcik] = useState(false)
   const [sozlesmeler, setSozlesmeler] = useState([])
   const [aylikBorclar, setAylikBorclar] = useState([])
   const [odemeler, setOdemeler] = useState([])
@@ -719,6 +725,20 @@ export default function Muhasebe() {
     veriyiYenile()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [seciliId])
+
+  // seciliId dışarıdan (ör. veli için otomatik ilk çocuk seçimi) değiştiğinde,
+  // arama kutusunun içindeki metni de o öğrencinin adıyla senkron tutuyoruz —
+  // yoksa kutu boş görünüp kafa karıştırır.
+  useEffect(() => {
+    const secili = ogrenciler.find((o) => o.id === seciliId)
+    setOgrenciArama(secili ? secili.ad_soyad : '')
+  }, [seciliId, ogrenciler])
+
+  const gorunenOgrenciler = useMemo(() => {
+    const aranan = ogrenciArama.trim().toLocaleLowerCase('tr-TR')
+    if (!aranan) return ogrenciler
+    return ogrenciler.filter((o) => o.ad_soyad.toLocaleLowerCase('tr-TR').includes(aranan))
+  }, [ogrenciler, ogrenciArama])
 
   // "aylikBorclar" listesi HEM gerçek "aylik_borclar" tablosundaki satırları
   // (id düz bir uuid) HEM DE Bire Bir/Kantin sayfalarından otomatik üretilen
@@ -854,20 +874,49 @@ export default function Muhasebe() {
       </div>
 
       {seciciGoster && (
-        <div className="mb-6">
+        <div className="mb-6 relative max-w-sm">
           <label className="block text-sm font-medium text-gray-700 mb-1">
             {isYonetici ? 'Öğrenci Seç' : 'Çocuğunuzu Seçin'}
           </label>
-          <select
-            value={seciliId}
-            onChange={(e) => setSeciliId(e.target.value)}
-            className="w-full max-w-sm px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue bg-white"
-          >
-            <option value="">— Öğrenci Seçin —</option>
-            {ogrenciler.map((o) => (
-              <option key={o.id} value={o.id}>{o.ad_soyad}</option>
-            ))}
-          </select>
+          <input
+            type="text"
+            value={ogrenciArama}
+            onChange={(e) => {
+              setOgrenciArama(e.target.value)
+              setSeciliId('')
+              setOgrenciOneriAcik(true)
+            }}
+            onFocus={() => setOgrenciOneriAcik(true)}
+            onBlur={() => setTimeout(() => setOgrenciOneriAcik(false), 150)}
+            placeholder="Yazarak arayın ya da listeden seçin..."
+            autoComplete="off"
+            className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue"
+          />
+          {ogrenciOneriAcik && (
+            <div className="absolute z-10 top-full left-0 right-0 mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-56 overflow-y-auto">
+              {gorunenOgrenciler.length === 0 ? (
+                <p className="px-3 py-2 text-sm text-gray-400">Eşleşen öğrenci bulunamadı.</p>
+              ) : (
+                gorunenOgrenciler.map((o) => (
+                  <button
+                    key={o.id}
+                    type="button"
+                    onMouseDown={(e) => e.preventDefault()}
+                    onClick={() => {
+                      setSeciliId(o.id)
+                      setOgrenciArama(o.ad_soyad)
+                      setOgrenciOneriAcik(false)
+                    }}
+                    className={`w-full text-left px-3 py-2 text-sm hover:bg-orange-50 ${
+                      seciliId === o.id ? 'bg-orange-50 font-semibold text-navy' : 'text-gray-700'
+                    }`}
+                  >
+                    {o.ad_soyad}
+                  </button>
+                ))
+              )}
+            </div>
+          )}
         </div>
       )}
 
