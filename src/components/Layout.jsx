@@ -36,6 +36,7 @@ function menuOlustur(rol) {
           { to: '/toplu-ekstre', label: 'Toplu Ekstre' },
           { to: '/gelir-raporu', label: 'Gelir Raporu' },
           { to: '/aylik-ozet', label: 'Aylık Özet' },
+          { to: '/borc-yaslandirma', label: 'Borç Yaşlandırma' },
           { to: '/kantin', label: 'Kantin' },
         ],
       },
