@@ -633,6 +633,62 @@ export function kantinBorclariOlustur(alislar) {
 }
 
 // ============================================================================
+// BORÇ YAŞLANDIRMA (AGING) — bir öğrencinin (ya da Fatura Ortağı grubunun)
+// VADESİ GEÇMİŞ (bugünden önceki bir tarihte ödenmesi gerekip hâlâ kapanmamış)
+// borçlarını, vadenin üzerinden kaç gün geçtiğine göre "yaş kovalarına"
+// ayırır. Sözleşme taksitleri için taksitPlaniOlustur (her taksitin kendi
+// vade tarihi var), aylık kalem borçları için aylikBorclariKalemAyaGoreGrupla
+// + aylikBorcDurumHesapla (bir borcun "vadesi", ait olduğu ayın BİTİŞİ —
+// takvim bir sonraki aya geçtiğinde "gecikmiş" sayılması ile AYNI kural)
+// kullanılır — Muhasebe.jsx'teki taksit/borç tablolarıyla birebir TUTARLI
+// kalması için hesap mantığı oradan hiç değiştirilmeden buraya taşındı,
+// sadece sonuçlar vade tarihine göre kovalara ayrılıyor.
+// ============================================================================
+export function yasKovasiHesapla(vadeTarihi, bugun = new Date()) {
+  const gunFarki = Math.floor((bugun - vadeTarihi) / (1000 * 60 * 60 * 24))
+  if (gunFarki <= 30) return '0-30'
+  if (gunFarki <= 60) return '31-60'
+  if (gunFarki <= 90) return '61-90'
+  return '90+'
+}
+
+// Tek bir öğrenci/grup için: sözleşmeler + aylık kalem borçları + ödemeler
+// verilince, VADESİ GEÇMİŞ tüm kalemleri ({kalem, vade, kalanTutar}) tek
+// listede döner. Hiç vadesi geçmiş borç yoksa null döner.
+export function ogrenciBorcYaslandirmaHesapla(sozlesmeler, aylikBorclar, odemeler, bugun = new Date()) {
+  const kalemler = []
+
+  for (const s of sozlesmeler) {
+    const taksitler = taksitPlaniOlustur(s, odemeler)
+    for (const t of taksitler) {
+      if (t.kalanTutar > 0.01 && t.vade < bugun) {
+        kalemler.push({ kalem: s.kalem, vade: t.vade, kalanTutar: t.kalanTutar })
+      }
+    }
+  }
+
+  const gruplu = aylikBorclariKalemAyaGoreGrupla(aylikBorclar)
+  for (const g of gruplu) {
+    const d = aylikBorcDurumHesapla(g, aylikBorclar, odemeler)
+    if (d.kalanTutar <= 0.01) continue
+    // Bu borcun vadesi, ait olduğu ayın BİTİŞİ (bir sonraki ayın 1'i) —
+    // aylikBorcDurumHesapla'daki "gecikti" eşiğiyle birebir aynı kural.
+    const vade = new Date(g.donem)
+    vade.setMonth(vade.getMonth() + 1)
+    if (vade < bugun) {
+      kalemler.push({ kalem: g.kalem, vade, kalanTutar: d.kalanTutar })
+    }
+  }
+
+  if (kalemler.length === 0) return null
+
+  const enEskiVade = kalemler.reduce((min, k) => (k.vade < min ? k.vade : min), kalemler[0].vade)
+  const toplamKalan = kalemler.reduce((t, k) => t + k.kalanTutar, 0)
+
+  return { kalemler, toplamKalan, enEskiVade, kova: yasKovasiHesapla(enEskiVade, bugun) }
+}
+
+// ============================================================================
 // SON ALINAN ÖDEMELER — LİSTEYİ GRUP SINIRINDA KES — Muhasebe.jsx ve
 // Dashboard.jsx'teki "Son Alınan Ödemeler" panelleri kullanır. "Dağıtılmamış"
 // bir ödeme sonradan birden fazla kaleme bölündüğünde (bkz. Muhasebe.jsx
