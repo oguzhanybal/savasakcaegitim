@@ -431,8 +431,22 @@ function SozlesmeEkleForm({ ogrenciId, onEklendi }) {
   )
 }
 
-function AylikBorcEkleForm({ ogrenciId, onEklendi }) {
-  const [kalem, setKalem] = useState('Yemek')
+// Hem düz "aylık kalem borcu" (Yemek/Kantin — devam eden, tekrar eden borç)
+// HEM DE "sistem öncesi / geçmiş borç" (öğrenci bu sisteme geçmeden önceki
+// borcunu, hangi kaleme ve hangi aya ait olduğunu seçerek tek satırda girmek)
+// için kullanılan TEK form. Kurs/Okul kalemleri normalde "sözleşme" (taksit
+// planı) üzerinden yürüdüğü için, bu iki kalem seçildiğinde arka planda
+// "sozlesmeler" tablosuna TEK TAKSİTLİ (peşin) bir kayıt olarak yazılır —
+// böylece hem taksit/ekstre hesaplamasıyla birebir uyumlu olur hem de normal
+// bir borç gibi görünüp ödeme düştükçe otomatik kapanır. Yemek/Kantin/Bire Bir
+// ise doğrudan "aylik_borclar" tablosuna yazılır. "Bire Bir" için ÖNEMLİ: bu,
+// yeni bir ders GİRMEZ (öğretmen seçmeye gerek YOK) — sadece geçmişe dönük
+// düz bir borç satırı ekler, hiçbir öğretmenin ekstresini etkilemez.
+const GECMIS_BORC_KALEMLERI = ['Okul', 'Kurs', 'Yemek', 'Kantin', 'Bire Bir']
+const GECMIS_BORC_SOZLESME_KALEMLERI = ['Okul', 'Kurs']
+
+function GecmisBorcEkleForm({ ogrenciId, onEklendi }) {
+  const [kalem, setKalem] = useState('Okul')
   const [tutar, setTutar] = useState('')
   const [donem, setDonem] = useState(() => new Date().toISOString().slice(0, 7))
   const [gonderiliyor, setGonderiliyor] = useState(false)
@@ -442,12 +456,27 @@ function AylikBorcEkleForm({ ogrenciId, onEklendi }) {
     e.preventDefault()
     if (!tutar || Number(tutar) <= 0 || !donem) return
     setGonderiliyor(true)
-    const { error } = await supabase.from('aylik_borclar').insert({
-      ogrenci_id: ogrenciId,
-      kalem,
-      tutar: Number(tutar),
-      donem: `${donem}-01`,
-    })
+    let error
+    if (GECMIS_BORC_SOZLESME_KALEMLERI.includes(kalem)) {
+      // Okul/Kurs taksit sistemiyle çalıştığı için, geçmiş borç TEK taksitli
+      // (1/1) bir sözleşme gibi kaydedilir — vadesi seçilen ay olur, öğretmen
+      // seçmeye gerek yoktur.
+      ;({ error } = await supabase.from('sozlesmeler').insert({
+        ogrenci_id: ogrenciId,
+        kalem,
+        toplam_tutar: Number(tutar),
+        taksit_sayisi: 1,
+        ilk_taksit_tarihi: `${donem}-01`,
+        sinif_metni: 'Sistem Öncesi Borç',
+      }))
+    } else {
+      ;({ error } = await supabase.from('aylik_borclar').insert({
+        ogrenci_id: ogrenciId,
+        kalem,
+        tutar: Number(tutar),
+        donem: `${donem}-01`,
+      }))
+    }
     setGonderiliyor(false)
     if (!error) {
       setTutar('')
@@ -464,13 +493,18 @@ function AylikBorcEkleForm({ ogrenciId, onEklendi }) {
         onClick={() => setAcik(true)}
         className="text-navy font-semibold text-sm underline hover:no-underline"
       >
-        + Aylık kalem borcu ekle
+        + Sistem Öncesi (Geçmiş) Borç Ekle
       </button>
     )
   }
 
   return (
     <form onSubmit={ekle} className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5 mb-6">
+      <p className="text-sm text-gray-500 mb-3">
+        Öğrencinin bu sisteme geçmeden ÖNCEKİ borcunu buradan girin — kalemi ve hangi aya ait olduğunu
+        seçmeniz yeterli, öğretmen seçmenize gerek yok. (Yeni bire bir dersler yine Bire Bir sayfasında
+        yoklama alındıkça otomatik borç oluşturur — bunları buraya elle girmeyin.)
+      </p>
       <div className="flex flex-wrap gap-3 items-end">
         <div className="flex-1 min-w-[120px]">
           <label className="block text-sm font-medium text-gray-700 mb-1">Kalem</label>
@@ -479,12 +513,10 @@ function AylikBorcEkleForm({ ogrenciId, onEklendi }) {
             onChange={(e) => setKalem(e.target.value)}
             className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue bg-white"
           >
-            <option>Yemek</option>
-            <option>Kantin</option>
+            {GECMIS_BORC_KALEMLERI.map((k) => (
+              <option key={k}>{k}</option>
+            ))}
           </select>
-          <p className="text-xs text-gray-400 mt-1">
-            "Bire Bir" borcu artık buradan girilmiyor — Bire Bir sayfasında yoklama alındıkça otomatik eklenir.
-          </p>
         </div>
         <div className="flex-1 min-w-[140px]">
           <label className="block text-sm font-medium text-gray-700 mb-1">Tutar (₺)</label>
@@ -498,7 +530,7 @@ function AylikBorcEkleForm({ ogrenciId, onEklendi }) {
           />
         </div>
         <div className="flex-1 min-w-[140px]">
-          <label className="block text-sm font-medium text-gray-700 mb-1">Dönem (Ay)</label>
+          <label className="block text-sm font-medium text-gray-700 mb-1">Hangi Ay</label>
           <input
             type="month"
             value={donem}
@@ -513,7 +545,7 @@ function AylikBorcEkleForm({ ogrenciId, onEklendi }) {
           disabled={gonderiliyor}
           className="bg-navy text-white font-semibold px-5 py-2 rounded-lg hover:bg-blue transition-colors disabled:opacity-50"
         >
-          {gonderiliyor ? 'Ekleniyor...' : 'Aylık Borç Ekle'}
+          {gonderiliyor ? 'Ekleniyor...' : 'Borç Ekle'}
         </button>
         <button
           type="button"
@@ -897,7 +929,7 @@ export default function Muhasebe() {
               <OdemeEkleForm ogrenciId={seciliId} onEklendi={veriyiYenile} />
               <div className="flex flex-wrap gap-4 mb-6">
                 <SozlesmeEkleForm ogrenciId={seciliId} onEklendi={veriyiYenile} />
-                <AylikBorcEkleForm ogrenciId={seciliId} onEklendi={veriyiYenile} />
+                <GecmisBorcEkleForm ogrenciId={seciliId} onEklendi={veriyiYenile} />
               </div>
               <DagitilmamisOdemelerPaneli odemeler={odemeler} onDegisti={veriyiYenile} digerOgrenciAdlari={faturaDigerleri.length > 0} />
             </>
