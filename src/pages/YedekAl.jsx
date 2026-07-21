@@ -215,6 +215,17 @@ export default function YedekAl() {
         tekrar indirmen önerilir.
       </p>
 
+      <div className="bg-green-50 border border-green-200 rounded-2xl p-4 mb-6 text-sm text-green-800">
+        <p className="font-semibold mb-1">Artık otomatik günlük yedek de alınıyor</p>
+        <p>
+          Google Drive bağlıysa (bkz. Ödev sayfası "Drive'a Bağlan"), sistem HER GECE kendiliğinden
+          bu sayfadakiyle aynı yedeği alıp Drive'da "Savaş Akça Eğitim - Günlük Yedekler" klasörüne
+          kaydeder — hiçbir şey yapmanıza gerek yok. 90 günden eski otomatik yedekler klasör
+          şişmesin diye kendiliğinden silinir. Aşağıdaki "Yedek Oluştur ve İndir" butonu, anında
+          kendi bilgisayarınıza da bir kopya indirmek istediğinizde hâlâ kullanılabilir.
+        </p>
+      </div>
+
       <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6">
         <button
           type="button"
