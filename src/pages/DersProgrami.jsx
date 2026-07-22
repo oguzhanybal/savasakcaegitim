@@ -1235,7 +1235,13 @@ export default function DersProgrami() {
       isVeliYaDaOgrenci
         ? supabase.from('ogrenciler').select('id, ad_soyad, veli_profile_id, ogrenci_profile_id')
         : Promise.resolve({ data: [] }),
-      isYonetici ? supabase.from('taslaklar').select('*').eq('tur', 'sinif').order('created_at') : Promise.resolve({ data: [] }),
+      // ÖNCEDEN sadece tur='sinif' çekiliyordu — ama bu sayfadaki Hızlı Ekle
+      // popup'ı (Taslak Modu açıkken) bire bir / soru çözümü taslakları da
+      // oluşturabiliyor (bkz. MusaitlikTablosu.jsx), ve Günlük Müsaitlik
+      // tablosunun bunları da "dolu (taslak)" olarak gösterebilmesi için TÜM
+      // türler burada tutulmalı. "Taslaklarım" listesi (TaslaklarimDersProgrami)
+      // yine de sadece 'sinif' olanları gösterir — aşağıda ayrıca filtrelenir.
+      isYonetici ? supabase.from('taslaklar').select('*').order('created_at') : Promise.resolve({ data: [] }),
     ]).then(([p, s, og, ba, by, o, kendiCocuklarSonuc, t]) => {
       setTaslaklar(t.data || [])
       setProgram(
@@ -1577,7 +1583,7 @@ export default function DersProgrami() {
                 aktifPlanAdi={aktifPlanAdi}
               />
               <TaslaklarimDersProgrami
-                taslaklar={taslaklar}
+                taslaklar={taslaklar.filter((t) => t.tur === 'sinif')}
                 siniflar={siniflar}
                 ogretmenler={ogretmenler}
                 program={program}
