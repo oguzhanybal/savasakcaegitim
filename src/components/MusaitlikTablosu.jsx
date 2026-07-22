@@ -171,6 +171,17 @@ export default function MusaitlikTablosu({
     if (!hizliPopup || !secilen) return
     setHpHata('')
 
+    // Taslak Modu anahtarı AÇIKKEN plan adı boş bırakılırsa, eskiden burada
+    // sessizce CANLI tabloya yazılıyordu (kullanıcı anahtarın açık göründüğünü
+    // görüp taslağa gittiğini sanıyor, oysa direkt yayınlanıyordu) — bu artık
+    // KESİN olarak engelleniyor: anahtar açıkken plan adı yoksa hiçbir şey
+    // eklenmez, açık ve net bir hata gösterilir. Anahtar açıkken TEK yol,
+    // canlıya ya da taslağa gitmek değil, önce bir plan adı yazmaktır.
+    if (taslakModuAcik && !aktifPlanAdi) {
+      setHpHata('Taslak Modu açık — devam etmeden önce sayfanın üstündeki kutuya bir plan adı yazın (yoksa hiçbir yere eklenmez).')
+      return
+    }
+
     // Taslak Modu: sayfa üstündeki anahtar açık VE bir plan adı girilmişse,
     // aşağıdaki 3 dalın hiçbiri canlı tabloya yazmaz — hepsi taslaklar
     // tablosuna, aynı plan_adi ile kaydedilir (bkz. dosya başındaki not).
@@ -597,6 +608,11 @@ export default function MusaitlikTablosu({
                             {taslakModuAcik && aktifPlanAdi && (
                               <p className="text-[10px] font-medium text-orange-600 bg-orange-50 border border-orange-100 rounded px-1.5 py-1 mb-1.5">
                                 📋 Taslak Modu açık — "{aktifPlanAdi}" planına eklenecek
+                              </p>
+                            )}
+                            {taslakModuAcik && !aktifPlanAdi && (
+                              <p className="text-[10px] font-medium text-red-600 bg-red-50 border border-red-100 rounded px-1.5 py-1 mb-1.5">
+                                ⚠ Taslak Modu açık ama plan adı boş — önce sayfanın üstüne bir plan adı yazın, yoksa ekleyemezsiniz.
                               </p>
                             )}
                             {!secilen ? (
