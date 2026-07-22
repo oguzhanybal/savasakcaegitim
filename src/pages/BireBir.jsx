@@ -235,7 +235,23 @@ function ogrenciSinifDersiUyarisiBul(ogrenciId, gun, baslangic, bitis, dersProgr
 //  - Hayır -> sadece o tarihe özel, tek seferlik bir ders kaydı (bire_bir_yoklama,
 //             atama_id boş) oluşturulur, hemen "Geldi" olarak borç eklenir.
 // ============================================================================
-function BireBirDersEkleForm({ ogrenciler, ogretmenler, atamalar, dersProgrami, yoklamalar, sinifOgrencileri, taslaklar = [], onEklendi, doldurBilgisi }) {
+function BireBirDersEkleForm({
+  ogrenciler,
+  ogretmenler,
+  atamalar,
+  dersProgrami,
+  yoklamalar,
+  sinifOgrencileri,
+  taslaklar = [],
+  onEklendi,
+  doldurBilgisi,
+  // Taslak Modu — sayfa üstündeki anahtar açık VE bir plan adı girilmişse,
+  // aşağıdaki "Ekle" butonu artık canlı kayda değil, taslaklar tablosuna, bu
+  // isimle etiketlenerek kaydeder (bkz. BireBir() bileşenindeki
+  // taslakModuAcik/aktifPlanAdi state'i).
+  taslakModuAcik = false,
+  aktifPlanAdi = '',
+}) {
   const { profile } = useAuth()
   const [ogrenciId, setOgrenciId] = useState('')
   const [ogretmenId, setOgretmenId] = useState('')
@@ -539,6 +555,15 @@ function BireBirDersEkleForm({ ogrenciler, ogretmenler, atamalar, dersProgrami, 
       return
     }
 
+    // Taslak Modu açıkken (sayfa üstündeki anahtar + plan adı), "Ekle" butonu
+    // canlı kayda yazmak yerine taslagaKaydet()'e devrediyor — o fonksiyon
+    // zaten hem canlıya hem bekleyen taslaklara karşı çakışma kontrolü yapıyor
+    // ve aktifPlanAdi'yı satıra damgalıyor (bkz. aşağıdaki taslagaKaydet).
+    if (taslakModuAcik && aktifPlanAdi.trim()) {
+      await taslagaKaydet()
+      return
+    }
+
     if (tekrarlansin) {
       if (seciliGunler.length === 0 || !baslangic || !bitis) {
         setHata('Lütfen en az bir gün ve saat aralığını girin.')
@@ -671,6 +696,7 @@ function BireBirDersEkleForm({ ogrenciler, ogretmenler, atamalar, dersProgrami, 
       // taslak satırı TEK seferde ekleniyor — yayınlama (yayinla) hâlâ her
       // taslağı tek tek (bir gün = bir satır) işliyor, burada değişen sadece
       // kaç taslak satırı birden oluşturulduğu.
+      const planAdi = taslakModuAcik && aktifPlanAdi.trim() ? aktifPlanAdi.trim() : null
       kayitlar = seciliGunler.map((g) => ({
         tur: 'bire_bir_haftalik',
         veri: {
@@ -682,6 +708,7 @@ function BireBirDersEkleForm({ ogrenciler, ogretmenler, atamalar, dersProgrami, 
           bitis_saat: bitis,
         },
         olusturan_profile_id: profile?.id,
+        plan_adi: planAdi,
       }))
     } else {
       if (!tarih) {
@@ -700,6 +727,7 @@ function BireBirDersEkleForm({ ogrenciler, ogretmenler, atamalar, dersProgrami, 
             bitis_saat: tekBitis || null,
           },
           olusturan_profile_id: profile?.id,
+          plan_adi: taslakModuAcik && aktifPlanAdi.trim() ? aktifPlanAdi.trim() : null,
         },
       ]
     }
@@ -708,10 +736,11 @@ function BireBirDersEkleForm({ ogrenciler, ogretmenler, atamalar, dersProgrami, 
     setGonderiliyor(false)
     if (error) setHata('Hata: ' + error.message)
     else {
+      const planNotu = taslakModuAcik && aktifPlanAdi.trim() ? ` "${aktifPlanAdi.trim()}" planına eklendi.` : ''
       setBasari(
         kayitlar.length > 1
-          ? `✓ ${kayitlar.length} gün için taslağa kaydedildi — aşağıdaki "Taslaklarım" listesinden yayınlayabilirsiniz.`
-          : '✓ Taslağa kaydedildi — aşağıdaki "Taslaklarım" listesinden yayınlayabilirsiniz.'
+          ? `✓ ${kayitlar.length} gün için taslağa kaydedildi.${planNotu} Aşağıdaki "Taslaklarım" listesinden yayınlayabilirsiniz.`
+          : `✓ Taslağa kaydedildi.${planNotu} Aşağıdaki "Taslaklarım" listesinden yayınlayabilirsiniz.`
       )
       onEklendi()
     }
@@ -719,7 +748,12 @@ function BireBirDersEkleForm({ ogrenciler, ogretmenler, atamalar, dersProgrami, 
 
   return (
     <form id="bire-bir-ekle-formu" onSubmit={ekle} className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5 mb-6">
-      <p className="font-semibold text-gray-700 mb-3">Bire Bir Ders Ekle</p>
+      <p className="font-semibold text-gray-700 mb-1">Bire Bir Ders Ekle</p>
+      {taslakModuAcik && aktifPlanAdi.trim() && (
+        <p className="text-xs text-orange-600 bg-orange-50 border border-orange-100 rounded-lg px-2.5 py-1.5 mb-3">
+          📋 Taslak Modu açık — eklenen ders "{aktifPlanAdi.trim()}" planına kaydedilecek (canlıya değil).
+        </p>
+      )}
       <div className="flex flex-wrap gap-3 items-end">
         <div className="flex-1 min-w-[180px]">
           <label className="block text-sm font-medium text-gray-700 mb-1">Öğrenci</label>
@@ -946,18 +980,26 @@ function BireBirDersEkleForm({ ogrenciler, ogretmenler, atamalar, dersProgrami, 
         >
           {gonderiliyor
             ? 'Ekleniyor...'
+            : taslakModuAcik && aktifPlanAdi.trim()
+            ? tekrarlansin && seciliGunler.length > 1
+              ? `${seciliGunler.length} Güne Plana Ekle`
+              : 'Plana Ekle'
             : tekrarlansin && seciliGunler.length > 1
             ? `${seciliGunler.length} Güne Ekle`
             : 'Ekle'}
         </button>
-        <button
-          type="button"
-          onClick={taslagaKaydet}
-          disabled={gonderiliyor}
-          className="bg-white border border-gray-200 text-gray-600 font-semibold px-5 py-2 rounded-lg hover:bg-gray-50 transition-colors disabled:opacity-50"
-        >
-          Taslağa Kaydet
-        </button>
+        {/* Taslak Modu açıkken bu buton gereksiz — ana "Ekle" butonu zaten aynı
+            işi (plana kaydetme) yapıyor, iki ayrı buton kafa karıştırır. */}
+        {!(taslakModuAcik && aktifPlanAdi.trim()) && (
+          <button
+            type="button"
+            onClick={taslagaKaydet}
+            disabled={gonderiliyor}
+            className="bg-white border border-gray-200 text-gray-600 font-semibold px-5 py-2 rounded-lg hover:bg-gray-50 transition-colors disabled:opacity-50"
+          >
+            Taslağa Kaydet
+          </button>
+        )}
       </div>
 
       {sinifUyarisi && (
@@ -1030,6 +1072,24 @@ function TaslaklarimBireBir({ taslaklar, ogrenciler, ogretmenler, dersProgrami, 
         setHataMap((h) => ({ ...h, [t.id]: 'Hata: ' + error.message }))
         return false
       }
+    } else if (t.tur === 'soru_cozumu') {
+      // Soru Çözümü taslağı (Ders Programı sayfasındaki Hızlı Ekle'den, Taslak
+      // Modu açıkken oluşturulmuş olabilir) — öğrenciye bağlı değil, borç
+      // oluşturmaz, sadece öğretmen + tarih + saat kaydedilir. Bkz.
+      // MusaitlikTablosu.jsx'teki canlı (taslak modu kapalı) karşılığı.
+      const { error } = await supabase.from('bire_bir_yoklama').insert({
+        ogretmen_profile_id: v.ogretmen_profile_id,
+        tur: 'soru_cozumu',
+        tutar: 0,
+        tarih: v.tarih,
+        durum: 'geldi',
+        baslangic_saat: v.baslangic_saat,
+        bitis_saat: v.bitis_saat,
+      })
+      if (error) {
+        setHataMap((h) => ({ ...h, [t.id]: 'Hata: ' + error.message }))
+        return false
+      }
     } else {
       if (v.baslangic_saat && v.bitis_saat) {
         const cakisma = tekSeferlikCakismaBul(
@@ -1082,11 +1142,11 @@ function TaslaklarimBireBir({ taslaklar, ogrenciler, ogretmenler, dersProgrami, 
     onDegisti()
   }
 
-  async function tumunuYayinla() {
+  async function tumunuYayinla(liste = taslaklar) {
     setTumuGonderiliyor(true)
     let basarili = 0
     let basarisiz = 0
-    for (const t of taslaklar) {
+    for (const t of liste) {
       const sonuc = await yayinla(t)
       if (sonuc) basarili++
       else basarisiz++
@@ -1104,17 +1164,32 @@ function TaslaklarimBireBir({ taslaklar, ogrenciler, ogretmenler, dersProgrami, 
   // görmek istiyorum" isteğiyle, HAFTALIK (tekrar eden) taslaklar artık alt
   // alta düz bir liste değil, Pzt-Paz sütunlu bir tabloda, her taslak kendi
   // gününün sütununda (saate göre sıralı) gösteriliyor. TEKİL (belirli bir
-  // tarihe ait, tekrarsız) taslaklar bir "gün" kavramına oturmadığı için
-  // (herhangi bir tarih olabilir) ayrı, alttaki düz listede kalıyor.
-  const haftalikTaslaklar = taslaklar.filter((t) => t.tur === 'bire_bir_haftalik')
-  const tekilTaslaklar = taslaklar.filter((t) => t.tur !== 'bire_bir_haftalik')
-  const gunSutunlari = GUNLER.slice(1).map((gunAdi, i) => {
-    const gunNo = i + 1
-    const gunTaslaklari = haftalikTaslaklar
-      .filter((t) => t.veri.gun === gunNo)
-      .sort((a, b) => (saatKisalt(a.veri.baslangic_saat) < saatKisalt(b.veri.baslangic_saat) ? -1 : 1))
-    return { gunNo, gunAdi, gunTaslaklari }
-  })
+  // tarihe ait, tekrarsız — hem 'bire_bir_tekil' HEM 'soru_cozumu', ikisi de
+  // bir tarihe bağlı) taslaklar bir "gün" kavramına oturmadığı için ayrı,
+  // alttaki düz listede kalıyor.
+  //
+  // Taslak Modu ile isim verilen planlar (plan_adi dolu olanlar — Ders
+  // Programı sayfasındaki Hızlı Ekle'den bire bir/soru çözümü eklenmişse de
+  // buraya düşer, bkz. plan_adi eşleşmesi) artık AYRI gruplar halinde
+  // gösteriliyor — her plan kendi başlığı + "Planı Yayınla" butonuyla.
+  // İsimsiz (eski usul tek tek "Taslağa Kaydet" ile oluşturulmuş) taslaklar
+  // en altta, tek bir ortak "İsimsiz Taslaklar" grubunda kalıyor.
+  function gunSutunlariOlustur(haftalikListe) {
+    return GUNLER.slice(1).map((gunAdi, i) => {
+      const gunNo = i + 1
+      const gunTaslaklari = haftalikListe
+        .filter((t) => t.veri.gun === gunNo)
+        .sort((a, b) => (saatKisalt(a.veri.baslangic_saat) < saatKisalt(b.veri.baslangic_saat) ? -1 : 1))
+      return { gunNo, gunAdi, gunTaslaklari }
+    })
+  }
+
+  const planAdlari = [...new Set(taslaklar.filter((t) => t.plan_adi).map((t) => t.plan_adi))]
+  const isimsizTaslaklar = taslaklar.filter((t) => !t.plan_adi)
+  const gruplar = [
+    ...planAdlari.map((ad) => ({ ad, liste: taslaklar.filter((t) => t.plan_adi === ad) })),
+    ...(isimsizTaslaklar.length > 0 ? [{ ad: null, liste: isimsizTaslaklar }] : []),
+  ]
 
   return (
     <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden mb-6">
@@ -1127,7 +1202,7 @@ function TaslaklarimBireBir({ taslaklar, ogrenciler, ogretmenler, dersProgrami, 
         </div>
         <button
           type="button"
-          onClick={tumunuYayinla}
+          onClick={() => tumunuYayinla()}
           disabled={tumuGonderiliyor}
           className="bg-navy text-white text-sm font-semibold px-4 py-1.5 rounded-lg hover:opacity-90 transition-opacity disabled:opacity-50"
         >
@@ -1135,75 +1210,102 @@ function TaslaklarimBireBir({ taslaklar, ogrenciler, ogretmenler, dersProgrami, 
         </button>
       </div>
 
-      {haftalikTaslaklar.length > 0 && (
-        <div className="overflow-x-auto border-b border-gray-100">
-          <div className="flex min-w-[980px] divide-x divide-gray-100">
-            {gunSutunlari.map(({ gunNo, gunAdi, gunTaslaklari }) => (
-              <div key={gunNo} className="flex-1 min-w-[140px]">
-                <div className="bg-navy text-white px-2 py-2 text-xs font-semibold text-center">{gunAdi}</div>
-                <div className="p-1.5 space-y-1.5 min-h-[70px]">
-                  {gunTaslaklari.length === 0 ? (
-                    <p className="text-[11px] text-gray-300 text-center py-3">—</p>
-                  ) : (
-                    gunTaslaklari.map((t) => (
-                      <div key={t.id} className="bg-blue-50 border border-blue-100 rounded-lg px-2 py-1.5">
-                        <p className="text-xs font-semibold text-navy leading-tight">{ogrenciAd(t.veri.ogrenci_id)}</p>
-                        <p className="text-[11px] text-gray-500 leading-tight">{ogretmenAd(t.veri.ogretmen_profile_id)}</p>
-                        <p className="text-[11px] text-gray-400 leading-tight">
-                          {saatKisalt(t.veri.baslangic_saat)}–{saatKisalt(t.veri.bitis_saat)} · {paraFormat(t.veri.ders_ucreti)}
-                        </p>
-                        {hataMap[t.id] && <p className="text-[11px] text-red-600 mt-1">{hataMap[t.id]}</p>}
-                        <div className="flex items-center gap-2 mt-1">
-                          <button
-                            type="button"
-                            onClick={() => tekYayinla(t)}
-                            disabled={gonderiliyorId === t.id || tumuGonderiliyor}
-                            className="text-[11px] text-navy font-semibold hover:underline disabled:opacity-50"
-                          >
-                            {gonderiliyorId === t.id ? '...' : 'Yayınla'}
-                          </button>
-                          <button type="button" onClick={() => sil(t.id)} className="text-[11px] text-gray-400 hover:underline">
-                            Sil
-                          </button>
-                        </div>
+      {gruplar.map(({ ad, liste }) => {
+        const haftalikListe = liste.filter((t) => t.tur === 'bire_bir_haftalik')
+        const tekilListe = liste.filter((t) => t.tur !== 'bire_bir_haftalik')
+        return (
+          <div key={ad || '__isimsiz__'} className="border-b border-gray-100 last:border-b-0">
+            <div className="px-4 py-2 bg-gray-50/60 flex items-center justify-between flex-wrap gap-2">
+              <p className="text-sm font-semibold text-gray-600">
+                {ad ? `📋 ${ad}` : 'İsimsiz Taslaklar'} <span className="text-gray-400 font-normal">({liste.length})</span>
+              </p>
+              <button
+                type="button"
+                onClick={() => tumunuYayinla(liste)}
+                disabled={tumuGonderiliyor}
+                className="text-navy text-xs font-semibold hover:underline disabled:opacity-50"
+              >
+                Planı Yayınla
+              </button>
+            </div>
+
+            {haftalikListe.length > 0 && (
+              <div className="overflow-x-auto border-b border-gray-100">
+                <div className="flex min-w-[980px] divide-x divide-gray-100">
+                  {gunSutunlariOlustur(haftalikListe).map(({ gunNo, gunAdi, gunTaslaklari }) => (
+                    <div key={gunNo} className="flex-1 min-w-[140px]">
+                      <div className="bg-navy text-white px-2 py-2 text-xs font-semibold text-center">{gunAdi}</div>
+                      <div className="p-1.5 space-y-1.5 min-h-[70px]">
+                        {gunTaslaklari.length === 0 ? (
+                          <p className="text-[11px] text-gray-300 text-center py-3">—</p>
+                        ) : (
+                          gunTaslaklari.map((t) => (
+                            <div key={t.id} className="bg-blue-50 border border-blue-100 rounded-lg px-2 py-1.5">
+                              <p className="text-xs font-semibold text-navy leading-tight">{ogrenciAd(t.veri.ogrenci_id)}</p>
+                              <p className="text-[11px] text-gray-500 leading-tight">{ogretmenAd(t.veri.ogretmen_profile_id)}</p>
+                              <p className="text-[11px] text-gray-400 leading-tight">
+                                {saatKisalt(t.veri.baslangic_saat)}–{saatKisalt(t.veri.bitis_saat)} · {paraFormat(t.veri.ders_ucreti)}
+                              </p>
+                              {hataMap[t.id] && <p className="text-[11px] text-red-600 mt-1">{hataMap[t.id]}</p>}
+                              <div className="flex items-center gap-2 mt-1">
+                                <button
+                                  type="button"
+                                  onClick={() => tekYayinla(t)}
+                                  disabled={gonderiliyorId === t.id || tumuGonderiliyor}
+                                  className="text-[11px] text-navy font-semibold hover:underline disabled:opacity-50"
+                                >
+                                  {gonderiliyorId === t.id ? '...' : 'Yayınla'}
+                                </button>
+                                <button type="button" onClick={() => sil(t.id)} className="text-[11px] text-gray-400 hover:underline">
+                                  Sil
+                                </button>
+                              </div>
+                            </div>
+                          ))
+                        )}
                       </div>
-                    ))
-                  )}
+                    </div>
+                  ))}
                 </div>
               </div>
-            ))}
-          </div>
-        </div>
-      )}
+            )}
 
-      {tekilTaslaklar.length > 0 && (
-        <div className="divide-y divide-gray-50">
-          {tekilTaslaklar.map((t) => (
-            <div key={t.id} className="px-4 py-2.5 flex items-center justify-between gap-3 flex-wrap">
-              <div>
-                <p className="text-sm font-medium text-gray-800">
-                  {ogrenciAd(t.veri.ogrenci_id)} <span className="text-gray-400 font-normal">— {ogretmenAd(t.veri.ogretmen_profile_id)}</span>
-                </p>
-                <p className="text-xs text-gray-400">
-                  {new Date(t.veri.tarih + 'T12:00:00').toLocaleDateString('tr-TR')}
-                  {t.veri.baslangic_saat ? ` · ${saatKisalt(t.veri.baslangic_saat)}–${saatKisalt(t.veri.bitis_saat)}` : ''} · {paraFormat(t.veri.tutar)}
-                </p>
-                {hataMap[t.id] && <p className="text-xs text-red-600 mt-1">{hataMap[t.id]}</p>}
+            {tekilListe.length > 0 && (
+              <div className="divide-y divide-gray-50">
+                {tekilListe.map((t) => {
+                  const soruCozumuMu = t.tur === 'soru_cozumu'
+                  return (
+                    <div key={t.id} className="px-4 py-2.5 flex items-center justify-between gap-3 flex-wrap">
+                      <div>
+                        <p className="text-sm font-medium text-gray-800">
+                          {soruCozumuMu ? '🧠 Soru Çözümü' : ogrenciAd(t.veri.ogrenci_id)}{' '}
+                          <span className="text-gray-400 font-normal">— {ogretmenAd(t.veri.ogretmen_profile_id)}</span>
+                        </p>
+                        <p className="text-xs text-gray-400">
+                          {new Date(t.veri.tarih + 'T12:00:00').toLocaleDateString('tr-TR')}
+                          {t.veri.baslangic_saat ? ` · ${saatKisalt(t.veri.baslangic_saat)}–${saatKisalt(t.veri.bitis_saat)}` : ''}
+                          {!soruCozumuMu ? ` · ${paraFormat(t.veri.tutar)}` : ''}
+                        </p>
+                        {hataMap[t.id] && <p className="text-xs text-red-600 mt-1">{hataMap[t.id]}</p>}
+                      </div>
+                      <div className="flex items-center gap-3 shrink-0">
+                        <button
+                          onClick={() => tekYayinla(t)}
+                          disabled={gonderiliyorId === t.id || tumuGonderiliyor}
+                          className="text-navy text-sm font-semibold hover:underline disabled:opacity-50"
+                        >
+                          {gonderiliyorId === t.id ? 'Yayınlanıyor...' : 'Yayınla'}
+                        </button>
+                        <button onClick={() => sil(t.id)} className="text-gray-400 text-sm hover:underline">Sil</button>
+                      </div>
+                    </div>
+                  )
+                })}
               </div>
-              <div className="flex items-center gap-3 shrink-0">
-                <button
-                  onClick={() => tekYayinla(t)}
-                  disabled={gonderiliyorId === t.id || tumuGonderiliyor}
-                  className="text-navy text-sm font-semibold hover:underline disabled:opacity-50"
-                >
-                  {gonderiliyorId === t.id ? 'Yayınlanıyor...' : 'Yayınla'}
-                </button>
-                <button onClick={() => sil(t.id)} className="text-gray-400 text-sm hover:underline">Sil</button>
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
+            )}
+          </div>
+        )
+      })}
     </div>
   )
 }
@@ -2359,6 +2461,15 @@ export default function BireBir() {
   // taslağa kaydedilene kadar kullanıcı "hangi saate ekliyordum" diye
   // unutmasın diye. dersEklendi() içinde temizlenir.
   const [seciliHucre, setSeciliHucre] = useState(null)
+  // Taslak Modu — açıkken (VE bir plan adı girilmişse), hem Müsaitlik
+  // Tablosu'ndaki "Hızlı Ekle" popup'ı hem aşağıdaki "Bire Bir Ders Ekle"
+  // formu, dersi CANLI kayda değil, isimlendirilmiş bu plana (taslaklar
+  // tablosunda plan_adi ile) ekler. Ders Programı sayfasındaki aynı isimli
+  // anahtar BAĞIMSIZDIR — bu sadece bu sayfadan (Hızlı Ekle'nin öğrenci/soru
+  // çözümü dalları + bu sayfanın formu) eklenenleri etkiler; aynı plan adını
+  // iki sayfada da kullanırsanız Taslaklarım'da aynı başlık altında toplanırlar.
+  const [taslakModuAcik, setTaslakModuAcik] = useState(false)
+  const [aktifPlanAdi, setAktifPlanAdi] = useState('')
   // İlk açılıştan sonra "Yükleniyor..." ekranını bir daha göstermiyoruz — bir ders
   // ekleyip onEklendi() ile veriyi yenilediğimizde tüm sayfa "Yükleniyor..." ekranına
   // dönüp formu (bileşeni) komple yeniden kuruyordu, bu da az önce doldurulmuş
@@ -2395,8 +2506,11 @@ export default function BireBir() {
       supabase
         .from('bire_bir_yoklama')
         .select('*, ogrenciler(ad_soyad, telefon, anne_telefon, baba_telefon), profiles:ogretmen_profile_id(ad_soyad, brans)'),
+      // 'soru_cozumu' taslakları da buraya dahil — Ders Programı sayfasındaki
+      // Hızlı Ekle'den, Taslak Modu açıkken oluşturulmuş olabilirler; yayınlanınca
+      // bire_bir_yoklama'ya yazıldıkları için yönetimleri de bu sayfada.
       isYonetici
-        ? supabase.from('taslaklar').select('*').in('tur', ['bire_bir_haftalik', 'bire_bir_tekil']).order('created_at')
+        ? supabase.from('taslaklar').select('*').in('tur', ['bire_bir_haftalik', 'bire_bir_tekil', 'soru_cozumu']).order('created_at')
         : Promise.resolve({ data: [] }),
     ]).then(([o, og, dp, so, a, y, t]) => {
       setOgrenciler(o.data || [])
@@ -2504,6 +2618,41 @@ export default function BireBir() {
               normal kullanırken (öğrenci kaydederken) müsaitliğe bakmak için
               aşağı inmeye gerek kalmasın diye. Boş bir hücreye tıklanınca da
               altındaki forma o öğretmen/tarih/saat otomatik doldurulup kaydırılıyor. */}
+          {/* Taslak Modu — bu anahtar HEM Müsaitlik Tablosu'ndaki Hızlı Ekle
+              popup'ını HEM aşağıdaki formu etkiler (bkz. yukarıdaki
+              taslakModuAcik state notu). */}
+          <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-4 mb-4 flex items-center gap-3 flex-wrap">
+            <label className="flex items-center gap-2 cursor-pointer select-none">
+              <span className="text-sm font-semibold text-gray-700">Taslak Modu</span>
+              <button
+                type="button"
+                onClick={() => setTaslakModuAcik((v) => !v)}
+                className={`relative w-11 h-6 rounded-full transition-colors ${taslakModuAcik ? 'bg-orange' : 'bg-gray-200'}`}
+              >
+                <span
+                  className={`absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform ${
+                    taslakModuAcik ? 'translate-x-5' : ''
+                  }`}
+                />
+              </button>
+            </label>
+            {taslakModuAcik && (
+              <>
+                <input
+                  type="text"
+                  value={aktifPlanAdi}
+                  onChange={(e) => setAktifPlanAdi(e.target.value)}
+                  placeholder='Plan adı (ör. "Ekim 2. Hafta Programı")'
+                  className="px-3 py-1.5 border border-gray-200 rounded-lg text-sm flex-1 min-w-[220px]"
+                />
+                <span className="text-xs text-gray-500">
+                  {aktifPlanAdi.trim()
+                    ? `Açık — Hızlı Ekle ve formdan eklenen dersler "${aktifPlanAdi.trim()}" planına kaydediliyor (canlıya değil).`
+                    : 'Devam etmeden önce bir plan adı yazın.'}
+                </span>
+              </>
+            )}
+          </div>
           <MusaitlikTablosu
             ogretmenler={ogretmenler}
             dersProgrami={dersProgrami}
@@ -2516,6 +2665,9 @@ export default function BireBir() {
             siniflar={[]}
             hizliEkleEtkin
             onHizliEklendi={dersEklendiVeyaTaslaklandi}
+            taslakModuAcik={taslakModuAcik}
+            aktifPlanAdi={aktifPlanAdi.trim()}
+            taslaklar={taslaklar}
           />
           <BireBirDersEkleForm
             ogrenciler={ogrenciler}
@@ -2527,6 +2679,8 @@ export default function BireBir() {
             taslaklar={taslaklar}
             onEklendi={dersEklendiVeyaTaslaklandi}
             doldurBilgisi={doldurBilgisi}
+            taslakModuAcik={taslakModuAcik}
+            aktifPlanAdi={aktifPlanAdi}
           />
           {/* Ders hatırlatma (WhatsApp gönder) paneli sadece yöneticiye gösterilir —
               öğretmen rolünde veli/öğrenciye mesaj gönderme yetkisi olmamalı. */}

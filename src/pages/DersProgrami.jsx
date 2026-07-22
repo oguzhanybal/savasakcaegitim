@@ -67,7 +67,22 @@ function cakismaBul({ sinifId, gun, baslangic, bitis, ogretmenId, hedefSinifId =
   return null
 }
 
-function DersEkleForm({ siniflar, ogretmenler, program, taslaklar, onEklendi, doldurBilgisi, duzenlenenDers, onDuzenlemeBitti }) {
+function DersEkleForm({
+  siniflar,
+  ogretmenler,
+  program,
+  taslaklar,
+  onEklendi,
+  doldurBilgisi,
+  duzenlenenDers,
+  onDuzenlemeBitti,
+  // Taslak Modu — sayfa üstündeki anahtar açık VE bir plan adı girilmişse,
+  // aşağıdaki "Ekle" butonu artık canlı programa değil, taslaklar tablosuna,
+  // bu isimle etiketlenerek kaydeder (bkz. DersProgrami() bileşenindeki
+  // taslakModuAcik/aktifPlanAdi state'i).
+  taslakModuAcik = false,
+  aktifPlanAdi = '',
+}) {
   const { profile } = useAuth()
   const [sinifId, setSinifId] = useState('')
   const [dersAdi, setDersAdi] = useState('')
@@ -168,6 +183,15 @@ function DersEkleForm({ siniflar, ogretmenler, program, taslaklar, onEklendi, do
     }
     if (baslangic >= bitis) {
       setHata('Başlangıç saati bitiş saatinden önce olmalı.')
+      return
+    }
+
+    // Taslak Modu açıkken (sayfa üstündeki anahtar + plan adı), "Ekle" butonu
+    // canlı programa yazmak yerine taslagaKaydet()'e devrediyor — o fonksiyon
+    // zaten hem canlıya hem bekleyen taslaklara karşı çakışma kontrolü yapıyor
+    // ve aktifPlanAdi'yı satıra damgalıyor (bkz. aşağıdaki taslagaKaydet).
+    if (!duzenleModu && taslakModuAcik && aktifPlanAdi.trim()) {
+      await taslagaKaydet()
       return
     }
 
@@ -317,15 +341,20 @@ function DersEkleForm({ siniflar, ogretmenler, program, taslaklar, onEklendi, do
         ogretmen_profile_id: ogretmenId || null,
       },
       olusturan_profile_id: profile?.id,
+      // Taslak Modu açıksa (bkz. yukarıdaki ekle() içindeki yönlendirme), her
+      // satır aynı isimli plana damgalanır — kapalıysa (elle "Taslağa Kaydet"
+      // ile) plansız/isimsiz kalır, eskisi gibi.
+      plan_adi: taslakModuAcik && aktifPlanAdi.trim() ? aktifPlanAdi.trim() : null,
     }))
     const { error } = await supabase.from('taslaklar').insert(kayitlar)
     setGonderiliyor(false)
     if (error) setHata('Hata: ' + error.message)
     else {
+      const planNotu = taslakModuAcik && aktifPlanAdi.trim() ? ` "${aktifPlanAdi.trim()}" planına eklendi.` : ''
       setBasari(
         kayitlar.length > 1
-          ? `✓ ${kayitlar.length} gün için taslağa kaydedildi — aşağıdaki "Taslaklarım" listesinden yayınlayabilirsiniz.`
-          : '✓ Taslağa kaydedildi — aşağıdaki "Taslaklarım" listesinden yayınlayabilirsiniz.'
+          ? `✓ ${kayitlar.length} gün için taslağa kaydedildi.${planNotu} Aşağıdaki "Taslaklarım" listesinden yayınlayabilirsiniz.`
+          : `✓ Taslağa kaydedildi.${planNotu} Aşağıdaki "Taslaklarım" listesinden yayınlayabilirsiniz.`
       )
       onEklendi()
     }
@@ -333,7 +362,12 @@ function DersEkleForm({ siniflar, ogretmenler, program, taslaklar, onEklendi, do
 
   return (
     <form id="ders-ekle-formu" onSubmit={ekle} className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5 mb-6">
-      <p className="font-semibold text-gray-700 mb-3">{duzenleModu ? 'Dersi Düzenle' : 'Yeni Ders Saati Ekle'}</p>
+      <p className="font-semibold text-gray-700 mb-1">{duzenleModu ? 'Dersi Düzenle' : 'Yeni Ders Saati Ekle'}</p>
+      {!duzenleModu && taslakModuAcik && aktifPlanAdi.trim() && (
+        <p className="text-xs text-orange-600 bg-orange-50 border border-orange-100 rounded-lg px-2.5 py-1.5 mb-3">
+          📋 Taslak Modu açık — eklenen ders "{aktifPlanAdi.trim()}" planına kaydedilecek (canlı programa değil).
+        </p>
+      )}
       <div className="flex flex-wrap gap-3 items-end">
         <div className="flex-1 min-w-[180px]">
           <label className="block text-sm font-medium text-gray-700 mb-1">Sınıf</label>
@@ -434,6 +468,10 @@ function DersEkleForm({ siniflar, ogretmenler, program, taslaklar, onEklendi, do
               : 'Ekleniyor...'
             : duzenleModu
             ? 'Güncelle'
+            : taslakModuAcik && aktifPlanAdi.trim()
+            ? seciliGunler.length > 1
+              ? `${seciliGunler.length} Güne Plana Ekle`
+              : 'Plana Ekle'
             : seciliGunler.length > 1
             ? `${seciliGunler.length} Güne Ekle`
             : 'Ekle'}
@@ -448,14 +486,18 @@ function DersEkleForm({ siniflar, ogretmenler, program, taslaklar, onEklendi, do
             İptal
           </button>
         ) : (
-          <button
-            type="button"
-            onClick={taslagaKaydet}
-            disabled={gonderiliyor}
-            className="bg-white border border-gray-200 text-gray-600 font-semibold px-5 py-2 rounded-lg hover:bg-gray-50 transition-colors disabled:opacity-50"
-          >
-            Taslağa Kaydet
-          </button>
+          // Taslak Modu açıkken bu buton gereksiz — ana "Ekle" butonu zaten
+          // aynı işi (plana kaydetme) yapıyor, iki ayrı buton kafa karıştırır.
+          !(taslakModuAcik && aktifPlanAdi.trim()) && (
+            <button
+              type="button"
+              onClick={taslagaKaydet}
+              disabled={gonderiliyor}
+              className="bg-white border border-gray-200 text-gray-600 font-semibold px-5 py-2 rounded-lg hover:bg-gray-50 transition-colors disabled:opacity-50"
+            >
+              Taslağa Kaydet
+            </button>
+          )
         )}
       </div>
       {/* Birleşik Sınıf Dersi — bu ders, yukarıda seçilen sınıfla AYNI ANDA,
@@ -555,11 +597,11 @@ function TaslaklarimDersProgrami({ taslaklar, siniflar, ogretmenler, program, on
     onDegisti()
   }
 
-  async function tumunuYayinla() {
+  async function tumunuYayinla(liste = taslaklar) {
     setTumuGonderiliyor(true)
     let basarili = 0
     let basarisiz = 0
-    for (const t of taslaklar) {
+    for (const t of liste) {
       const sonuc = await yayinla(t)
       if (sonuc) basarili++
       else basarisiz++
@@ -577,13 +619,28 @@ function TaslaklarimDersProgrami({ taslaklar, siniflar, ogretmenler, program, on
   // görmek istiyorum" isteğiyle, taslaklar artık alt alta düz bir liste değil,
   // gerçek Ders Programı'ndaki gibi Pzt-Paz sütunlu bir haftalık tabloda,
   // her taslak kendi gününün sütununda (saate göre sıralı) gösteriliyor.
-  const gunSutunlari = GUNLER.slice(1).map((gunAdi, i) => {
-    const gunNo = i + 1
-    const gunTaslaklari = taslaklar
-      .filter((t) => t.veri.gun === gunNo)
-      .sort((a, b) => (saatKisalt(a.veri.baslangic_saat) < saatKisalt(b.veri.baslangic_saat) ? -1 : 1))
-    return { gunNo, gunAdi, gunTaslaklari }
-  })
+  //
+  // Taslak Modu ile isim verilen planlar (plan_adi dolu olanlar) artık AYRI
+  // gruplar halinde gösteriliyor — her plan kendi başlığı + "Planı Yayınla"
+  // butonuyla, kendi haftalık tablosunda. İsimsiz (plan_adi boş, eski usul tek
+  // tek "Taslağa Kaydet" ile oluşturulmuş) taslaklar en altta, tek bir ortak
+  // "İsimsiz Taslaklar" grubunda kalmaya devam ediyor.
+  function haftalikTabloOlustur(liste) {
+    return GUNLER.slice(1).map((gunAdi, i) => {
+      const gunNo = i + 1
+      const gunTaslaklari = liste
+        .filter((t) => t.veri.gun === gunNo)
+        .sort((a, b) => (saatKisalt(a.veri.baslangic_saat) < saatKisalt(b.veri.baslangic_saat) ? -1 : 1))
+      return { gunNo, gunAdi, gunTaslaklari }
+    })
+  }
+
+  const planAdlari = [...new Set(taslaklar.filter((t) => t.plan_adi).map((t) => t.plan_adi))]
+  const isimsizTaslaklar = taslaklar.filter((t) => !t.plan_adi)
+  const gruplar = [
+    ...planAdlari.map((ad) => ({ ad, liste: taslaklar.filter((t) => t.plan_adi === ad) })),
+    ...(isimsizTaslaklar.length > 0 ? [{ ad: null, liste: isimsizTaslaklar }] : []),
+  ]
 
   return (
     <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden mb-6">
@@ -594,62 +651,79 @@ function TaslaklarimDersProgrami({ taslaklar, siniflar, ogretmenler, program, on
         </div>
         <button
           type="button"
-          onClick={tumunuYayinla}
+          onClick={() => tumunuYayinla()}
           disabled={tumuGonderiliyor}
           className="bg-navy text-white text-sm font-semibold px-4 py-1.5 rounded-lg hover:opacity-90 transition-opacity disabled:opacity-50"
         >
           {tumuGonderiliyor ? 'Yayınlanıyor...' : 'Tümünü Yayınla'}
         </button>
       </div>
-      <div className="overflow-x-auto">
-        <div className="flex min-w-[980px] divide-x divide-gray-100">
-          {gunSutunlari.map(({ gunNo, gunAdi, gunTaslaklari }) => (
-            <div key={gunNo} className="flex-1 min-w-[140px]">
-              <div className="bg-navy text-white px-2 py-2 text-xs font-semibold text-center sticky top-0">
-                {gunAdi}
-              </div>
-              <div className="p-1.5 space-y-1.5 min-h-[70px]">
-                {gunTaslaklari.length === 0 ? (
-                  <p className="text-[11px] text-gray-300 text-center py-3">—</p>
-                ) : (
-                  gunTaslaklari.map((t) => (
-                    <div key={t.id} className="bg-blue-50 border border-blue-100 rounded-lg px-2 py-1.5">
-                      <p className="text-xs font-semibold text-navy leading-tight">
-                        {t.veri.ders_adi || sinifAdi(t.veri.sinif_id)}
-                      </p>
-                      <p className="text-[11px] text-gray-500 leading-tight">{sinifAdi(t.veri.sinif_id)}</p>
-                      <p className="text-[11px] text-gray-400 leading-tight">
-                        {saatKisalt(t.veri.baslangic_saat)}–{saatKisalt(t.veri.bitis_saat)}
-                      </p>
-                      {ogretmenAdi(t.veri.ogretmen_profile_id) && (
-                        <p className="text-[11px] text-gray-400 leading-tight">{ogretmenAdi(t.veri.ogretmen_profile_id)}</p>
-                      )}
-                      {hataMap[t.id] && <p className="text-[11px] text-red-600 mt-1">{hataMap[t.id]}</p>}
-                      <div className="flex items-center gap-2 mt-1">
-                        <button
-                          type="button"
-                          onClick={() => tekYayinla(t)}
-                          disabled={gonderiliyorId === t.id || tumuGonderiliyor}
-                          className="text-[11px] text-navy font-semibold hover:underline disabled:opacity-50"
-                        >
-                          {gonderiliyorId === t.id ? '...' : 'Yayınla'}
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => sil(t.id)}
-                          className="text-[11px] text-gray-400 hover:underline"
-                        >
-                          Sil
-                        </button>
-                      </div>
-                    </div>
-                  ))
-                )}
-              </div>
+      {gruplar.map(({ ad, liste }) => (
+        <div key={ad || '__isimsiz__'} className="border-b border-gray-100 last:border-b-0">
+          <div className="px-4 py-2 bg-gray-50/60 flex items-center justify-between flex-wrap gap-2">
+            <p className="text-sm font-semibold text-gray-600">
+              {ad ? `📋 ${ad}` : 'İsimsiz Taslaklar'} <span className="text-gray-400 font-normal">({liste.length})</span>
+            </p>
+            <button
+              type="button"
+              onClick={() => tumunuYayinla(liste)}
+              disabled={tumuGonderiliyor}
+              className="text-navy text-xs font-semibold hover:underline disabled:opacity-50"
+            >
+              Planı Yayınla
+            </button>
+          </div>
+          <div className="overflow-x-auto">
+            <div className="flex min-w-[980px] divide-x divide-gray-100">
+              {haftalikTabloOlustur(liste).map(({ gunNo, gunAdi, gunTaslaklari }) => (
+                <div key={gunNo} className="flex-1 min-w-[140px]">
+                  <div className="bg-navy text-white px-2 py-2 text-xs font-semibold text-center sticky top-0">
+                    {gunAdi}
+                  </div>
+                  <div className="p-1.5 space-y-1.5 min-h-[70px]">
+                    {gunTaslaklari.length === 0 ? (
+                      <p className="text-[11px] text-gray-300 text-center py-3">—</p>
+                    ) : (
+                      gunTaslaklari.map((t) => (
+                        <div key={t.id} className="bg-blue-50 border border-blue-100 rounded-lg px-2 py-1.5">
+                          <p className="text-xs font-semibold text-navy leading-tight">
+                            {t.veri.ders_adi || sinifAdi(t.veri.sinif_id)}
+                          </p>
+                          <p className="text-[11px] text-gray-500 leading-tight">{sinifAdi(t.veri.sinif_id)}</p>
+                          <p className="text-[11px] text-gray-400 leading-tight">
+                            {saatKisalt(t.veri.baslangic_saat)}–{saatKisalt(t.veri.bitis_saat)}
+                          </p>
+                          {ogretmenAdi(t.veri.ogretmen_profile_id) && (
+                            <p className="text-[11px] text-gray-400 leading-tight">{ogretmenAdi(t.veri.ogretmen_profile_id)}</p>
+                          )}
+                          {hataMap[t.id] && <p className="text-[11px] text-red-600 mt-1">{hataMap[t.id]}</p>}
+                          <div className="flex items-center gap-2 mt-1">
+                            <button
+                              type="button"
+                              onClick={() => tekYayinla(t)}
+                              disabled={gonderiliyorId === t.id || tumuGonderiliyor}
+                              className="text-[11px] text-navy font-semibold hover:underline disabled:opacity-50"
+                            >
+                              {gonderiliyorId === t.id ? '...' : 'Yayınla'}
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => sil(t.id)}
+                              className="text-[11px] text-gray-400 hover:underline"
+                            >
+                              Sil
+                            </button>
+                          </div>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                </div>
+              ))}
             </div>
-          ))}
+          </div>
         </div>
-      </div>
+      ))}
     </div>
   )
 }
@@ -1111,6 +1185,16 @@ export default function DersProgrami() {
   // "Günlük Program Listesi" (salt-okunur, o gün dersi olanları gösteren)
   // görünümü arasında geçiş.
   const [yonetimGorunum, setYonetimGorunum] = useState('ekle')
+  // Taslak Modu — açıkken (VE bir plan adı girilmişse), hem Müsaitlik
+  // Tablosu'ndaki "Hızlı Ekle" popup'ı hem aşağıdaki "Yeni Ders Saati Ekle"
+  // formu, dersi CANLI programa değil, isimlendirilmiş bu plana (taslaklar
+  // tablosunda plan_adi ile) ekler. Birden fazla isimli plan oluşturulabilir —
+  // her biri "Taslaklarım"da kendi başlığı altında toplanır ve topluca
+  // yayınlanabilir. Not: Hızlı Ekle ile eklenen bire bir / soru çözümü
+  // taslakları bu sayfada değil, Bire Bir sayfasının Taslaklarım'ında
+  // yönetilir (bkz. o dosyadaki aynı isim eşleşmesi).
+  const [taslakModuAcik, setTaslakModuAcik] = useState(false)
+  const [aktifPlanAdi, setAktifPlanAdi] = useState('')
   const ilkYuklemeTamamRef = useRef(false)
   // Öğretmen için: yöneticinin kendisine atadığı "Soru Çözümü" seansları —
   // öğrenciye/veliye HİÇ gösterilmez, sadece atanan öğretmen kendi Ders
@@ -1419,6 +1503,41 @@ export default function DersProgrami() {
 
           {yonetimGorunum === 'ekle' && (
             <>
+              {/* Taslak Modu — sayfa üstündeki anahtar, HEM Müsaitlik
+                  Tablosu'ndaki Hızlı Ekle popup'ını HEM aşağıdaki formu
+                  etkiler (bkz. yukarıdaki taslakModuAcik state notu). */}
+              <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-4 mb-4 flex items-center gap-3 flex-wrap">
+                <label className="flex items-center gap-2 cursor-pointer select-none">
+                  <span className="text-sm font-semibold text-gray-700">Taslak Modu</span>
+                  <button
+                    type="button"
+                    onClick={() => setTaslakModuAcik((v) => !v)}
+                    className={`relative w-11 h-6 rounded-full transition-colors ${taslakModuAcik ? 'bg-orange' : 'bg-gray-200'}`}
+                  >
+                    <span
+                      className={`absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform ${
+                        taslakModuAcik ? 'translate-x-5' : ''
+                      }`}
+                    />
+                  </button>
+                </label>
+                {taslakModuAcik && (
+                  <>
+                    <input
+                      type="text"
+                      value={aktifPlanAdi}
+                      onChange={(e) => setAktifPlanAdi(e.target.value)}
+                      placeholder='Plan adı (ör. "Ekim 2. Hafta Programı")'
+                      className="px-3 py-1.5 border border-gray-200 rounded-lg text-sm flex-1 min-w-[220px]"
+                    />
+                    <span className="text-xs text-gray-500">
+                      {aktifPlanAdi.trim()
+                        ? `Açık — Hızlı Ekle ve formdan eklenen dersler "${aktifPlanAdi.trim()}" planına kaydediliyor (canlıya değil).`
+                        : 'Devam etmeden önce bir plan adı yazın.'}
+                    </span>
+                  </>
+                )}
+              </div>
               <MusaitlikTablosu
                 ogretmenler={ogretmenler}
                 dersProgrami={program}
@@ -1431,6 +1550,9 @@ export default function DersProgrami() {
                 siniflar={siniflar}
                 hizliEkleEtkin
                 onHizliEklendi={dersEklendiVeyaTaslaklandi}
+                taslakModuAcik={taslakModuAcik}
+                aktifPlanAdi={aktifPlanAdi.trim()}
+                taslaklar={taslaklar}
               />
               <DersEkleForm
                 siniflar={siniflar}
@@ -1441,6 +1563,8 @@ export default function DersProgrami() {
                 doldurBilgisi={doldurBilgisi}
                 duzenlenenDers={duzenlenenDers}
                 onDuzenlemeBitti={() => setDuzenlenenDers(null)}
+                taslakModuAcik={taslakModuAcik}
+                aktifPlanAdi={aktifPlanAdi}
               />
               <TaslaklarimDersProgrami
                 taslaklar={taslaklar}
