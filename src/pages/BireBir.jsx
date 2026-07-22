@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../lib/AuthContext'
+import { useTaslakModu } from '../lib/taslakModu'
 import {
   paraFormat,
   bireBirGunlukOzetMesajiOlustur,
@@ -2464,12 +2465,10 @@ export default function BireBir() {
   // Taslak Modu — açıkken (VE bir plan adı girilmişse), hem Müsaitlik
   // Tablosu'ndaki "Hızlı Ekle" popup'ı hem aşağıdaki "Bire Bir Ders Ekle"
   // formu, dersi CANLI kayda değil, isimlendirilmiş bu plana (taslaklar
-  // tablosunda plan_adi ile) ekler. Ders Programı sayfasındaki aynı isimli
-  // anahtar BAĞIMSIZDIR — bu sadece bu sayfadan (Hızlı Ekle'nin öğrenci/soru
-  // çözümü dalları + bu sayfanın formu) eklenenleri etkiler; aynı plan adını
-  // iki sayfada da kullanırsanız Taslaklarım'da aynı başlık altında toplanırlar.
-  const [taslakModuAcik, setTaslakModuAcik] = useState(false)
-  const [aktifPlanAdi, setAktifPlanAdi] = useState('')
+  // tablosunda plan_adi ile) ekler. Bu anahtar Ders Programı sayfasıyla
+  // PAYLAŞILIYOR (bkz. lib/taslakModu.js) — o sayfada açıp plan adı yazınca,
+  // buraya geçtiğinizde de aynı anahtar/plan adı açık gelir.
+  const { taslakModuAcik, setTaslakModuAcik, aktifPlanAdi, setAktifPlanAdi } = useTaslakModu()
   // İlk açılıştan sonra "Yükleniyor..." ekranını bir daha göstermiyoruz — bir ders
   // ekleyip onEklendi() ile veriyi yenilediğimizde tüm sayfa "Yükleniyor..." ekranına
   // dönüp formu (bileşeni) komple yeniden kuruyordu, bu da az önce doldurulmuş
@@ -2647,7 +2646,7 @@ export default function BireBir() {
                 />
                 <span className="text-xs text-gray-500">
                   {aktifPlanAdi.trim()
-                    ? `Açık — Hızlı Ekle ve formdan eklenen dersler "${aktifPlanAdi.trim()}" planına kaydediliyor (canlıya değil).`
+                    ? `Açık — Hızlı Ekle ve formdan eklenen dersler "${aktifPlanAdi.trim()}" planına kaydediliyor (canlıya değil). Ders Programı sayfasına geçtiğinizde de aynı plan açık gelir.`
                     : 'Devam etmeden önce bir plan adı yazın.'}
                 </span>
               </>

@@ -3,6 +3,7 @@ import { supabase } from '../lib/supabase'
 import { useAuth } from '../lib/AuthContext'
 import { ilkHarfleriBuyukYap } from '../lib/adSoyadFormat'
 import { DERS_PERIYOTLARI } from '../lib/dersPeriyotlari'
+import { useTaslakModu } from '../lib/taslakModu'
 import MusaitlikTablosu from '../components/MusaitlikTablosu'
 
 const GUNLER = ['', 'Pazartesi', 'Salı', 'Çarşamba', 'Perşembe', 'Cuma', 'Cumartesi', 'Pazar']
@@ -1190,11 +1191,12 @@ export default function DersProgrami() {
   // formu, dersi CANLI programa değil, isimlendirilmiş bu plana (taslaklar
   // tablosunda plan_adi ile) ekler. Birden fazla isimli plan oluşturulabilir —
   // her biri "Taslaklarım"da kendi başlığı altında toplanır ve topluca
-  // yayınlanabilir. Not: Hızlı Ekle ile eklenen bire bir / soru çözümü
-  // taslakları bu sayfada değil, Bire Bir sayfasının Taslaklarım'ında
-  // yönetilir (bkz. o dosyadaki aynı isim eşleşmesi).
-  const [taslakModuAcik, setTaslakModuAcik] = useState(false)
-  const [aktifPlanAdi, setAktifPlanAdi] = useState('')
+  // yayınlanabilir. Bu anahtar Bire Bir sayfasıyla PAYLAŞILIYOR (bkz.
+  // lib/taslakModu.js) — burada açıp bir plan adı yazınca, Bire Bir sayfasına
+  // geçtiğinizde de aynı anahtar/plan adı açık gelir, tekrar yazmanıza gerek
+  // kalmaz. Not: Hızlı Ekle ile eklenen bire bir / soru çözümü taslakları bu
+  // sayfada değil, Bire Bir sayfasının Taslaklarım'ında yönetilir.
+  const { taslakModuAcik, setTaslakModuAcik, aktifPlanAdi, setAktifPlanAdi } = useTaslakModu()
   const ilkYuklemeTamamRef = useRef(false)
   // Öğretmen için: yöneticinin kendisine atadığı "Soru Çözümü" seansları —
   // öğrenciye/veliye HİÇ gösterilmez, sadece atanan öğretmen kendi Ders
@@ -1532,7 +1534,7 @@ export default function DersProgrami() {
                     />
                     <span className="text-xs text-gray-500">
                       {aktifPlanAdi.trim()
-                        ? `Açık — Hızlı Ekle ve formdan eklenen dersler "${aktifPlanAdi.trim()}" planına kaydediliyor (canlıya değil).`
+                        ? `Açık — Hızlı Ekle ve formdan eklenen dersler "${aktifPlanAdi.trim()}" planına kaydediliyor (canlıya değil). Bire Bir sayfasına geçtiğinizde de aynı plan açık gelir.`
                         : 'Devam etmeden önce bir plan adı yazın.'}
                     </span>
                   </>
