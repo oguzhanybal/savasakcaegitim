@@ -556,11 +556,17 @@ function BireBirDersEkleForm({
       return
     }
 
-    // Taslak Modu açıkken (sayfa üstündeki anahtar + plan adı), "Ekle" butonu
-    // canlı kayda yazmak yerine taslagaKaydet()'e devrediyor — o fonksiyon
-    // zaten hem canlıya hem bekleyen taslaklara karşı çakışma kontrolü yapıyor
-    // ve aktifPlanAdi'yı satıra damgalıyor (bkz. aşağıdaki taslagaKaydet).
-    if (taslakModuAcik && aktifPlanAdi.trim()) {
+    // Taslak Modu açıkken (sayfa üstündeki anahtar), "Ekle" butonu ASLA canlı
+    // kayda yazmaz — plan adı doluysa taslagaKaydet()'e devreder (o fonksiyon
+    // hem canlıya hem bekleyen taslaklara karşı çakışma kontrolü yapar ve
+    // aktifPlanAdi'yı satıra damgalar); plan adı BOŞSA da (anahtar açık
+    // göründüğü halde plan adı unutulmuşsa) sessizce canlıya düşmek yerine net
+    // bir hatayla durdurulur.
+    if (taslakModuAcik) {
+      if (!aktifPlanAdi.trim()) {
+        setHata('Taslak Modu açık — devam etmeden önce üstteki kutuya bir plan adı yazın (yoksa hiçbir yere eklenmez).')
+        return
+      }
       await taslagaKaydet()
       return
     }
