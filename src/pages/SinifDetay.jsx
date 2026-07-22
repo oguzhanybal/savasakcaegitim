@@ -57,10 +57,16 @@ export default function SinifDetay() {
   // ayarlanır — form o zaman "ekleme" değil "güncelleme" moduna geçer (tek
   // gün, tek kayıt). Boşsa (null) form normal "ekle" modunda çalışır.
   const [duzenlenenId, setDuzenlenenId] = useState(null)
+  // "Birleşik Ders" — bu sınıfın dersi, aynı anda başka sınıf(lar)la da
+  // birlikte (aynı öğretmen, aynı derslik, tek oturum) işleniyorsa, o diğer
+  // sınıfların listesi ve seçilenler burada tutulur. Sadece YENİ ders eklerken
+  // kullanılır (düzenleme modunda gösterilmez, bkz. duzenle()).
+  const [tumSiniflar, setTumSiniflar] = useState([])
+  const [birlesikSiniflar, setBirlesikSiniflar] = useState([])
 
   async function yukle() {
     setLoading(true)
-    const [s, so, o, p, tp, og, bb] = await Promise.all([
+    const [s, so, o, p, tp, og, bb, tumS] = await Promise.all([
       supabase.from('siniflar').select('*').eq('id', sinifId).single(),
       supabase.from('sinif_ogrenciler').select('ogrenciler(id, ad_soyad)').eq('sinif_id', sinifId),
       supabase.from('ogrenciler').select('*').order('ad_soyad'),
@@ -76,6 +82,9 @@ export default function SinifDetay() {
       // kontrolü yapılabilsin diye (aksi halde bir öğretmene, zaten bire bir dersi
       // olan bir saatte sınıf dersi de atanabiliyordu).
       supabase.from('bire_bir_atamalari').select('*, ogrenciler(ad_soyad)'),
+      // "Birleşik Ders" seçimi ve program listesindeki "🔗 Birleşik: ..." rozeti
+      // için diğer tüm sınıfların adı/id'si.
+      supabase.from('siniflar').select('id, ad').neq('id', sinifId).order('ad'),
     ])
     setSinif(s.data)
     setKayitliOgrenciler((so.data || []).map((r) => r.ogrenciler).filter(Boolean))
@@ -86,6 +95,7 @@ export default function SinifDetay() {
     setBireBirAtamalari(
       (bb.data || []).map((a) => ({ ...a, ogrenci_adi: a.ogrenciler?.ad_soyad }))
     )
+    setTumSiniflar(tumS.data || [])
     setLoading(false)
   }
 
@@ -154,6 +164,7 @@ export default function SinifDetay() {
     setSeciliGunler([p.gun])
     setBaslangic(saatKisalt(p.baslangic_saat))
     setBitis(saatKisalt(p.bitis_saat))
+    setBirlesikSiniflar([]) // düzenleme modunda birleşik sınıf seçimi desteklenmiyor
     setHata('')
     requestAnimationFrame(() => {
       document.getElementById('ders-saati-formu')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
@@ -167,18 +178,25 @@ export default function SinifDetay() {
     setDersOgretmen('')
     setBaslangic('09:00')
     setBitis('10:00')
+    setBirlesikSiniflar([])
     setHata('')
   }
 
-  // Seçilen her gün için: aynı sınıfta, aynı öğretmende BAŞKA bir sınıf dersinde
-  // ya da öğretmenin haftalık bire bir dersinde çakışma var mı? haricId
-  // verilirse (düzenleme modunda, düzenlenen kaydın kendisiyle çakışıyor
-  // sayılmasın diye) o kayıt kontrolden hariç tutulur.
-  function cakismaBul(gun, haricId) {
+  function birlesikSinifToggle(id) {
+    setBirlesikSiniflar((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]))
+  }
+
+  // Seçilen her gün için: hedefSinifId'de (varsayılan: bu sayfanın sınıfı) BAŞKA
+  // bir sınıf dersinde ya da öğretmenin haftalık bire bir dersinde çakışma var
+  // mı? "Birleşik Ders" ile birden fazla sınıfa aynı anda ders eklerken, her
+  // hedef sınıf için ayrı ayrı çağrılır (bkz. dersSaatiEkle). haricId verilirse
+  // (düzenleme modunda, düzenlenen kaydın kendisiyle çakışıyor sayılmasın diye)
+  // o kayıt kontrolden hariç tutulur.
+  function cakismaBul(gun, haricId, hedefSinifId = sinifId) {
     for (const p of tumProgram) {
       if (haricId && p.id === haricId) continue
       if (p.gun !== gun) continue
-      const ayniSinif = p.sinif_id === sinifId
+      const ayniSinif = p.sinif_id === hedefSinifId
       const ayniOgretmen = !!dersOgretmen && p.ogretmen_profile_id === dersOgretmen
       if (!ayniSinif && !ayniOgretmen) continue
       if (!araliklarCakisiyorMu(baslangic, bitis, p.baslangic_saat, p.bitis_saat)) continue
@@ -242,33 +260,49 @@ export default function SinifDetay() {
       return
     }
 
+    // "Birleşik Ders" seçildiyse (bu sınıfla birlikte başka sınıf(lar) da varsa),
+    // her seçilen gün için HEM bu sınıfın HEM de diğer hedef sınıfların o anki
+    // programında çakışma olup olmadığı ayrı ayrı kontrol edilir.
+    const hedefSiniflar = [sinifId, ...birlesikSiniflar]
     for (const g of seciliGunler) {
-      const cakisma = cakismaBul(g)
-      if (cakisma) {
-        setHata(
-          cakisma.tur === 'ogretmen'
-            ? `Çakışma var: bu öğretmenin ${GUNLER[g]} günü ${saatKisalt(baslangic)}–${saatKisalt(bitis)} arasında zaten başka bir dersi var.`
-            : cakisma.tur === 'birebir'
-            ? `Çakışma var: bu öğretmenin ${GUNLER[g]} günü ${saatKisalt(baslangic)}–${saatKisalt(bitis)} arasında "${cakisma.ogrenciAdi || 'bir öğrenci'}" ile haftalık bire bir dersi var.`
-            : `Çakışma var: bu sınıfın ${GUNLER[g]} günü ${saatKisalt(baslangic)}–${saatKisalt(bitis)} arasında zaten başka bir dersi var.`
-        )
-        return
+      for (const hedefSinifId of hedefSiniflar) {
+        const cakisma = cakismaBul(g, null, hedefSinifId)
+        if (cakisma) {
+          const hedefAdi = hedefSinifId === sinifId ? '' : ` (${tumSiniflar.find((s) => s.id === hedefSinifId)?.ad || 'seçilen sınıf'} için)`
+          setHata(
+            cakisma.tur === 'ogretmen'
+              ? `Çakışma var${hedefAdi}: bu öğretmenin ${GUNLER[g]} günü ${saatKisalt(baslangic)}–${saatKisalt(bitis)} arasında zaten başka bir dersi var.`
+              : cakisma.tur === 'birebir'
+              ? `Çakışma var${hedefAdi}: bu öğretmenin ${GUNLER[g]} günü ${saatKisalt(baslangic)}–${saatKisalt(bitis)} arasında "${cakisma.ogrenciAdi || 'bir öğrenci'}" ile haftalık bire bir dersi var.`
+              : `Çakışma var${hedefAdi}: bu sınıfın ${GUNLER[g]} günü ${saatKisalt(baslangic)}–${saatKisalt(bitis)} arasında zaten başka bir dersi var.`
+          )
+          return
+        }
       }
     }
 
     setEkleniyor(true)
-    const kayitlar = seciliGunler.map((g) => ({
-      sinif_id: sinifId,
-      gun: g,
-      baslangic_saat: baslangic,
-      bitis_saat: bitis,
-      ders_adi: dersAdi.trim() ? ilkHarfleriBuyukYap(dersAdi.trim()) : null,
-      ogretmen_profile_id: dersOgretmen || null,
-    }))
+    // Birden fazla sınıf birleşik seçildiyse, hepsi aynı "birlesik_grup_id" ile
+    // etiketlenir — böylece bu öğretmenin bu sınıfların hepsinde AYNI ANDA
+    // görünmesi artık çakışma sayılmaz, sistem bunu TEK bir birleşik oturum
+    // olarak bilir (bkz. migration_birlesik_ders.sql).
+    const grupId = birlesikSiniflar.length > 0 ? crypto.randomUUID() : null
+    const kayitlar = seciliGunler.flatMap((g) =>
+      hedefSiniflar.map((hedefSinifId) => ({
+        sinif_id: hedefSinifId,
+        gun: g,
+        baslangic_saat: baslangic,
+        bitis_saat: bitis,
+        ders_adi: dersAdi.trim() ? ilkHarfleriBuyukYap(dersAdi.trim()) : null,
+        ogretmen_profile_id: dersOgretmen || null,
+        birlesik_grup_id: grupId,
+      }))
+    )
     const { error } = await supabase.from('ders_programi').insert(kayitlar)
     setEkleniyor(false)
     if (!error) {
       setSeciliGunler([])
+      setBirlesikSiniflar([])
       // Art arda birkaç ders eklerken (ör. aynı sınıfa peş peşe farklı dersler)
       // bir sonraki dersin başlangıcı otomatik olarak "az önce eklenenin
       // bitişi + 10 dakika teneffüs" olsun diye ayarlanıyor — 45+10 kuralı.
@@ -282,7 +316,21 @@ export default function SinifDetay() {
   }
 
   async function dersSaatiSil(id) {
-    if (!confirm('Bu ders saatini silmek istediğinize emin misiniz? Bu ders saatine ait yoklama kayıtları da (varsa) birlikte silinecek.')) return
+    // Bu ders başka sınıf(lar)la birleşikse, admin'i bilgilendiriyoruz — bu
+    // işlem SADECE bu sınıftaki kaydı siler, diğer sınıftaki kaydı etkilemez
+    // (onu da silmek isterse o sınıfın kendi sayfasından ayrıca silmesi gerekir).
+    const satir = program.find((p) => p.id === id)
+    let uyari = ''
+    if (satir?.birlesik_grup_id) {
+      const digerSiniflar = tumProgram
+        .filter((p) => p.birlesik_grup_id === satir.birlesik_grup_id && p.id !== id)
+        .map((p) => tumSiniflar.find((s) => s.id === p.sinif_id)?.ad)
+        .filter(Boolean)
+      if (digerSiniflar.length > 0) {
+        uyari = ` Bu ders ${digerSiniflar.join(', ')} ile birleşik — bu işlem SADECE bu sınıftan siler, diğerini etkilemez (onu silmek isterseniz o sınıfın sayfasından ayrıca silin).`
+      }
+    }
+    if (!confirm(`Bu ders saatini silmek istediğinize emin misiniz?${uyari} Bu ders saatine ait yoklama kayıtları da (varsa) birlikte silinecek.`)) return
     // Bir ders saati silinirken, o ders saatine bağlı yoklama kayıtları da
     // silinmezse veritabanında "sahipsiz" kayıtlar kalır. Önce yoklamayı,
     // sonra ders saatini siliyoruz.
@@ -441,6 +489,37 @@ export default function SinifDetay() {
                 })}
               </div>
             </div>
+
+            {!duzenlenenId && tumSiniflar.length > 0 && (
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Birleşik ders mi? (aynı anda başka sınıf(lar) da bu dersi alacaksa seçin)
+                </label>
+                <div className="flex flex-wrap gap-2">
+                  {tumSiniflar.map((s) => {
+                    const secili = birlesikSiniflar.includes(s.id)
+                    return (
+                      <button
+                        key={s.id}
+                        type="button"
+                        onClick={() => birlesikSinifToggle(s.id)}
+                        className={`px-3 py-1.5 rounded-lg text-sm font-medium border transition-colors ${
+                          secili ? 'bg-blue text-white border-blue' : 'bg-white text-gray-600 border-gray-200 hover:border-blue'
+                        }`}
+                      >
+                        {s.ad}
+                      </button>
+                    )
+                  })}
+                </div>
+                {birlesikSiniflar.length > 0 && (
+                  <p className="text-xs text-gray-400 mt-1">
+                    Bu ders {sinif?.ad} ile birlikte {birlesikSiniflar.length} sınıfa daha aynı anda, aynı öğretmenle eklenecek.
+                  </p>
+                )}
+              </div>
+            )}
+
             <div className="grid grid-cols-2 gap-2">
               <div>
                 <label className="block text-xs font-medium text-gray-500 mb-1">Başlangıç</label>
@@ -500,29 +579,40 @@ export default function SinifDetay() {
             {program.length === 0 && (
               <p className="px-4 py-6 text-center text-gray-400 text-sm">Henüz ders saati belirlenmedi.</p>
             )}
-            {program.map((p, i) => (
-              <div
-                key={p.id}
-                className={`px-4 py-3 flex items-center justify-between ${
-                  duzenlenenId === p.id ? 'bg-orange/10' : i % 2 ? 'bg-gray-50' : ''
-                }`}
-              >
-                <div>
-                  <p className="font-medium text-gray-800">
-                    {p.ders_adi || 'Ders'} <span className="font-normal text-gray-400">— {GUNLER[p.gun]} · {saatKisalt(p.baslangic_saat)}–{saatKisalt(p.bitis_saat)}</span>
-                  </p>
-                  {p.profiles?.ad_soyad && <p className="text-xs text-gray-400">{p.profiles.ad_soyad}</p>}
+            {program.map((p, i) => {
+              const digerSiniflar = p.birlesik_grup_id
+                ? tumProgram
+                    .filter((x) => x.birlesik_grup_id === p.birlesik_grup_id && x.id !== p.id)
+                    .map((x) => tumSiniflar.find((s) => s.id === x.sinif_id)?.ad)
+                    .filter(Boolean)
+                : []
+              return (
+                <div
+                  key={p.id}
+                  className={`px-4 py-3 flex items-center justify-between ${
+                    duzenlenenId === p.id ? 'bg-orange/10' : i % 2 ? 'bg-gray-50' : ''
+                  }`}
+                >
+                  <div>
+                    <p className="font-medium text-gray-800">
+                      {p.ders_adi || 'Ders'} <span className="font-normal text-gray-400">— {GUNLER[p.gun]} · {saatKisalt(p.baslangic_saat)}–{saatKisalt(p.bitis_saat)}</span>
+                    </p>
+                    {p.profiles?.ad_soyad && <p className="text-xs text-gray-400">{p.profiles.ad_soyad}</p>}
+                    {digerSiniflar.length > 0 && (
+                      <p className="text-xs text-blue mt-0.5">🔗 Birleşik: {digerSiniflar.join(', ')} ile</p>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-3 shrink-0">
+                    <button onClick={() => duzenle(p)} className="text-blue text-sm hover:underline">
+                      Düzenle
+                    </button>
+                    <button onClick={() => dersSaatiSil(p.id)} className="text-red-500 text-sm hover:underline">
+                      Sil
+                    </button>
+                  </div>
                 </div>
-                <div className="flex items-center gap-3 shrink-0">
-                  <button onClick={() => duzenle(p)} className="text-blue text-sm hover:underline">
-                    Düzenle
-                  </button>
-                  <button onClick={() => dersSaatiSil(p.id)} className="text-red-500 text-sm hover:underline">
-                    Sil
-                  </button>
-                </div>
-              </div>
-            ))}
+              )
+            })}
           </div>
         </div>
       </div>
