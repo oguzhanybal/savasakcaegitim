@@ -447,15 +447,17 @@ export default function MusaitlikTablosu({
       if (!v.baslangic_saat || !v.bitis_saat || !v.ogretmen_profile_id) continue
       const gunEslesiyor = t.tur === 'sinif' || t.tur === 'bire_bir_haftalik' ? v.gun === gun : v.tarih === tarih
       if (!gunEslesiyor || !harita.has(v.ogretmen_profile_id)) continue
+      // "Taslak: " ön eki eskiden buraya da yazılıyordu ama hücrede yer
+      // kaplıyordu — artık sadece renk (amber, kesik çizgili) taslak olduğunu
+      // gösteriyor, isim düz yazılıyor (canlı hücrelerle aynı biçimde).
       let etiket
       if (t.tur === 'sinif') {
         const sinifAdi = (siniflar || []).find((s) => s.id === v.sinif_id)?.ad
-        etiket = `Taslak: ${v.ders_adi || sinifAdi || 'Sınıf'}`
+        etiket = v.ders_adi || sinifAdi || 'Sınıf'
       } else if (t.tur === 'soru_cozumu') {
-        etiket = 'Taslak: Soru Çözümü'
+        etiket = 'Soru Çözümü'
       } else {
-        const ogrenciAdi = (ogrenciler || []).find((o) => o.id === v.ogrenci_id)?.ad_soyad
-        etiket = `Taslak: ${ogrenciAdi || 'Bire bir'}`
+        etiket = (ogrenciler || []).find((o) => o.id === v.ogrenci_id)?.ad_soyad || 'Bire bir'
       }
       harita.get(v.ogretmen_profile_id).push({
         baslangic: v.baslangic_saat,
