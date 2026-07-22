@@ -1226,7 +1226,7 @@ function AtamaDuzenleSatiri({ a, ogretmenler, atamalar, dersProgrami, onKaydedil
 
   return (
     <tr className="border-t border-gray-50 bg-blue-50">
-      <td className="px-4 py-2 font-medium text-gray-800 align-top">{a.ogrenci_adi}</td>
+      <td className="px-4 py-2 font-medium text-gray-800 align-top sticky left-0 bg-blue-50 shadow-[6px_0_8px_-6px_rgba(0,0,0,0.15)]">{a.ogrenci_adi}</td>
       {/* Durum/İşlemler tek sütunda birleştiği için (bkz. AtamaListesi), toplam
           sütun sayısı 6'dan 5'e düştü — burası artık 3 kapsıyor (1 + 3 + 1 = 5). */}
       <td className="px-4 py-2 align-top" colSpan={3}>
@@ -1315,7 +1315,10 @@ function AtamaListesi({ atamalar, ogretmenler, dersProgrami, onDegisti }) {
       <table className="w-full text-sm min-w-[760px]">
         <thead>
           <tr className="text-left text-gray-500">
-            <th className="px-4 py-2 font-medium">Öğrenci</th>
+            {/* Öğrenci sütunu da mobilde solda SABİT (sticky) — hoca "kime
+                Geldi/Gelmedi diyorum" diye kaydırmak zorunda kalmasın diye,
+                isim de sağdaki Durum/İşlemler gibi her zaman ekranda kalıyor. */}
+            <th className="px-4 py-2 font-medium sticky left-0 bg-white shadow-[6px_0_8px_-6px_rgba(0,0,0,0.15)]">Öğrenci</th>
             <th className="px-4 py-2 font-medium">Öğretmen</th>
             <th className="px-4 py-2 font-medium">Gün / Saat</th>
             <th className="px-4 py-2 font-medium">Ders Ücreti</th>
@@ -1345,7 +1348,7 @@ function AtamaListesi({ atamalar, ogretmenler, dersProgrami, onDegisti }) {
               />
             ) : (
               <tr key={a.id} className="border-t border-gray-50">
-                <td className="px-4 py-2 font-medium text-gray-800">{a.ogrenci_adi}</td>
+                <td className="px-4 py-2 font-medium text-gray-800 sticky left-0 bg-white shadow-[6px_0_8px_-6px_rgba(0,0,0,0.15)]">{a.ogrenci_adi}</td>
                 <td className="px-4 py-2">
                   {a.ogretmen_adi}
                   {a.ogretmen_bransi && <span className="text-xs text-gray-400"> ({a.ogretmen_bransi})</span>}
@@ -1574,7 +1577,12 @@ function TekSeferlikDuzenleSatiri({ y, ucretGorunur, toplamSutun, onKaydedildi, 
 
   return (
     <tr className="border-t border-gray-50 bg-blue-50">
-      <td className="px-2 py-1.5 align-top" colSpan={Math.max(toplamSutun - 1, 1)}>
+      {/* Düzenleme sırasında da öğrenci ismi ayrı ve solda sabit görünsün —
+          hoca hangi öğrencinin dersini düzenlediğini kaybetmesin diye. */}
+      <td className="px-2 py-1.5 align-top font-medium text-gray-800 sticky left-0 bg-blue-50 shadow-[6px_0_8px_-6px_rgba(0,0,0,0.15)]">
+        {y._ogrenciAdi || '—'}
+      </td>
+      <td className="px-2 py-1.5 align-top" colSpan={Math.max(toplamSutun - 2, 1)}>
         <div className="flex flex-wrap gap-2 items-end">
           <div>
             <label className="block text-[11px] text-gray-500 mb-0.5">Tarih</label>
@@ -1811,9 +1819,14 @@ function TekSeferlikDerslerListesi({ yoklamalar, atamalar, onDegisti, sadeceOgre
             <table className="w-full text-sm min-w-[560px]">
               <thead>
                 <tr className="text-left text-gray-500">
+                  {/* Öğrenci EN BAŞA alındı ve mobilde solda SABİT (sticky) —
+                      önceki sırada (Tarih, Saat, Öğrenci...) isim ekranın
+                      dışına düşüyor, hoca kaydırmadan "kime Geldi/Gelmedi
+                      diyorum" diye ismi göremiyordu. Artık isim de Durum/
+                      İşlemler gibi her zaman ekranda kalıyor. */}
+                  <th className="px-2 py-1.5 font-medium sticky left-0 bg-white shadow-[6px_0_8px_-6px_rgba(0,0,0,0.15)]">Öğrenci</th>
                   <th className="px-2 py-1.5 font-medium">Tarih</th>
                   <th className="px-2 py-1.5 font-medium">Saat</th>
-                  <th className="px-2 py-1.5 font-medium">Öğrenci</th>
                   {!sadeceOgretmenId && <th className="px-2 py-1.5 font-medium">Öğretmen</th>}
                   <th className="px-2 py-1.5 font-medium">Tür</th>
                   {ucretGorunur && <th className="px-2 py-1.5 font-medium">Tutar</th>}
@@ -1838,11 +1851,11 @@ function TekSeferlikDerslerListesi({ yoklamalar, atamalar, onDegisti, sadeceOgre
                     />
                   ) : (
                     <tr key={y.id} className="border-t border-gray-50">
+                      <td className="px-2 py-1.5 font-medium text-gray-800 sticky left-0 bg-white shadow-[6px_0_8px_-6px_rgba(0,0,0,0.15)]">{y._ogrenciAdi || '—'}</td>
                       <td className="px-2 py-1.5">{new Date(y.tarih + 'T12:00:00').toLocaleDateString('tr-TR')}</td>
                       <td className="px-2 py-1.5 text-gray-500">
                         {y._baslangic ? `${saatKisalt(y._baslangic)}${y._bitis ? '–' + saatKisalt(y._bitis) : ''}` : '—'}
                       </td>
-                      <td className="px-2 py-1.5 font-medium text-gray-800">{y._ogrenciAdi || '—'}</td>
                       {!sadeceOgretmenId && (
                         <td className="px-2 py-1.5">
                           {y._ogretmenAdi || '—'}
