@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { paraFormat, haftaBaslangici, haftaEtiketi, ayBaslangici, ayEtiketi } from '../lib/ekstreHesap'
+import { saatGoster } from '../lib/saatFormat'
 
 const GUNLER = ['', 'Pazartesi', 'Salı', 'Çarşamba', 'Perşembe', 'Cuma', 'Cumartesi', 'Pazar']
 
@@ -184,7 +185,7 @@ export default function BireBirDersDokumu({
                 <tr key={d.id} className={i % 2 ? 'bg-gray-50' : ''}>
                   <td className="px-2 sm:px-3 py-2">{new Date(d.tarih + 'T12:00:00').toLocaleDateString('tr-TR')}</td>
                   <td className="px-2 sm:px-3 py-2 text-gray-500">
-                    {d.baslangicSaat ? `${d.baslangicSaat.slice(0, 5)}${d.bitisSaat ? '–' + d.bitisSaat.slice(0, 5) : ''}` : '—'}
+                    {d.baslangicSaat ? `${saatGoster(d.baslangicSaat)}${d.bitisSaat ? '–' + saatGoster(d.bitisSaat) : ''}` : '—'}
                   </td>
                   <td className="px-2 sm:px-3 py-2">
                     {d.karsiTarafAdi || '—'}
