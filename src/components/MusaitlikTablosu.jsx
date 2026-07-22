@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react'
 import { supabase } from '../lib/supabase'
+import { useAuth } from '../lib/AuthContext'
 import { DERS_PERIYOTLARI } from '../lib/dersPeriyotlari'
 
 // Hem Bire Bir sayfasında hem Ders Programı sayfasında kullanılan ortak bileşen:
@@ -26,6 +27,33 @@ function saatKisalt(s) {
 
 function araliklarCakisiyorMu(b1, s1, b2, s2) {
   return saatKisalt(b1) < saatKisalt(s2) && saatKisalt(b2) < saatKisalt(s1)
+}
+
+// Taslak Modu açıkken Hızlı Ekle ile oluşturulan taslakların BİRBİRİYLE
+// çakışıp çakışmadığını kontrol eder (DersProgrami.jsx/BireBir.jsx'teki
+// taslagaKaydet()'lerle aynı amaç) — 'sinif'/'bire_bir_haftalik' taslakları
+// haftanın GÜNÜNE göre tekrar eder (veri.gun), 'bire_bir_tekil'/'soru_cozumu'
+// ise belirli bir TARİHE bağlıdır (veri.tarih). Çakışma varsa açıklama metni,
+// yoksa null döner.
+function taslakCakismasiAciklamasi(taslaklar, { ogretmenId, sinifId, ogrenciId, gun, tarih, baslangic, bitis }) {
+  for (const t of taslaklar || []) {
+    const v = t.veri || {}
+    if (!v.baslangic_saat || !v.bitis_saat) continue
+    const gunEslesiyor = t.tur === 'sinif' || t.tur === 'bire_bir_haftalik' ? v.gun === gun : v.tarih === tarih
+    if (!gunEslesiyor) continue
+    if (!araliklarCakisiyorMu(baslangic, bitis, v.baslangic_saat, v.bitis_saat)) continue
+    if (ogretmenId && v.ogretmen_profile_id === ogretmenId) {
+      const turAdi = t.tur === 'sinif' ? 'sınıf dersi' : t.tur === 'soru_cozumu' ? 'soru çözümü' : 'bire bir ders'
+      return `Bu öğretmenin bu saatte zaten bekleyen bir taslağı var (${turAdi}).`
+    }
+    if (sinifId && t.tur === 'sinif' && v.sinif_id === sinifId) {
+      return 'Bu sınıfın bu saatte zaten bekleyen bir taslağı var.'
+    }
+    if (ogrenciId && (t.tur === 'bire_bir_haftalik' || t.tur === 'bire_bir_tekil') && v.ogrenci_id === ogrenciId) {
+      return 'Bu öğrencinin bu saatte zaten bekleyen bir taslağı var.'
+    }
+  }
+  return null
 }
 
 function gunNumaraTarihten(tarihStr) {
@@ -73,7 +101,17 @@ export default function MusaitlikTablosu({
   siniflar = [],
   hizliEkleEtkin = false,
   onHizliEklendi,
+  // Taslak Modu — sayfa üstündeki aç/kapa anahtarı açıkken (hem taslakModuAcik
+  // hem aktifPlanAdi doluyken) "Hızlı Ekle" ile eklenen HER ders (soru çözümü,
+  // sınıf, öğrenci) canlı tabloya değil, taslaklar tablosuna, aktifPlanAdi ile
+  // isimlendirilmiş TEK bir plana kaydedilir. taslaklar propu, bekleyen diğer
+  // taslaklarla da çakışma kontrolü yapabilmek için veriliyor (opsiyonel —
+  // sadece Ders Programı sayfası bunu geçer, bkz. dosya başındaki genel not).
+  taslakModuAcik = false,
+  aktifPlanAdi = '',
+  taslaklar = [],
 }) {
+  const { profile } = useAuth()
   const [tarih, setTarih] = useState(() => new Date().toISOString().slice(0, 10))
   const gun = gunNumaraTarihten(tarih)
 
@@ -133,29 +171,67 @@ export default function MusaitlikTablosu({
     if (!hizliPopup || !secilen) return
     setHpHata('')
 
+    // Taslak Modu: sayfa üstündeki anahtar açık VE bir plan adı girilmişse,
+    // aşağıdaki 3 dalın hiçbiri canlı tabloya yazmaz — hepsi taslaklar
+    // tablosuna, aynı plan_adi ile kaydedilir (bkz. dosya başındaki not).
+    const taslakModuEtkin = taslakModuAcik && !!aktifPlanAdi
+
     if (secilen.tur === 'soru_cozumu') {
       // Soru Çözümü: öğrenciye bağlı değil, fiyatlandırılmaz — sadece öğretmen +
       // tarih + saat kaydedilir. Öğretmenin ekstresinde görünsün diye
       // bire_bir_yoklama'ya "tur: soru_cozumu" ile, ücretsiz bir satır olarak
       // eklenir (bkz. ekstreHesap.js bireBirBorclariOlustur — bu tur asla
       // borç oluşturmaz).
-      setHpGonderiliyor(true)
-      const { error } = await supabase.from('bire_bir_yoklama').insert({
-        ogretmen_profile_id: hizliPopup.ogretmenId,
-        tur: 'soru_cozumu',
-        tutar: 0,
-        tarih: hizliPopup.tarih,
-        durum: 'geldi',
-        baslangic_saat: hizliPopup.baslangic,
-        bitis_saat: hizliPopup.bitis,
-      })
-      setHpGonderiliyor(false)
-      if (error) {
-        setHpHata('Hata: ' + error.message)
-        return
+      if (taslakModuEtkin) {
+        const cakisma = taslakCakismasiAciklamasi(taslaklar, {
+          ogretmenId: hizliPopup.ogretmenId,
+          gun: hizliPopup.gun,
+          tarih: hizliPopup.tarih,
+          baslangic: hizliPopup.baslangic,
+          bitis: hizliPopup.bitis,
+        })
+        if (cakisma) {
+          setHpHata(cakisma)
+          return
+        }
+        setHpGonderiliyor(true)
+        const { error } = await supabase.from('taslaklar').insert({
+          tur: 'soru_cozumu',
+          veri: {
+            ogretmen_profile_id: hizliPopup.ogretmenId,
+            tarih: hizliPopup.tarih,
+            baslangic_saat: hizliPopup.baslangic,
+            bitis_saat: hizliPopup.bitis,
+          },
+          olusturan_profile_id: profile?.id,
+          plan_adi: aktifPlanAdi || null,
+        })
+        setHpGonderiliyor(false)
+        if (error) {
+          setHpHata('Hata: ' + error.message)
+          return
+        }
+      } else {
+        setHpGonderiliyor(true)
+        const { error } = await supabase.from('bire_bir_yoklama').insert({
+          ogretmen_profile_id: hizliPopup.ogretmenId,
+          tur: 'soru_cozumu',
+          tutar: 0,
+          tarih: hizliPopup.tarih,
+          durum: 'geldi',
+          baslangic_saat: hizliPopup.baslangic,
+          bitis_saat: hizliPopup.bitis,
+        })
+        setHpGonderiliyor(false)
+        if (error) {
+          setHpHata('Hata: ' + error.message)
+          return
+        }
       }
     } else if (secilen.tur === 'sinif') {
-      // Bu sınıfın bu gün/saatte (farklı bir öğretmenle bile olsa) başka dersi var mı?
+      // Bu sınıfın bu gün/saatte (farklı bir öğretmenle bile olsa) başka dersi
+      // var mı? Bu kontrol taslak modunda da anlamlı (canlı program hâlâ
+      // canlı program), o yüzden HER İKİ modda da çalışır.
       const cakisan = (dersProgrami || []).find(
         (d) =>
           d.sinif_id === secilen.id &&
@@ -166,26 +242,61 @@ export default function MusaitlikTablosu({
         setHpHata(`Bu sınıfın bu saatte zaten "${cakisan.ders_adi || cakisan.sinif_adi || 'bir'}" dersi var.`)
         return
       }
-      setHpGonderiliyor(true)
-      const { error } = await supabase.from('ders_programi').insert({
-        sinif_id: secilen.id,
-        ders_adi: null,
-        ogretmen_profile_id: hizliPopup.ogretmenId,
-        gun: hizliPopup.gun,
-        baslangic_saat: hizliPopup.baslangic,
-        bitis_saat: hizliPopup.bitis,
-      })
-      setHpGonderiliyor(false)
-      if (error) {
-        setHpHata('Hata: ' + error.message)
-        return
+      if (taslakModuEtkin) {
+        const taslakCakisma = taslakCakismasiAciklamasi(taslaklar, {
+          ogretmenId: hizliPopup.ogretmenId,
+          sinifId: secilen.id,
+          gun: hizliPopup.gun,
+          tarih: hizliPopup.tarih,
+          baslangic: hizliPopup.baslangic,
+          bitis: hizliPopup.bitis,
+        })
+        if (taslakCakisma) {
+          setHpHata(taslakCakisma)
+          return
+        }
+        setHpGonderiliyor(true)
+        const { error } = await supabase.from('taslaklar').insert({
+          tur: 'sinif',
+          veri: {
+            sinif_id: secilen.id,
+            ders_adi: null,
+            ogretmen_profile_id: hizliPopup.ogretmenId,
+            gun: hizliPopup.gun,
+            baslangic_saat: hizliPopup.baslangic,
+            bitis_saat: hizliPopup.bitis,
+          },
+          olusturan_profile_id: profile?.id,
+          plan_adi: aktifPlanAdi || null,
+        })
+        setHpGonderiliyor(false)
+        if (error) {
+          setHpHata('Hata: ' + error.message)
+          return
+        }
+      } else {
+        setHpGonderiliyor(true)
+        const { error } = await supabase.from('ders_programi').insert({
+          sinif_id: secilen.id,
+          ders_adi: null,
+          ogretmen_profile_id: hizliPopup.ogretmenId,
+          gun: hizliPopup.gun,
+          baslangic_saat: hizliPopup.baslangic,
+          bitis_saat: hizliPopup.bitis,
+        })
+        setHpGonderiliyor(false)
+        if (error) {
+          setHpHata('Hata: ' + error.message)
+          return
+        }
       }
     } else {
       if (!ucret || Number(ucret) <= 0) {
         setHpHata('Lütfen geçerli bir ücret girin.')
         return
       }
-      // Bu öğrencinin bu saatte (haftalık atama ya da tek seferlik) başka dersi var mı?
+      // Bu öğrencinin bu saatte (haftalık atama ya da tek seferlik) başka dersi
+      // var mı? Canlı verilere karşı kontrol her iki modda da çalışır.
       const atamaCakisan = (atamalar || []).find(
         (a) =>
           a.ogrenci_id === secilen.id &&
@@ -205,23 +316,62 @@ export default function MusaitlikTablosu({
         setHpHata('Bu öğrencinin bu saatte başka bir dersi var.')
         return
       }
-      const ileriTarihli =
-        hizliPopup.tarih > yerelBugunTarihi() ||
-        (hizliPopup.tarih === yerelBugunTarihi() && hizliPopup.baslangic > yerelSuankiSaatDakika())
-      setHpGonderiliyor(true)
-      const { error } = await supabase.from('bire_bir_yoklama').insert({
-        ogrenci_id: secilen.id,
-        ogretmen_profile_id: hizliPopup.ogretmenId,
-        tutar: Number(ucret),
-        tarih: hizliPopup.tarih,
-        durum: ileriTarihli ? 'bekliyor' : 'geldi',
-        baslangic_saat: hizliPopup.baslangic,
-        bitis_saat: hizliPopup.bitis,
-      })
-      setHpGonderiliyor(false)
-      if (error) {
-        setHpHata('Hata: ' + error.message)
-        return
+      if (taslakModuEtkin) {
+        const taslakCakisma = taslakCakismasiAciklamasi(taslaklar, {
+          ogretmenId: hizliPopup.ogretmenId,
+          ogrenciId: secilen.id,
+          gun: hizliPopup.gun,
+          tarih: hizliPopup.tarih,
+          baslangic: hizliPopup.baslangic,
+          bitis: hizliPopup.bitis,
+        })
+        if (taslakCakisma) {
+          setHpHata(taslakCakisma)
+          return
+        }
+        setHpGonderiliyor(true)
+        // Hızlı Ekle her zaman belirli bir TARİHE bağlı olduğu için (haftalık
+        // tekrar eden bir atama değil), taslak her zaman 'bire_bir_tekil'
+        // türünde kaydedilir — BireBir.jsx'teki "Hayır, sadece bu sefer"
+        // taslağıyla AYNI veri şekli (ogrenci_id, ogretmen_profile_id, tutar,
+        // tarih, baslangic_saat, bitis_saat).
+        const { error } = await supabase.from('taslaklar').insert({
+          tur: 'bire_bir_tekil',
+          veri: {
+            ogrenci_id: secilen.id,
+            ogretmen_profile_id: hizliPopup.ogretmenId,
+            tutar: Number(ucret),
+            tarih: hizliPopup.tarih,
+            baslangic_saat: hizliPopup.baslangic,
+            bitis_saat: hizliPopup.bitis,
+          },
+          olusturan_profile_id: profile?.id,
+          plan_adi: aktifPlanAdi || null,
+        })
+        setHpGonderiliyor(false)
+        if (error) {
+          setHpHata('Hata: ' + error.message)
+          return
+        }
+      } else {
+        const ileriTarihli =
+          hizliPopup.tarih > yerelBugunTarihi() ||
+          (hizliPopup.tarih === yerelBugunTarihi() && hizliPopup.baslangic > yerelSuankiSaatDakika())
+        setHpGonderiliyor(true)
+        const { error } = await supabase.from('bire_bir_yoklama').insert({
+          ogrenci_id: secilen.id,
+          ogretmen_profile_id: hizliPopup.ogretmenId,
+          tutar: Number(ucret),
+          tarih: hizliPopup.tarih,
+          durum: ileriTarihli ? 'bekliyor' : 'geldi',
+          baslangic_saat: hizliPopup.baslangic,
+          bitis_saat: hizliPopup.bitis,
+        })
+        setHpGonderiliyor(false)
+        if (error) {
+          setHpHata('Hata: ' + error.message)
+          return
+        }
       }
     }
 
@@ -444,6 +594,11 @@ export default function MusaitlikTablosu({
                                 ✕
                               </button>
                             </div>
+                            {taslakModuAcik && aktifPlanAdi && (
+                              <p className="text-[10px] font-medium text-orange-600 bg-orange-50 border border-orange-100 rounded px-1.5 py-1 mb-1.5">
+                                📋 Taslak Modu açık — "{aktifPlanAdi}" planına eklenecek
+                              </p>
+                            )}
                             {!secilen ? (
                               <>
                                 <button
@@ -514,7 +669,7 @@ export default function MusaitlikTablosu({
                                     onClick={hizliKaydet}
                                     className="flex-1 px-2 py-1.5 rounded-lg text-xs text-white bg-navy hover:bg-navy/90 disabled:opacity-50"
                                   >
-                                    {hpGonderiliyor ? 'Ekleniyor...' : 'Ekle'}
+                                    {hpGonderiliyor ? 'Ekleniyor...' : taslakModuAcik && aktifPlanAdi ? 'Plana Ekle' : 'Ekle'}
                                   </button>
                                 </div>
                               </>
