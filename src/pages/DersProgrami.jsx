@@ -1230,6 +1230,12 @@ export default function DersProgrami() {
   // kalmaz. Not: Hızlı Ekle ile eklenen bire bir / soru çözümü taslakları bu
   // sayfada değil, Bire Bir sayfasının Taslaklarım'ında yönetilir.
   const { taslakModuAcik, setTaslakModuAcik, aktifPlanAdi, setAktifPlanAdi } = useTaslakModu()
+  // Plan adı kutusunun önerileri — Muhasebe.jsx'teki "Öğrenci Seç" kutusuyla
+  // AYNI mantık: tarayıcının native datalist/autofill'ine güvenmek yerine
+  // (silinen planları da hatırlamaya devam ediyordu), tamamen kendi
+  // yönettiğimiz bir açılır liste — kutu odaklanınca açılır, yazınca filtrelenir,
+  // her zaman güncel taslaklar state'inden türer.
+  const [planOneriAcik, setPlanOneriAcik] = useState(false)
   const ilkYuklemeTamamRef = useRef(false)
   // Öğretmen için: yöneticinin kendisine atadığı "Soru Çözümü" seansları —
   // öğrenciye/veliye HİÇ gösterilmez, sadece atanan öğretmen kendi Ders
@@ -1421,6 +1427,18 @@ export default function DersProgrami() {
 
   const ogrenciAdMap = useMemo(() => new Map(ogrenciler.map((o) => [o.id, o.ad_soyad])), [ogrenciler])
 
+  // Plan adı kutusundaki öneriler — şu an var olan (silinmemiş) tüm isimli
+  // planlar, aktifPlanAdi'yla eşleşenlere göre filtrelenmiş. Muhasebe.jsx'teki
+  // Öğrenci Seç kutusuyla aynı mantık, native datalist yerine.
+  const mevcutPlanAdlari = useMemo(
+    () => [...new Set(taslaklar.filter((t) => t.plan_adi).map((t) => t.plan_adi))],
+    [taslaklar]
+  )
+  const gorunenPlanOnerileri = mevcutPlanAdlari.filter((ad) => {
+    const aranan = aktifPlanAdi.trim().toLocaleLowerCase('tr-TR')
+    return !aranan || ad.toLocaleLowerCase('tr-TR').includes(aranan)
+  })
+
   async function sil(id) {
     if (!confirm('Bu ders saatini silmek istediğinize emin misiniz? Bu ders saatine ait yoklama kayıtları da (varsa) birlikte silinecek.')) return
     // Bir ders saati silinirken, o ders saatine bağlı yoklama kayıtları da
@@ -1564,28 +1582,46 @@ export default function DersProgrami() {
                 </label>
                 {taslakModuAcik && (
                   <>
-                    <input
-                      type="text"
-                      value={aktifPlanAdi}
-                      onChange={(e) => setAktifPlanAdi(e.target.value)}
-                      placeholder='Plan adı (ör. "Ekim 2. Hafta Programı")'
-                      list="taslak-plan-onerileri"
-                      // Tarayıcının KENDİ form-doldurma hafızası (bizim
-                      // datalist'imizden bağımsız) daha önce yazılan ama artık
-                      // silinmiş plan adlarını da öneri olarak göstermeye devam
-                      // edebiliyordu — autoComplete="off" ile bu kapatılıyor,
-                      // öneriler sadece aşağıdaki (güncel, silinenleri
-                      // içermeyen) datalist'ten gelir.
-                      autoComplete="off"
-                      className="px-3 py-1.5 border border-gray-200 rounded-lg text-sm flex-1 min-w-[220px]"
-                    />
-                    {/* Daha önce kullanılmış plan isimleri öneri olarak çıksın —
-                        aynı ismi harfi harfine tekrar yazmak zor/hataya açık. */}
-                    <datalist id="taslak-plan-onerileri">
-                      {[...new Set(taslaklar.filter((t) => t.plan_adi).map((t) => t.plan_adi))].map((ad) => (
-                        <option key={ad} value={ad} />
-                      ))}
-                    </datalist>
+                    <div className="relative flex-1 min-w-[220px]">
+                      <input
+                        type="text"
+                        value={aktifPlanAdi}
+                        onChange={(e) => setAktifPlanAdi(e.target.value)}
+                        onFocus={() => setPlanOneriAcik(true)}
+                        onBlur={() => setTimeout(() => setPlanOneriAcik(false), 150)}
+                        placeholder='Plan adı (ör. "Ekim 2. Hafta Programı")'
+                        // Tarayıcının KENDİ form-doldurma hafızası, aşağıdaki
+                        // özel/React açılır listesinden BAĞIMSIZ olarak,
+                        // silinmiş plan adlarını da hatırlamaya devam
+                        // edebildiği için (native datalist ile yaşanan sorun)
+                        // burada da kapatılıyor.
+                        autoComplete="off"
+                        className="w-full px-3 py-1.5 border border-gray-200 rounded-lg text-sm"
+                      />
+                      {/* Daha önce kullanılmış (hâlâ var olan) plan isimleri
+                          öneri olarak çıksın — Muhasebe.jsx'teki "Öğrenci Seç"
+                          kutusuyla aynı, tamamen kendi yönettiğimiz açılır
+                          liste (native datalist/autofill hafızasına değil,
+                          her zaman güncel taslaklar state'ine dayanır). */}
+                      {planOneriAcik && gorunenPlanOnerileri.length > 0 && (
+                        <div className="absolute z-20 top-full left-0 right-0 mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-48 overflow-y-auto">
+                          {gorunenPlanOnerileri.map((ad) => (
+                            <button
+                              key={ad}
+                              type="button"
+                              onMouseDown={(e) => e.preventDefault()}
+                              onClick={() => {
+                                setAktifPlanAdi(ad)
+                                setPlanOneriAcik(false)
+                              }}
+                              className="w-full text-left px-3 py-1.5 text-sm text-gray-700 hover:bg-orange-50"
+                            >
+                              {ad}
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </div>
                     <span className="text-xs text-gray-500">
                       {aktifPlanAdi.trim()
                         ? `Açık — Hızlı Ekle ve formdan eklenen dersler "${aktifPlanAdi.trim()}" planına kaydediliyor (canlıya değil). Bire Bir sayfasına geçtiğinizde de aynı plan açık gelir.`

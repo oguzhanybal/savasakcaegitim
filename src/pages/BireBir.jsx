@@ -2499,6 +2499,10 @@ export default function BireBir() {
   // PAYLAŞILIYOR (bkz. lib/taslakModu.js) — o sayfada açıp plan adı yazınca,
   // buraya geçtiğinizde de aynı anahtar/plan adı açık gelir.
   const { taslakModuAcik, setTaslakModuAcik, aktifPlanAdi, setAktifPlanAdi } = useTaslakModu()
+  // Plan adı kutusunun önerileri — Muhasebe.jsx'teki "Öğrenci Seç" kutusuyla
+  // AYNI mantık: native datalist/autofill'e güvenmek yerine (silinen planları
+  // da hatırlamaya devam ediyordu), tamamen kendi yönettiğimiz bir açılır liste.
+  const [planOneriAcik, setPlanOneriAcik] = useState(false)
   // İlk açılıştan sonra "Yükleniyor..." ekranını bir daha göstermiyoruz — bir ders
   // ekleyip onEklendi() ile veriyi yenilediğimizde tüm sayfa "Yükleniyor..." ekranına
   // dönüp formu (bileşeni) komple yeniden kuruyordu, bu da az önce doldurulmuş
@@ -2636,6 +2640,17 @@ export default function BireBir() {
 
   const ogrenciAdMap = useMemo(() => new Map(ogrenciler.map((o) => [o.id, o.ad_soyad])), [ogrenciler])
 
+  // Plan adı kutusundaki öneriler — şu an var olan (silinmemiş) tüm isimli
+  // planlar, aktifPlanAdi'yla eşleşenlere göre filtrelenmiş.
+  const mevcutPlanAdlari = useMemo(
+    () => [...new Set(taslaklar.filter((t) => t.plan_adi).map((t) => t.plan_adi))],
+    [taslaklar]
+  )
+  const gorunenPlanOnerileri = mevcutPlanAdlari.filter((ad) => {
+    const aranan = aktifPlanAdi.trim().toLocaleLowerCase('tr-TR')
+    return !aranan || ad.toLocaleLowerCase('tr-TR').includes(aranan)
+  })
+
   if (loading) return <p className="text-gray-400">Yükleniyor...</p>
 
   return (
@@ -2669,28 +2684,40 @@ export default function BireBir() {
             </label>
             {taslakModuAcik && (
               <>
-                <input
-                  type="text"
-                  value={aktifPlanAdi}
-                  onChange={(e) => setAktifPlanAdi(e.target.value)}
-                  placeholder='Plan adı (ör. "Ekim 2. Hafta Programı")'
-                  list="taslak-plan-onerileri"
-                  // Tarayıcının KENDİ form-doldurma hafızası (bizim
-                  // datalist'imizden bağımsız) daha önce yazılan ama artık
-                  // silinmiş plan adlarını da öneri olarak göstermeye devam
-                  // edebiliyordu — autoComplete="off" ile bu kapatılıyor,
-                  // öneriler sadece aşağıdaki (güncel, silinenleri içermeyen)
-                  // datalist'ten gelir.
-                  autoComplete="off"
-                  className="px-3 py-1.5 border border-gray-200 rounded-lg text-sm flex-1 min-w-[220px]"
-                />
-                {/* Daha önce kullanılmış plan isimleri öneri olarak çıksın —
-                    aynı ismi harfi harfine tekrar yazmak zor/hataya açık. */}
-                <datalist id="taslak-plan-onerileri">
-                  {[...new Set(taslaklar.filter((t) => t.plan_adi).map((t) => t.plan_adi))].map((ad) => (
-                    <option key={ad} value={ad} />
-                  ))}
-                </datalist>
+                <div className="relative flex-1 min-w-[220px]">
+                  <input
+                    type="text"
+                    value={aktifPlanAdi}
+                    onChange={(e) => setAktifPlanAdi(e.target.value)}
+                    onFocus={() => setPlanOneriAcik(true)}
+                    onBlur={() => setTimeout(() => setPlanOneriAcik(false), 150)}
+                    placeholder='Plan adı (ör. "Ekim 2. Hafta Programı")'
+                    autoComplete="off"
+                    className="w-full px-3 py-1.5 border border-gray-200 rounded-lg text-sm"
+                  />
+                  {/* Muhasebe.jsx'teki "Öğrenci Seç" kutusuyla aynı mantık —
+                      native datalist yerine kendi yönettiğimiz açılır liste,
+                      çünkü tarayıcının form-doldurma hafızası silinen plan
+                      adlarını da öneri olarak göstermeye devam ediyordu. */}
+                  {planOneriAcik && gorunenPlanOnerileri.length > 0 && (
+                    <div className="absolute z-20 top-full left-0 right-0 mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-48 overflow-y-auto">
+                      {gorunenPlanOnerileri.map((ad) => (
+                        <button
+                          key={ad}
+                          type="button"
+                          onMouseDown={(e) => e.preventDefault()}
+                          onClick={() => {
+                            setAktifPlanAdi(ad)
+                            setPlanOneriAcik(false)
+                          }}
+                          className="w-full text-left px-3 py-1.5 text-sm text-gray-700 hover:bg-orange-50"
+                        >
+                          {ad}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
                 <span className="text-xs text-gray-500">
                   {aktifPlanAdi.trim()
                     ? `Açık — Hızlı Ekle ve formdan eklenen dersler "${aktifPlanAdi.trim()}" planına kaydediliyor (canlıya değil). Ders Programı sayfasına geçtiğinizde de aynı plan açık gelir.`
