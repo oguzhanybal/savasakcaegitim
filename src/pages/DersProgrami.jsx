@@ -299,12 +299,18 @@ function DersEkleForm({
       setHata('Birleşik ders taslağa kaydedilemez — lütfen doğrudan "Ekle" butonunu kullanın.')
       return
     }
-    // Bekleyen "sinif" taslaklarını, cakismaBul'un anladığı program-satırı
-    // şekline çeviriyoruz — böylece aynı fonksiyonu hem gerçek programa hem
-    // taslaklara karşı çalıştırabiliyoruz, ayrı bir kontrol mantığı yazmaya
-    // gerek kalmadan.
+    // Bu taslak hangi plana kaydedilecekse (Taslak Modu açıksa isimli plana,
+    // kapalıysa "Taslağa Kaydet" ile isimsiz/null plana), çakışma kontrolü
+    // SADECE o plana ait diğer taslaklara karşı yapılır — farklı isimli
+    // planlar birbirinden bağımsızdır, "fafa" planı "deneme" planındaki bir
+    // taslakla asla çakışma sayılmaz.
+    const hedefPlanAdi = taslakModuAcik && aktifPlanAdi.trim() ? aktifPlanAdi.trim() : null
+    // Bekleyen "sinif" taslaklarını (sadece AYNI plana ait olanları),
+    // cakismaBul'un anladığı program-satırı şekline çeviriyoruz — böylece aynı
+    // fonksiyonu hem gerçek programa hem taslaklara karşı çalıştırabiliyoruz,
+    // ayrı bir kontrol mantığı yazmaya gerek kalmadan.
     const taslakSatirlari = taslaklar
-      .filter((t) => t.tur === 'sinif')
+      .filter((t) => t.tur === 'sinif' && (t.plan_adi || null) === hedefPlanAdi)
       .map((t) => ({
         sinif_id: t.veri.sinif_id,
         sinif_adi: siniflar.find((s) => s.id === t.veri.sinif_id)?.ad,
@@ -353,7 +359,7 @@ function DersEkleForm({
       // Taslak Modu açıksa (bkz. yukarıdaki ekle() içindeki yönlendirme), her
       // satır aynı isimli plana damgalanır — kapalıysa (elle "Taslağa Kaydet"
       // ile) plansız/isimsiz kalır, eskisi gibi.
-      plan_adi: taslakModuAcik && aktifPlanAdi.trim() ? aktifPlanAdi.trim() : null,
+      plan_adi: hedefPlanAdi,
     }))
     const { error } = await supabase.from('taslaklar').insert(kayitlar)
     setGonderiliyor(false)

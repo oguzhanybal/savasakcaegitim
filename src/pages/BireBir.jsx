@@ -666,17 +666,23 @@ function BireBirDersEkleForm({
       setHata('Grup dersi (ek öğrenciler) taslağa kaydedilemez — lütfen doğrudan "Ekle" butonunu kullanın.')
       return
     }
+    // Bu taslak hangi plana kaydedilecekse, çakışma kontrolü SADECE o plana
+    // ait diğer taslaklara karşı yapılır — farklı isimli planlar birbirinden
+    // bağımsızdır, "fafa" planı "deneme" planındaki bir taslakla asla çakışma
+    // sayılmaz.
+    const hedefPlanAdi = taslakModuAcik && aktifPlanAdi.trim() ? aktifPlanAdi.trim() : null
     let kayitlar
     if (tekrarlansin) {
       if (seciliGunler.length === 0 || !baslangic || !bitis) {
         setHata('Lütfen en az bir gün ve saat aralığını girin.')
         return
       }
-      // Bekleyen "bire_bir_haftalik" taslaklarını, cakismaBul'un anladığı
-      // atama-satırı şekline çeviriyoruz — böylece aynı fonksiyonu hem gerçek
-      // atamalara hem taslaklara karşı çalıştırabiliyoruz.
+      // Bekleyen "bire_bir_haftalik" taslaklarını (sadece AYNI plana ait
+      // olanları), cakismaBul'un anladığı atama-satırı şekline çeviriyoruz —
+      // böylece aynı fonksiyonu hem gerçek atamalara hem taslaklara karşı
+      // çalıştırabiliyoruz.
       const taslakAtamaSatirlari = taslaklar
-        .filter((t) => t.tur === 'bire_bir_haftalik')
+        .filter((t) => t.tur === 'bire_bir_haftalik' && (t.plan_adi || null) === hedefPlanAdi)
         .map((t) => ({
           aktif: true,
           gun: t.veri.gun,
@@ -703,7 +709,6 @@ function BireBirDersEkleForm({
       // taslak satırı TEK seferde ekleniyor — yayınlama (yayinla) hâlâ her
       // taslağı tek tek (bir gün = bir satır) işliyor, burada değişen sadece
       // kaç taslak satırı birden oluşturulduğu.
-      const planAdi = taslakModuAcik && aktifPlanAdi.trim() ? aktifPlanAdi.trim() : null
       kayitlar = seciliGunler.map((g) => ({
         tur: 'bire_bir_haftalik',
         veri: {
@@ -715,7 +720,7 @@ function BireBirDersEkleForm({
           bitis_saat: bitis,
         },
         olusturan_profile_id: profile?.id,
-        plan_adi: planAdi,
+        plan_adi: hedefPlanAdi,
       }))
     } else {
       if (!tarih) {
@@ -734,7 +739,7 @@ function BireBirDersEkleForm({
             bitis_saat: tekBitis || null,
           },
           olusturan_profile_id: profile?.id,
-          plan_adi: taslakModuAcik && aktifPlanAdi.trim() ? aktifPlanAdi.trim() : null,
+          plan_adi: hedefPlanAdi,
         },
       ]
     }
