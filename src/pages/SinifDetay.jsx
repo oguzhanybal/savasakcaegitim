@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { useParams, Link } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { ilkHarfleriBuyukYap } from '../lib/adSoyadFormat'
+import { saatGoster } from '../lib/saatFormat'
 
 const GUNLER = ['', 'Pazartesi', 'Salı', 'Çarşamba', 'Perşembe', 'Cuma', 'Cumartesi', 'Pazar']
 const GUNLER_KISA = ['', 'Pzt', 'Sal', 'Çar', 'Per', 'Cum', 'Cmt', 'Paz']
@@ -232,10 +233,10 @@ export default function SinifDetay() {
       if (cakisma) {
         setHata(
           cakisma.tur === 'ogretmen'
-            ? `Çakışma var: bu öğretmenin ${GUNLER[gun]} günü ${saatKisalt(baslangic)}–${saatKisalt(bitis)} arasında zaten başka bir dersi var.`
+            ? `Çakışma var: bu öğretmenin ${GUNLER[gun]} günü ${saatGoster(baslangic)}–${saatGoster(bitis)} arasında zaten başka bir dersi var.`
             : cakisma.tur === 'birebir'
-            ? `Çakışma var: bu öğretmenin ${GUNLER[gun]} günü ${saatKisalt(baslangic)}–${saatKisalt(bitis)} arasında "${cakisma.ogrenciAdi || 'bir öğrenci'}" ile haftalık bire bir dersi var.`
-            : `Çakışma var: bu sınıfın ${GUNLER[gun]} günü ${saatKisalt(baslangic)}–${saatKisalt(bitis)} arasında zaten başka bir dersi var.`
+            ? `Çakışma var: bu öğretmenin ${GUNLER[gun]} günü ${saatGoster(baslangic)}–${saatGoster(bitis)} arasında "${cakisma.ogrenciAdi || 'bir öğrenci'}" ile haftalık bire bir dersi var.`
+            : `Çakışma var: bu sınıfın ${GUNLER[gun]} günü ${saatGoster(baslangic)}–${saatGoster(bitis)} arasında zaten başka bir dersi var.`
         )
         return
       }
@@ -271,10 +272,10 @@ export default function SinifDetay() {
           const hedefAdi = hedefSinifId === sinifId ? '' : ` (${tumSiniflar.find((s) => s.id === hedefSinifId)?.ad || 'seçilen sınıf'} için)`
           setHata(
             cakisma.tur === 'ogretmen'
-              ? `Çakışma var${hedefAdi}: bu öğretmenin ${GUNLER[g]} günü ${saatKisalt(baslangic)}–${saatKisalt(bitis)} arasında zaten başka bir dersi var.`
+              ? `Çakışma var${hedefAdi}: bu öğretmenin ${GUNLER[g]} günü ${saatGoster(baslangic)}–${saatGoster(bitis)} arasında zaten başka bir dersi var.`
               : cakisma.tur === 'birebir'
-              ? `Çakışma var${hedefAdi}: bu öğretmenin ${GUNLER[g]} günü ${saatKisalt(baslangic)}–${saatKisalt(bitis)} arasında "${cakisma.ogrenciAdi || 'bir öğrenci'}" ile haftalık bire bir dersi var.`
-              : `Çakışma var${hedefAdi}: bu sınıfın ${GUNLER[g]} günü ${saatKisalt(baslangic)}–${saatKisalt(bitis)} arasında zaten başka bir dersi var.`
+              ? `Çakışma var${hedefAdi}: bu öğretmenin ${GUNLER[g]} günü ${saatGoster(baslangic)}–${saatGoster(bitis)} arasında "${cakisma.ogrenciAdi || 'bir öğrenci'}" ile haftalık bire bir dersi var.`
+              : `Çakışma var${hedefAdi}: bu sınıfın ${GUNLER[g]} günü ${saatGoster(baslangic)}–${saatGoster(bitis)} arasında zaten başka bir dersi var.`
           )
           return
         }
@@ -595,7 +596,7 @@ export default function SinifDetay() {
                 >
                   <div>
                     <p className="font-medium text-gray-800">
-                      {p.ders_adi || 'Ders'} <span className="font-normal text-gray-400">— {GUNLER[p.gun]} · {saatKisalt(p.baslangic_saat)}–{saatKisalt(p.bitis_saat)}</span>
+                      {p.ders_adi || 'Ders'} <span className="font-normal text-gray-400">— {GUNLER[p.gun]} · {saatGoster(p.baslangic_saat)}–{saatGoster(p.bitis_saat)}</span>
                     </p>
                     {p.profiles?.ad_soyad && <p className="text-xs text-gray-400">{p.profiles.ad_soyad}</p>}
                     {digerSiniflar.length > 0 && (

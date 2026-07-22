@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { useParams, Link } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { paraFormat, bireBirDersDetaylariOlustur } from '../lib/ekstreHesap'
+import { saatGoster } from '../lib/saatFormat'
 
 // ============================================================================
 // ÖĞRENCİ ZAMAN ÇİZELGESİ — bir öğrenciyle ilgili HER ŞEYİ (ödemeler, bire bir
@@ -197,7 +198,7 @@ export default function OgrenciZamanCizelgesi() {
             <span>
               <span className="font-medium">{d.ogretmenAdi}</span>
               {d.ogretmenBransi ? ` (${d.ogretmenBransi})` : ''} ile bire bir ders yapıldı
-              {d.baslangicSaat ? ` (${d.baslangicSaat.slice(0, 5)}–${(d.bitisSaat || '').slice(0, 5)})` : ''}.
+              {d.baslangicSaat ? ` (${saatGoster(d.baslangicSaat)}–${saatGoster(d.bitisSaat || '')})` : ''}.
             </span>
           ),
         })

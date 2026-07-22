@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../lib/AuthContext'
 import { sesSisteminiEtkinlestir, cikisZiliCal, manuelZilCalBaslat, manuelZilDurdur } from '../lib/zilSesiCal'
+import { saatGoster } from '../lib/saatFormat'
 
 // ============================================================================
 // ZİL SİSTEMİ — kurumun bilgisayarının saati kayıyor (eski donanım), bu yüzden
@@ -100,9 +101,13 @@ function turkiyeSaatBilesenleri(d) {
   }
 }
 
+// Bu fonksiyon SADECE ekrandaki (görsel) saat metnini üretir — zilin gerçek
+// çalışma zamanı hesaplaması bu string'i DEĞİL, turkiyeSaatBilesenleri'nin
+// ham sayısal değerlerini kullanır (bkz. suankiHHMMSS aşağıda) — yani ekranda
+// nokta ("12.50.03") görünmesi zilin doğru saatte çalmasını etkilemez.
 function saatMetni(d) {
   const { saat, dakika, saniye } = turkiyeSaatBilesenleri(d)
-  return `${saat}:${dakika}:${saniye}`
+  return `${saat}.${dakika}.${saniye}`
 }
 
 function turkiyeTarihAnahtari(d) {
@@ -619,7 +624,7 @@ export default function ZilSistemi() {
 
         {siradakiZil && (
           <p className="text-sm text-gray-600 mt-3">
-            Sıradaki zil: <span className="font-semibold text-navy">{siradakiZil.saat}</span> — {siradakiZil.etiket}
+            Sıradaki zil: <span className="font-semibold text-navy">{saatGoster(siradakiZil.saat)}</span> — {siradakiZil.etiket}
           </p>
         )}
 
@@ -776,7 +781,7 @@ export default function ZilSistemi() {
                             className="px-2 py-1 border border-gray-200 rounded-lg text-sm w-[100px] focus:outline-none focus:ring-2 focus:ring-blue"
                           />
                         ) : (
-                          <span>{saatKisalt(d[alan]) || '—'}</span>
+                          <span>{saatGoster(d[alan]) || '—'}</span>
                         )}
                         {isYonetici && (
                           <button

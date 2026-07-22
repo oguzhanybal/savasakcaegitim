@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../lib/AuthContext'
+import { saatGoster } from '../lib/saatFormat'
 
 const GUNLER = ['', 'Pazartesi', 'Salı', 'Çarşamba', 'Perşembe', 'Cuma', 'Cumartesi', 'Pazar']
 
@@ -102,7 +103,7 @@ function BugunkuYoklamaDurumu({ isYonetici, ogretmenProfileId }) {
                   {ozet.map((o, i) => (
                     <tr key={o.ders.id} className={i % 2 ? 'bg-gray-50' : ''}>
                       <td className="px-4 py-3 text-gray-600 whitespace-nowrap">
-                        {saatKisalt(o.ders.baslangic_saat)}–{saatKisalt(o.ders.bitis_saat)}
+                        {saatGoster(o.ders.baslangic_saat)}–{saatGoster(o.ders.bitis_saat)}
                       </td>
                       <td className="px-4 py-3 font-medium text-gray-800 whitespace-nowrap">{o.ders.siniflar?.ad || '—'}</td>
                       <td className="px-4 py-3 text-gray-600 whitespace-nowrap">
@@ -255,14 +256,14 @@ export default function YoklamaRaporu() {
               <span className="font-normal text-gray-400"> — {ogretmenlerMap.get(seciliOgretmen)}</span>
             )}
           </h2>
-          <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden mb-8">
-            <table className="w-full text-sm">
+          <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-x-auto touch-pan-x overscroll-x-contain mb-8">
+            <table className="text-sm min-w-[480px] w-full">
               <thead>
                 <tr className="bg-navy text-white text-left">
-                  <th className="px-4 py-3 font-semibold">Öğrenci</th>
-                  <th className="px-4 py-3 font-semibold text-center">Geldi</th>
-                  <th className="px-4 py-3 font-semibold text-center">Gelmedi</th>
-                  <th className="px-4 py-3 font-semibold text-center">Devamsızlık Oranı</th>
+                  <th className="px-4 py-3 font-semibold whitespace-nowrap">Öğrenci</th>
+                  <th className="px-4 py-3 font-semibold text-center whitespace-nowrap">Geldi</th>
+                  <th className="px-4 py-3 font-semibold text-center whitespace-nowrap">Gelmedi</th>
+                  <th className="px-4 py-3 font-semibold text-center whitespace-nowrap">Devamsızlık Oranı</th>
                 </tr>
               </thead>
               <tbody>
@@ -271,10 +272,10 @@ export default function YoklamaRaporu() {
                   const oran = toplam > 0 ? Math.round((s.gelmedi / toplam) * 100) : 0
                   return (
                     <tr key={ad} className={i % 2 ? 'bg-gray-50' : ''}>
-                      <td className="px-4 py-3 font-medium text-gray-800">{ad}</td>
-                      <td className="px-4 py-3 text-center text-green-600 font-semibold">{s.geldi}</td>
-                      <td className="px-4 py-3 text-center text-red-500 font-semibold">{s.gelmedi}</td>
-                      <td className="px-4 py-3 text-center">
+                      <td className="px-4 py-3 font-medium text-gray-800 whitespace-nowrap">{ad}</td>
+                      <td className="px-4 py-3 text-center text-green-600 font-semibold whitespace-nowrap">{s.geldi}</td>
+                      <td className="px-4 py-3 text-center text-red-500 font-semibold whitespace-nowrap">{s.gelmedi}</td>
+                      <td className="px-4 py-3 text-center whitespace-nowrap">
                         <span className={`font-semibold ${oran > 20 ? 'text-red-500' : 'text-gray-600'}`}>%{oran}</span>
                       </td>
                     </tr>

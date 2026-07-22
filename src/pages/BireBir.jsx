@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../lib/AuthContext'
 import { useTaslakModu } from '../lib/taslakModu'
+import { saatGoster } from '../lib/saatFormat'
 import {
   paraFormat,
   bireBirGunlukOzetMesajiOlustur,
@@ -118,7 +119,7 @@ function cakismaBul({ ogrenciId, ogretmenId, gun, baslangic, bitis, haricAtamaId
     if (d.gun !== gun || d.ogretmen_profile_id !== ogretmenId) continue
     if (!araliklarCakisiyorMu(baslangic, bitis, d.baslangic_saat, d.bitis_saat)) continue
     return {
-      aciklama: `bu öğretmenin ${GUNLER[d.gun]} günü ${saatKisalt(d.baslangic_saat)}–${saatKisalt(d.bitis_saat)} arası "${d.ders_adi || d.sinif_adi}" sınıf dersi var`,
+      aciklama: `bu öğretmenin ${GUNLER[d.gun]} günü ${saatGoster(d.baslangic_saat)}–${saatGoster(d.bitis_saat)} arası "${d.ders_adi || d.sinif_adi}" sınıf dersi var`,
     }
   }
 
@@ -128,12 +129,12 @@ function cakismaBul({ ogrenciId, ogretmenId, gun, baslangic, bitis, haricAtamaId
     if (!araliklarCakisiyorMu(baslangic, bitis, a.baslangic_saat, a.bitis_saat)) continue
     if (a.ogretmen_profile_id === ogretmenId) {
       return {
-        aciklama: `bu öğretmenin ${GUNLER[a.gun]} günü ${saatKisalt(a.baslangic_saat)}–${saatKisalt(a.bitis_saat)} arası "${a.ogrenci_adi}" ile bire bir dersi var`,
+        aciklama: `bu öğretmenin ${GUNLER[a.gun]} günü ${saatGoster(a.baslangic_saat)}–${saatGoster(a.bitis_saat)} arası "${a.ogrenci_adi}" ile bire bir dersi var`,
       }
     }
     if (ogrenciId && a.ogrenci_id === ogrenciId) {
       return {
-        aciklama: `bu öğrencinin her hafta ${GUNLER[a.gun]} günü ${saatKisalt(a.baslangic_saat)}–${saatKisalt(a.bitis_saat)} arası "${a.ogretmen_adi}" ile başka bir bire bir dersi var`,
+        aciklama: `bu öğrencinin her hafta ${GUNLER[a.gun]} günü ${saatGoster(a.baslangic_saat)}–${saatGoster(a.bitis_saat)} arası "${a.ogretmen_adi}" ile başka bir bire bir dersi var`,
       }
     }
   }
@@ -162,7 +163,7 @@ function tekSeferlikCakismaBul(
     if (d.gun !== gun || d.ogretmen_profile_id !== ogretmenId) continue
     if (!araliklarCakisiyorMu(baslangic, bitis, d.baslangic_saat, d.bitis_saat)) continue
     return {
-      aciklama: `bu öğretmenin ${GUNLER[d.gun]} günü ${saatKisalt(d.baslangic_saat)}–${saatKisalt(d.bitis_saat)} arası "${d.ders_adi || d.sinif_adi}" sınıf dersi var`,
+      aciklama: `bu öğretmenin ${GUNLER[d.gun]} günü ${saatGoster(d.baslangic_saat)}–${saatGoster(d.bitis_saat)} arası "${d.ders_adi || d.sinif_adi}" sınıf dersi var`,
     }
   }
 
@@ -171,12 +172,12 @@ function tekSeferlikCakismaBul(
     if (!araliklarCakisiyorMu(baslangic, bitis, a.baslangic_saat, a.bitis_saat)) continue
     if (a.ogretmen_profile_id === ogretmenId) {
       return {
-        aciklama: `bu öğretmenin ${GUNLER[a.gun]} günü ${saatKisalt(a.baslangic_saat)}–${saatKisalt(a.bitis_saat)} arası "${a.ogrenci_adi}" ile haftalık bire bir dersi var`,
+        aciklama: `bu öğretmenin ${GUNLER[a.gun]} günü ${saatGoster(a.baslangic_saat)}–${saatGoster(a.bitis_saat)} arası "${a.ogrenci_adi}" ile haftalık bire bir dersi var`,
       }
     }
     if (ogrenciId && a.ogrenci_id === ogrenciId) {
       return {
-        aciklama: `bu öğrencinin her hafta ${GUNLER[a.gun]} günü ${saatKisalt(a.baslangic_saat)}–${saatKisalt(a.bitis_saat)} arası "${a.ogretmen_adi}" ile haftalık bire bir dersi var`,
+        aciklama: `bu öğrencinin her hafta ${GUNLER[a.gun]} günü ${saatGoster(a.baslangic_saat)}–${saatGoster(a.bitis_saat)} arası "${a.ogretmen_adi}" ile haftalık bire bir dersi var`,
       }
     }
   }
@@ -190,13 +191,13 @@ function tekSeferlikCakismaBul(
     if (y.ogretmen_profile_id === ogretmenId) {
       const ogrenciAdi = ogrenciler.find((o) => o.id === y.ogrenci_id)?.ad_soyad || 'başka bir öğrenci'
       return {
-        aciklama: `bu öğretmenin ${tarih} tarihinde ${saatKisalt(y.baslangic_saat)}–${saatKisalt(y.bitis_saat)} arası "${ogrenciAdi}" ile başka bir tek seferlik dersi var`,
+        aciklama: `bu öğretmenin ${tarih} tarihinde ${saatGoster(y.baslangic_saat)}–${saatGoster(y.bitis_saat)} arası "${ogrenciAdi}" ile başka bir tek seferlik dersi var`,
       }
     }
     if (ogrenciId && y.ogrenci_id === ogrenciId) {
       const ogretmenAdi = (ogretmenler || []).find((o) => o.id === y.ogretmen_profile_id)?.ad_soyad || 'başka bir öğretmen'
       return {
-        aciklama: `bu öğrencinin ${tarih} tarihinde ${saatKisalt(y.baslangic_saat)}–${saatKisalt(y.bitis_saat)} arası "${ogretmenAdi}" ile başka bir tek seferlik dersi var`,
+        aciklama: `bu öğrencinin ${tarih} tarihinde ${saatGoster(y.baslangic_saat)}–${saatGoster(y.bitis_saat)} arası "${ogretmenAdi}" ile başka bir tek seferlik dersi var`,
       }
     }
   }
@@ -222,7 +223,7 @@ function ogrenciSinifDersiUyarisiBul(ogrenciId, gun, baslangic, bitis, dersProgr
     if (d.gun !== gun) continue
     if (!araliklarCakisiyorMu(baslangic, bitis, d.baslangic_saat, d.bitis_saat)) continue
     return {
-      aciklama: `bu öğrencinin ${GUNLER[d.gun]} günü ${saatKisalt(d.baslangic_saat)}–${saatKisalt(d.bitis_saat)} arası "${d.ders_adi || d.sinif_adi || 'sınıf'}" dersi var`,
+      aciklama: `bu öğrencinin ${GUNLER[d.gun]} günü ${saatGoster(d.baslangic_saat)}–${saatGoster(d.bitis_saat)} arası "${d.ders_adi || d.sinif_adi || 'sınıf'}" dersi var`,
     }
   }
   return null
@@ -975,7 +976,7 @@ function BireBirDersEkleForm({
               <div className="flex flex-wrap gap-1.5">
                 {buGunMesgulSaatler.map((s, i) => (
                   <span key={i} className="text-[11px] px-1.5 py-0.5 rounded bg-orange-50 text-orange-700">
-                    {saatKisalt(s.baslangic)}–{saatKisalt(s.bitis)} · {s.etiket}
+                    {saatGoster(s.baslangic)}–{saatGoster(s.bitis)} · {s.etiket}
                   </span>
                 ))}
               </div>
@@ -1275,7 +1276,7 @@ function TaslaklarimBireBir({ taslaklar, ogrenciler, ogretmenler, dersProgrami, 
                               <p className="text-xs font-semibold text-navy leading-tight">{ogrenciAd(t.veri.ogrenci_id)}</p>
                               <p className="text-[11px] text-gray-500 leading-tight">{ogretmenAd(t.veri.ogretmen_profile_id)}</p>
                               <p className="text-[11px] text-gray-400 leading-tight">
-                                {saatKisalt(t.veri.baslangic_saat)}–{saatKisalt(t.veri.bitis_saat)} · {paraFormat(t.veri.ders_ucreti)}
+                                {saatGoster(t.veri.baslangic_saat)}–{saatGoster(t.veri.bitis_saat)} · {paraFormat(t.veri.ders_ucreti)}
                               </p>
                               {hataMap[t.id] && <p className="text-[11px] text-red-600 mt-1">{hataMap[t.id]}</p>}
                               <div className="flex items-center gap-2 mt-1">
@@ -1314,7 +1315,7 @@ function TaslaklarimBireBir({ taslaklar, ogrenciler, ogretmenler, dersProgrami, 
                         </p>
                         <p className="text-xs text-gray-400">
                           {new Date(t.veri.tarih + 'T12:00:00').toLocaleDateString('tr-TR')}
-                          {t.veri.baslangic_saat ? ` · ${saatKisalt(t.veri.baslangic_saat)}–${saatKisalt(t.veri.bitis_saat)}` : ''}
+                          {t.veri.baslangic_saat ? ` · ${saatGoster(t.veri.baslangic_saat)}–${saatGoster(t.veri.bitis_saat)}` : ''}
                           {!soruCozumuMu ? ` · ${paraFormat(t.veri.tutar)}` : ''}
                         </p>
                         {hataMap[t.id] && <p className="text-xs text-red-600 mt-1">{hataMap[t.id]}</p>}
@@ -1602,7 +1603,7 @@ function AtamaListesi({ atamalar, ogretmenler, dersProgrami, onDegisti }) {
                   {a.ogretmen_adi}
                   {a.ogretmen_bransi && <span className="text-xs text-gray-400"> ({a.ogretmen_bransi})</span>}
                 </td>
-                <td className="px-4 py-2">{GUNLER_KISA[a.gun]} {saatKisalt(a.baslangic_saat)}–{saatKisalt(a.bitis_saat)}</td>
+                <td className="px-4 py-2">{GUNLER_KISA[a.gun]} {saatGoster(a.baslangic_saat)}–{saatGoster(a.bitis_saat)}</td>
                 <td className="px-4 py-2">{paraFormat(a.ders_ucreti)}</td>
                 <td className="px-4 py-2">
                   {a.aktif ? (
@@ -1700,7 +1701,7 @@ function YoklamaSatiri({ atama, yoklamalar, onDegisti, ucretGorunur }) {
           <p className="font-semibold text-gray-800">{atama.ogrenci_adi}</p>
           <p className="text-xs text-gray-400">
             {atama.ogretmen_adi ? `${atama.ogretmen_adi} · ` : ''}
-            {GUNLER[atama.gun]} {saatKisalt(atama.baslangic_saat)}–{saatKisalt(atama.bitis_saat)}
+            {GUNLER[atama.gun]} {saatGoster(atama.baslangic_saat)}–{saatGoster(atama.bitis_saat)}
             {ucretGorunur ? ` · ${paraFormat(atama.ders_ucreti)} / ders` : ''}
           </p>
         </div>
@@ -2088,7 +2089,7 @@ function TekSeferlikDerslerListesi({ yoklamalar, atamalar, onDegisti, sadeceOgre
                     <tr key={y.id} className="border-t border-gray-50">
                       <td className="px-2 py-1.5">{new Date(y.tarih + 'T12:00:00').toLocaleDateString('tr-TR')}</td>
                       <td className="px-2 py-1.5 text-gray-500">
-                        {y._baslangic ? `${saatKisalt(y._baslangic)}${y._bitis ? '–' + saatKisalt(y._bitis) : ''}` : '—'}
+                        {y._baslangic ? `${saatGoster(y._baslangic)}${y._bitis ? '–' + saatGoster(y._bitis) : ''}` : '—'}
                       </td>
                       <td className="px-2 py-1.5 font-medium text-gray-800">{y._ogrenciAdi || '—'}</td>
                       {!sadeceOgretmenId && (
@@ -2428,8 +2429,8 @@ function DersHatirlatmaPaneli({ atamalar, yoklamalar, sadeceOgretmenId }) {
                   {o.dersler.map((d, i) => (
                     <span key={i}>
                       {mod === 'hafta' ? `${d.gunAdi} ` : ''}
-                      {d.baslangicSaat}
-                      {d.bitisSaat ? `–${d.bitisSaat}` : ''}
+                      {saatGoster(d.baslangicSaat)}
+                      {d.bitisSaat ? `–${saatGoster(d.bitisSaat)}` : ''}
                       {i < o.dersler.length - 1 ? ' · ' : ''}
                     </span>
                   ))}

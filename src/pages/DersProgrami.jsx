@@ -4,6 +4,7 @@ import { useAuth } from '../lib/AuthContext'
 import { ilkHarfleriBuyukYap } from '../lib/adSoyadFormat'
 import { DERS_PERIYOTLARI } from '../lib/dersPeriyotlari'
 import { useTaslakModu } from '../lib/taslakModu'
+import { saatGoster } from '../lib/saatFormat'
 import MusaitlikTablosu from '../components/MusaitlikTablosu'
 
 const GUNLER = ['', 'Pazartesi', 'Salı', 'Çarşamba', 'Perşembe', 'Cuma', 'Cumartesi', 'Pazar']
@@ -61,7 +62,7 @@ function cakismaBul({ sinifId, gun, baslangic, bitis, ogretmenId, hedefSinifId =
       tur: ayniSinif ? 'sinif' : 'ogretmen',
       sinifAdi: p.sinif_adi,
       dersAdi: p.ders_adi,
-      saat: `${saatKisalt(p.baslangic_saat)}–${saatKisalt(p.bitis_saat)}`,
+      saat: `${saatGoster(p.baslangic_saat)}–${saatGoster(p.bitis_saat)}`,
       gun: GUNLER[p.gun],
     }
   }
@@ -725,7 +726,7 @@ function TaslaklarimDersProgrami({ taslaklar, siniflar, ogretmenler, program, on
                           </p>
                           <p className="text-[11px] text-gray-500 leading-tight">{sinifAdi(t.veri.sinif_id)}</p>
                           <p className="text-[11px] text-gray-400 leading-tight">
-                            {saatKisalt(t.veri.baslangic_saat)}–{saatKisalt(t.veri.bitis_saat)}
+                            {saatGoster(t.veri.baslangic_saat)}–{saatGoster(t.veri.bitis_saat)}
                           </p>
                           {ogretmenAdi(t.veri.ogretmen_profile_id) && (
                             <p className="text-[11px] text-gray-400 leading-tight">{ogretmenAdi(t.veri.ogretmen_profile_id)}</p>
@@ -936,7 +937,7 @@ function GunlukProgramListesi({ program, ogretmenler, atamalar, yoklamalar, ogre
               </th>
               {dilimler.map((d) => (
                 <th key={d.baslangic} className="bg-navy text-white px-1 py-2 font-medium border-l border-white/10 min-w-[70px]">
-                  {d.baslangic}–{d.bitis}
+                  {saatGoster(d.baslangic)}–{saatGoster(d.bitis)}
                 </th>
               ))}
             </tr>
@@ -992,21 +993,21 @@ function GunlukProgramListesi({ program, ogretmenler, atamalar, yoklamalar, ogre
             onClick={() => setMobilYariGun('sabah')}
             className={`flex-1 py-2 font-medium transition-colors ${mobilYariGun === 'sabah' ? 'bg-navy text-white' : 'text-gray-500 hover:bg-gray-50'}`}
           >
-            {sabahDilimleri[0].baslangic}–{sabahDilimleri[sabahDilimleri.length - 1].bitis}
+            {saatGoster(sabahDilimleri[0].baslangic)}–{saatGoster(sabahDilimleri[sabahDilimleri.length - 1].bitis)}
           </button>
           <button
             type="button"
             onClick={() => setMobilYariGun('ogle1')}
             className={`flex-1 py-2 font-medium transition-colors ${mobilYariGun === 'ogle1' ? 'bg-navy text-white' : 'text-gray-500 hover:bg-gray-50'}`}
           >
-            {ogle1Dilimleri[0].baslangic}–{ogle1Dilimleri[ogle1Dilimleri.length - 1].bitis}
+            {saatGoster(ogle1Dilimleri[0].baslangic)}–{saatGoster(ogle1Dilimleri[ogle1Dilimleri.length - 1].bitis)}
           </button>
           <button
             type="button"
             onClick={() => setMobilYariGun('ogle2')}
             className={`flex-1 py-2 font-medium transition-colors ${mobilYariGun === 'ogle2' ? 'bg-navy text-white' : 'text-gray-500 hover:bg-gray-50'}`}
           >
-            {ogle2Dilimleri[0].baslangic}–{ogle2Dilimleri[ogle2Dilimleri.length - 1].bitis}
+            {saatGoster(ogle2Dilimleri[0].baslangic)}–{saatGoster(ogle2Dilimleri[ogle2Dilimleri.length - 1].bitis)}
           </button>
         </div>
         <table className="border-collapse text-[9px] w-full table-fixed">
@@ -1015,7 +1016,7 @@ function GunlukProgramListesi({ program, ogretmenler, atamalar, yoklamalar, ogre
               <th className="bg-navy text-white px-1 py-1.5 text-left font-semibold w-14">Öğr.</th>
               {mobilDilimler.map((d) => (
                 <th key={d.baslangic} className="bg-navy text-white px-0.5 py-1.5 font-medium border-l border-white/10 leading-tight">
-                  {d.baslangic}
+                  {saatGoster(d.baslangic)}
                 </th>
               ))}
             </tr>
@@ -1125,7 +1126,7 @@ function BireBirDerslerimBolumu({ haftalikDersler, tekSeferlikDersler, birdenFaz
                           {birdenFazlaCocukMu && <p className="text-xs text-gray-400">{d.ogrenci_adi}</p>}
                         </div>
                         <p className="text-sm font-bold text-navy whitespace-nowrap shrink-0">
-                          {saatKisalt(d.baslangic_saat)}–{saatKisalt(d.bitis_saat)}
+                          {saatGoster(d.baslangic_saat)}–{saatGoster(d.bitis_saat)}
                         </p>
                       </div>
                     ))}
@@ -1168,7 +1169,7 @@ function BireBirDerslerimBolumu({ haftalikDersler, tekSeferlikDersler, birdenFaz
                           {d.ogretmen_brans ? ` — ${d.ogretmen_brans}` : ''}
                         </p>
                         <p className="text-base font-bold text-navy whitespace-nowrap shrink-0">
-                          {d.baslangic_saat ? `${saatKisalt(d.baslangic_saat)}${d.bitis_saat ? '–' + saatKisalt(d.bitis_saat) : ''}` : 'Saat belirtilmemiş'}
+                          {d.baslangic_saat ? `${saatGoster(d.baslangic_saat)}${d.bitis_saat ? '–' + saatGoster(d.bitis_saat) : ''}` : 'Saat belirtilmemiş'}
                         </p>
                       </div>
                       {birdenFazlaCocukMu && <p className="text-xs text-gray-400 mt-0.5">{d.ogrenci_adi}</p>}
@@ -1718,7 +1719,7 @@ export default function DersProgrami() {
               {saatSatirlari.map((saat, ri) => (
                 <tr key={saat} className={ri % 2 ? 'bg-gray-50/60' : ''}>
                   <td className="sticky left-0 z-10 bg-white px-3 py-2 font-semibold text-gray-600 whitespace-nowrap border-t border-gray-100 text-xs">
-                    {saat}
+                    {saatGoster(saat)}
                   </td>
                   {GUNLER.slice(1).map((_, i) => {
                     const gun = i + 1
@@ -1752,7 +1753,7 @@ export default function DersProgrami() {
                               )}
                               {d.ogretmen_adi && <p className="text-[11px] text-gray-400 leading-tight">{d.ogretmen_adi}</p>}
                               <p className="text-[10px] text-gray-400 leading-tight">
-                                {saatKisalt(d.baslangic_saat)}–{saatKisalt(d.bitis_saat)}
+                                {saatGoster(d.baslangic_saat)}–{saatGoster(d.bitis_saat)}
                               </p>
                             </div>
                           ))}
@@ -1783,7 +1784,7 @@ export default function DersProgrami() {
                           {d.ogretmen_adi ? `${d.ders_adi && d.sinif_adi ? ' · ' : ''}${d.ogretmen_adi}` : ''}
                         </p>
                         <p className="text-sm text-gray-500">
-                          {saatKisalt(d.baslangic_saat)} – {saatKisalt(d.bitis_saat)}
+                          {saatGoster(d.baslangic_saat)} – {saatGoster(d.bitis_saat)}
                         </p>
                       </div>
                       {isYonetici && (
