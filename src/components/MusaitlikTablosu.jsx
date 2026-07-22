@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../lib/AuthContext'
 import { DERS_PERIYOTLARI } from '../lib/dersPeriyotlari'
+import { saatGoster } from '../lib/saatFormat'
 
 // Hem Bire Bir sayfasında hem Ders Programı sayfasında kullanılan ortak bileşen:
 // seçilen bir tarih için, tüm öğretmenlerin o gün hangi saatlerde dolu/boş
@@ -550,8 +551,8 @@ export default function MusaitlikTablosu({
               </th>
               {SAAT_DILIMLERI.map((d) => (
                 <th key={d.baslangic} className="bg-navy text-white px-1 py-2 font-medium border-l border-white/10 min-w-[46px]">
-                  <span className="block">{d.baslangic}</span>
-                  <span className="block text-[9px] font-normal opacity-70">{d.bitis}</span>
+                  <span className="block">{saatGoster(d.baslangic)}</span>
+                  <span className="block text-[9px] font-normal opacity-70">{saatGoster(d.bitis)}</span>
                 </th>
               ))}
             </tr>
@@ -584,7 +585,7 @@ export default function MusaitlikTablosu({
                         colSpan={h.span}
                         title={
                           h.dolu
-                            ? `${h.dolu.etiket} (${saatKisalt(h.dolu.baslangic)}–${saatKisalt(h.dolu.bitis)})`
+                            ? `${h.dolu.etiket} (${saatGoster(h.dolu.baslangic)}–${saatGoster(h.dolu.bitis)})`
                             : seciliMi
                             ? 'Şu an bunu ekliyorsunuz'
                             : tiklanabilir
@@ -625,7 +626,7 @@ export default function MusaitlikTablosu({
                                 bitişinden farklıysa) fark fark edilsin diye saat burada da gösterilir. */}
                             {(saatKisalt(h.dolu.baslangic) !== h.baslangic || saatKisalt(h.dolu.bitis) !== h.bitis) && (
                               <span className="block text-[9px] opacity-70 whitespace-nowrap">
-                                {saatKisalt(h.dolu.baslangic)}–{saatKisalt(h.dolu.bitis)}
+                                {saatGoster(h.dolu.baslangic)}–{saatGoster(h.dolu.bitis)}
                               </span>
                             )}
                           </span>
@@ -642,7 +643,7 @@ export default function MusaitlikTablosu({
                           >
                             <div className="flex items-center justify-between mb-2">
                               <span className="text-[11px] font-semibold text-gray-500">
-                                Hızlı Ekle · {saatKisalt(hizliPopup.baslangic)}–{saatKisalt(hizliPopup.bitis)}
+                                Hızlı Ekle · {saatGoster(hizliPopup.baslangic)}–{saatGoster(hizliPopup.bitis)}
                               </span>
                               <button type="button" onClick={hizliPopupKapat} className="text-gray-300 hover:text-gray-500 text-sm leading-none">
                                 ✕
