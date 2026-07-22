@@ -235,7 +235,7 @@ function ogrenciSinifDersiUyarisiBul(ogrenciId, gun, baslangic, bitis, dersProgr
 //  - Hayır -> sadece o tarihe özel, tek seferlik bir ders kaydı (bire_bir_yoklama,
 //             atama_id boş) oluşturulur, hemen "Geldi" olarak borç eklenir.
 // ============================================================================
-function BireBirDersEkleForm({ ogrenciler, ogretmenler, atamalar, dersProgrami, yoklamalar, sinifOgrencileri, onEklendi, doldurBilgisi }) {
+function BireBirDersEkleForm({ ogrenciler, ogretmenler, atamalar, dersProgrami, yoklamalar, sinifOgrencileri, taslaklar = [], onEklendi, doldurBilgisi }) {
   const { profile } = useAuth()
   const [ogrenciId, setOgrenciId] = useState('')
   const [ogretmenId, setOgretmenId] = useState('')
@@ -613,9 +613,13 @@ function BireBirDersEkleForm({ ogrenciler, ogretmenler, atamalar, dersProgrami, 
   }
 
   // Formu doldurup henüz kesinleşmemiş bir ders için "Taslağa Kaydet" — gerçek
-  // programa hemen eklemez, sadece taslaklar tablosuna kaydeder. Çakışma kontrolü
-  // burada YAPILMAZ (henüz kesin değil); yayınlanırken (Taslaklarım listesinden)
-  // kontrol edilir.
+  // programa hemen eklemez, sadece taslaklar tablosuna kaydeder. Yayınlanırken
+  // (Taslaklarım listesinden) çakışma TEKRAR kontrol edilir (program o zamana
+  // kadar değişmiş olabilir) — AMA taslağı kaydederken de (haftalık tekrar eden
+  // için), hem GERÇEK programla/atamalarla hem BEKLEYEN diğer taslaklarla
+  // çakışıp çakışmadığı burada da kontrol edilir, "haftalık programı taslakta
+  // kurup sonunda topluca yayınlayacağım, arada birbiriyle çakışan taslaklar
+  // oluşmasın" isteği için.
   async function taslagaKaydet() {
     setHata('')
     setBasari('')
@@ -635,6 +639,33 @@ function BireBirDersEkleForm({ ogrenciler, ogretmenler, atamalar, dersProgrami, 
       if (seciliGunler.length === 0 || !baslangic || !bitis) {
         setHata('Lütfen en az bir gün ve saat aralığını girin.')
         return
+      }
+      // Bekleyen "bire_bir_haftalik" taslaklarını, cakismaBul'un anladığı
+      // atama-satırı şekline çeviriyoruz — böylece aynı fonksiyonu hem gerçek
+      // atamalara hem taslaklara karşı çalıştırabiliyoruz.
+      const taslakAtamaSatirlari = taslaklar
+        .filter((t) => t.tur === 'bire_bir_haftalik')
+        .map((t) => ({
+          aktif: true,
+          gun: t.veri.gun,
+          baslangic_saat: t.veri.baslangic_saat,
+          bitis_saat: t.veri.bitis_saat,
+          ogretmen_profile_id: t.veri.ogretmen_profile_id,
+          ogrenci_id: t.veri.ogrenci_id,
+          ogrenci_adi: ogrenciler.find((o) => o.id === t.veri.ogrenci_id)?.ad_soyad,
+          ogretmen_adi: ogretmenler.find((o) => o.id === t.veri.ogretmen_profile_id)?.ad_soyad,
+        }))
+      for (const g of seciliGunler) {
+        const canliCakisma = cakismaBul({ ogrenciId, ogretmenId, gun: Number(g), baslangic, bitis }, dersProgrami, atamalar)
+        if (canliCakisma) {
+          setHata(`Çakışma var (${GUNLER[g]}): ${canliCakisma.aciklama}.`)
+          return
+        }
+        const taslakCakisma = cakismaBul({ ogrenciId, ogretmenId, gun: Number(g), baslangic, bitis }, [], taslakAtamaSatirlari)
+        if (taslakCakisma) {
+          setHata(`Bu, taslaklarınızdan biriyle çakışıyor (${GUNLER[g]}): ${taslakCakisma.aciklama}.`)
+          return
+        }
       }
       // Birden fazla gün seçilmişse (ör. bütün hafta), her gün için AYRI bir
       // taslak satırı TEK seferde ekleniyor — yayınlama (yayinla) hâlâ her
@@ -2493,6 +2524,7 @@ export default function BireBir() {
             dersProgrami={dersProgrami}
             yoklamalar={yoklamalar}
             sinifOgrencileri={sinifOgrencileri}
+            taslaklar={taslaklar}
             onEklendi={dersEklendiVeyaTaslaklandi}
             doldurBilgisi={doldurBilgisi}
           />

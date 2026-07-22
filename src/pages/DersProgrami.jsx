@@ -67,7 +67,7 @@ function cakismaBul({ sinifId, gun, baslangic, bitis, ogretmenId, hedefSinifId =
   return null
 }
 
-function DersEkleForm({ siniflar, ogretmenler, program, onEklendi, doldurBilgisi, duzenlenenDers, onDuzenlemeBitti }) {
+function DersEkleForm({ siniflar, ogretmenler, program, taslaklar, onEklendi, doldurBilgisi, duzenlenenDers, onDuzenlemeBitti }) {
   const { profile } = useAuth()
   const [sinifId, setSinifId] = useState('')
   const [dersAdi, setDersAdi] = useState('')
@@ -245,8 +245,12 @@ function DersEkleForm({ siniflar, ogretmenler, program, onEklendi, doldurBilgisi
   }
 
   // Formu doldurup henüz kesinleşmemiş bir ders saati için "Taslağa Kaydet" —
-  // gerçek programa hemen eklemez, taslaklar tablosuna kaydeder. Çakışma kontrolü
-  // burada YAPILMAZ; yayınlanırken (Taslaklarım listesinden) kontrol edilir.
+  // gerçek programa hemen eklemez, taslaklar tablosuna kaydeder. Yayınlanırken
+  // (Taslaklarım listesinden) çakışma TEKRAR kontrol edilir (program o zamana
+  // kadar değişmiş olabilir) — AMA taslağı kaydederken de, hem GERÇEK programla
+  // hem BEKLEYEN diğer taslaklarla çakışıp çakışmadığı burada da kontrol edilir,
+  // "haftalık programı taslakta kurup sonunda topluca yayınlayacağım, arada
+  // birbiriyle çakışan taslaklar oluşmasın" isteği için.
   async function taslagaKaydet() {
     setHata('')
     setBasari('')
@@ -261,6 +265,41 @@ function DersEkleForm({ siniflar, ogretmenler, program, onEklendi, doldurBilgisi
     if (birlesikSiniflar.length > 0) {
       setHata('Birleşik ders taslağa kaydedilemez — lütfen doğrudan "Ekle" butonunu kullanın.')
       return
+    }
+    // Bekleyen "sinif" taslaklarını, cakismaBul'un anladığı program-satırı
+    // şekline çeviriyoruz — böylece aynı fonksiyonu hem gerçek programa hem
+    // taslaklara karşı çalıştırabiliyoruz, ayrı bir kontrol mantığı yazmaya
+    // gerek kalmadan.
+    const taslakSatirlari = taslaklar
+      .filter((t) => t.tur === 'sinif')
+      .map((t) => ({
+        sinif_id: t.veri.sinif_id,
+        sinif_adi: siniflar.find((s) => s.id === t.veri.sinif_id)?.ad,
+        gun: t.veri.gun,
+        baslangic_saat: t.veri.baslangic_saat,
+        bitis_saat: t.veri.bitis_saat,
+        ders_adi: t.veri.ders_adi,
+        ogretmen_profile_id: t.veri.ogretmen_profile_id,
+      }))
+    for (const g of seciliGunler) {
+      const canliCakisma = cakismaBul({ sinifId, gun: Number(g), baslangic, bitis, ogretmenId }, program)
+      if (canliCakisma) {
+        setHata(
+          canliCakisma.tur === 'ogretmen'
+            ? `Çakışma var: bu öğretmen ${canliCakisma.gun} günü ${canliCakisma.saat} arasında zaten "${canliCakisma.dersAdi || canliCakisma.sinifAdi}" dersinde.`
+            : `Çakışma var: bu sınıfın ${canliCakisma.gun} günü ${canliCakisma.saat} arasında zaten "${canliCakisma.dersAdi || 'başka bir'}" dersi var.`
+        )
+        return
+      }
+      const taslakCakisma = cakismaBul({ sinifId, gun: Number(g), baslangic, bitis, ogretmenId }, taslakSatirlari)
+      if (taslakCakisma) {
+        setHata(
+          taslakCakisma.tur === 'ogretmen'
+            ? `Bu, taslaklarınızdan biriyle çakışıyor: bu öğretmenin ${taslakCakisma.gun} günü ${taslakCakisma.saat} arasında zaten "${taslakCakisma.dersAdi || taslakCakisma.sinifAdi}" adında bekleyen bir taslağı var.`
+            : `Bu, taslaklarınızdan biriyle çakışıyor: bu sınıfın ${taslakCakisma.gun} günü ${taslakCakisma.saat} arasında zaten "${taslakCakisma.dersAdi || 'başka bir'}" adında bekleyen bir taslağı var.`
+        )
+        return
+      }
     }
     setGonderiliyor(true)
     // Birden fazla gün seçilmişse (ör. bütün hafta), her gün için AYRI bir
@@ -1397,6 +1436,7 @@ export default function DersProgrami() {
                 siniflar={siniflar}
                 ogretmenler={ogretmenler}
                 program={program}
+                taslaklar={taslaklar}
                 onEklendi={dersEklendiVeyaTaslaklandi}
                 doldurBilgisi={doldurBilgisi}
                 duzenlenenDers={duzenlenenDers}
