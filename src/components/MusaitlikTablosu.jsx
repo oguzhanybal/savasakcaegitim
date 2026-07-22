@@ -186,6 +186,10 @@ export default function MusaitlikTablosu({
     // aşağıdaki 3 dalın hiçbiri canlı tabloya yazmaz — hepsi taslaklar
     // tablosuna, aynı plan_adi ile kaydedilir (bkz. dosya başındaki not).
     const taslakModuEtkin = taslakModuAcik && !!aktifPlanAdi
+    // Taslak-vs-taslak çakışma kontrolü SADECE aynı plana ait taslaklara karşı
+    // yapılır — farklı isimli planlar birbirinden bağımsızdır, "fafa" planına
+    // eklerken "deneme" planındaki bir taslakla asla çakışma sayılmaz.
+    const buPlanaAitTaslaklar = taslakModuEtkin ? (taslaklar || []).filter((t) => t.plan_adi === aktifPlanAdi) : []
 
     if (secilen.tur === 'soru_cozumu') {
       // Soru Çözümü: öğrenciye bağlı değil, fiyatlandırılmaz — sadece öğretmen +
@@ -194,7 +198,7 @@ export default function MusaitlikTablosu({
       // eklenir (bkz. ekstreHesap.js bireBirBorclariOlustur — bu tur asla
       // borç oluşturmaz).
       if (taslakModuEtkin) {
-        const cakisma = taslakCakismasiAciklamasi(taslaklar, {
+        const cakisma = taslakCakismasiAciklamasi(buPlanaAitTaslaklar, {
           ogretmenId: hizliPopup.ogretmenId,
           gun: hizliPopup.gun,
           tarih: hizliPopup.tarih,
@@ -254,7 +258,7 @@ export default function MusaitlikTablosu({
         return
       }
       if (taslakModuEtkin) {
-        const taslakCakisma = taslakCakismasiAciklamasi(taslaklar, {
+        const taslakCakisma = taslakCakismasiAciklamasi(buPlanaAitTaslaklar, {
           ogretmenId: hizliPopup.ogretmenId,
           sinifId: secilen.id,
           gun: hizliPopup.gun,
@@ -328,7 +332,7 @@ export default function MusaitlikTablosu({
         return
       }
       if (taslakModuEtkin) {
-        const taslakCakisma = taslakCakismasiAciklamasi(taslaklar, {
+        const taslakCakisma = taslakCakismasiAciklamasi(buPlanaAitTaslaklar, {
           ogretmenId: hizliPopup.ogretmenId,
           ogrenciId: secilen.id,
           gun: hizliPopup.gun,
@@ -442,7 +446,16 @@ export default function MusaitlikTablosu({
     // dolu sayılıyor. 'sinif'/'bire_bir_haftalik' taslakları haftanın GÜNÜNE
     // göre (v.gun), 'bire_bir_tekil'/'soru_cozumu' ise belirli bir TARİHE göre
     // (v.tarih) bu günle eşleşip eşleşmediği kontrol edilir.
-    for (const t of taslaklar || []) {
+    //
+    // ÖNEMLİ: farklı isimli planlar birbirinden TAMAMEN BAĞIMSIZDIR — sadece
+    // şu an üstteki kutuda yazılı olan aktif plana (aktifPlanAdi) ait
+    // taslaklar burada "dolu" gösterilir. Başka bir plandaki (ör. "deneme")
+    // taslaklar, siz "fafa" planı üzerinde çalışırken hiç görünmez/karışmaz.
+    // Aktif bir plan yoksa (Taslak Modu kapalı ya da plan adı henüz
+    // yazılmamışsa) hiç taslak overlay'i gösterilmez.
+    const aktifPlanaAitTaslaklar =
+      taslakModuAcik && aktifPlanAdi ? (taslaklar || []).filter((t) => t.plan_adi === aktifPlanAdi) : []
+    for (const t of aktifPlanaAitTaslaklar) {
       const v = t.veri || {}
       if (!v.baslangic_saat || !v.bitis_saat || !v.ogretmen_profile_id) continue
       const gunEslesiyor = t.tur === 'sinif' || t.tur === 'bire_bir_haftalik' ? v.gun === gun : v.tarih === tarih
@@ -467,7 +480,7 @@ export default function MusaitlikTablosu({
       })
     }
     return harita
-  }, [ogretmenler, dersProgrami, atamalar, yoklamalar, gun, tarih, ogrenciAdMap, taslaklar, siniflar, ogrenciler])
+  }, [ogretmenler, dersProgrami, atamalar, yoklamalar, gun, tarih, ogrenciAdMap, taslaklar, siniflar, ogrenciler, taslakModuAcik, aktifPlanAdi])
 
   function hucreDurumu(ogretmenId, dilim) {
     const mesguliyetler = ogretmenMesguliyetleri.get(ogretmenId) || []
