@@ -612,6 +612,15 @@ function TaslaklarimDersProgrami({ taslaklar, siniflar, ogretmenler, program, on
     onDegisti()
   }
 
+  // Bir plana ait TÜM taslakları tek seferde siler — "bu plandan vazgeçtim,
+  // tek tek silmek yerine hepsini birden temizleyeyim" için.
+  async function planiSil(liste, planAdi) {
+    const adGoster = planAdi ? `"${planAdi}" planındaki` : 'isimsiz'
+    if (!confirm(`${adGoster} ${liste.length} taslağın TAMAMINI silmek istediğinize emin misiniz? Bu işlem geri alınamaz.`)) return
+    await supabase.from('taslaklar').delete().in('id', liste.map((t) => t.id))
+    onDegisti()
+  }
+
   async function tumunuYayinla(liste = taslaklar) {
     setTumuGonderiliyor(true)
     let basarili = 0
@@ -679,14 +688,24 @@ function TaslaklarimDersProgrami({ taslaklar, siniflar, ogretmenler, program, on
             <p className="text-sm font-semibold text-gray-600">
               {ad ? `📋 ${ad}` : 'İsimsiz Taslaklar'} <span className="text-gray-400 font-normal">({liste.length})</span>
             </p>
-            <button
-              type="button"
-              onClick={() => tumunuYayinla(liste)}
-              disabled={tumuGonderiliyor}
-              className="text-navy text-xs font-semibold hover:underline disabled:opacity-50"
-            >
-              Planı Yayınla
-            </button>
+            <div className="flex items-center gap-3">
+              <button
+                type="button"
+                onClick={() => tumunuYayinla(liste)}
+                disabled={tumuGonderiliyor}
+                className="text-navy text-xs font-semibold hover:underline disabled:opacity-50"
+              >
+                Planı Yayınla
+              </button>
+              <button
+                type="button"
+                onClick={() => planiSil(liste, ad)}
+                disabled={tumuGonderiliyor}
+                className="text-red-500 text-xs font-semibold hover:underline disabled:opacity-50"
+              >
+                Planı Sil
+              </button>
+            </div>
           </div>
           <div className="overflow-x-auto">
             <div className="flex min-w-[980px] divide-x divide-gray-100">
