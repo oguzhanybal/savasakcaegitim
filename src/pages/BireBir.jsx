@@ -2511,12 +2511,14 @@ export default function BireBir() {
       supabase
         .from('bire_bir_yoklama')
         .select('*, ogrenciler(ad_soyad, telefon, anne_telefon, baba_telefon), profiles:ogretmen_profile_id(ad_soyad, brans)'),
-      // 'soru_cozumu' taslakları da buraya dahil — Ders Programı sayfasındaki
-      // Hızlı Ekle'den, Taslak Modu açıkken oluşturulmuş olabilirler; yayınlanınca
-      // bire_bir_yoklama'ya yazıldıkları için yönetimleri de bu sayfada.
-      isYonetici
-        ? supabase.from('taslaklar').select('*').in('tur', ['bire_bir_haftalik', 'bire_bir_tekil', 'soru_cozumu']).order('created_at')
-        : Promise.resolve({ data: [] }),
+      // ÖNCEDEN sadece bire bir/soru çözümü türleri çekiliyordu — ama 'sinif'
+      // taslakları da (Ders Programı sayfasından, Taslak Modu açıkken
+      // eklenmiş olabilir) Günlük Müsaitlik tablosunda "dolu (taslak)" olarak
+      // görünebilsin diye artık TÜM türler burada tutulur. "Taslaklarım"
+      // listesi (TaslaklarimBireBir) yine de 'sinif' olanları HARİÇ tutarak
+      // gösterilir — aşağıda ayrıca filtrelenir (o liste sadece bire bir/soru
+      // çözümü yayınlama mantığını biliyor).
+      isYonetici ? supabase.from('taslaklar').select('*').order('created_at') : Promise.resolve({ data: [] }),
     ]).then(([o, og, dp, so, a, y, t]) => {
       setOgrenciler(o.data || [])
       setOgretmenler(og.data || [])
@@ -2695,7 +2697,7 @@ export default function BireBir() {
             sadeceOgretmenId={null}
           />
           <TaslaklarimBireBir
-            taslaklar={taslaklar}
+            taslaklar={taslaklar.filter((t) => t.tur !== 'sinif')}
             ogrenciler={ogrenciler}
             ogretmenler={ogretmenler}
             dersProgrami={dersProgrami}
