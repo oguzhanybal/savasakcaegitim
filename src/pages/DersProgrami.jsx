@@ -42,13 +42,16 @@ function saateDakikaEkle(saat, dakika) {
 // Yeni eklenmek istenen ders saatinin, mevcut programla (aynı sınıf ya da aynı
 // öğretmen üzerinden — öğretmen artık ders_programi satırından okunuyor) çakışıp
 // çakışmadığını kontrol eder.
-function cakismaBul({ sinifId, gun, baslangic, bitis, ogretmenId }, program, haricId = null) {
-  if (!sinifId || !baslangic || !bitis) return null
+// hedefSinifId: "Birleşik ders" özelliğinde, formun ana sınıfı DIŞINDA
+// birleştirilen her bir sınıfı da AYRI AYRI kontrol edebilmek için — verilmezse
+// varsayılan olarak formun kendi sinifId'sini kullanır, davranış değişmez.
+function cakismaBul({ sinifId, gun, baslangic, bitis, ogretmenId, hedefSinifId = sinifId }, program, haricId = null) {
+  if (!hedefSinifId || !baslangic || !bitis) return null
 
   for (const p of program) {
     if (p.id === haricId) continue
     if (p.gun !== gun) continue
-    const ayniSinif = p.sinif_id === sinifId
+    const ayniSinif = p.sinif_id === hedefSinifId
     const ayniOgretmen = !!ogretmenId && p.ogretmen_profile_id === ogretmenId
     if (!ayniSinif && !ayniOgretmen) continue
     if (!araliklarCakisiyorMu(baslangic, bitis, p.baslangic_saat, p.bitis_saat)) continue
@@ -75,8 +78,19 @@ function DersEkleForm({ siniflar, ogretmenler, program, onEklendi, doldurBilgisi
   const [hata, setHata] = useState('')
   const [basari, setBasari] = useState('')
   const [gonderiliyor, setGonderiliyor] = useState(false)
+  // "Birleşik Sınıf Dersi" — bu dersi seçilen sınıfla AYNI ANDA, aynı
+  // öğretmenden alan başka sınıf(lar) da varsa buradan işaretlenir (ör. 9-A ve
+  // 9-B'nin birleşip tek ders almasi). Sadece ekleme sırasında sunulur, mevcut
+  // bir dersi düzenlerken (duzenleModu) gösterilmez.
+  const [birlesikSiniflar, setBirlesikSiniflar] = useState([])
   const sinifSelectRef = useRef(null)
   const duzenleModu = !!duzenlenenDers
+
+  function birlesikSinifToggle(id) {
+    setBirlesikSiniflar((mevcut) =>
+      mevcut.includes(id) ? mevcut.filter((x) => x !== id) : [...mevcut, id]
+    )
+  }
 
   // Müsaitlik tablosunda boş bir hücreye tıklanınca, üstten gelen öğretmen/gün/
   // saat bilgisiyle formu otomatik doldurur ve sınıf seçimine odaklanır (sınıf
@@ -120,6 +134,7 @@ function DersEkleForm({ siniflar, ogretmenler, program, onEklendi, doldurBilgisi
     setOgretmenId('')
     setBaslangic('')
     setBitis('')
+    setBirlesikSiniflar([])
     setHata('')
     setBasari('')
     onDuzenlemeBitti()
@@ -137,34 +152,49 @@ function DersEkleForm({ siniflar, ogretmenler, program, onEklendi, doldurBilgisi
       return
     }
 
-    const cakisma = cakismaBul(
-      { sinifId, gun: Number(gun), baslangic, bitis, ogretmenId },
-      program,
-      duzenleModu ? duzenlenenDers.id : null
-    )
-    if (cakisma) {
-      if (cakisma.tur === 'ogretmen') {
-        setHata(
-          `Çakışma var: bu öğretmen ${cakisma.gun} günü ${cakisma.saat} arasında zaten "${cakisma.dersAdi || cakisma.sinifAdi}" dersinde.`
-        )
-      } else {
-        setHata(`Çakışma var: bu sınıfın ${cakisma.gun} günü ${cakisma.saat} arasında zaten "${cakisma.dersAdi || 'başka bir'}" dersi var.`)
+    // Düzenleme modunda birleştirme yok (mevcut bir dersi düzenlerken sadece
+    // kendi sınıfı kontrol edilir); yeni eklemede ise "Birleşik ders mi?" ile
+    // işaretlenen her sınıf da AYRI AYRI çakışma kontrolünden geçer.
+    const hedefSiniflar = duzenleModu ? [sinifId] : [sinifId, ...birlesikSiniflar]
+    for (const hedefSinifId of hedefSiniflar) {
+      const cakisma = cakismaBul(
+        { sinifId, gun: Number(gun), baslangic, bitis, ogretmenId, hedefSinifId },
+        program,
+        duzenleModu ? duzenlenenDers.id : null
+      )
+      if (cakisma) {
+        const hedefAdi = siniflar.find((s) => s.id === hedefSinifId)?.ad
+        if (cakisma.tur === 'ogretmen') {
+          setHata(
+            `Çakışma var: bu öğretmen ${cakisma.gun} günü ${cakisma.saat} arasında zaten "${cakisma.dersAdi || cakisma.sinifAdi}" dersinde.`
+          )
+        } else {
+          setHata(
+            `Çakışma var: ${hedefAdi ? `"${hedefAdi}" sınıfının` : 'bu sınıfın'} ${cakisma.gun} günü ${cakisma.saat} arasında zaten "${cakisma.dersAdi || 'başka bir'}" dersi var.`
+          )
+        }
+        return
       }
-      return
     }
 
     setGonderiliyor(true)
-    const veri = {
-      sinif_id: sinifId,
+    // Birleşik ders (birlesikSiniflar dolu) ise aynı grupId'yle TEK seferde
+    // birden fazla satır ekleniyor — bu sayede henüz eklenmemiş kardeş
+    // satırlar bu isteğin çakışma kontrolünde görünmüyor, yani birbirlerine
+    // "çakışma" olarak sayılmıyorlar (bkz. SinifDetay.jsx'teki aynı desen).
+    const grupId = !duzenleModu && birlesikSiniflar.length > 0 ? crypto.randomUUID() : null
+    const veriUret = (hedefSinifId) => ({
+      sinif_id: hedefSinifId,
       gun: Number(gun),
       baslangic_saat: baslangic,
       bitis_saat: bitis,
       ders_adi: dersAdi.trim() ? ilkHarfleriBuyukYap(dersAdi.trim()) : null,
       ogretmen_profile_id: ogretmenId || null,
-    }
+      birlesik_grup_id: grupId,
+    })
     const { error } = duzenleModu
-      ? await supabase.from('ders_programi').update(veri).eq('id', duzenlenenDers.id)
-      : await supabase.from('ders_programi').insert(veri)
+      ? await supabase.from('ders_programi').update(veriUret(sinifId)).eq('id', duzenlenenDers.id)
+      : await supabase.from('ders_programi').insert(hedefSiniflar.map(veriUret))
     setGonderiliyor(false)
     if (error) {
       setHata('Hata: ' + error.message)
@@ -180,6 +210,7 @@ function DersEkleForm({ siniflar, ogretmenler, program, onEklendi, doldurBilgisi
         setBaslangic('')
         setBitis('')
         setDersAdi('')
+        setBirlesikSiniflar([])
       }
       onEklendi()
     }
@@ -193,6 +224,14 @@ function DersEkleForm({ siniflar, ogretmenler, program, onEklendi, doldurBilgisi
     setBasari('')
     if (!sinifId || !baslangic || !bitis) {
       setHata('Lütfen sınıf, gün ve saat aralığını doldurun.')
+      return
+    }
+    // Birleşik ders taslak akışında henüz desteklenmiyor — taslak tablosu tek
+    // bir sinif_id tutuyor, yayınlarken de tek satır oluşturuluyor. Yanlışlıkla
+    // sadece ana sınıfın taslağa kaydedilip birleştirilen diğer sınıf(lar)ın
+    // sessizce kaybolmasını önlemek için burada durduruluyor.
+    if (birlesikSiniflar.length > 0) {
+      setHata('Birleşik ders taslağa kaydedilemez — lütfen doğrudan "Ekle" butonunu kullanın.')
       return
     }
     setGonderiliyor(true)
@@ -317,6 +356,34 @@ function DersEkleForm({ siniflar, ogretmenler, program, onEklendi, doldurBilgisi
           </button>
         )}
       </div>
+      {/* Birleşik Sınıf Dersi — bu ders, yukarıda seçilen sınıfla AYNI ANDA,
+          aynı öğretmenden bu işaretlenen sınıf(lar) için de birlikte
+          oluşturulur (ör. 9-A ve 9-B'nin birleşip tek ders alması). Nadir bir
+          durum olduğu için sadece yeni ders eklerken gösterilir, düzenlemede
+          gösterilmez. */}
+      {!duzenleModu && sinifId && siniflar.length > 1 && (
+        <div className="mt-3 pt-3 border-t border-gray-100">
+          <p className="block text-sm font-medium text-gray-700 mb-1.5">
+            Birleşik ders mi? <span className="text-gray-400 font-normal">(aynı anda başka sınıf(lar) ile birlikte alınıyorsa işaretleyin)</span>
+          </p>
+          <div className="flex flex-wrap gap-1.5">
+            {siniflar.filter((s) => s.id !== sinifId).map((s) => (
+              <button
+                key={s.id}
+                type="button"
+                onClick={() => birlesikSinifToggle(s.id)}
+                className={`px-3 py-1.5 rounded-lg text-sm font-medium border transition-colors ${
+                  birlesikSiniflar.includes(s.id)
+                    ? 'bg-navy text-white border-navy'
+                    : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'
+                }`}
+              >
+                {s.ad}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
       {hata && <p className="text-red-600 text-sm mt-3">{hata}</p>}
       {!hata && basari && <p className="text-green-600 text-sm mt-3">{basari}</p>}
     </form>
