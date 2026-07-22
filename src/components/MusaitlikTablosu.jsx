@@ -436,8 +436,36 @@ export default function MusaitlikTablosu({
           : 'bg-orange-200 text-orange-900 border-l-4 border-l-orange-600',
       })
     }
+    // Bekleyen TASLAKLAR — "taslağa ekleyince o saat hala boş görünüyor, aynı
+    // saate bir daha eklemek isteyebilirim ama unutabilirim" karışıklığını
+    // önlemek için, henüz yayınlanmamış taslaklar da (ayrı, "taslak" rengiyle)
+    // dolu sayılıyor. 'sinif'/'bire_bir_haftalik' taslakları haftanın GÜNÜNE
+    // göre (v.gun), 'bire_bir_tekil'/'soru_cozumu' ise belirli bir TARİHE göre
+    // (v.tarih) bu günle eşleşip eşleşmediği kontrol edilir.
+    for (const t of taslaklar || []) {
+      const v = t.veri || {}
+      if (!v.baslangic_saat || !v.bitis_saat || !v.ogretmen_profile_id) continue
+      const gunEslesiyor = t.tur === 'sinif' || t.tur === 'bire_bir_haftalik' ? v.gun === gun : v.tarih === tarih
+      if (!gunEslesiyor || !harita.has(v.ogretmen_profile_id)) continue
+      let etiket
+      if (t.tur === 'sinif') {
+        const sinifAdi = (siniflar || []).find((s) => s.id === v.sinif_id)?.ad
+        etiket = `Taslak: ${v.ders_adi || sinifAdi || 'Sınıf'}`
+      } else if (t.tur === 'soru_cozumu') {
+        etiket = 'Taslak: Soru Çözümü'
+      } else {
+        const ogrenciAdi = (ogrenciler || []).find((o) => o.id === v.ogrenci_id)?.ad_soyad
+        etiket = `Taslak: ${ogrenciAdi || 'Bire bir'}`
+      }
+      harita.get(v.ogretmen_profile_id).push({
+        baslangic: v.baslangic_saat,
+        bitis: v.bitis_saat,
+        etiket,
+        renk: 'bg-amber-100 text-amber-900 border-l-4 border-l-amber-500 border-dashed',
+      })
+    }
     return harita
-  }, [ogretmenler, dersProgrami, atamalar, yoklamalar, gun, tarih, ogrenciAdMap])
+  }, [ogretmenler, dersProgrami, atamalar, yoklamalar, gun, tarih, ogrenciAdMap, taslaklar, siniflar, ogrenciler])
 
   function hucreDurumu(ogretmenId, dilim) {
     const mesguliyetler = ogretmenMesguliyetleri.get(ogretmenId) || []
@@ -720,6 +748,9 @@ export default function MusaitlikTablosu({
         </span>
         <span className="flex items-center gap-1">
           <span className="w-3 h-3 rounded bg-purple-200 border-l-4 border-l-purple-600 inline-block"></span> Soru Çözümü
+        </span>
+        <span className="flex items-center gap-1">
+          <span className="w-3 h-3 rounded bg-amber-100 border-l-4 border-l-amber-500 border border-dashed inline-block"></span> Taslak (henüz yayınlanmadı)
         </span>
       </div>
     </div>
