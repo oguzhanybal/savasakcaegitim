@@ -2,6 +2,8 @@
 // "TOPLU EKSTRE" sayfalarındaki formüllerin JavaScript karşılığı.
 // Hem Ekstre.jsx hem de TopluEkstre.jsx bu dosyayı kullanır (tek yerden yönetilsin diye).
 
+import { saatGoster } from './saatFormat'
+
 export function paraFormat(n) {
   return new Intl.NumberFormat('tr-TR', { style: 'currency', currency: 'TRY' }).format(n || 0)
 }
@@ -239,7 +241,7 @@ export function bireBirHatirlaticiMesajiOlustur({ ogrenciAdi, tarihStr, baslangi
     year: 'numeric',
     weekday: 'long',
   })
-  const saatMetni = bitisSaat ? `${baslangicSaat}–${bitisSaat}` : baslangicSaat
+  const saatMetni = bitisSaat ? `${saatGoster(baslangicSaat)}–${saatGoster(bitisSaat)}` : saatGoster(baslangicSaat)
   return (
     `Merhaba, ${ogrenciAdi} için ${tarihMetni} tarihinde saat ${saatMetni} arasında bire bir dersi bulunmaktadır` +
     (ogretmenAdi ? ` (Öğretmen: ${ogretmenAdi}).` : '.') +
@@ -281,7 +283,7 @@ export function bireBirGunlukOzetMesajiOlustur({ kimeGonderiliyor, ogrenciAdi, t
     weekday: 'long',
   })
   const satirlar = dersler
-    .map((d) => `• ${d.bitisSaat ? `${d.baslangicSaat}–${d.bitisSaat}` : d.baslangicSaat}${d.dersAdi ? ` (${d.dersAdi})` : ''}`)
+    .map((d) => `• ${d.bitisSaat ? `${saatGoster(d.baslangicSaat)}–${saatGoster(d.bitisSaat)}` : saatGoster(d.baslangicSaat)}${d.dersAdi ? ` (${d.dersAdi})` : ''}`)
     .join('\n')
   const derslerMetni = dersler.length > 1 ? 'aşağıdaki bire bir dersler bulunmaktadır' : 'aşağıdaki bire bir ders bulunmaktadır'
   return (
@@ -297,7 +299,7 @@ export function bireBirGunlukOzetMesajiOlustur({ kimeGonderiliyor, ogrenciAdi, t
 // — haftanın gününe göre sıralı olmalı.
 export function bireBirHaftalikOzetMesajiOlustur({ kimeGonderiliyor, ogrenciAdi, dersler }) {
   const satirlar = dersler
-    .map((d) => `• ${d.gunAdi}: ${d.bitisSaat ? `${d.baslangicSaat}–${d.bitisSaat}` : d.baslangicSaat}${d.dersAdi ? ` (${d.dersAdi})` : ''}`)
+    .map((d) => `• ${d.gunAdi}: ${d.bitisSaat ? `${saatGoster(d.baslangicSaat)}–${saatGoster(d.bitisSaat)}` : saatGoster(d.baslangicSaat)}${d.dersAdi ? ` (${d.dersAdi})` : ''}`)
     .join('\n')
   return (
     `${selamlamaSatiri(kimeGonderiliyor)}\n${ogrenciAdi} için bu hafta bire bir ders programı şu şekildedir:\n` +
@@ -328,9 +330,14 @@ export function devamsizlikMesajiOlustur({ ogrenciAdi, tarihStr, sinifAdi, saatA
     year: 'numeric',
     weekday: 'long',
   })
+  // saatAraligi çağıran taraftan hazır bir metin ("12:50–13:35" gibi) olarak
+  // geliyor — tek bir alan olarak değil, serbest metin olarak geldiği için
+  // saatGoster kullanamıyoruz; içindeki "HH:MM" kalıplarını "HH.MM"ye çeviren
+  // genel bir regex ile aynı sonucu elde ediyoruz.
+  const saatAraligiGosterilen = saatAraligi ? saatAraligi.replace(/(\d{1,2}):(\d{2})/g, '$1.$2') : saatAraligi
   return (
     `Değerli Velimiz,\n${ogrenciAdi} adlı öğrencimiz ${tarihMetni} tarihinde` +
-    `${sinifAdi ? ` ${sinifAdi} sınıfının` : ''}${saatAraligi ? ` ${saatAraligi} saatleri arasındaki` : ''} dersine gelmemiştir.\n` +
+    `${sinifAdi ? ` ${sinifAdi} sınıfının` : ''}${saatAraligiGosterilen ? ` ${saatAraligiGosterilen} saatleri arasındaki` : ''} dersine gelmemiştir.\n` +
     `Bilginize sunarız.\nSavaş Akça Eğitim`
   )
 }
