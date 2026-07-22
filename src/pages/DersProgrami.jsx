@@ -72,7 +72,10 @@ function DersEkleForm({ siniflar, ogretmenler, program, onEklendi, doldurBilgisi
   const [sinifId, setSinifId] = useState('')
   const [dersAdi, setDersAdi] = useState('')
   const [ogretmenId, setOgretmenId] = useState('')
-  const [gun, setGun] = useState(1)
+  // Birden fazla gün seçilebilir ("bütün haftayı tek seferde ekle/taslağa
+  // kaydet" isteğiyle eklendi) — düzenleme modunda ise tek bir kayıt
+  // güncellendiği için tek gün seçilebilir hale getiriliyor (gunSecToggle).
+  const [seciliGunler, setSeciliGunler] = useState([])
   const [baslangic, setBaslangic] = useState('')
   const [bitis, setBitis] = useState('')
   const [hata, setHata] = useState('')
@@ -92,13 +95,28 @@ function DersEkleForm({ siniflar, ogretmenler, program, onEklendi, doldurBilgisi
     )
   }
 
+  // Düzenleme modunda tek bir kayıt güncelleniyor, o yüzden gün TEK
+  // seçilebilir (tıklanan gün direkt seçili günün yerine geçer) — ekleme
+  // modunda ise birden fazla gün birikmeli seçilebilir (bkz. SinifDetay.jsx'teki
+  // aynı desen).
+  function gunSecToggle(g) {
+    if (duzenleModu) {
+      setSeciliGunler([g])
+      return
+    }
+    setSeciliGunler((prev) => (prev.includes(g) ? prev.filter((x) => x !== g) : [...prev, g]))
+  }
+
   // Müsaitlik tablosunda boş bir hücreye tıklanınca, üstten gelen öğretmen/gün/
   // saat bilgisiyle formu otomatik doldurur ve sınıf seçimine odaklanır (sınıf
   // bilgisi müsaitlik tablosundan gelmediği için elle seçilmesi gerekiyor).
   useEffect(() => {
     if (!doldurBilgisi) return
     setOgretmenId(doldurBilgisi.ogretmenId)
-    setGun(doldurBilgisi.gun)
+    // Hücreden gelen öğretmenin branşı varsa ders adını da otomatik dolduruyoruz.
+    const secilen = ogretmenler.find((o) => o.id === doldurBilgisi.ogretmenId)
+    if (secilen?.brans) setDersAdi(secilen.brans)
+    setSeciliGunler([doldurBilgisi.gun])
     setBaslangic(doldurBilgisi.baslangic)
     // Müsaitlik tablosundaki hücreler 30dk'lık dilimler olsa da, dersler genelde
     // 45dk sürdüğü için tıklanan dilimin kendi bitişini değil, her zaman
@@ -117,7 +135,7 @@ function DersEkleForm({ siniflar, ogretmenler, program, onEklendi, doldurBilgisi
     setSinifId(duzenlenenDers.sinif_id || '')
     setDersAdi(duzenlenenDers.ders_adi || '')
     setOgretmenId(duzenlenenDers.ogretmen_profile_id || '')
-    setGun(duzenlenenDers.gun)
+    setSeciliGunler([duzenlenenDers.gun])
     setBaslangic(saatKisalt(duzenlenenDers.baslangic_saat) || '')
     setBitis(saatKisalt(duzenlenenDers.bitis_saat) || '')
     setHata('')
@@ -135,6 +153,7 @@ function DersEkleForm({ siniflar, ogretmenler, program, onEklendi, doldurBilgisi
     setBaslangic('')
     setBitis('')
     setBirlesikSiniflar([])
+    setSeciliGunler([])
     setHata('')
     setBasari('')
     onDuzenlemeBitti()
@@ -143,8 +162,8 @@ function DersEkleForm({ siniflar, ogretmenler, program, onEklendi, doldurBilgisi
   async function ekle(e) {
     e.preventDefault()
     setHata('')
-    if (!sinifId || !baslangic || !bitis) {
-      setHata('Lütfen sınıf, gün ve saat aralığını doldurun.')
+    if (!sinifId || seciliGunler.length === 0 || !baslangic || !bitis) {
+      setHata('Lütfen sınıf, en az bir gün ve saat aralığını doldurun.')
       return
     }
     if (baslangic >= bitis) {
@@ -153,27 +172,33 @@ function DersEkleForm({ siniflar, ogretmenler, program, onEklendi, doldurBilgisi
     }
 
     // Düzenleme modunda birleştirme yok (mevcut bir dersi düzenlerken sadece
-    // kendi sınıfı kontrol edilir); yeni eklemede ise "Birleşik ders mi?" ile
-    // işaretlenen her sınıf da AYRI AYRI çakışma kontrolünden geçer.
+    // kendi sınıfı kontrol edilir) ve gün TEK olarak kalır (gunSecToggle bunu
+    // zaten [g] ile sınırlıyor); yeni eklemede ise "Birleşik ders mi?" ile
+    // işaretlenen her sınıf VE seçilen her gün AYRI AYRI çakışma kontrolünden
+    // geçer — bütün haftayı tek seferde eklerken bir gün çakışsa bile
+    // diğerlerini gizlice atlamamak için.
     const hedefSiniflar = duzenleModu ? [sinifId] : [sinifId, ...birlesikSiniflar]
-    for (const hedefSinifId of hedefSiniflar) {
-      const cakisma = cakismaBul(
-        { sinifId, gun: Number(gun), baslangic, bitis, ogretmenId, hedefSinifId },
-        program,
-        duzenleModu ? duzenlenenDers.id : null
-      )
-      if (cakisma) {
-        const hedefAdi = siniflar.find((s) => s.id === hedefSinifId)?.ad
-        if (cakisma.tur === 'ogretmen') {
-          setHata(
-            `Çakışma var: bu öğretmen ${cakisma.gun} günü ${cakisma.saat} arasında zaten "${cakisma.dersAdi || cakisma.sinifAdi}" dersinde.`
-          )
-        } else {
-          setHata(
-            `Çakışma var: ${hedefAdi ? `"${hedefAdi}" sınıfının` : 'bu sınıfın'} ${cakisma.gun} günü ${cakisma.saat} arasında zaten "${cakisma.dersAdi || 'başka bir'}" dersi var.`
-          )
+    const gunler = seciliGunler
+    for (const g of gunler) {
+      for (const hedefSinifId of hedefSiniflar) {
+        const cakisma = cakismaBul(
+          { sinifId, gun: Number(g), baslangic, bitis, ogretmenId, hedefSinifId },
+          program,
+          duzenleModu ? duzenlenenDers.id : null
+        )
+        if (cakisma) {
+          const hedefAdi = siniflar.find((s) => s.id === hedefSinifId)?.ad
+          if (cakisma.tur === 'ogretmen') {
+            setHata(
+              `Çakışma var: bu öğretmen ${cakisma.gun} günü ${cakisma.saat} arasında zaten "${cakisma.dersAdi || cakisma.sinifAdi}" dersinde.`
+            )
+          } else {
+            setHata(
+              `Çakışma var: ${hedefAdi ? `"${hedefAdi}" sınıfının` : 'bu sınıfın'} ${cakisma.gun} günü ${cakisma.saat} arasında zaten "${cakisma.dersAdi || 'başka bir'}" dersi var.`
+            )
+          }
+          return
         }
-        return
       }
     }
 
@@ -182,10 +207,11 @@ function DersEkleForm({ siniflar, ogretmenler, program, onEklendi, doldurBilgisi
     // birden fazla satır ekleniyor — bu sayede henüz eklenmemiş kardeş
     // satırlar bu isteğin çakışma kontrolünde görünmüyor, yani birbirlerine
     // "çakışma" olarak sayılmıyorlar (bkz. SinifDetay.jsx'teki aynı desen).
+    // Birden fazla gün seçildiyse de aynı mantıkla TEK istekte hepsi eklenir.
     const grupId = !duzenleModu && birlesikSiniflar.length > 0 ? crypto.randomUUID() : null
-    const veriUret = (hedefSinifId) => ({
+    const veriUret = (hedefSinifId, g) => ({
       sinif_id: hedefSinifId,
-      gun: Number(gun),
+      gun: Number(g),
       baslangic_saat: baslangic,
       bitis_saat: bitis,
       ders_adi: dersAdi.trim() ? ilkHarfleriBuyukYap(dersAdi.trim()) : null,
@@ -193,8 +219,8 @@ function DersEkleForm({ siniflar, ogretmenler, program, onEklendi, doldurBilgisi
       birlesik_grup_id: grupId,
     })
     const { error } = duzenleModu
-      ? await supabase.from('ders_programi').update(veriUret(sinifId)).eq('id', duzenlenenDers.id)
-      : await supabase.from('ders_programi').insert(hedefSiniflar.map(veriUret))
+      ? await supabase.from('ders_programi').update(veriUret(sinifId, gunler[0])).eq('id', duzenlenenDers.id)
+      : await supabase.from('ders_programi').insert(gunler.flatMap((g) => hedefSiniflar.map((h) => veriUret(h, g))))
     setGonderiliyor(false)
     if (error) {
       setHata('Hata: ' + error.message)
@@ -205,12 +231,14 @@ function DersEkleForm({ siniflar, ogretmenler, program, onEklendi, doldurBilgisi
         setOgretmenId('')
         setBaslangic('')
         setBitis('')
+        setSeciliGunler([])
         onDuzenlemeBitti()
       } else {
         setBaslangic('')
         setBitis('')
         setDersAdi('')
         setBirlesikSiniflar([])
+        setSeciliGunler([])
       }
       onEklendi()
     }
@@ -222,8 +250,8 @@ function DersEkleForm({ siniflar, ogretmenler, program, onEklendi, doldurBilgisi
   async function taslagaKaydet() {
     setHata('')
     setBasari('')
-    if (!sinifId || !baslangic || !bitis) {
-      setHata('Lütfen sınıf, gün ve saat aralığını doldurun.')
+    if (!sinifId || seciliGunler.length === 0 || !baslangic || !bitis) {
+      setHata('Lütfen sınıf, en az bir gün ve saat aralığını doldurun.')
       return
     }
     // Birleşik ders taslak akışında henüz desteklenmiyor — taslak tablosu tek
@@ -235,22 +263,31 @@ function DersEkleForm({ siniflar, ogretmenler, program, onEklendi, doldurBilgisi
       return
     }
     setGonderiliyor(true)
-    const { error } = await supabase.from('taslaklar').insert({
+    // Birden fazla gün seçilmişse (ör. bütün hafta), her gün için AYRI bir
+    // taslak satırı TEK seferde ekleniyor — yayınlama (yayinla) hâlâ her
+    // taslağı tek tek (bir gün = bir satır) işliyor, burada değişen sadece
+    // kaç taslak satırı birden oluşturulduğu.
+    const kayitlar = seciliGunler.map((g) => ({
       tur: 'sinif',
       veri: {
         sinif_id: sinifId,
-        gun: Number(gun),
+        gun: Number(g),
         baslangic_saat: baslangic,
         bitis_saat: bitis,
         ders_adi: dersAdi.trim() ? ilkHarfleriBuyukYap(dersAdi.trim()) : null,
         ogretmen_profile_id: ogretmenId || null,
       },
       olusturan_profile_id: profile?.id,
-    })
+    }))
+    const { error } = await supabase.from('taslaklar').insert(kayitlar)
     setGonderiliyor(false)
     if (error) setHata('Hata: ' + error.message)
     else {
-      setBasari('✓ Taslağa kaydedildi — aşağıdaki "Taslaklarım" listesinden yayınlayabilirsiniz.')
+      setBasari(
+        kayitlar.length > 1
+          ? `✓ ${kayitlar.length} gün için taslağa kaydedildi — aşağıdaki "Taslaklarım" listesinden yayınlayabilirsiniz.`
+          : '✓ Taslağa kaydedildi — aşağıdaki "Taslaklarım" listesinden yayınlayabilirsiniz.'
+      )
       onEklendi()
     }
   }
@@ -290,7 +327,14 @@ function DersEkleForm({ siniflar, ogretmenler, program, onEklendi, doldurBilgisi
           <label className="block text-sm font-medium text-gray-700 mb-1">Öğretmen</label>
           <select
             value={ogretmenId}
-            onChange={(e) => setOgretmenId(e.target.value)}
+            onChange={(e) => {
+              const yeniOgretmenId = e.target.value
+              setOgretmenId(yeniOgretmenId)
+              // Öğretmen seçilince ders adını onun branşıyla otomatik dolduruyoruz
+              // (her öğretmene zaten bir branş atanmış) — yanlışsa elle değiştirilebilir.
+              const secilen = ogretmenler.find((o) => o.id === yeniOgretmenId)
+              if (secilen?.brans) setDersAdi(secilen.brans)
+            }}
             className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue bg-white"
           >
             <option value="">Seçiniz...</option>
@@ -299,17 +343,28 @@ function DersEkleForm({ siniflar, ogretmenler, program, onEklendi, doldurBilgisi
             ))}
           </select>
         </div>
-        <div className="min-w-[130px]">
-          <label className="block text-sm font-medium text-gray-700 mb-1">Gün</label>
-          <select
-            value={gun}
-            onChange={(e) => setGun(e.target.value)}
-            className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue bg-white"
-          >
-            {GUNLER.slice(1).map((g, i) => (
-              <option key={i + 1} value={i + 1}>{g}</option>
-            ))}
-          </select>
+        <div className="min-w-[220px]">
+          <label className="block text-sm font-medium text-gray-700 mb-1">
+            {duzenleModu ? 'Gün' : 'Günler (birden fazla seçilebilir)'}
+          </label>
+          <div className="flex flex-wrap gap-1.5">
+            {GUNLER.slice(1).map((g, i) => {
+              const gunNo = i + 1
+              const secili = seciliGunler.includes(gunNo)
+              return (
+                <button
+                  key={gunNo}
+                  type="button"
+                  onClick={() => gunSecToggle(gunNo)}
+                  className={`px-2.5 py-1.5 rounded-lg text-xs font-medium border transition-colors ${
+                    secili ? 'bg-navy text-white border-navy' : 'bg-white text-gray-600 border-gray-200 hover:border-navy'
+                  }`}
+                >
+                  {GUNLER_KISA[gunNo]}
+                </button>
+              )
+            })}
+          </div>
         </div>
         <div className="min-w-[110px]">
           <label className="block text-sm font-medium text-gray-700 mb-1">Başlangıç</label>
@@ -334,7 +389,15 @@ function DersEkleForm({ siniflar, ogretmenler, program, onEklendi, doldurBilgisi
           disabled={gonderiliyor}
           className="bg-orange text-white font-semibold px-5 py-2 rounded-lg hover:opacity-90 transition-opacity disabled:opacity-50"
         >
-          {gonderiliyor ? (duzenleModu ? 'Güncelleniyor...' : 'Ekleniyor...') : duzenleModu ? 'Güncelle' : 'Ekle'}
+          {gonderiliyor
+            ? duzenleModu
+              ? 'Güncelleniyor...'
+              : 'Ekleniyor...'
+            : duzenleModu
+            ? 'Güncelle'
+            : seciliGunler.length > 1
+            ? `${seciliGunler.length} Güne Ekle`
+            : 'Ekle'}
         </button>
         {duzenleModu ? (
           <button

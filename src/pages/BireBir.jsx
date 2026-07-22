@@ -244,10 +244,15 @@ function BireBirDersEkleForm({ ogrenciler, ogretmenler, atamalar, dersProgrami, 
   // seçenek "Hayır, sadece bu sefer" — sabit programı olanlar için elle "Evet"e geçilir.
   const [tekrarlansin, setTekrarlansin] = useState(false)
 
-  // Haftalık tekrar (Evet) alanları
-  const [gun, setGun] = useState(1)
+  // Haftalık tekrar (Evet) alanları — birden fazla gün seçilebilir ("bütün
+  // haftanın bire birlerini tek seferde ekleyebileyim" isteğiyle eklendi).
+  const [seciliGunler, setSeciliGunler] = useState([])
   const [baslangic, setBaslangic] = useState('')
   const [bitis, setBitis] = useState('')
+
+  function gunSecToggle(g) {
+    setSeciliGunler((prev) => (prev.includes(g) ? prev.filter((x) => x !== g) : [...prev, g]))
+  }
 
   // Tek seferlik (Hayır) alanları — saat opsiyonel: girilirse kayda saat de damgalanır,
   // girilmezse boş bırakılabilir.
@@ -304,12 +309,14 @@ function BireBirDersEkleForm({ ogrenciler, ogretmenler, atamalar, dersProgrami, 
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [doldurBilgisi])
 
-  // Seçilen öğretmenin, seçilen gündeki tüm dolu saatlerini (hem sınıf dersleri hem
-  // diğer bire bir dersleri) tek listede gösterir — sadece "Evet, tekrarlansın"
-  // seçiliyken anlamlı, çünkü tek seferlik derste gün bazlı çakışma aranmıyor.
+  // Seçilen öğretmenin, seçili günlerden İLKİNDEKİ tüm dolu saatlerini (hem
+  // sınıf dersleri hem diğer bire bir dersleri) tek listede gösterir — sadece
+  // "Evet, tekrarlansın" seçiliyken anlamlı, çünkü tek seferlik derste gün
+  // bazlı çakışma aranmıyor. Birden fazla gün seçilmişse sadece ilk günün
+  // durumu bilgi amaçlı gösterilir (aşağıdaki JSX'te bunu belirtiyoruz).
   const buGunMesgulSaatler = useMemo(() => {
-    if (!ogretmenId || !tekrarlansin) return []
-    const gunNum = Number(gun)
+    if (!ogretmenId || !tekrarlansin || seciliGunler.length === 0) return []
+    const gunNum = Number(seciliGunler[0])
     const sinifDersleri = dersProgrami
       .filter((d) => d.ogretmen_profile_id === ogretmenId && d.gun === gunNum)
       .map((d) => ({
@@ -327,7 +334,7 @@ function BireBirDersEkleForm({ ogrenciler, ogretmenler, atamalar, dersProgrami, 
     return [...sinifDersleri, ...bireBirDersleri].sort((x, y) =>
       saatKisalt(x.baslangic) < saatKisalt(y.baslangic) ? -1 : 1
     )
-  }, [ogretmenId, gun, dersProgrami, atamalar, tekrarlansin])
+  }, [ogretmenId, seciliGunler, dersProgrami, atamalar, tekrarlansin])
 
   // Bu öğrenci-öğretmen ikilisi için daha önce girilmiş bir ücret varsa otomatik
   // dolduruyoruz — elle tekrar yazmaya gerek kalmasın diye. Kullanıcı isterse
@@ -363,66 +370,54 @@ function BireBirDersEkleForm({ ogrenciler, ogretmenler, atamalar, dersProgrami, 
   // uyarısı gösterildiğinde "Evet, yine de ekle" butonundan çağrılır.
   async function haftalikKaydet() {
     setGonderiliyor(true)
-    // Ek öğrenciler seçiliyse (grup dersi), önce her biri için AYRI AYRI
-    // çakışma kontrolü yapılır (mevcut veriye göre) — biri çakışıyorsa hiçbiri
-    // eklenmeden durdurulur, "ana öğrenci eklendi ama gruptaki biri eklenemedi"
-    // gibi yarım kalmış bir durum oluşmasın diye.
+    // Ek öğrenciler seçiliyse (grup dersi), SEÇİLEN HER GÜN için önce her ek
+    // öğrenci AYRI AYRI çakışma kontrolünden geçirilir (mevcut veriye göre) —
+    // biri çakışıyorsa hiçbiri eklenmeden durdurulur, "bir kısmı eklendi bir
+    // kısmı eklenemedi" gibi yarım kalmış bir durum oluşmasın diye.
     const gecerliEkOgrenciler = ekOgrenciler.filter(Boolean)
-    for (const ekId of gecerliEkOgrenciler) {
-      const ekCakisma = cakismaBul({ ogrenciId: ekId, ogretmenId, gun: Number(gun), baslangic, bitis }, dersProgrami, atamalar)
-      if (ekCakisma) {
-        setGonderiliyor(false)
-        setHata(`Çakışma var (${ogrenciler.find((o) => o.id === ekId)?.ad_soyad || 'ek öğrenci'}): ${ekCakisma.aciklama}.`)
-        return
+    for (const g of seciliGunler) {
+      for (const ekId of gecerliEkOgrenciler) {
+        const ekCakisma = cakismaBul({ ogrenciId: ekId, ogretmenId, gun: Number(g), baslangic, bitis }, dersProgrami, atamalar)
+        if (ekCakisma) {
+          setGonderiliyor(false)
+          setHata(`Çakışma var (${ogrenciler.find((o) => o.id === ekId)?.ad_soyad || 'ek öğrenci'}, ${GUNLER[g]}): ${ekCakisma.aciklama}.`)
+          return
+        }
       }
     }
     // Grup dersiyse, tüm satırlar aynı "grup_id" ile etiketlenir — böylece bu
     // öğretmenin bu öğrencilerin hepsiyle AYNI ANDA görünmesi artık çakışma
-    // sayılmaz, sistem bunu TEK bir grup dersi olarak bilir.
+    // sayılmaz, sistem bunu TEK bir grup dersi olarak bilir. Birden fazla gün
+    // seçildiyse de aynı mantıkla hepsi TEK istekte (öğrenci × gün) eklenir.
     const grupId = gecerliEkOgrenciler.length > 0 ? crypto.randomUUID() : null
-    const { error } = await supabase.from('bire_bir_atamalari').insert({
-      ogrenci_id: ogrenciId,
-      ogretmen_profile_id: ogretmenId,
-      ders_ucreti: Number(dersUcreti),
-      gun: Number(gun),
-      baslangic_saat: baslangic,
-      bitis_saat: bitis,
-      grup_id: grupId,
-    })
-    if (error) {
-      setGonderiliyor(false)
-      setHata('Hata: ' + error.message)
-      return
-    }
-    if (gecerliEkOgrenciler.length > 0) {
-      const ekKayitlar = gecerliEkOgrenciler.map((ekId) => ({
-        ogrenci_id: ekId,
+    const tumOgrenciler = [ogrenciId, ...gecerliEkOgrenciler]
+    const gunSayisi = seciliGunler.length
+    const kayitlar = seciliGunler.flatMap((g) =>
+      tumOgrenciler.map((oid) => ({
+        ogrenci_id: oid,
         ogretmen_profile_id: ogretmenId,
         ders_ucreti: Number(dersUcreti),
-        gun: Number(gun),
+        gun: Number(g),
         baslangic_saat: baslangic,
         bitis_saat: bitis,
         grup_id: grupId,
       }))
-      const { error: ekHata } = await supabase.from('bire_bir_atamalari').insert(ekKayitlar)
-      if (ekHata) {
-        setGonderiliyor(false)
-        setHata('Ana öğrenci eklendi ama ek öğrenciler eklenirken hata oldu: ' + ekHata.message)
-        onEklendi()
-        return
-      }
-    }
+    )
+    const { error } = await supabase.from('bire_bir_atamalari').insert(kayitlar)
     setGonderiliyor(false)
-    // Aynı öğrenci/öğretmene haftanın birden çok gününe art arda ders eklerken
-    // öğrenci, öğretmen ve ücret korunuyor, sadece saatleri temizliyoruz ve gün
-    // otomatik bir sonraki güne geçiyor.
+    if (error) {
+      setHata('Hata: ' + error.message)
+      return
+    }
     setBaslangic('')
     setBitis('')
-    setGun((g) => (Number(g) < 7 ? Number(g) + 1 : 1))
+    setSeciliGunler([])
     setEkOgrenciler([])
     setBasari(
       gecerliEkOgrenciler.length > 0
-        ? `✓ Grup dersi olarak (${gecerliEkOgrenciler.length + 1} öğrenci birlikte) her hafta tekrarlanacak şekilde eklendi — devam edebilirsiniz.`
+        ? `✓ Grup dersi olarak (${gecerliEkOgrenciler.length + 1} öğrenci birlikte), ${gunSayisi} gün için her hafta tekrarlanacak şekilde eklendi.`
+        : gunSayisi > 1
+        ? `✓ ${gunSayisi} gün için her hafta tekrarlanacak şekilde eklendi.`
         : '✓ Her hafta tekrarlanacak şekilde eklendi — devam edebilirsiniz.'
     )
     setSinifUyarisi('')
@@ -545,25 +540,32 @@ function BireBirDersEkleForm({ ogrenciler, ogretmenler, atamalar, dersProgrami, 
     }
 
     if (tekrarlansin) {
-      if (!baslangic || !bitis) {
-        setHata('Lütfen başlangıç ve bitiş saatini girin.')
+      if (seciliGunler.length === 0 || !baslangic || !bitis) {
+        setHata('Lütfen en az bir gün ve saat aralığını girin.')
         return
       }
       if (baslangic >= bitis) {
         setHata('Başlangıç saati bitiş saatinden önce olmalı.')
         return
       }
-      const cakisma = cakismaBul({ ogrenciId, ogretmenId, gun: Number(gun), baslangic, bitis }, dersProgrami, atamalar)
-      if (cakisma) {
-        setHata(`Çakışma var: ${cakisma.aciklama}.`)
-        return
+      // Seçilen HER gün için ana öğrencinin çakışması ayrı ayrı kontrol edilir
+      // — bütün haftayı tek seferde eklerken bir gün çakışsa bile diğerlerini
+      // gizlice atlamamak için.
+      for (const g of seciliGunler) {
+        const cakisma = cakismaBul({ ogrenciId, ogretmenId, gun: Number(g), baslangic, bitis }, dersProgrami, atamalar)
+        if (cakisma) {
+          setHata(`Çakışma var (${GUNLER[g]}): ${cakisma.aciklama}.`)
+          return
+        }
       }
       // Sınıf dersiyle çakışma SERT bir engel değil, sadece uyarı — admin
       // "Evet, yine de ekle" ile devam edebilir (bkz. ogrenciSinifDersiUyarisiBul).
-      const sinifUyari = ogrenciSinifDersiUyarisiBul(ogrenciId, Number(gun), baslangic, bitis, dersProgrami, sinifOgrencileri)
-      if (sinifUyari) {
-        setSinifUyarisi(sinifUyari.aciklama)
-        return
+      for (const g of seciliGunler) {
+        const sinifUyari = ogrenciSinifDersiUyarisiBul(ogrenciId, Number(g), baslangic, bitis, dersProgrami, sinifOgrencileri)
+        if (sinifUyari) {
+          setSinifUyarisi(sinifUyari.aciklama)
+          return
+        }
       }
 
       await haftalikKaydet()
@@ -628,42 +630,58 @@ function BireBirDersEkleForm({ ogrenciler, ogretmenler, atamalar, dersProgrami, 
       setHata('Grup dersi (ek öğrenciler) taslağa kaydedilemez — lütfen doğrudan "Ekle" butonunu kullanın.')
       return
     }
-    let tur, veri
+    let kayitlar
     if (tekrarlansin) {
-      if (!baslangic || !bitis) {
-        setHata('Lütfen başlangıç ve bitiş saatini girin.')
+      if (seciliGunler.length === 0 || !baslangic || !bitis) {
+        setHata('Lütfen en az bir gün ve saat aralığını girin.')
         return
       }
-      tur = 'bire_bir_haftalik'
-      veri = {
-        ogrenci_id: ogrenciId,
-        ogretmen_profile_id: ogretmenId,
-        ders_ucreti: Number(dersUcreti),
-        gun: Number(gun),
-        baslangic_saat: baslangic,
-        bitis_saat: bitis,
-      }
+      // Birden fazla gün seçilmişse (ör. bütün hafta), her gün için AYRI bir
+      // taslak satırı TEK seferde ekleniyor — yayınlama (yayinla) hâlâ her
+      // taslağı tek tek (bir gün = bir satır) işliyor, burada değişen sadece
+      // kaç taslak satırı birden oluşturulduğu.
+      kayitlar = seciliGunler.map((g) => ({
+        tur: 'bire_bir_haftalik',
+        veri: {
+          ogrenci_id: ogrenciId,
+          ogretmen_profile_id: ogretmenId,
+          ders_ucreti: Number(dersUcreti),
+          gun: Number(g),
+          baslangic_saat: baslangic,
+          bitis_saat: bitis,
+        },
+        olusturan_profile_id: profile?.id,
+      }))
     } else {
       if (!tarih) {
         setHata('Lütfen tarihi girin.')
         return
       }
-      tur = 'bire_bir_tekil'
-      veri = {
-        ogrenci_id: ogrenciId,
-        ogretmen_profile_id: ogretmenId,
-        tutar: Number(dersUcreti),
-        tarih,
-        baslangic_saat: tekBaslangic || null,
-        bitis_saat: tekBitis || null,
-      }
+      kayitlar = [
+        {
+          tur: 'bire_bir_tekil',
+          veri: {
+            ogrenci_id: ogrenciId,
+            ogretmen_profile_id: ogretmenId,
+            tutar: Number(dersUcreti),
+            tarih,
+            baslangic_saat: tekBaslangic || null,
+            bitis_saat: tekBitis || null,
+          },
+          olusturan_profile_id: profile?.id,
+        },
+      ]
     }
     setGonderiliyor(true)
-    const { error } = await supabase.from('taslaklar').insert({ tur, veri, olusturan_profile_id: profile?.id })
+    const { error } = await supabase.from('taslaklar').insert(kayitlar)
     setGonderiliyor(false)
     if (error) setHata('Hata: ' + error.message)
     else {
-      setBasari('✓ Taslağa kaydedildi — aşağıdaki "Taslaklarım" listesinden yayınlayabilirsiniz.')
+      setBasari(
+        kayitlar.length > 1
+          ? `✓ ${kayitlar.length} gün için taslağa kaydedildi — aşağıdaki "Taslaklarım" listesinden yayınlayabilirsiniz.`
+          : '✓ Taslağa kaydedildi — aşağıdaki "Taslaklarım" listesinden yayınlayabilirsiniz.'
+      )
       onEklendi()
     }
   }
@@ -779,17 +797,28 @@ function BireBirDersEkleForm({ ogrenciler, ogretmenler, atamalar, dersProgrami, 
 
         {tekrarlansin ? (
           <div className="flex flex-wrap gap-3 items-end mt-3">
-            <div className="min-w-[130px]">
-              <label className="block text-sm font-medium text-gray-700 mb-1">Gün</label>
-              <select
-                value={gun}
-                onChange={(e) => setGun(e.target.value)}
-                className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue bg-white"
-              >
-                {GUNLER.slice(1).map((g, i) => (
-                  <option key={i + 1} value={i + 1}>{g}</option>
-                ))}
-              </select>
+            <div className="min-w-[220px]">
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Günler (birden fazla seçilebilir)
+              </label>
+              <div className="flex flex-wrap gap-1.5">
+                {GUNLER.slice(1).map((g, i) => {
+                  const gunNo = i + 1
+                  const secili = seciliGunler.includes(gunNo)
+                  return (
+                    <button
+                      key={gunNo}
+                      type="button"
+                      onClick={() => gunSecToggle(gunNo)}
+                      className={`px-2.5 py-1.5 rounded-lg text-xs font-medium border transition-colors ${
+                        secili ? 'bg-navy text-white border-navy' : 'bg-white text-gray-600 border-gray-200 hover:border-navy'
+                      }`}
+                    >
+                      {GUNLER_KISA[gunNo]}
+                    </button>
+                  )
+                })}
+              </div>
             </div>
             <div className="min-w-[110px]">
               <label className="block text-sm font-medium text-gray-700 mb-1">Başlangıç</label>
@@ -857,10 +886,11 @@ function BireBirDersEkleForm({ ogrenciler, ogretmenler, atamalar, dersProgrami, 
           </div>
         )}
 
-        {tekrarlansin && ogretmenId && (
+        {tekrarlansin && ogretmenId && seciliGunler.length > 0 && (
           <div className="mt-3 bg-white border border-gray-100 rounded-lg p-3">
             <p className="text-xs font-medium text-gray-600 mb-1.5">
-              {ogretmenler.find((o) => o.id === ogretmenId)?.ad_soyad} — {GUNLER[Number(gun)]} günü dolu saatler:
+              {ogretmenler.find((o) => o.id === ogretmenId)?.ad_soyad} — {GUNLER[Number(seciliGunler[0])]} günü dolu saatler
+              {seciliGunler.length > 1 ? ' (seçilen ilk gün için gösteriliyor)' : ''}:
             </p>
             {buGunMesgulSaatler.length === 0 ? (
               <p className="text-xs text-green-600">Bu gün için kayıtlı ders yok, tüm saatler boş.</p>
@@ -883,7 +913,11 @@ function BireBirDersEkleForm({ ogrenciler, ogretmenler, atamalar, dersProgrami, 
           disabled={gonderiliyor}
           className="bg-orange text-white font-semibold px-5 py-2 rounded-lg hover:opacity-90 transition-opacity disabled:opacity-50"
         >
-          {gonderiliyor ? 'Ekleniyor...' : 'Ekle'}
+          {gonderiliyor
+            ? 'Ekleniyor...'
+            : tekrarlansin && seciliGunler.length > 1
+            ? `${seciliGunler.length} Güne Ekle`
+            : 'Ekle'}
         </button>
         <button
           type="button"
