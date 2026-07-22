@@ -1226,10 +1226,8 @@ function AtamaDuzenleSatiri({ a, ogretmenler, atamalar, dersProgrami, onKaydedil
 
   return (
     <tr className="border-t border-gray-50 bg-blue-50">
-      <td className="px-4 py-2 font-medium text-gray-800 align-top sticky left-0 bg-blue-50 shadow-[6px_0_8px_-6px_rgba(0,0,0,0.15)]">{a.ogrenci_adi}</td>
-      {/* Durum/İşlemler tek sütunda birleştiği için (bkz. AtamaListesi), toplam
-          sütun sayısı 6'dan 5'e düştü — burası artık 3 kapsıyor (1 + 3 + 1 = 5). */}
-      <td className="px-4 py-2 align-top" colSpan={3}>
+      <td className="px-4 py-2 font-medium text-gray-800 align-top">{a.ogrenci_adi}</td>
+      <td className="px-4 py-2 align-top" colSpan={4}>
         <div className="flex flex-wrap gap-2 items-end">
           <select
             value={ogretmenId}
@@ -1315,25 +1313,17 @@ function AtamaListesi({ atamalar, ogretmenler, dersProgrami, onDegisti }) {
       <table className="w-full text-sm min-w-[760px]">
         <thead>
           <tr className="text-left text-gray-500">
-            {/* Öğrenci sütunu da mobilde solda SABİT (sticky) — hoca "kime
-                Geldi/Gelmedi diyorum" diye kaydırmak zorunda kalmasın diye,
-                isim de sağdaki Durum/İşlemler gibi her zaman ekranda kalıyor. */}
-            <th className="px-4 py-2 font-medium sticky left-0 bg-white shadow-[6px_0_8px_-6px_rgba(0,0,0,0.15)]">Öğrenci</th>
+            <th className="px-4 py-2 font-medium">Öğrenci</th>
             <th className="px-4 py-2 font-medium">Öğretmen</th>
             <th className="px-4 py-2 font-medium">Gün / Saat</th>
             <th className="px-4 py-2 font-medium">Ders Ücreti</th>
-            {/* Durum ve İşlemler tek sütunda birleşik ve mobilde sağda SABİT
-                (sticky) — hoca yana kaydırmadan da Geldi/Gelmedi/Aktif gibi
-                durumu ve butonları hemen görsün diye (bkz. mobil kaydırma
-                sorunu geri bildirimi). */}
-            <th className="px-4 py-2 font-medium text-right sticky right-0 bg-white shadow-[-6px_0_8px_-6px_rgba(0,0,0,0.15)]">
-              Durum / İşlemler
-            </th>
+            <th className="px-4 py-2 font-medium">Durum</th>
+            <th className="px-4 py-2 font-medium text-right">İşlemler</th>
           </tr>
         </thead>
         <tbody>
           {atamalar.length === 0 && (
-            <tr><td colSpan={5} className="px-4 py-4 text-center text-gray-400">Henüz haftalık tekrar eden bir atama yok.</td></tr>
+            <tr><td colSpan={6} className="px-4 py-4 text-center text-gray-400">Henüz haftalık tekrar eden bir atama yok.</td></tr>
           )}
           {atamalar.map((a) =>
             duzenlenenId === a.id ? (
@@ -1348,30 +1338,30 @@ function AtamaListesi({ atamalar, ogretmenler, dersProgrami, onDegisti }) {
               />
             ) : (
               <tr key={a.id} className="border-t border-gray-50">
-                <td className="px-4 py-2 font-medium text-gray-800 sticky left-0 bg-white shadow-[6px_0_8px_-6px_rgba(0,0,0,0.15)]">{a.ogrenci_adi}</td>
+                <td className="px-4 py-2 font-medium text-gray-800">{a.ogrenci_adi}</td>
                 <td className="px-4 py-2">
                   {a.ogretmen_adi}
                   {a.ogretmen_bransi && <span className="text-xs text-gray-400"> ({a.ogretmen_bransi})</span>}
                 </td>
                 <td className="px-4 py-2">{GUNLER_KISA[a.gun]} {saatKisalt(a.baslangic_saat)}–{saatKisalt(a.bitis_saat)}</td>
                 <td className="px-4 py-2">{paraFormat(a.ders_ucreti)}</td>
-                <td className="px-4 py-2 text-right whitespace-nowrap sticky right-0 bg-white shadow-[-6px_0_8px_-6px_rgba(0,0,0,0.15)]">
-                  <div className="flex items-center justify-end gap-2 flex-wrap">
-                    {a.aktif ? (
-                      <span className="text-xs font-semibold bg-green-100 text-green-700 px-2 py-1 rounded-full">Aktif</span>
-                    ) : (
-                      <span className="text-xs font-semibold bg-gray-100 text-gray-500 px-2 py-1 rounded-full">Pasif</span>
-                    )}
-                    <button onClick={() => setDuzenlenenId(a.id)} className="text-navy text-sm hover:underline">
-                      Düzenle
-                    </button>
-                    <button onClick={() => aktiflikDegistir(a)} className="text-blue text-sm hover:underline">
-                      {a.aktif ? 'Pasif Yap' : 'Aktif Yap'}
-                    </button>
-                    <button onClick={() => sil(a.id)} className="text-red-500 text-sm hover:underline">
-                      Sil
-                    </button>
-                  </div>
+                <td className="px-4 py-2">
+                  {a.aktif ? (
+                    <span className="text-xs font-semibold bg-green-100 text-green-700 px-2 py-1 rounded-full">Aktif</span>
+                  ) : (
+                    <span className="text-xs font-semibold bg-gray-100 text-gray-500 px-2 py-1 rounded-full">Pasif</span>
+                  )}
+                </td>
+                <td className="px-4 py-2 text-right whitespace-nowrap space-x-2">
+                  <button onClick={() => setDuzenlenenId(a.id)} className="text-navy text-sm hover:underline">
+                    Düzenle
+                  </button>
+                  <button onClick={() => aktiflikDegistir(a)} className="text-blue text-sm hover:underline">
+                    {a.aktif ? 'Pasif Yap' : 'Aktif Yap'}
+                  </button>
+                  <button onClick={() => sil(a.id)} className="text-red-500 text-sm hover:underline">
+                    Sil
+                  </button>
                 </td>
               </tr>
             )
@@ -1577,12 +1567,7 @@ function TekSeferlikDuzenleSatiri({ y, ucretGorunur, toplamSutun, onKaydedildi, 
 
   return (
     <tr className="border-t border-gray-50 bg-blue-50">
-      {/* Düzenleme sırasında da öğrenci ismi ayrı ve solda sabit görünsün —
-          hoca hangi öğrencinin dersini düzenlediğini kaybetmesin diye. */}
-      <td className="px-2 py-1.5 align-top font-medium text-gray-800 sticky left-0 bg-blue-50 shadow-[6px_0_8px_-6px_rgba(0,0,0,0.15)]">
-        {y._ogrenciAdi || '—'}
-      </td>
-      <td className="px-2 py-1.5 align-top" colSpan={Math.max(toplamSutun - 2, 1)}>
+      <td className="px-2 py-1.5 align-top" colSpan={Math.max(toplamSutun - 1, 1)}>
         <div className="flex flex-wrap gap-2 items-end">
           <div>
             <label className="block text-[11px] text-gray-500 mb-0.5">Tarih</label>
@@ -1728,9 +1713,9 @@ function TekSeferlikDerslerListesi({ yoklamalar, atamalar, onDegisti, sadeceOgre
 
   // Tablo başlıklarındaki toplam sütun sayısı — Düzenle satırındaki tek büyük
   // hücrenin (colSpan) doğru genişlikte açılması için kullanılır. Sabit sütunlar:
-  // Tarih, Saat, Öğrenci, Tür, Durum/İşlemler (birleşik tek sütun) = 5;
-  // öğretmen görünürse +1, tutar görünürse +1.
-  const toplamSutun = 5 + (!sadeceOgretmenId ? 1 : 0) + (ucretGorunur ? 1 : 0)
+  // Tarih, Saat, Öğrenci, Tür, Durum, İşlemler = 6; öğretmen görünürse +1,
+  // tutar görünürse +1.
+  const toplamSutun = 6 + (!sadeceOgretmenId ? 1 : 0) + (ucretGorunur ? 1 : 0)
 
   async function sil(id) {
     if (!confirm('Bu ders kaydını silmek istediğinize emin misiniz?')) return
@@ -1819,23 +1804,14 @@ function TekSeferlikDerslerListesi({ yoklamalar, atamalar, onDegisti, sadeceOgre
             <table className="w-full text-sm min-w-[560px]">
               <thead>
                 <tr className="text-left text-gray-500">
-                  {/* Öğrenci EN BAŞA alındı ve mobilde solda SABİT (sticky) —
-                      önceki sırada (Tarih, Saat, Öğrenci...) isim ekranın
-                      dışına düşüyor, hoca kaydırmadan "kime Geldi/Gelmedi
-                      diyorum" diye ismi göremiyordu. Artık isim de Durum/
-                      İşlemler gibi her zaman ekranda kalıyor. */}
-                  <th className="px-2 py-1.5 font-medium sticky left-0 bg-white shadow-[6px_0_8px_-6px_rgba(0,0,0,0.15)]">Öğrenci</th>
                   <th className="px-2 py-1.5 font-medium">Tarih</th>
                   <th className="px-2 py-1.5 font-medium">Saat</th>
+                  <th className="px-2 py-1.5 font-medium">Öğrenci</th>
                   {!sadeceOgretmenId && <th className="px-2 py-1.5 font-medium">Öğretmen</th>}
                   <th className="px-2 py-1.5 font-medium">Tür</th>
                   {ucretGorunur && <th className="px-2 py-1.5 font-medium">Tutar</th>}
-                  {/* Durum ve İşlemler tek sütunda birleşik ve mobilde sağda
-                      SABİT (sticky) — hoca yana kaydırmadan da Geldi/Gelmedi
-                      durumunu ve butonlarını hemen görsün diye. */}
-                  <th className="px-2 py-1.5 font-medium text-right sticky right-0 bg-white shadow-[-6px_0_8px_-6px_rgba(0,0,0,0.15)]">
-                    Durum / İşlemler
-                  </th>
+                  <th className="px-2 py-1.5 font-medium">Durum</th>
+                  <th className="px-2 py-1.5 font-medium text-right">İşlemler</th>
                 </tr>
               </thead>
               <tbody>
@@ -1851,11 +1827,11 @@ function TekSeferlikDerslerListesi({ yoklamalar, atamalar, onDegisti, sadeceOgre
                     />
                   ) : (
                     <tr key={y.id} className="border-t border-gray-50">
-                      <td className="px-2 py-1.5 font-medium text-gray-800 sticky left-0 bg-white shadow-[6px_0_8px_-6px_rgba(0,0,0,0.15)]">{y._ogrenciAdi || '—'}</td>
                       <td className="px-2 py-1.5">{new Date(y.tarih + 'T12:00:00').toLocaleDateString('tr-TR')}</td>
                       <td className="px-2 py-1.5 text-gray-500">
                         {y._baslangic ? `${saatKisalt(y._baslangic)}${y._bitis ? '–' + saatKisalt(y._bitis) : ''}` : '—'}
                       </td>
+                      <td className="px-2 py-1.5 font-medium text-gray-800">{y._ogrenciAdi || '—'}</td>
                       {!sadeceOgretmenId && (
                         <td className="px-2 py-1.5">
                           {y._ogretmenAdi || '—'}
@@ -1864,36 +1840,36 @@ function TekSeferlikDerslerListesi({ yoklamalar, atamalar, onDegisti, sadeceOgre
                       )}
                       <td className="px-2 py-1.5 text-gray-500">{y._kaynak}</td>
                       {ucretGorunur && <td className="px-2 py-1.5">{paraFormat(y._tutar)}</td>}
-                      <td className="px-2 py-1.5 text-right whitespace-nowrap sticky right-0 bg-white shadow-[-6px_0_8px_-6px_rgba(0,0,0,0.15)]">
-                        <div className="flex items-center justify-end gap-2 flex-wrap">
-                          {y.durum === 'geldi' && (
-                            <span className="text-xs font-semibold bg-green-100 text-green-700 px-2 py-1 rounded-full">Geldi</span>
-                          )}
-                          {y.durum === 'gelmedi' && (
-                            <span className="text-xs font-semibold bg-red-100 text-red-600 px-2 py-1 rounded-full">Gelmedi</span>
-                          )}
-                          {y.durum === 'bekliyor' && (
-                            <span className="text-xs font-semibold bg-yellow-100 text-yellow-700 px-2 py-1 rounded-full">Bekliyor</span>
-                          )}
-                          {y.durum !== 'geldi' && (
-                            <button onClick={() => durumDegistir(y, 'geldi')} className="text-green-600 text-sm hover:underline">
-                              Geldi
-                            </button>
-                          )}
-                          {y.durum !== 'gelmedi' && (
-                            <button onClick={() => durumDegistir(y, 'gelmedi')} className="text-red-500 text-sm hover:underline">
-                              Gelmedi
-                            </button>
-                          )}
-                          {ucretGorunur && (
-                            <button onClick={() => setDuzenlenenYoklamaId(y.id)} className="text-navy text-sm hover:underline">
-                              Düzenle
-                            </button>
-                          )}
-                          {ucretGorunur && (
-                            <button onClick={() => sil(y.id)} className="text-gray-400 text-sm hover:underline">Sil</button>
-                          )}
-                        </div>
+                      <td className="px-2 py-1.5">
+                        {y.durum === 'geldi' && (
+                          <span className="text-xs font-semibold bg-green-100 text-green-700 px-2 py-1 rounded-full">Geldi</span>
+                        )}
+                        {y.durum === 'gelmedi' && (
+                          <span className="text-xs font-semibold bg-red-100 text-red-600 px-2 py-1 rounded-full">Gelmedi</span>
+                        )}
+                        {y.durum === 'bekliyor' && (
+                          <span className="text-xs font-semibold bg-yellow-100 text-yellow-700 px-2 py-1 rounded-full">Bekliyor</span>
+                        )}
+                      </td>
+                      <td className="px-2 py-1.5 text-right whitespace-nowrap space-x-2">
+                        {y.durum !== 'geldi' && (
+                          <button onClick={() => durumDegistir(y, 'geldi')} className="text-green-600 text-sm hover:underline">
+                            Geldi
+                          </button>
+                        )}
+                        {y.durum !== 'gelmedi' && (
+                          <button onClick={() => durumDegistir(y, 'gelmedi')} className="text-red-500 text-sm hover:underline">
+                            Gelmedi
+                          </button>
+                        )}
+                        {ucretGorunur && (
+                          <button onClick={() => setDuzenlenenYoklamaId(y.id)} className="text-navy text-sm hover:underline">
+                            Düzenle
+                          </button>
+                        )}
+                        {ucretGorunur && (
+                          <button onClick={() => sil(y.id)} className="text-gray-400 text-sm hover:underline">Sil</button>
+                        )}
                       </td>
                     </tr>
                   )
