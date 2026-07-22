@@ -1069,12 +1069,30 @@ function TaslaklarimBireBir({ taslaklar, ogrenciler, ogretmenler, dersProgrami, 
 
   if (taslaklar.length === 0) return null
 
+  // Haftalık tablo görünümü — "bütün haftanın bire birlerini tek bir taslakta
+  // görmek istiyorum" isteğiyle, HAFTALIK (tekrar eden) taslaklar artık alt
+  // alta düz bir liste değil, Pzt-Paz sütunlu bir tabloda, her taslak kendi
+  // gününün sütununda (saate göre sıralı) gösteriliyor. TEKİL (belirli bir
+  // tarihe ait, tekrarsız) taslaklar bir "gün" kavramına oturmadığı için
+  // (herhangi bir tarih olabilir) ayrı, alttaki düz listede kalıyor.
+  const haftalikTaslaklar = taslaklar.filter((t) => t.tur === 'bire_bir_haftalik')
+  const tekilTaslaklar = taslaklar.filter((t) => t.tur !== 'bire_bir_haftalik')
+  const gunSutunlari = GUNLER.slice(1).map((gunAdi, i) => {
+    const gunNo = i + 1
+    const gunTaslaklari = haftalikTaslaklar
+      .filter((t) => t.veri.gun === gunNo)
+      .sort((a, b) => (saatKisalt(a.veri.baslangic_saat) < saatKisalt(b.veri.baslangic_saat) ? -1 : 1))
+    return { gunNo, gunAdi, gunTaslaklari }
+  })
+
   return (
     <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden mb-6">
       <div className="px-4 py-3 border-b border-gray-100 bg-gray-50 flex items-center justify-between flex-wrap gap-3">
         <div>
           <h2 className="font-semibold text-gray-700">Taslaklarım ({taslaklar.length})</h2>
-          <p className="text-xs text-gray-400 mt-0.5">Henüz gerçek programa eklenmemiş bire bir dersler. Hazır olduğunda yayınlayın.</p>
+          <p className="text-xs text-gray-400 mt-0.5">
+            Henüz gerçek programa eklenmemiş bire bir dersler — haftalık olanlar gün gün, tekil olanlar altta. Hazır olduğunda yayınlayın.
+          </p>
         </div>
         <button
           type="button"
@@ -1085,33 +1103,76 @@ function TaslaklarimBireBir({ taslaklar, ogrenciler, ogretmenler, dersProgrami, 
           {tumuGonderiliyor ? 'Yayınlanıyor...' : 'Tümünü Yayınla'}
         </button>
       </div>
-      <div className="divide-y divide-gray-50">
-        {taslaklar.map((t) => (
-          <div key={t.id} className="px-4 py-2.5 flex items-center justify-between gap-3 flex-wrap">
-            <div>
-              <p className="text-sm font-medium text-gray-800">
-                {ogrenciAd(t.veri.ogrenci_id)} <span className="text-gray-400 font-normal">— {ogretmenAd(t.veri.ogretmen_profile_id)}</span>
-              </p>
-              <p className="text-xs text-gray-400">
-                {t.tur === 'bire_bir_haftalik'
-                  ? `Her hafta ${GUNLER[t.veri.gun]} · ${saatKisalt(t.veri.baslangic_saat)}–${saatKisalt(t.veri.bitis_saat)} · ${paraFormat(t.veri.ders_ucreti)}`
-                  : `${new Date(t.veri.tarih + 'T12:00:00').toLocaleDateString('tr-TR')}${t.veri.baslangic_saat ? ` · ${saatKisalt(t.veri.baslangic_saat)}–${saatKisalt(t.veri.bitis_saat)}` : ''} · ${paraFormat(t.veri.tutar)}`}
-              </p>
-              {hataMap[t.id] && <p className="text-xs text-red-600 mt-1">{hataMap[t.id]}</p>}
-            </div>
-            <div className="flex items-center gap-3 shrink-0">
-              <button
-                onClick={() => tekYayinla(t)}
-                disabled={gonderiliyorId === t.id || tumuGonderiliyor}
-                className="text-navy text-sm font-semibold hover:underline disabled:opacity-50"
-              >
-                {gonderiliyorId === t.id ? 'Yayınlanıyor...' : 'Yayınla'}
-              </button>
-              <button onClick={() => sil(t.id)} className="text-gray-400 text-sm hover:underline">Sil</button>
-            </div>
+
+      {haftalikTaslaklar.length > 0 && (
+        <div className="overflow-x-auto border-b border-gray-100">
+          <div className="flex min-w-[980px] divide-x divide-gray-100">
+            {gunSutunlari.map(({ gunNo, gunAdi, gunTaslaklari }) => (
+              <div key={gunNo} className="flex-1 min-w-[140px]">
+                <div className="bg-navy text-white px-2 py-2 text-xs font-semibold text-center">{gunAdi}</div>
+                <div className="p-1.5 space-y-1.5 min-h-[70px]">
+                  {gunTaslaklari.length === 0 ? (
+                    <p className="text-[11px] text-gray-300 text-center py-3">—</p>
+                  ) : (
+                    gunTaslaklari.map((t) => (
+                      <div key={t.id} className="bg-blue-50 border border-blue-100 rounded-lg px-2 py-1.5">
+                        <p className="text-xs font-semibold text-navy leading-tight">{ogrenciAd(t.veri.ogrenci_id)}</p>
+                        <p className="text-[11px] text-gray-500 leading-tight">{ogretmenAd(t.veri.ogretmen_profile_id)}</p>
+                        <p className="text-[11px] text-gray-400 leading-tight">
+                          {saatKisalt(t.veri.baslangic_saat)}–{saatKisalt(t.veri.bitis_saat)} · {paraFormat(t.veri.ders_ucreti)}
+                        </p>
+                        {hataMap[t.id] && <p className="text-[11px] text-red-600 mt-1">{hataMap[t.id]}</p>}
+                        <div className="flex items-center gap-2 mt-1">
+                          <button
+                            type="button"
+                            onClick={() => tekYayinla(t)}
+                            disabled={gonderiliyorId === t.id || tumuGonderiliyor}
+                            className="text-[11px] text-navy font-semibold hover:underline disabled:opacity-50"
+                          >
+                            {gonderiliyorId === t.id ? '...' : 'Yayınla'}
+                          </button>
+                          <button type="button" onClick={() => sil(t.id)} className="text-[11px] text-gray-400 hover:underline">
+                            Sil
+                          </button>
+                        </div>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </div>
+            ))}
           </div>
-        ))}
-      </div>
+        </div>
+      )}
+
+      {tekilTaslaklar.length > 0 && (
+        <div className="divide-y divide-gray-50">
+          {tekilTaslaklar.map((t) => (
+            <div key={t.id} className="px-4 py-2.5 flex items-center justify-between gap-3 flex-wrap">
+              <div>
+                <p className="text-sm font-medium text-gray-800">
+                  {ogrenciAd(t.veri.ogrenci_id)} <span className="text-gray-400 font-normal">— {ogretmenAd(t.veri.ogretmen_profile_id)}</span>
+                </p>
+                <p className="text-xs text-gray-400">
+                  {new Date(t.veri.tarih + 'T12:00:00').toLocaleDateString('tr-TR')}
+                  {t.veri.baslangic_saat ? ` · ${saatKisalt(t.veri.baslangic_saat)}–${saatKisalt(t.veri.bitis_saat)}` : ''} · {paraFormat(t.veri.tutar)}
+                </p>
+                {hataMap[t.id] && <p className="text-xs text-red-600 mt-1">{hataMap[t.id]}</p>}
+              </div>
+              <div className="flex items-center gap-3 shrink-0">
+                <button
+                  onClick={() => tekYayinla(t)}
+                  disabled={gonderiliyorId === t.id || tumuGonderiliyor}
+                  className="text-navy text-sm font-semibold hover:underline disabled:opacity-50"
+                >
+                  {gonderiliyorId === t.id ? 'Yayınlanıyor...' : 'Yayınla'}
+                </button>
+                <button onClick={() => sil(t.id)} className="text-gray-400 text-sm hover:underline">Sil</button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   )
 }

@@ -534,12 +534,24 @@ function TaslaklarimDersProgrami({ taslaklar, siniflar, ogretmenler, program, on
 
   if (taslaklar.length === 0) return null
 
+  // Haftalık tablo görünümü — "bütün haftanın programını tek bir taslakta
+  // görmek istiyorum" isteğiyle, taslaklar artık alt alta düz bir liste değil,
+  // gerçek Ders Programı'ndaki gibi Pzt-Paz sütunlu bir haftalık tabloda,
+  // her taslak kendi gününün sütununda (saate göre sıralı) gösteriliyor.
+  const gunSutunlari = GUNLER.slice(1).map((gunAdi, i) => {
+    const gunNo = i + 1
+    const gunTaslaklari = taslaklar
+      .filter((t) => t.veri.gun === gunNo)
+      .sort((a, b) => (saatKisalt(a.veri.baslangic_saat) < saatKisalt(b.veri.baslangic_saat) ? -1 : 1))
+    return { gunNo, gunAdi, gunTaslaklari }
+  })
+
   return (
     <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden mb-6">
       <div className="px-4 py-3 border-b border-gray-100 bg-gray-50 flex items-center justify-between flex-wrap gap-3">
         <div>
           <h2 className="font-semibold text-gray-700">Taslaklarım ({taslaklar.length})</h2>
-          <p className="text-xs text-gray-400 mt-0.5">Henüz gerçek programa eklenmemiş ders saatleri. Hazır olduğunda yayınlayın.</p>
+          <p className="text-xs text-gray-400 mt-0.5">Henüz gerçek programa eklenmemiş ders saatleri — haftalık görünümde, hazır olduğunda yayınlayın.</p>
         </div>
         <button
           type="button"
@@ -550,31 +562,54 @@ function TaslaklarimDersProgrami({ taslaklar, siniflar, ogretmenler, program, on
           {tumuGonderiliyor ? 'Yayınlanıyor...' : 'Tümünü Yayınla'}
         </button>
       </div>
-      <div className="divide-y divide-gray-50">
-        {taslaklar.map((t) => (
-          <div key={t.id} className="px-4 py-2.5 flex items-center justify-between gap-3 flex-wrap">
-            <div>
-              <p className="text-sm font-medium text-gray-800">
-                {t.veri.ders_adi || sinifAdi(t.veri.sinif_id)} <span className="text-gray-400 font-normal">— {sinifAdi(t.veri.sinif_id)}</span>
-              </p>
-              <p className="text-xs text-gray-400">
-                {GUNLER[t.veri.gun]} · {saatKisalt(t.veri.baslangic_saat)}–{saatKisalt(t.veri.bitis_saat)}
-                {ogretmenAdi(t.veri.ogretmen_profile_id) ? ` · ${ogretmenAdi(t.veri.ogretmen_profile_id)}` : ''}
-              </p>
-              {hataMap[t.id] && <p className="text-xs text-red-600 mt-1">{hataMap[t.id]}</p>}
+      <div className="overflow-x-auto">
+        <div className="flex min-w-[980px] divide-x divide-gray-100">
+          {gunSutunlari.map(({ gunNo, gunAdi, gunTaslaklari }) => (
+            <div key={gunNo} className="flex-1 min-w-[140px]">
+              <div className="bg-navy text-white px-2 py-2 text-xs font-semibold text-center sticky top-0">
+                {gunAdi}
+              </div>
+              <div className="p-1.5 space-y-1.5 min-h-[70px]">
+                {gunTaslaklari.length === 0 ? (
+                  <p className="text-[11px] text-gray-300 text-center py-3">—</p>
+                ) : (
+                  gunTaslaklari.map((t) => (
+                    <div key={t.id} className="bg-blue-50 border border-blue-100 rounded-lg px-2 py-1.5">
+                      <p className="text-xs font-semibold text-navy leading-tight">
+                        {t.veri.ders_adi || sinifAdi(t.veri.sinif_id)}
+                      </p>
+                      <p className="text-[11px] text-gray-500 leading-tight">{sinifAdi(t.veri.sinif_id)}</p>
+                      <p className="text-[11px] text-gray-400 leading-tight">
+                        {saatKisalt(t.veri.baslangic_saat)}–{saatKisalt(t.veri.bitis_saat)}
+                      </p>
+                      {ogretmenAdi(t.veri.ogretmen_profile_id) && (
+                        <p className="text-[11px] text-gray-400 leading-tight">{ogretmenAdi(t.veri.ogretmen_profile_id)}</p>
+                      )}
+                      {hataMap[t.id] && <p className="text-[11px] text-red-600 mt-1">{hataMap[t.id]}</p>}
+                      <div className="flex items-center gap-2 mt-1">
+                        <button
+                          type="button"
+                          onClick={() => tekYayinla(t)}
+                          disabled={gonderiliyorId === t.id || tumuGonderiliyor}
+                          className="text-[11px] text-navy font-semibold hover:underline disabled:opacity-50"
+                        >
+                          {gonderiliyorId === t.id ? '...' : 'Yayınla'}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => sil(t.id)}
+                          className="text-[11px] text-gray-400 hover:underline"
+                        >
+                          Sil
+                        </button>
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
             </div>
-            <div className="flex items-center gap-3 shrink-0">
-              <button
-                onClick={() => tekYayinla(t)}
-                disabled={gonderiliyorId === t.id || tumuGonderiliyor}
-                className="text-navy text-sm font-semibold hover:underline disabled:opacity-50"
-              >
-                {gonderiliyorId === t.id ? 'Yayınlanıyor...' : 'Yayınla'}
-              </button>
-              <button onClick={() => sil(t.id)} className="text-gray-400 text-sm hover:underline">Sil</button>
-            </div>
-          </div>
-        ))}
+          ))}
+        </div>
       </div>
     </div>
   )
