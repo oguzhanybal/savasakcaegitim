@@ -2655,8 +2655,16 @@ export default function BireBir() {
                   value={aktifPlanAdi}
                   onChange={(e) => setAktifPlanAdi(e.target.value)}
                   placeholder='Plan adı (ör. "Ekim 2. Hafta Programı")'
+                  list="taslak-plan-onerileri"
                   className="px-3 py-1.5 border border-gray-200 rounded-lg text-sm flex-1 min-w-[220px]"
                 />
+                {/* Daha önce kullanılmış plan isimleri öneri olarak çıksın —
+                    aynı ismi harfi harfine tekrar yazmak zor/hataya açık. */}
+                <datalist id="taslak-plan-onerileri">
+                  {[...new Set(taslaklar.filter((t) => t.plan_adi).map((t) => t.plan_adi))].map((ad) => (
+                    <option key={ad} value={ad} />
+                  ))}
+                </datalist>
                 <span className="text-xs text-gray-500">
                   {aktifPlanAdi.trim()
                     ? `Açık — Hızlı Ekle ve formdan eklenen dersler "${aktifPlanAdi.trim()}" planına kaydediliyor (canlıya değil). Ders Programı sayfasına geçtiğinizde de aynı plan açık gelir.`
