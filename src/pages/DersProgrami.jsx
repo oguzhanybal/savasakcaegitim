@@ -1570,6 +1570,13 @@ export default function DersProgrami() {
                       onChange={(e) => setAktifPlanAdi(e.target.value)}
                       placeholder='Plan adı (ör. "Ekim 2. Hafta Programı")'
                       list="taslak-plan-onerileri"
+                      // Tarayıcının KENDİ form-doldurma hafızası (bizim
+                      // datalist'imizden bağımsız) daha önce yazılan ama artık
+                      // silinmiş plan adlarını da öneri olarak göstermeye devam
+                      // edebiliyordu — autoComplete="off" ile bu kapatılıyor,
+                      // öneriler sadece aşağıdaki (güncel, silinenleri
+                      // içermeyen) datalist'ten gelir.
+                      autoComplete="off"
                       className="px-3 py-1.5 border border-gray-200 rounded-lg text-sm flex-1 min-w-[220px]"
                     />
                     {/* Daha önce kullanılmış plan isimleri öneri olarak çıksın —
