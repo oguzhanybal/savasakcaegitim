@@ -6,6 +6,7 @@ import { DERS_PERIYOTLARI } from '../lib/dersPeriyotlari'
 import { useTaslakModu } from '../lib/taslakModu'
 import { saatGoster } from '../lib/saatFormat'
 import MusaitlikTablosu from '../components/MusaitlikTablosu'
+import YoklamaKonuModal from '../components/YoklamaKonuModal'
 
 const GUNLER = ['', 'Pazartesi', 'Salı', 'Çarşamba', 'Perşembe', 'Cuma', 'Cumartesi', 'Pazar']
 const GUNLER_KISA = ['', 'Pzt', 'Sal', 'Çar', 'Per', 'Cum', 'Cmt', 'Paz']
@@ -24,6 +25,21 @@ function saatKisalt(s) {
 function yerelBugunTarihi() {
   const n = new Date()
   return `${n.getFullYear()}-${String(n.getMonth() + 1).padStart(2, '0')}-${String(n.getDate()).padStart(2, '0')}`
+}
+
+// Haftalık ders programı belirli bir TARİHE değil, haftanın GÜNÜNE (1-7) bağlı
+// bir şablon — bir derse tıklanınca yoklama/konu popup'ının hangi TARİH için
+// açılacağını bilmemiz gerekiyor. En doğal varsayım: o gün BUGÜNSE bugün,
+// değilse geriye doğru en yakın (bugün dahil, en fazla 6 gün önceki) aynı gün
+// — yani "bu dersin en son işlendiği gün" (öğretmen isterse popup içindeki
+// tarih kutusundan değiştirebilir).
+function enYakinGunTarihi(gun) {
+  const n = new Date()
+  const bugunGunNo = ((n.getDay() + 6) % 7) + 1
+  let fark = bugunGunNo - gun
+  if (fark < 0) fark += 7
+  const hedef = new Date(n.getFullYear(), n.getMonth(), n.getDate() - fark)
+  return `${hedef.getFullYear()}-${String(hedef.getMonth() + 1).padStart(2, '0')}-${String(hedef.getDate()).padStart(2, '0')}`
 }
 
 function araliklarCakisiyorMu(b1, s1, b2, s2) {
@@ -1243,6 +1259,10 @@ export default function DersProgrami() {
   // Programı sayfasında görsün diye. bire_bir_yoklama'dan, ogrenci_id boş
   // olan tur='soru_cozumu' satırları çekilir.
   const [soruCozumuSeanslarim, setSoruCozumuSeanslarim] = useState([])
+  // Öğretmen kendi ders programındaki bir derse tıklayınca (Tablo/Liste
+  // görünümünde "Yoklama / Konu" butonu) burada o dersin ders_programi
+  // satırı tutulur, popup o satır doluyken açık kalır (bkz. YoklamaKonuModal).
+  const [yoklamaModalDers, setYoklamaModalDers] = useState(null)
 
   function veriyiYenile() {
     if (!ilkYuklemeTamamRef.current) setLoading(true)
@@ -1542,6 +1562,12 @@ export default function DersProgrami() {
         </div>
       </div>
 
+      {isOgretmen && (
+        <div className="bg-blue-50 border border-blue-100 text-blue-800 text-xs rounded-lg px-3 py-2 mb-4">
+          💡 Bir dersinizin yanındaki <strong>"Yoklama / Konu"</strong> butonuna tıklayarak o dersin yoklamasını alabilir, aynı ekrandan o gün işlediğiniz konuyu da işaretleyebilirsiniz.
+        </div>
+      )}
+
       {isYonetici && (
         <>
           <div className="flex bg-white border border-gray-200 rounded-lg overflow-hidden text-sm mb-4 w-fit">
@@ -1755,6 +1781,15 @@ export default function DersProgrami() {
                               <p className="text-[10px] text-gray-400 leading-tight">
                                 {saatGoster(d.baslangic_saat)}–{saatGoster(d.bitis_saat)}
                               </p>
+                              {isOgretmen && d.sinif_id && (
+                                <button
+                                  type="button"
+                                  onClick={() => setYoklamaModalDers(d)}
+                                  className="mt-1 w-full text-[10px] font-semibold text-blue-700 bg-blue-100 hover:bg-blue-200 rounded px-1 py-0.5 transition-colors"
+                                >
+                                  Yoklama / Konu
+                                </button>
+                              )}
                             </div>
                           ))}
                         </div>
@@ -1803,6 +1838,15 @@ export default function DersProgrami() {
                           </button>
                         </div>
                       )}
+                      {isOgretmen && d.sinif_id && (
+                        <button
+                          type="button"
+                          onClick={() => setYoklamaModalDers(d)}
+                          className="text-xs font-semibold text-blue-600 hover:text-blue-800 hover:underline shrink-0"
+                        >
+                          Yoklama / Konu İşle
+                        </button>
+                      )}
                     </div>
                   ))}
                 </div>
@@ -1810,6 +1854,18 @@ export default function DersProgrami() {
             )
           )}
         </div>
+      )}
+
+      {yoklamaModalDers && (
+        <YoklamaKonuModal
+          dersProgramiId={yoklamaModalDers.id}
+          sinifId={yoklamaModalDers.sinif_id}
+          sinifAdi={yoklamaModalDers.sinif_adi}
+          dersAdi={yoklamaModalDers.ders_adi}
+          tarih={enYakinGunTarihi(yoklamaModalDers.gun)}
+          profile={profile}
+          onClose={() => setYoklamaModalDers(null)}
+        />
       )}
     </div>
   )

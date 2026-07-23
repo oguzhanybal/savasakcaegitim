@@ -1,11 +1,14 @@
 import { useEffect, useState } from 'react'
 import { useParams, Link } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
+import { useAuth } from '../lib/AuthContext'
 import { ilkHarfleriBuyukYap } from '../lib/adSoyadFormat'
 import { saatGoster } from '../lib/saatFormat'
+import KonuTakipBolumu from '../components/KonuTakipBolumu'
 
 const GUNLER = ['', 'Pazartesi', 'Salı', 'Çarşamba', 'Perşembe', 'Cuma', 'Cumartesi', 'Pazar']
 const GUNLER_KISA = ['', 'Pzt', 'Sal', 'Çar', 'Per', 'Cum', 'Cmt', 'Paz']
+
 const DERS_ONERILERI = [
   'Matematik', 'Geometri', 'Türkçe/Edebiyat', 'Fizik', 'Kimya', 'Biyoloji', 'Tarih', 'Coğrafya',
   'Felsefe', 'İngilizce', 'Din Kültürü ve Ahlak Bilgisi', 'Beden Eğitimi', 'Fen Bilimleri', 'Sosyal Bilgiler',
@@ -36,6 +39,7 @@ function araliklarCakisiyorMu(b1, s1, b2, s2) {
 
 export default function SinifDetay() {
   const { sinifId } = useParams()
+  const { profile } = useAuth()
   const [sinif, setSinif] = useState(null)
   const [kayitliOgrenciler, setKayitliOgrenciler] = useState([])
   const [tumOgrenciler, setTumOgrenciler] = useState([])
@@ -616,6 +620,17 @@ export default function SinifDetay() {
             })}
           </div>
         </div>
+      </div>
+
+      {/* KONU TAKİP PLANI — bu sınıfın, seçili derste hangi TYT/AYT konusunu
+          işlediğini takip eder. Konu listesi (sıra + ad) tüm sınıflar için
+          ortak/sabit; sadece durum (işlenmedi/işleniyor/işlendi) sınıfa özeldir.
+          Öğretmenler de kendi verdikleri sınıflarda bunu Yoklama Al sayfasından
+          işaretleyebiliyor — burası (yönetici görünümü) aynı veriyi gösterir/
+          düzenler, bileşen ikisi arasında paylaşılıyor (bkz. KonuTakipBolumu.jsx). */}
+      <div className="mt-6">
+        <h2 className="font-semibold text-gray-700 mb-3">Konu Takip Planı</h2>
+        <KonuTakipBolumu sinifId={sinifId} profile={profile} />
       </div>
     </div>
   )

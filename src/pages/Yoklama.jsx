@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../lib/AuthContext'
+import KonuTakipBolumu from '../components/KonuTakipBolumu'
 
 const GUNLER = ['', 'Pazartesi', 'Salı', 'Çarşamba', 'Perşembe', 'Cuma', 'Cumartesi', 'Pazar']
 
@@ -85,6 +86,14 @@ export default function Yoklama() {
     if (error) alert('Hata: ' + error.message)
     else alert('Yoklama kaydedildi.')
   }
+
+  // Konu Takip Planı — yoklama alınan ders saatinin ders_adi'sı, konular
+  // tablosundaki ders_adi'yla BİREBİR aynıysa (örn. tam olarak "Türkçe",
+  // "Felsefe" ya da "Din Kültürü" yazılmışsa) o ders sekmesi otomatik seçili
+  // gelsin diye — TYT/AYT'ye bölünen derslerde ders saatinin adı genelde
+  // sade yazıldığı için (ör. "Matematik") otomatik eşleşme olmaz, öğretmen
+  // o zaman sekmeyi kendisi seçer.
+  const seciliSaatDersAdi = gununSaatleri.find((s) => s.id === seciliSaat)?.ders_adi || ''
 
   return (
     <div>
@@ -193,6 +202,16 @@ export default function Yoklama() {
 
       {!loading && ogrenciler.length === 0 && seciliSinif && (
         <p className="text-gray-400">Bu sınıfa henüz öğrenci eklenmemiş.</p>
+      )}
+
+      {/* KONU TAKİP PLANI — yoklama alırken, o an bu sınıfta işlenen/işlenmiş
+          konuyu da tek ekrandan işaretleyebilsin diye. Öğretmen sadece kendi
+          verdiği sınıflarda güncelleyebilir (bkz. RLS: sinif_konu_durumu). */}
+      {!loading && seciliSinif && (
+        <div className="mt-6">
+          <h2 className="font-semibold text-gray-700 mb-3">Bu Derste İşlenen Konu</h2>
+          <KonuTakipBolumu sinifId={seciliSinif} profile={profile} varsayilanDers={seciliSaatDersAdi} />
+        </div>
       )}
     </div>
   )
