@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { NavLink, Outlet, useLocation } from 'react-router-dom'
 import { useAuth } from '../lib/AuthContext'
 
@@ -24,6 +24,7 @@ function menuOlustur(rol) {
           { to: '/ogretmenler', label: 'Öğretmenler' },
           { to: '/kullanici-olustur', label: 'Kullanıcı Oluştur' },
           { to: '/sifre-sifirla', label: 'Şifre Sıfırla' },
+          { to: '/giris-kayitlari', label: 'Giriş Kayıtları' },
           { to: '/yedek-al', label: 'Yedek Al' },
           { to: '/zil-sistemi', label: 'Zil Sistemi' },
         ],
@@ -35,6 +36,7 @@ function menuOlustur(rol) {
           { to: '/muhasebe', label: 'Muhasebe' },
           { to: '/toplu-ekstre', label: 'Toplu Ekstre' },
           { to: '/gelir-raporu', label: 'Gelir Raporu' },
+          { to: '/giderler', label: 'Giderler' },
           { to: '/aylik-ozet', label: 'Aylık Özet' },
           { to: '/borc-yaslandirma', label: 'Borç Yaşlandırma' },
           { to: '/kantin', label: 'Kantin' },
@@ -175,12 +177,28 @@ function GrupMenuOgesi({ grup, pathname, onLinkTiklandi }) {
 }
 
 export default function Layout() {
-  const { profile, signOut } = useAuth()
+  const { profile, session, signOut } = useAuth()
   const rol = profile?.rol
   const [menuAcik, setMenuAcik] = useState(false)
   const location = useLocation()
 
   const menu = menuOlustur(rol)
+
+  // "Kim ne zaman nereden girdi" kaydı — Giriş Kayıtları sayfası (yönetici)
+  // için. Sekme/tarayıcı oturumu başına SADECE BİR KEZ gönderilir (sessionStorage
+  // ile işaretlenir) — sayfa içinde gezinirken (route değişse de Layout aynı
+  // kalır) veya F5 ile yenilemede TEKRAR göndermez, gereksiz kayıt birikmesin
+  // diye. Hata olursa sessizce yutulur — giriş kaydı asla asıl işi engellemez.
+  useEffect(() => {
+    if (!profile?.id || !session?.access_token) return
+    const ANAHTAR = 'sa_giris_kaydi_gonderildi'
+    if (sessionStorage.getItem(ANAHTAR)) return
+    sessionStorage.setItem(ANAHTAR, '1')
+    fetch('/api/giris-kaydet', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${session.access_token}` },
+    }).catch(() => {})
+  }, [profile?.id, session?.access_token])
 
   return (
     <div className="min-h-screen bg-cream">
