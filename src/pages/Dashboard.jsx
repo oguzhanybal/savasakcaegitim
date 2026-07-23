@@ -39,6 +39,7 @@ export default function Dashboard() {
   const [gecikenOgrenciler, setGecikenOgrenciler] = useState([])
   const [yaklasanVadeSayisi, setYaklasanVadeSayisi] = useState(null)
   const [sonOdemeler, setSonOdemeler] = useState([])
+  const [buAyGider, setBuAyGider] = useState(null)
 
   useEffect(() => {
     if (profile?.rol !== 'yonetici') return
@@ -65,6 +66,17 @@ export default function Dashboard() {
       .then(({ data }) => {
         const toplam = (data || []).reduce((t, o) => t + Number(o.tutar), 0)
         setBuAyTahsilat(toplam)
+      })
+
+    // Bu ay toplam gider (Giderler.jsx'teki 'giderler' tablosu)
+    supabase
+      .from('giderler')
+      .select('tutar')
+      .gte('tarih', ayBasi)
+      .lt('tarih', ayGeleceki)
+      .then(({ data }) => {
+        const toplam = (data || []).reduce((t, g) => t + Number(g.tutar), 0)
+        setBuAyGider(toplam)
       })
 
     // Bugünkü devamsızlık: ÖĞRENCİ bazında sayılır, ders/saat bazında değil.
@@ -234,6 +246,12 @@ export default function Dashboard() {
             value={yaklasanVadeSayisi ?? '...'}
             color={yaklasanVadeSayisi > 0 ? 'text-orange-500' : 'text-navy'}
             to="/toplu-ekstre"
+          />
+          <Card
+            label="Bu Ay Toplam Gider"
+            value={buAyGider !== null ? paraFormat(buAyGider) : '...'}
+            color="text-red-600"
+            to="/giderler"
           />
         </div>
       )}
