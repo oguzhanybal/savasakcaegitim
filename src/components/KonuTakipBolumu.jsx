@@ -132,7 +132,7 @@ export default function KonuTakipBolumu({ sinifId, profile, varsayilanDers }) {
                     ? { metin: 'İşlendi', className: 'bg-green-100 text-green-700' }
                     : durum === 'isleniyor'
                     ? { metin: 'İşleniyor', className: 'bg-orange-100 text-orange-700' }
-                    : { metin: 'İşlenmedi', className: 'bg-gray-100 text-gray-500' }
+                    : { metin: 'İşlenmedi', className: 'bg-red-100 text-red-700' }
                 return (
                   <div key={k.id} className="flex items-center justify-between gap-3 py-2 flex-wrap">
                     <span className="text-sm text-gray-700">
