@@ -1,30 +1,48 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
-import { KONU_DERSLERI } from '../lib/konuDersleri'
+import { KONU_DERSLERI, konuDersleriniFiltrele } from '../lib/konuDersleri'
 
 // Konu Takip Planı'nın paylaşılan bölümü — hem SinifDetay.jsx (yönetici,
-// sınıf sayfasında serbestçe göz atıp işaretleme) hem de Yoklama.jsx
-// (öğretmen, yoklama alırken o an işlediği konuyu işaretleme) tarafından
-// kullanılıyor. "sinifId" hangi sınıfın konu durumunu göstereceğini,
-// "profile" işaretleyen kişiyi (guncelleyen_profile_id) belirler.
-// "varsayilanDers" verilirse (ve KONU_DERSLERI içinde birebir eşleşiyorsa)
-// açılışta o ders sekmesi seçili gelir — Yoklama.jsx, o anki ders saatinin
-// ders_adi'sını buraya verip otomatik seçim öneriyor.
+// sınıf sayfasında serbestçe göz atıp işaretleme) hem de Yoklama.jsx /
+// YoklamaKonuModal.jsx (öğretmen, yoklama alırken o an işlediği konuyu
+// işaretleme) tarafından kullanılıyor. "sinifId" hangi sınıfın konu durumunu
+// göstereceğini, "profile" işaretleyen kişiyi (guncelleyen_profile_id) ve
+// AYNI ZAMANDA görülecek ders sekmelerini belirler: öğretmen SADECE kendi
+// branşıyla ilgili dersleri görür (ör. Fizik öğretmeni Türkçe/Tarih görmez),
+// yönetici (ya da branşı eşleşmiyorsa) TÜM dersleri görür — bkz.
+// konuDersleriniFiltrele. "varsayilanDers" verilirse (ve görünecek dersler
+// arasında birebir eşleşiyorsa) açılışta o ders sekmesi seçili gelir —
+// Yoklama.jsx, o anki ders saatinin ders_adi'sını buraya verip otomatik
+// seçim öneriyor.
 export default function KonuTakipBolumu({ sinifId, profile, varsayilanDers }) {
   const [konular, setKonular] = useState([])
   const [konuDurumlari, setKonuDurumlari] = useState([])
-  const [seciliKonuDersi, setSeciliKonuDersi] = useState(
-    varsayilanDers && KONU_DERSLERI.includes(varsayilanDers) ? varsayilanDers : KONU_DERSLERI[0]
-  )
   const [konuGuncelleniyorId, setKonuGuncelleniyorId] = useState(null)
   const [loading, setLoading] = useState(true)
 
+  const gorunecekDersler =
+    profile?.rol === 'ogretmen' ? konuDersleriniFiltrele(profile?.brans) : KONU_DERSLERI
+
+  const [seciliKonuDersi, setSeciliKonuDersi] = useState(
+    varsayilanDers && gorunecekDersler.includes(varsayilanDers) ? varsayilanDers : gorunecekDersler[0]
+  )
+
   useEffect(() => {
-    if (varsayilanDers && KONU_DERSLERI.includes(varsayilanDers)) {
+    if (varsayilanDers && gorunecekDersler.includes(varsayilanDers)) {
       setSeciliKonuDersi(varsayilanDers)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [varsayilanDers])
+
+  // Seçili sekme, görünecek dersler listesinde artık yoksa (ör. farklı bir
+  // branştaki öğretmen için bileşen yeniden kullanıldıysa) ilk uygun sekmeye
+  // düşülür — aksi halde boş/yanlış bir sekme seçili takılı kalabilirdi.
+  useEffect(() => {
+    if (!gorunecekDersler.includes(seciliKonuDersi)) {
+      setSeciliKonuDersi(gorunecekDersler[0])
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [profile?.rol, profile?.brans])
 
   useEffect(() => {
     if (!sinifId) return
@@ -77,7 +95,7 @@ export default function KonuTakipBolumu({ sinifId, profile, varsayilanDers }) {
         <>
           <div className="flex items-center justify-between flex-wrap gap-2 mb-3">
             <div className="flex flex-wrap gap-1.5">
-              {KONU_DERSLERI.map((ders) => (
+              {gorunecekDersler.map((ders) => (
                 <button
                   key={ders}
                   type="button"
