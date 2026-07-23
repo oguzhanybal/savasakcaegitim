@@ -121,19 +121,34 @@ export default function KonuTakipBolumu({ sinifId, profile, varsayilanDers }) {
               {seciliDersKonulari.map((k) => {
                 const durum = konuDurumMap.get(k.id) || 'islenmedi'
                 const guncelleniyor = konuGuncelleniyorId === k.id
+                // Durum rozeti — hangi 3 durumdan hangisinde olduğu, buton
+                // renklerine bakmadan da tek bakışta net anlaşılsın diye.
+                // Butonlar SADECE aktif oldukları durumda renkleniyor (bkz.
+                // aşağıdaki bg-gray-100 varsayılanı) — önceden pasif haldeyken
+                // de açık renkli oldukları için her satır "işlendi" gibi
+                // görünüyordu, bu karışıklığı gidermek için düzeltildi.
+                const durumRozeti =
+                  durum === 'islendi'
+                    ? { metin: 'İşlendi', className: 'bg-green-100 text-green-700' }
+                    : durum === 'isleniyor'
+                    ? { metin: 'İşleniyor', className: 'bg-orange-100 text-orange-700' }
+                    : { metin: 'İşlenmedi', className: 'bg-gray-100 text-gray-500' }
                 return (
-                  <div key={k.id} className="flex items-center justify-between gap-3 py-2">
+                  <div key={k.id} className="flex items-center justify-between gap-3 py-2 flex-wrap">
                     <span className="text-sm text-gray-700">
                       <span className="text-gray-300 mr-2">{k.sira}.</span>
                       {k.konu_adi}
                     </span>
                     <div className="flex items-center gap-1.5 shrink-0">
+                      <span className={`px-2 py-0.5 rounded-full text-[11px] font-semibold ${durumRozeti.className}`}>
+                        {durumRozeti.metin}
+                      </span>
                       <button
                         type="button"
                         disabled={guncelleniyor}
                         onClick={() => konuDurumuGuncelle(k.id, 'isleniyor')}
                         className={`px-2 py-1 rounded-lg text-xs font-semibold transition-colors disabled:opacity-50 ${
-                          durum === 'isleniyor' ? 'bg-orange-600 text-white' : 'bg-orange-50 text-orange-600 hover:bg-orange-100'
+                          durum === 'isleniyor' ? 'bg-orange-600 text-white' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
                         }`}
                       >
                         İşleniyor
@@ -143,7 +158,7 @@ export default function KonuTakipBolumu({ sinifId, profile, varsayilanDers }) {
                         disabled={guncelleniyor}
                         onClick={() => konuDurumuGuncelle(k.id, 'islendi')}
                         className={`px-2 py-1 rounded-lg text-xs font-semibold transition-colors disabled:opacity-50 ${
-                          durum === 'islendi' ? 'bg-green-600 text-white' : 'bg-green-100 text-green-700 hover:bg-green-200'
+                          durum === 'islendi' ? 'bg-green-600 text-white' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
                         }`}
                       >
                         İşlendi
