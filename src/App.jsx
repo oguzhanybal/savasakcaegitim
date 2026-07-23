@@ -19,6 +19,7 @@ import OgretmenEkstre from './pages/OgretmenEkstre'
 import GenelBireBirEkstre from './pages/GenelBireBirEkstre'
 import TopluEkstre from './pages/TopluEkstre'
 import GelirRaporu from './pages/GelirRaporu'
+import Giderler from './pages/Giderler'
 import AylikOzet from './pages/AylikOzet'
 import BorcYaslandirma from './pages/BorcYaslandirma'
 import KullaniciOlustur from './pages/KullaniciOlustur'
@@ -31,6 +32,7 @@ import HataKitapcigi from './pages/HataKitapcigi'
 import Karnem from './pages/Karnem'
 import Sozlesme from './pages/Sozlesme'
 import SifreSifirla from './pages/SifreSifirla'
+import GirisKayitlari from './pages/GirisKayitlari'
 import SifremiDegistir from './pages/SifremiDegistir'
 import Odev from './pages/Odev'
 import OgrenciZamanCizelgesi from './pages/OgrenciZamanCizelgesi'
@@ -202,6 +204,14 @@ function AnaUygulama() {
             }
           />
           <Route
+            path="giris-kayitlari"
+            element={
+              <Korumali izinliRoller={['yonetici']}>
+                <GirisKayitlari />
+              </Korumali>
+            }
+          />
+          <Route
             path="yedek-al"
             element={
               <Korumali izinliRoller={['yonetici']}>
@@ -238,6 +248,14 @@ function AnaUygulama() {
             element={
               <Korumali izinliRoller={['yonetici']}>
                 <GelirRaporu />
+              </Korumali>
+            }
+          />
+          <Route
+            path="giderler"
+            element={
+              <Korumali izinliRoller={['yonetici']}>
+                <Giderler />
               </Korumali>
             }
           />
