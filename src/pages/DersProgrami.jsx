@@ -1484,6 +1484,15 @@ export default function DersProgrami() {
   // "program"ı kullanıyor — orada müsaitlik kontrolü için okulun tamamını
   // görmesi gerekiyor, bkz. aşağıdaki MusaitlikTablosu/GunlukProgramListesi.)
   const isOgretmen = profile?.rol === 'ogretmen'
+  // Öğretmen için varsayılan görünüm Tablo değil Liste olsun — asıl işi
+  // ("Yoklama / Konu İşle" butonuna tıklamak) Liste görünümünde daha kolay
+  // görülüyor. Sadece BİR KEZ, profil yüklenip öğretmen olduğu anlaşılınca
+  // ayarlanıyor — öğretmen daha sonra elle Tablo'ya geçerse tekrar
+  // Liste'ye zorla döndürülmez.
+  useEffect(() => {
+    if (isOgretmen) setGorunum('liste')
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOgretmen])
   // Öğretmenin Soru Çözümü seansları, sınıf dersleriyle AYNI tabloda/listede
   // görünsün diye (ayrı bir bölüm olarak değil) burada normal ders programı
   // satırlarıyla aynı şekle çevrilip kendiProgram'a ekleniyor. Belirli bir
@@ -1842,7 +1851,7 @@ export default function DersProgrami() {
                         <button
                           type="button"
                           onClick={() => setYoklamaModalDers(d)}
-                          className="text-xs font-semibold text-blue-600 hover:text-blue-800 hover:underline shrink-0"
+                          className="text-xs font-semibold text-white bg-blue rounded-lg px-3 py-1.5 hover:bg-navy transition-colors shrink-0"
                         >
                           Yoklama / Konu İşle
                         </button>
