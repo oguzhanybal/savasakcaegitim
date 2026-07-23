@@ -9,7 +9,7 @@ import { paraFormat } from '../lib/ekstreHesap'
 // <input list="..."> + <datalist>, kısıtlayıcı bir <select> DEĞİL.
 const KATEGORI_ONERILERI = [
   'Kira', 'Elektrik', 'Su', 'Doğalgaz', 'İnternet/Telefon', 'Personel Maaşı',
-  'SGK/Vergi', 'Kırtasiye', 'Temizlik', 'Bakım/Onarım', 'Pazarlama/Reklam', 'Ulaşım', 'Diğer',
+  'SGK/Vergi', 'Kırtasiye', 'Temizlik', 'Bakım/Onarım', 'Kantin', 'Pazarlama/Reklam', 'Ulaşım', 'Diğer',
 ]
 
 function bugunTarihi() {
