@@ -17,3 +17,31 @@ export const KONU_DERSLERI = [
   'Edebiyat (AYT)',
   'Felsefe', 'Din Kültürü',
 ]
+
+// Öğretmenin branşına (KullaniciOlustur.jsx / Ogretmenler.jsx'teki BRANSLAR
+// listesindeki değerlerle BİREBİR aynı yazılmalı) göre HANGİ ders sekmelerini
+// görmesi gerektiği — bir öğretmen kendi branşıyla ilgisi olmayan dersleri
+// görüp kafası karışmasın diye (ör. Fizik öğretmeni Türkçe/Tarih görmesin).
+// "Türkçe/Edebiyat" branşı özel durum: hem Türkçe HEM Edebiyat (AYT) gelir.
+const BRANS_DERS_ESLEME = {
+  'Matematik': ['Matematik (TYT)', 'Matematik (AYT)'],
+  'Geometri': ['Geometri (TYT)', 'Geometri (AYT)'],
+  'Türkçe': ['Türkçe'],
+  'Türkçe/Edebiyat': ['Türkçe', 'Edebiyat (AYT)'],
+  'Fizik': ['Fizik (TYT)', 'Fizik (AYT)'],
+  'Kimya': ['Kimya (TYT)', 'Kimya (AYT)'],
+  'Biyoloji': ['Biyoloji (TYT)', 'Biyoloji (AYT)'],
+  'Tarih': ['Tarih (TYT)', 'Tarih (AYT)'],
+  'Coğrafya': ['Coğrafya (TYT)', 'Coğrafya (AYT)'],
+  'Din Kültürü': ['Din Kültürü'],
+}
+
+// Bir branş adı verilince gösterilecek ders sekmelerini döndürür. Eşleşme
+// yoksa (ör. "Fen Bilimleri", "Sosyal Bilgiler", "Diğer", boş/tanımsız branş,
+// ya da bu fonksiyon hiç çağrılmadan tüm liste isteniyorsa) TÜM ders listesi
+// döndürülür — güvenli varsayılan budur, hiçbir öğretmen kendi branşıyla
+// ilgili bir dersi GÖREMEME hatasına düşmesin diye eşleşmeyen durumlarda
+// kısıtlama YAPILMAZ.
+export function konuDersleriniFiltrele(brans) {
+  return BRANS_DERS_ESLEME[brans] || KONU_DERSLERI
+}
