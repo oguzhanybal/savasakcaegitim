@@ -2608,9 +2608,9 @@ export default function BireBir() {
     // "baslangic" burada tıklanan GERÇEK kutu (vurgu/işaretleme için),
     // "hesaplananBaslangic" ise forma yazılan (bir sonraki zincirleme hesap için).
     setSeciliHucre({ ogretmenId: bilgi.ogretmenId, tarih: bilgi.tarih, baslangic: bilgi.baslangic, hesaplananBaslangic: formBaslangic })
-    requestAnimationFrame(() => {
-      document.getElementById('bire-bir-ekle-formu')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
-    })
+    // NOT: burada bilerek forma otomatik kaydırma (scrollIntoView) YAPILMIYOR —
+    // hızlı seçim zaten müsaitlik tablosundan yapılıyor, sayfanın kendiliğinden
+    // aşağı kayması istenmiyor (kullanıcı isteğiyle kaldırıldı).
   }
 
   // Ders eklendiğinde ya da taslağa kaydedildiğinde hem veriyi yeniler hem de
