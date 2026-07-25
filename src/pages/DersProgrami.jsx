@@ -912,7 +912,7 @@ function GunlukProgramListesi({ program, ogretmenler, atamalar, yoklamalar, ogre
           span++
         }
       }
-      hucreler.push({ baslangic: dilim.baslangic, span, dolu })
+      hucreler.push({ baslangic: dilim.baslangic, bitis: dilim.bitis, span, dolu })
       i += span
     }
     return hucreler
@@ -981,6 +981,16 @@ function GunlukProgramListesi({ program, ogretmenler, atamalar, yoklamalar, ogre
                         // detay hücreye dokununca/basılı tutunca çıkan başlıkta duruyor).
                         <span className="leading-none block px-0.5">
                           <span className="block truncate text-[11px] font-semibold">{h.dolu.etiket}</span>
+                          {/* Ders, sabit periyot ızgarasına TAM oturmayan (ör. elle
+                              periyot dışı bir saate girilmiş, ya da birden fazla
+                              periyotu kaplayan) bir saatteyse, sütun başlığındaki
+                              saatle karışmasın diye gerçek başlangıç–bitiş burada da
+                              gösterilir — MusaitlikTablosu'ndaki aynı çözüm. */}
+                          {(saatKisalt(h.dolu.baslangic) !== h.baslangic || saatKisalt(h.dolu.bitis) !== h.bitis) && (
+                            <span className="block text-[9px] opacity-70 whitespace-nowrap font-normal">
+                              {saatGoster(h.dolu.baslangic)}–{saatGoster(h.dolu.bitis)}
+                            </span>
+                          )}
                         </span>
                       )}
                     </td>
@@ -1059,7 +1069,16 @@ function GunlukProgramListesi({ program, ogretmenler, atamalar, yoklamalar, ogre
                         // gelirse diye truncate (tek satır, ...ile kesme) güvenlik amaçlı
                         // kalıyor; aynı isimde birden fazla kişi olduğunda soyadın hep
                         // görünmesi önemli olduğu için artık ilk isimle sınırlamıyoruz.
-                        <span className="block truncate px-0.5">{h.dolu.etiket}</span>
+                        <span className="block truncate px-0.5">
+                          {h.dolu.etiket}
+                          {/* Masaüstündeki aynı mantık: periyot ızgarasına tam oturmayan
+                              bir saatteyse gerçek saat burada da (küçük) gösterilir. */}
+                          {(saatKisalt(h.dolu.baslangic) !== h.baslangic || saatKisalt(h.dolu.bitis) !== h.bitis) && (
+                            <span className="block text-[8px] opacity-70 whitespace-nowrap font-normal">
+                              {saatGoster(h.dolu.baslangic)}–{saatGoster(h.dolu.bitis)}
+                            </span>
+                          )}
+                        </span>
                       )}
                     </td>
                   ))}
