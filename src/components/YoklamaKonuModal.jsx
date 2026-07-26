@@ -39,6 +39,28 @@ export default function YoklamaKonuModal({ dersProgramiId, sinifId, sinifAdi, de
     setYoklamaDurumu((prev) => ({ ...prev, [ogrenciId]: geldi }))
   }
 
+  // Yoklama kaydedilince yöneticiye e-posta bildirimi gönderir (bkz.
+  // api/yoklama-bildirim.js) — Yoklama.jsx'teki AYNI bildirim, çünkü buradaki
+  // kaydet() de ayrı bir yoklama kaydetme yolu (Ders Programı'ndaki derse
+  // tıklayıp açılan bu popup üzerinden). Başarısız olması yoklama kaydını
+  // asla etkilemez (ateşle-ve-unut, hata sessizce yutulur).
+  function bildirimGonder(kayitlar) {
+    const gelmeyenIsimler = ogrenciler.filter((o) => !kayitlar.find((k) => k.ogrenci_id === o.id)?.geldi).map((o) => o.ad_soyad)
+    fetch('/api/yoklama-bildirim', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        sinifAdi,
+        saatMetni: dersAdi,
+        tarih: seciliTarih,
+        ogretmenAdi: profile?.ad_soyad,
+        gelenSayisi: kayitlar.length - gelmeyenIsimler.length,
+        gelmeyenSayisi: gelmeyenIsimler.length,
+        gelmeyenIsimler,
+      }),
+    }).catch(() => {})
+  }
+
   async function kaydet() {
     setKaydediliyor(true)
     const kayitlar = ogrenciler.map((o) => ({
@@ -56,6 +78,7 @@ export default function YoklamaKonuModal({ dersProgramiId, sinifId, sinifAdi, de
       alert('Hata: ' + error.message)
     } else {
       setKaydedildi(true)
+      bildirimGonder(kayitlar)
     }
   }
 
