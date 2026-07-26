@@ -2027,13 +2027,8 @@ function TekSeferlikDerslerListesi({ yoklamalar, atamalar, onDegisti, sadeceOgre
       <div className="px-4 py-3 border-b border-gray-100 bg-gray-50 flex items-center justify-between flex-wrap gap-3">
         <div>
           <h2 className="font-semibold text-gray-700">
-            {sadeceOgretmenId ? 'Tüm Derslerim' : 'Tüm Bire Bir Dersler'} — Arşiv
+            {sadeceOgretmenId ? 'Tüm Derslerim' : 'Tüm Bire Bir Dersler'}
           </h2>
-          <p className="text-xs text-gray-400 mt-0.5">
-            {sadeceOgretmenId
-              ? 'Hem haftalık tekrarlanan atamalardan işaretlenen dersler hem tekil dersler burada bir arada. "Bekliyor" ileri tarihli, henüz kesinleşmemiş tekil dersler içindir.'
-              : 'Hem haftalık tekrarlanan atamalardan işaretlenen dersler hem tekil dersler burada bir arada. "Bekliyor" ileri tarihli, henüz borç eklenmemiş tekil dersler içindir.'}
-          </p>
         </div>
         <div className="flex gap-1.5 shrink-0 items-center flex-wrap">
           <button

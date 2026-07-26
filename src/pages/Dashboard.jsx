@@ -303,7 +303,7 @@ export default function Dashboard() {
 
       {profile?.rol === 'ogretmen' && (
         <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6">
-          <p className="text-gray-600">Sol menüden "Ders Programım" ile haftalık programınızı, "Yoklama Al" ile bugünkü yoklamayı görebilirsiniz.</p>
+          <p className="text-gray-600">Sol menüden "Ders Programım" ile haftalık programınızı görebilir, dersinize tıklayarak yoklama alabilirsiniz.</p>
         </div>
       )}
 
