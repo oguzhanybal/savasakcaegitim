@@ -194,16 +194,25 @@ export default function Layout() {
   // için. Sekme/tarayıcı oturumu başına SADECE BİR KEZ gönderilir (sessionStorage
   // ile işaretlenir) — sayfa içinde gezinirken (route değişse de Layout aynı
   // kalır) veya F5 ile yenilemede TEKRAR göndermez, gereksiz kayıt birikmesin
-  // diye. Hata olursa sessizce yutulur — giriş kaydı asla asıl işi engellemez.
+  // diye. "Gönderildi" işareti SADECE istek gerçekten BAŞARILI olursa
+  // yazılıyor — önceden (API/tablo henüz kurulmadan önce test edilirken) her
+  // durumda işaretlendiği için, bir kere başarısız olan istek bir daha hiç
+  // denenmiyordu (aynı sekmede kalındığı sürece). Artık başarısız olursa
+  // işaret yazılmıyor, bir sonraki sayfa yüklemesinde/route değişiminde
+  // tekrar denenir. Hata olursa yine sessizce yutulur — giriş kaydı asla asıl
+  // işi engellemez.
   useEffect(() => {
     if (!profile?.id || !session?.access_token) return
     const ANAHTAR = 'sa_giris_kaydi_gonderildi'
     if (sessionStorage.getItem(ANAHTAR)) return
-    sessionStorage.setItem(ANAHTAR, '1')
     fetch('/api/giris-kaydet', {
       method: 'POST',
       headers: { Authorization: `Bearer ${session.access_token}` },
-    }).catch(() => {})
+    })
+      .then((r) => {
+        if (r.ok) sessionStorage.setItem(ANAHTAR, '1')
+      })
+      .catch(() => {})
   }, [profile?.id, session?.access_token])
 
   return (
