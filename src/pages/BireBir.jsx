@@ -1386,11 +1386,11 @@ function OgrenciOgretmenEkstreSecici({ ogrenciler, ogretmenler }) {
       <div className="flex flex-wrap gap-4">
         <div className="flex-1 min-w-[220px]">
           <label className="block text-sm font-medium text-gray-700 mb-1">Öğrenci</label>
-          <div className="flex gap-2">
+          <div className="flex flex-col sm:flex-row gap-2">
             <select
               value={seciliOgrenci}
               onChange={(e) => setSeciliOgrenci(e.target.value)}
-              className="flex-1 px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue bg-white"
+              className="flex-1 min-w-0 w-full px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue bg-white"
             >
               <option value="">Öğrenci seçiniz...</option>
               {ogrenciler.map((o) => (
@@ -1401,7 +1401,7 @@ function OgrenciOgretmenEkstreSecici({ ogrenciler, ogretmenler }) {
               <Link
                 to={`/ekstre/${seciliOgrenci}`}
                 target="_blank"
-                className="bg-navy text-white text-sm font-semibold px-4 py-2 rounded-lg hover:opacity-90 transition-opacity whitespace-nowrap"
+                className="bg-navy text-white text-sm font-semibold px-4 py-2 rounded-lg hover:opacity-90 transition-opacity whitespace-nowrap text-center"
               >
                 Ekstre Görüntüle
               </Link>
@@ -1418,11 +1418,11 @@ function OgrenciOgretmenEkstreSecici({ ogrenciler, ogretmenler }) {
         </div>
         <div className="flex-1 min-w-[220px]">
           <label className="block text-sm font-medium text-gray-700 mb-1">Öğretmen</label>
-          <div className="flex gap-2">
+          <div className="flex flex-col sm:flex-row gap-2">
             <select
               value={seciliOgretmen}
               onChange={(e) => setSeciliOgretmen(e.target.value)}
-              className="flex-1 px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue bg-white"
+              className="flex-1 min-w-0 w-full px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue bg-white"
             >
               <option value="">Öğretmen seçiniz...</option>
               {ogretmenler.map((o) => (
@@ -1433,7 +1433,7 @@ function OgrenciOgretmenEkstreSecici({ ogrenciler, ogretmenler }) {
               <Link
                 to={`/ogretmen-ekstre/${seciliOgretmen}`}
                 target="_blank"
-                className="bg-navy text-white text-sm font-semibold px-4 py-2 rounded-lg hover:opacity-90 transition-opacity whitespace-nowrap"
+                className="bg-navy text-white text-sm font-semibold px-4 py-2 rounded-lg hover:opacity-90 transition-opacity whitespace-nowrap text-center"
               >
                 Ekstre Görüntüle
               </Link>
