@@ -1,8 +1,9 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../lib/AuthContext'
 import { DERS_PERIYOTLARI } from '../lib/dersPeriyotlari'
 import { saatGoster } from '../lib/saatFormat'
+import { useBugununTarihi } from '../lib/bugununTarihi'
 
 // Hem Bire Bir sayfasında hem Ders Programı sayfasında kullanılan ortak bileşen:
 // seçilen bir tarih için, tüm öğretmenlerin o gün hangi saatlerde dolu/boş
@@ -120,7 +121,19 @@ export default function MusaitlikTablosu({
   onTarihDegisti,
 }) {
   const { profile } = useAuth()
-  const [tarih, setTarih] = useState(() => new Date().toISOString().slice(0, 10))
+  // Sayfa açık bırakılıp gece yarısı geçildiğinde, hâlâ "bugün"e bakılıyorsa
+  // (kullanıcı elle başka bir tarihe geçmediyse) gösterilen tarih otomatik
+  // yeni güne ilerlesin diye — bkz. lib/bugununTarihi.js (kullanıcı isteğiyle
+  // eklendi: sayfa açık kalınca hep önceki günü göstermeye devam ediyordu).
+  const bugununTarihi = useBugununTarihi()
+  const oncekiBugunRef = useRef(bugununTarihi)
+  const [tarih, setTarih] = useState(bugununTarihi)
+  useEffect(() => {
+    if (bugununTarihi !== oncekiBugunRef.current) {
+      setTarih((mevcut) => (mevcut === oncekiBugunRef.current ? bugununTarihi : mevcut))
+      oncekiBugunRef.current = bugununTarihi
+    }
+  }, [bugununTarihi])
   const gun = gunNumaraTarihten(tarih)
 
   useEffect(() => {
