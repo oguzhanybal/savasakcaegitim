@@ -70,6 +70,34 @@ export default function Yoklama() {
     setYoklamaBugun((prev) => ({ ...prev, [ogrenciId]: geldi }))
   }
 
+  // Yoklama kaydedilince yöneticiye e-posta bildirimi gönderir (bkz.
+  // api/yoklama-bildirim.js) — kullanıcı isteğiyle eklendi: "anında müdahale
+  // edebilmek" için yönetici, okulda olmasa bile hangi sınıfta yoklama
+  // alındığından ve kimin gelmediğinden anında haberdar olsun diye. Bu
+  // isteğin BAŞARISIZ olması yoklama kaydını asla etkilemez (ateşle-ve-unut,
+  // hata sessizce yutulur) — bildirim, ek bir katman, kritik bir adım değil.
+  function bildirimGonder(kayitlar) {
+    const sinifAdi = siniflar.find((s) => s.id === seciliSinif)?.ad
+    const seciliSaatBilgi = gununSaatleri.find((s) => s.id === seciliSaat)
+    const saatMetni = seciliSaatBilgi
+      ? `${seciliSaatBilgi.baslangic_saat?.slice(0, 5)}–${seciliSaatBilgi.bitis_saat?.slice(0, 5)}`
+      : 'Genel yoklama'
+    const gelmeyenIsimler = ogrenciler.filter((o) => !kayitlar.find((k) => k.ogrenci_id === o.id)?.geldi).map((o) => o.ad_soyad)
+    fetch('/api/yoklama-bildirim', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        sinifAdi,
+        saatMetni,
+        tarih: bugun,
+        ogretmenAdi: profile?.ad_soyad,
+        gelenSayisi: kayitlar.length - gelmeyenIsimler.length,
+        gelmeyenSayisi: gelmeyenIsimler.length,
+        gelmeyenIsimler,
+      }),
+    }).catch(() => {})
+  }
+
   async function kaydet() {
     setKaydediliyor(true)
     const kayitlar = ogrenciler.map((o) => ({
@@ -84,7 +112,10 @@ export default function Yoklama() {
       .upsert(kayitlar, { onConflict: seciliSaat ? 'ders_programi_id,ogrenci_id,tarih' : 'sinif_id,ogrenci_id,tarih' })
     setKaydediliyor(false)
     if (error) alert('Hata: ' + error.message)
-    else alert('Yoklama kaydedildi.')
+    else {
+      alert('Yoklama kaydedildi.')
+      bildirimGonder(kayitlar)
+    }
   }
 
   // Konu Takip Planı — yoklama alınan ders saatinin ders_adi'sı, konular
