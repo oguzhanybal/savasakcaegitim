@@ -58,7 +58,10 @@ function Korumali({ children, izinliRoller }) {
     // olunca kendi içinde doğrudan "/" ana sayfaya yönlendirebiliyor, o zaman
     // state kaybolur. sessionStorage'a da yazıp Layout.jsx'te giriş sonrası
     // bu hedefe dönüyoruz, hangi yoldan "/" ye düşülürse düşülsün çalışsın diye.
-    if (hedef && hedef !== '/giris') {
+    // "/" hedefini KAYDETMİYORUZ: giriş anında oturum bilgisi bir anlığına henüz
+    // güncellenmemiş olabiliyor, o sırada "/" için de bu fonksiyon tetiklenip
+    // asıl hedefi (ör. /gunluk) "/" ile ezip siliyordu — bug buradaydı.
+    if (hedef && hedef !== '/giris' && hedef !== '/') {
       try { sessionStorage.setItem('sa_giris_sonrasi_hedef', hedef) } catch {}
     }
     return <Navigate to="/giris" state={{ from: hedef }} replace />
