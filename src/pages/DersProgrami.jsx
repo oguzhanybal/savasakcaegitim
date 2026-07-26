@@ -2,7 +2,6 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../lib/AuthContext'
 import { ilkHarfleriBuyukYap } from '../lib/adSoyadFormat'
-import { DERS_PERIYOTLARI } from '../lib/dersPeriyotlari'
 import { useTaslakModu } from '../lib/taslakModu'
 import { saatGoster } from '../lib/saatFormat'
 import MusaitlikTablosu from '../components/MusaitlikTablosu'
@@ -94,6 +93,14 @@ function DersEkleForm({
   doldurBilgisi,
   duzenlenenDers,
   onDuzenlemeBitti,
+  // Müsaitlik tablosundaki tarih ok/kutusu her değiştiğinde güncellenen değer
+  // (bkz. DersProgrami() bileşenindeki musaitlikTarihi state'i) — bu formda
+  // ayrı bir Tarih alanı yok (sınıf dersleri belirli bir tarihe değil, haftanın
+  // GÜNÜNE göre tekrar eder), o yüzden en yakın karşılığı olarak, seçilen
+  // tarihin haftanın hangi gününe denk geldiği "Günler" seçimine otomatik
+  // yansıtılır (kullanıcı isteğiyle eklendi — Bire Bir sayfasındaki Tarih
+  // senkronuyla aynı mantık).
+  musaitlikTarihi,
   // Taslak Modu — sayfa üstündeki anahtar açık VE bir plan adı girilmişse,
   // aşağıdaki "Ekle" butonu artık canlı programa değil, taslaklar tablosuna,
   // bu isimle etiketlenerek kaydeder (bkz. DersProgrami() bileşenindeki
@@ -160,6 +167,19 @@ function DersEkleForm({
     sinifSelectRef.current?.focus()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [doldurBilgisi])
+
+  // Müsaitlik tablosundaki ◀/▶ ok ya da tarih kutusuyla tarih değiştirildiğinde
+  // (bir hücreye tıklamadan), "Günler" seçimini o tarihin haftanın hangi
+  // gününe denk geldiğine otomatik ayarlar — elle iki yerde ayrı ayrı
+  // değiştirmeye gerek kalmasın diye (kullanıcı isteğiyle eklendi). Mevcut bir
+  // dersi düzenlerken (duzenleModu) dokunulmuyor — o zaten kendi gününü
+  // yukarıdaki duzenlenenDers effect'inden alıyor.
+  useEffect(() => {
+    if (!musaitlikTarihi || duzenleModu) return
+    const g = gunNumaraTarihten(musaitlikTarihi)
+    if (g) setSeciliGunler([g])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [musaitlikTarihi])
 
   // Tablodaki "Düzenle" ile mevcut bir ders saati seçildiğinde, formu o dersin
   // güncel bilgileriyle doldurur ve "ekleme" değil "güncelleme" moduna geçirir.
@@ -780,15 +800,11 @@ function TaslaklarimDersProgrami({ taslaklar, siniflar, ogretmenler, program, on
 }
 
 // ============================================================================
-// GÜNLÜK PROGRAM LİSTESİ — Müsaitlik Tablosu'ndan FARKLI bir amaca hizmet
-// eden, yöneticiye özel salt-okunur bir görünüm: "bugün kim, kaçta, kiminle
-// ders yapıyor" sorusuna tek bakışta cevap vermek için. Müsaitlik Tablosu
-// ders EKLERKEN kullanılıyor ve boş öğretmeni de göstermek ZORUNDA (boş saate
-// ders yazılacak) — o yüzden ona dokunulmadı. Burada ise tam tersi: o gün
-// HİÇ dersi (ne sınıf ne bire bir) olmayan öğretmen satırı hiç gösterilmiyor.
-// Saat sütunları da sabit 30dk'lık genel dilimler değil, o gün programda
-// GERÇEKTEN var olan ders saatlerinin başlangıç/bitiş noktalarından otomatik
-// oluşuyor — böylece sütun genişlikleri gerçek ders sürelerine göre şekilleniyor.
+// GÜNLÜK PROGRAM LİSTESİ — artık burada TANIMLANMIYOR, kendi ayrı sayfası var
+// (src/pages/GunlukProgram.jsx, /gunluk rotası) — paylaşılan bileşen olarak
+// src/components/GunlukProgramListesi.jsx'e taşındı, aşağıdan import ediliyor.
+// gunNumaraTarihten burada kalmaya devam ediyor çünkü Soru Çözümü seansları
+// işlenirken (aşağıda, ~1500. satır civarı) bu sayfa içinde de kullanılıyor.
 // ============================================================================
 function gunNumaraTarihten(tarihStr) {
   if (!tarihStr) return null
@@ -796,308 +812,6 @@ function gunNumaraTarihten(tarihStr) {
   return g === 0 ? 7 : g
 }
 
-function gunEkle(tarihStr, gunSayisi) {
-  const t = new Date(tarihStr + 'T12:00:00')
-  t.setDate(t.getDate() + gunSayisi)
-  return t.toISOString().slice(0, 10)
-}
-
-function GunlukProgramListesi({ program, ogretmenler, atamalar, yoklamalar, ogrenciAdMap }) {
-  const [tarih, setTarih] = useState(() => new Date().toISOString().slice(0, 10))
-  const gun = gunNumaraTarihten(tarih)
-  // Mobilde 14 sütunu kaydırmadan, okunaklı göstermek mümkün olmadığı için
-  // günü ÜÇE bölüyoruz: sabah (09:00–13:25), erken öğleden sonra (14:15–18:40)
-  // ve akşam (18:50–22:20). Önceden iki parçaya bölünüyordu (5+9 sütun) ama
-  // 9 sütunluk kısımda hücreler o kadar daralıyordu ki kısa bir isim bile
-  // ("Tural" gibi) bazen sığıp bazen "Tu..." diye kesiliyordu — üçe bölünce
-  // en kalabalık parça 5 sütuna iniyor, isimler tutarlı şekilde sığıyor.
-  // Masaüstünde bu ayrım kullanılmaz, tüm gün tek tabloda görünür.
-  //
-  // Varsayılan sekme, sayfa AÇILDIĞI ANDAKİ saate göre otomatik seçilir —
-  // kullanıcı günün hangi bölümündeyse muhtemelen onu görmek istiyordur diye.
-  const [mobilYariGun, setMobilYariGun] = useState(() => {
-    const saat = new Date().getHours()
-    if (saat < 14) return 'sabah'
-    if (saat < 19) return 'ogle1'
-    return 'ogle2'
-  })
-
-  // O günün TÜM olaylarını (sınıf dersi + haftalık bire bir + tek seferlik
-  // bire bir) tek listede topluyoruz.
-  const gununOlaylari = useMemo(() => {
-    const olaylar = []
-    for (const d of program) {
-      if (d.gun !== gun || !d.ogretmen_profile_id) continue
-      olaylar.push({
-        ogretmenId: d.ogretmen_profile_id,
-        baslangic: saatKisalt(d.baslangic_saat),
-        bitis: saatKisalt(d.bitis_saat),
-        // Hangi sınıfa girdiği asıl bilinmek istenen — branş/ders adı zaten
-        // öğretmenden belli oluyor, o yüzden önce sınıf adı gösteriliyor.
-        etiket: d.sinif_adi || d.ders_adi || 'Sınıf dersi',
-        altEtiket: d.ders_adi,
-        tur: 'sinif',
-        renk: 'bg-blue-200 text-blue-900 border-l-4 border-l-blue-600',
-      })
-    }
-    for (const a of atamalar || []) {
-      if (!a.aktif || a.gun !== gun || !a.ogretmen_profile_id) continue
-      olaylar.push({
-        ogretmenId: a.ogretmen_profile_id,
-        baslangic: saatKisalt(a.baslangic_saat),
-        bitis: saatKisalt(a.bitis_saat),
-        etiket: a.ogrenci_adi || 'Bire bir',
-        altEtiket: null,
-        tur: 'birebir',
-        renk: 'bg-orange-200 text-orange-900 border-l-4 border-l-orange-600',
-      })
-    }
-    for (const y of yoklamalar || []) {
-      if (y.atama_id || y.tarih !== tarih || !y.baslangic_saat || !y.bitis_saat || !y.ogretmen_profile_id) continue
-      if (y.durum === 'gelmedi') continue // öğrenci gelmediyse o saat artık boş sayılır
-      // Soru Çözümü: öğrenciye bağlı olmadığı için ogrenciAdMap'te karşılığı
-      // yok — MusaitlikTablosu.jsx'teki aynı düzeltmeyle tutarlı olsun diye
-      // burada da ayrı etiket + renk (mor) kullanılıyor, "Bire bir" değil.
-      const soruCozumuMu = y.tur === 'soru_cozumu'
-      olaylar.push({
-        ogretmenId: y.ogretmen_profile_id,
-        baslangic: saatKisalt(y.baslangic_saat),
-        bitis: saatKisalt(y.bitis_saat),
-        etiket: soruCozumuMu ? 'Soru Çözümü' : (ogrenciAdMap && ogrenciAdMap.get(y.ogrenci_id)) || 'Bire bir',
-        altEtiket: null,
-        tur: soruCozumuMu ? 'soru_cozumu' : 'birebir',
-        renk: soruCozumuMu
-          ? 'bg-purple-200 text-purple-900 border-l-4 border-l-purple-600'
-          : 'bg-orange-200 text-orange-900 border-l-4 border-l-orange-600',
-      })
-    }
-    return olaylar
-  }, [program, atamalar, yoklamalar, gun, tarih, ogrenciAdMap])
-
-  // Saat sütunları: artık o günün olaylarından türetilen değişken sınırlar
-  // DEĞİL, okulun sabit ders periyotları (45dk ders + 10dk teneffüs, bkz.
-  // dersPeriyotlari.js) — Müsaitlik Tablosu ile aynı sütun yapısı.
-  const dilimler = DERS_PERIYOTLARI
-  // 5+5+4 olarak üçe bölünüyor — sadece mobil görünümde kullanılır (bkz. mobilYariGun).
-  const sabahDilimleri = DERS_PERIYOTLARI.slice(0, 5)
-  const ogle1Dilimleri = DERS_PERIYOTLARI.slice(5, 10)
-  const ogle2Dilimleri = DERS_PERIYOTLARI.slice(10)
-  const mobilDilimler =
-    mobilYariGun === 'sabah' ? sabahDilimleri : mobilYariGun === 'ogle1' ? ogle1Dilimleri : ogle2Dilimleri
-
-  // Sadece o gün en az bir olayı (dersi) olan öğretmenler gösterilir.
-  const gorunecekOgretmenler = useMemo(() => {
-    const mesgulIdler = new Set(gununOlaylari.map((o) => o.ogretmenId))
-    return ogretmenler.filter((o) => mesgulIdler.has(o.id))
-  }, [ogretmenler, gununOlaylari])
-
-  function hucreDurumu(ogretmenId, dilim) {
-    return gununOlaylari.find(
-      (o) => o.ogretmenId === ogretmenId && araliklarCakisiyorMu(dilim.baslangic, dilim.bitis, o.baslangic, o.bitis)
-    )
-  }
-
-  // kaynakDilimler opsiyonel: verilmezse tüm gün (masaüstü tablosu), verilirse
-  // sadece o alt küme (mobildeki sabah/öğleden sonra yarısı) için hücreleri
-  // birleştirir — böylece öğle arasının iki yakası asla birbirine karışmaz.
-  function satirHucreleriniOlustur(ogretmenId, kaynakDilimler = dilimler) {
-    const hucreler = []
-    let i = 0
-    while (i < kaynakDilimler.length) {
-      const dilim = kaynakDilimler[i]
-      const dolu = hucreDurumu(ogretmenId, dilim)
-      let span = 1
-      if (dolu) {
-        while (i + span < kaynakDilimler.length && hucreDurumu(ogretmenId, kaynakDilimler[i + span]) === dolu) {
-          span++
-        }
-      }
-      hucreler.push({ baslangic: dilim.baslangic, bitis: dilim.bitis, span, dolu })
-      i += span
-    }
-    return hucreler
-  }
-
-  return (
-    <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden mb-6">
-      <div className="px-4 py-3 border-b border-gray-100 bg-gray-50 flex items-center justify-between flex-wrap gap-3">
-        <div>
-          <h2 className="font-semibold text-gray-700">Günlük Program Listesi</h2>
-          <p className="text-xs text-gray-400 mt-0.5">O gün dersi olan öğretmenler — kiminle, kaçta. Dersi olmayan öğretmenler görünmez.</p>
-        </div>
-        <div className="flex items-center gap-2">
-          <button type="button" onClick={() => setTarih((t) => gunEkle(t, -1))} className="px-2 py-1.5 rounded-lg text-sm text-gray-500 hover:bg-gray-100">
-            ◀
-          </button>
-          <input
-            type="date"
-            value={tarih}
-            onChange={(e) => setTarih(e.target.value)}
-            className="px-2 py-1.5 border border-gray-200 rounded-lg text-sm"
-          />
-          <button type="button" onClick={() => setTarih((t) => gunEkle(t, 1))} className="px-2 py-1.5 rounded-lg text-sm text-gray-500 hover:bg-gray-100">
-            ▶
-          </button>
-          <span className="text-xs text-gray-400 whitespace-nowrap">{GUNLER[gun]}</span>
-        </div>
-      </div>
-      {/* Masaüstünde (md ve üzeri) geniş tablo — yatay dilimler. Mobilde bu
-          tablo 14 sütun yüzünden yana kaydırma gerektirdiği için gizlenir,
-          yerine aşağıdaki dikey/kart görünüm gösterilir (bkz. md:hidden blok). */}
-      <div className="hidden md:block overflow-x-auto">
-        <table className="border-collapse text-xs w-full">
-          <thead>
-            <tr>
-              <th className="sticky left-0 z-10 bg-navy text-white px-3 py-2 text-left font-semibold min-w-[150px]">
-                Öğretmen
-              </th>
-              {dilimler.map((d) => (
-                <th key={d.baslangic} className="bg-navy text-white px-1 py-2 font-medium border-l border-white/10 min-w-[70px]">
-                  {saatGoster(d.baslangic)}–{saatGoster(d.bitis)}
-                </th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {gorunecekOgretmenler.map((o, i) => {
-              const hucreler = satirHucreleriniOlustur(o.id)
-              return (
-                <tr key={o.id} className={i % 2 ? 'bg-gray-50/60' : ''}>
-                  <td className="sticky left-0 z-10 bg-white px-3 py-1.5 font-semibold text-gray-700 border-t border-gray-100 whitespace-nowrap">
-                    {o.ad_soyad}
-                    {o.brans && <span className="block text-[10px] font-normal text-gray-400">{o.brans}</span>}
-                  </td>
-                  {hucreler.map((h) => (
-                    <td
-                      key={h.baslangic}
-                      colSpan={h.span}
-                      title={h.dolu ? `${h.dolu.etiket}${h.dolu.altEtiket ? ' — ' + h.dolu.altEtiket : ''}` : ''}
-                      className={`border-t border-l border-gray-100 text-center align-middle py-1 ${h.dolu ? h.dolu.renk : ''}`}
-                    >
-                      {h.dolu && (
-                        // Sadece BAŞLICA bilgi gösteriliyor: sınıf dersiyse sınıf adı, bire
-                        // birse öğrenci adı — branş/"Bire bir" gibi ikinci bir satır artık
-                        // tekrar yazılmıyor (renk zaten hangisi olduğunu ayırt ediyor, tam
-                        // detay hücreye dokununca/basılı tutunca çıkan başlıkta duruyor).
-                        <span className="leading-none block px-0.5">
-                          <span className="block truncate text-[11px] font-semibold">{h.dolu.etiket}</span>
-                          {/* Ders, sabit periyot ızgarasına TAM oturmayan (ör. elle
-                              periyot dışı bir saate girilmiş, ya da birden fazla
-                              periyotu kaplayan) bir saatteyse, sütun başlığındaki
-                              saatle karışmasın diye gerçek başlangıç–bitiş burada da
-                              gösterilir — MusaitlikTablosu'ndaki aynı çözüm. */}
-                          {(saatKisalt(h.dolu.baslangic) !== h.baslangic || saatKisalt(h.dolu.bitis) !== h.bitis) && (
-                            <span className="block text-[9px] opacity-70 whitespace-nowrap font-normal">
-                              {saatGoster(h.dolu.baslangic)}–{saatGoster(h.dolu.bitis)}
-                            </span>
-                          )}
-                        </span>
-                      )}
-                    </td>
-                  ))}
-                </tr>
-              )
-            })}
-            {gorunecekOgretmenler.length === 0 && (
-              <tr>
-                <td colSpan={dilimler.length + 1} className="px-4 py-4 text-center text-gray-400">
-                  Bu tarihte dersi olan öğretmen bulunamadı.
-                </td>
-              </tr>
-            )}
-          </tbody>
-        </table>
-      </div>
-
-      {/* Mobilde (md altı): masaüstündeki AYNI tablo mantığı, ama tüm 14 sütunu
-          kaydırmadan sığdırmak okunaksız olacağı için gün ikiye bölünür (bkz.
-          mobilYariGun) — her yarıda 5-9 sütun, kaydırma gerekmeden okunaklı sığar. */}
-      <div className="md:hidden">
-        <div className="flex border-b border-gray-100 text-xs">
-          <button
-            type="button"
-            onClick={() => setMobilYariGun('sabah')}
-            className={`flex-1 py-2 font-medium transition-colors ${mobilYariGun === 'sabah' ? 'bg-navy text-white' : 'text-gray-500 hover:bg-gray-50'}`}
-          >
-            {saatGoster(sabahDilimleri[0].baslangic)}–{saatGoster(sabahDilimleri[sabahDilimleri.length - 1].bitis)}
-          </button>
-          <button
-            type="button"
-            onClick={() => setMobilYariGun('ogle1')}
-            className={`flex-1 py-2 font-medium transition-colors ${mobilYariGun === 'ogle1' ? 'bg-navy text-white' : 'text-gray-500 hover:bg-gray-50'}`}
-          >
-            {saatGoster(ogle1Dilimleri[0].baslangic)}–{saatGoster(ogle1Dilimleri[ogle1Dilimleri.length - 1].bitis)}
-          </button>
-          <button
-            type="button"
-            onClick={() => setMobilYariGun('ogle2')}
-            className={`flex-1 py-2 font-medium transition-colors ${mobilYariGun === 'ogle2' ? 'bg-navy text-white' : 'text-gray-500 hover:bg-gray-50'}`}
-          >
-            {saatGoster(ogle2Dilimleri[0].baslangic)}–{saatGoster(ogle2Dilimleri[ogle2Dilimleri.length - 1].bitis)}
-          </button>
-        </div>
-        <table className="border-collapse text-[9px] w-full table-fixed">
-          <thead>
-            <tr>
-              <th className="bg-navy text-white px-1 py-1.5 text-left font-semibold w-14">Öğr.</th>
-              {mobilDilimler.map((d) => (
-                <th key={d.baslangic} className="bg-navy text-white px-0.5 py-1.5 font-medium border-l border-white/10 leading-tight">
-                  {saatGoster(d.baslangic)}
-                </th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {gorunecekOgretmenler.map((o, i) => {
-              const hucreler = satirHucreleriniOlustur(o.id, mobilDilimler)
-              return (
-                <tr key={o.id} className={i % 2 ? 'bg-gray-50/60' : ''}>
-                  <td className="px-1 py-1 font-semibold text-gray-700 border-t border-gray-100 break-words leading-tight">
-                    {o.ad_soyad}
-                  </td>
-                  {hucreler.map((h) => (
-                    <td
-                      key={h.baslangic}
-                      colSpan={h.span}
-                      title={h.dolu ? `${h.dolu.etiket}${h.dolu.altEtiket ? ' — ' + h.dolu.altEtiket : ''}` : ''}
-                      className={`border-t border-l border-gray-100 text-center align-top py-1 leading-tight ${h.dolu ? h.dolu.renk : ''}`}
-                    >
-                      {h.dolu && (
-                        // Gün artık 3 sekmeye bölündüğü için (en kalabalık sekmede 5 sütun,
-                        // eskiden 9'du) her sütun için yaklaşık iki katı yer var — ad soyad
-                        // artık tam gösterilebiliyor. Yine de aşırı uzun bir isim/soyisim
-                        // gelirse diye truncate (tek satır, ...ile kesme) güvenlik amaçlı
-                        // kalıyor; aynı isimde birden fazla kişi olduğunda soyadın hep
-                        // görünmesi önemli olduğu için artık ilk isimle sınırlamıyoruz.
-                        <span className="block truncate px-0.5">
-                          {h.dolu.etiket}
-                          {/* Masaüstündeki aynı mantık: periyot ızgarasına tam oturmayan
-                              bir saatteyse gerçek saat burada da (küçük) gösterilir. */}
-                          {(saatKisalt(h.dolu.baslangic) !== h.baslangic || saatKisalt(h.dolu.bitis) !== h.bitis) && (
-                            <span className="block text-[8px] opacity-70 whitespace-nowrap font-normal">
-                              {saatGoster(h.dolu.baslangic)}–{saatGoster(h.dolu.bitis)}
-                            </span>
-                          )}
-                        </span>
-                      )}
-                    </td>
-                  ))}
-                </tr>
-              )
-            })}
-            {gorunecekOgretmenler.length === 0 && (
-              <tr>
-                <td colSpan={mobilDilimler.length + 1} className="px-4 py-4 text-center text-gray-400">
-                  Bu tarihte dersi olan öğretmen bulunamadı.
-                </td>
-              </tr>
-            )}
-          </tbody>
-        </table>
-      </div>
-    </div>
-  )
-}
 
 // Veli ("çocuğumun") ya da öğrenci ("benim") rolüyle giriş yapan kullanıcıya,
 // sınıf ders programının YANINDA, çocuğun/kendisinin HAFTALIK BİRE BİR ders
@@ -1245,16 +959,17 @@ export default function DersProgrami() {
   // Müsaitlik tablosunda boş bir hücreye tıklanınca buraya { ogretmenId, gun,
   // baslangic, bitis } yazılır; DersEkleForm bunu izleyip kendini otomatik doldurur.
   const [doldurBilgisi, setDoldurBilgisi] = useState(null)
+  // Müsaitlik tablosunun üstündeki ◀/▶ ok ya da tarih kutusuyla seçilen tarih
+  // — aşağıdaki DersEkleForm'daki "Günler" seçimini bununla otomatik senkron
+  // tutmak için (kullanıcı isteğiyle eklendi, bkz. MusaitlikTablosu.jsx'teki
+  // onTarihDegisti).
+  const [musaitlikTarihi, setMusaitlikTarihi] = useState(null)
   // Tıklanan hücreyi tablo üzerinde koyu işaretlemek için — ders eklenene/
   // taslağa kaydedilene kadar kullanıcı "hangi saate ekliyordum" diye
   // unutmasın diye. dersEklendiVeyaTaslaklandi() içinde temizlenir.
   const [seciliHucre, setSeciliHucre] = useState(null)
   // Tablodaki "Düzenle" ile seçilen, formda güncellenmekte olan ders saati.
   const [duzenlenenDers, setDuzenlenenDers] = useState(null)
-  // Yönetici için: "Ders Ekleme Aracı" (Müsaitlik + Ekle formu + Taslaklar) ile
-  // "Günlük Program Listesi" (salt-okunur, o gün dersi olanları gösteren)
-  // görünümü arasında geçiş.
-  const [yonetimGorunum, setYonetimGorunum] = useState('ekle')
   // Taslak Modu — açıkken (VE bir plan adı girilmişse), hem Müsaitlik
   // Tablosu'ndaki "Hızlı Ekle" popup'ı hem aşağıdaki "Yeni Ders Saati Ekle"
   // formu, dersi CANLI programa değil, isimlendirilmiş bu plana (taslaklar
@@ -1598,140 +1313,111 @@ export default function DersProgrami() {
 
       {isYonetici && (
         <>
-          <div className="flex bg-white border border-gray-200 rounded-lg overflow-hidden text-sm mb-4 w-fit">
-            <button
-              type="button"
-              onClick={() => setYonetimGorunum('ekle')}
-              className={`px-3 py-1.5 font-medium transition-colors ${yonetimGorunum === 'ekle' ? 'bg-navy text-white' : 'text-gray-600 hover:bg-gray-50'}`}
-            >
-              Ders Ekleme Aracı
-            </button>
-            <button
-              type="button"
-              onClick={() => setYonetimGorunum('gunluk')}
-              className={`px-3 py-1.5 font-medium transition-colors ${yonetimGorunum === 'gunluk' ? 'bg-navy text-white' : 'text-gray-600 hover:bg-gray-50'}`}
-            >
-              Günlük Program Listesi
-            </button>
-          </div>
-
-          {yonetimGorunum === 'ekle' && (
-            <>
-              {/* Taslak Modu — sayfa üstündeki anahtar, HEM Müsaitlik
-                  Tablosu'ndaki Hızlı Ekle popup'ını HEM aşağıdaki formu
-                  etkiler (bkz. yukarıdaki taslakModuAcik state notu). */}
-              <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-4 mb-4 flex items-center gap-3 flex-wrap">
-                <label className="flex items-center gap-2 cursor-pointer select-none">
-                  <span className="text-sm font-semibold text-gray-700">Taslak Modu</span>
-                  <button
-                    type="button"
-                    onClick={() => setTaslakModuAcik((v) => !v)}
-                    className={`relative w-11 h-6 rounded-full transition-colors ${taslakModuAcik ? 'bg-orange' : 'bg-gray-200'}`}
-                  >
-                    <span
-                      className={`absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform ${
-                        taslakModuAcik ? 'translate-x-5' : ''
-                      }`}
-                    />
-                  </button>
-                </label>
-                {taslakModuAcik && (
-                  <>
-                    <div className="relative flex-1 min-w-[220px]">
-                      <input
-                        type="text"
-                        value={aktifPlanAdi}
-                        onChange={(e) => setAktifPlanAdi(e.target.value)}
-                        onFocus={() => setPlanOneriAcik(true)}
-                        onBlur={() => setTimeout(() => setPlanOneriAcik(false), 150)}
-                        placeholder='Plan adı (ör. "Ekim 2. Hafta Programı")'
-                        // Tarayıcının KENDİ form-doldurma hafızası, aşağıdaki
-                        // özel/React açılır listesinden BAĞIMSIZ olarak,
-                        // silinmiş plan adlarını da hatırlamaya devam
-                        // edebildiği için (native datalist ile yaşanan sorun)
-                        // burada da kapatılıyor.
-                        autoComplete="off"
-                        className="w-full px-3 py-1.5 border border-gray-200 rounded-lg text-sm"
-                      />
-                      {/* Daha önce kullanılmış (hâlâ var olan) plan isimleri
-                          öneri olarak çıksın — Muhasebe.jsx'teki "Öğrenci Seç"
-                          kutusuyla aynı, tamamen kendi yönettiğimiz açılır
-                          liste (native datalist/autofill hafızasına değil,
-                          her zaman güncel taslaklar state'ine dayanır). */}
-                      {planOneriAcik && gorunenPlanOnerileri.length > 0 && (
-                        <div className="absolute z-20 top-full left-0 right-0 mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-48 overflow-y-auto">
-                          {gorunenPlanOnerileri.map((ad) => (
-                            <button
-                              key={ad}
-                              type="button"
-                              onMouseDown={(e) => e.preventDefault()}
-                              onClick={() => {
-                                setAktifPlanAdi(ad)
-                                setPlanOneriAcik(false)
-                              }}
-                              className="w-full text-left px-3 py-1.5 text-sm text-gray-700 hover:bg-orange-50"
-                            >
-                              {ad}
-                            </button>
-                          ))}
-                        </div>
-                      )}
+          {/* Taslak Modu — sayfa üstündeki anahtar, HEM Müsaitlik
+              Tablosu'ndaki Hızlı Ekle popup'ını HEM aşağıdaki formu
+              etkiler (bkz. yukarıdaki taslakModuAcik state notu). */}
+          <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-4 mb-4 flex items-center gap-3 flex-wrap">
+            <label className="flex items-center gap-2 cursor-pointer select-none">
+              <span className="text-sm font-semibold text-gray-700">Taslak Modu</span>
+              <button
+                type="button"
+                onClick={() => setTaslakModuAcik((v) => !v)}
+                className={`relative w-11 h-6 rounded-full transition-colors ${taslakModuAcik ? 'bg-orange' : 'bg-gray-200'}`}
+              >
+                <span
+                  className={`absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform ${
+                    taslakModuAcik ? 'translate-x-5' : ''
+                  }`}
+                />
+              </button>
+            </label>
+            {taslakModuAcik && (
+              <>
+                <div className="relative flex-1 min-w-[220px]">
+                  <input
+                    type="text"
+                    value={aktifPlanAdi}
+                    onChange={(e) => setAktifPlanAdi(e.target.value)}
+                    onFocus={() => setPlanOneriAcik(true)}
+                    onBlur={() => setTimeout(() => setPlanOneriAcik(false), 150)}
+                    placeholder='Plan adı (ör. "Ekim 2. Hafta Programı")'
+                    // Tarayıcının KENDİ form-doldurma hafızası, aşağıdaki
+                    // özel/React açılır listesinden BAĞIMSIZ olarak,
+                    // silinmiş plan adlarını da hatırlamaya devam
+                    // edebildiği için (native datalist ile yaşanan sorun)
+                    // burada da kapatılıyor.
+                    autoComplete="off"
+                    className="w-full px-3 py-1.5 border border-gray-200 rounded-lg text-sm"
+                  />
+                  {/* Daha önce kullanılmış (hâlâ var olan) plan isimleri
+                      öneri olarak çıksın — Muhasebe.jsx'teki "Öğrenci Seç"
+                      kutusuyla aynı, tamamen kendi yönettiğimiz açılır
+                      liste (native datalist/autofill hafızasına değil,
+                      her zaman güncel taslaklar state'ine dayanır). */}
+                  {planOneriAcik && gorunenPlanOnerileri.length > 0 && (
+                    <div className="absolute z-20 top-full left-0 right-0 mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-48 overflow-y-auto">
+                      {gorunenPlanOnerileri.map((ad) => (
+                        <button
+                          key={ad}
+                          type="button"
+                          onMouseDown={(e) => e.preventDefault()}
+                          onClick={() => {
+                            setAktifPlanAdi(ad)
+                            setPlanOneriAcik(false)
+                          }}
+                          className="w-full text-left px-3 py-1.5 text-sm text-gray-700 hover:bg-orange-50"
+                        >
+                          {ad}
+                        </button>
+                      ))}
                     </div>
-                    <span className="text-xs text-gray-500">
-                      {aktifPlanAdi.trim()
-                        ? `Açık — Hızlı Ekle ve formdan eklenen dersler "${aktifPlanAdi.trim()}" planına kaydediliyor (canlıya değil). Bire Bir sayfasına geçtiğinizde de aynı plan açık gelir.`
-                        : 'Devam etmeden önce bir plan adı yazın.'}
-                    </span>
-                  </>
-                )}
-              </div>
-              <MusaitlikTablosu
-                ogretmenler={ogretmenler}
-                dersProgrami={program}
-                atamalar={bireBirAtamalar}
-                yoklamalar={bireBirYoklamalar}
-                ogrenciAdMap={ogrenciAdMap}
-                onHucreTikla={hucreTiklandi}
-                secili={seciliHucre}
-                ogrenciler={ogrenciler}
-                siniflar={siniflar}
-                hizliEkleEtkin
-                onHizliEklendi={dersEklendiVeyaTaslaklandi}
-                taslakModuAcik={taslakModuAcik}
-                aktifPlanAdi={aktifPlanAdi.trim()}
-                taslaklar={taslaklar}
-              />
-              <DersEkleForm
-                siniflar={siniflar}
-                ogretmenler={ogretmenler}
-                program={program}
-                taslaklar={taslaklar}
-                onEklendi={dersEklendiVeyaTaslaklandi}
-                doldurBilgisi={doldurBilgisi}
-                duzenlenenDers={duzenlenenDers}
-                onDuzenlemeBitti={() => setDuzenlenenDers(null)}
-                taslakModuAcik={taslakModuAcik}
-                aktifPlanAdi={aktifPlanAdi}
-              />
-              <TaslaklarimDersProgrami
-                taslaklar={taslaklar.filter((t) => t.tur === 'sinif')}
-                siniflar={siniflar}
-                ogretmenler={ogretmenler}
-                program={program}
-                onDegisti={veriyiYenile}
-              />
-            </>
-          )}
-
-          {yonetimGorunum === 'gunluk' && (
-            <GunlukProgramListesi
-              program={program}
-              ogretmenler={ogretmenler}
-              atamalar={bireBirAtamalar}
-              yoklamalar={bireBirYoklamalar}
-              ogrenciAdMap={ogrenciAdMap}
-            />
-          )}
+                  )}
+                </div>
+                <span className="text-xs text-gray-500">
+                  {aktifPlanAdi.trim()
+                    ? `Açık — Hızlı Ekle ve formdan eklenen dersler "${aktifPlanAdi.trim()}" planına kaydediliyor (canlıya değil). Bire Bir sayfasına geçtiğinizde de aynı plan açık gelir.`
+                    : 'Devam etmeden önce bir plan adı yazın.'}
+                </span>
+              </>
+            )}
+          </div>
+          <MusaitlikTablosu
+            ogretmenler={ogretmenler}
+            dersProgrami={program}
+            atamalar={bireBirAtamalar}
+            yoklamalar={bireBirYoklamalar}
+            ogrenciAdMap={ogrenciAdMap}
+            onHucreTikla={hucreTiklandi}
+            secili={seciliHucre}
+            ogrenciler={ogrenciler}
+            siniflar={siniflar}
+            hizliEkleEtkin
+            onHizliEklendi={dersEklendiVeyaTaslaklandi}
+            taslakModuAcik={taslakModuAcik}
+            aktifPlanAdi={aktifPlanAdi.trim()}
+            taslaklar={taslaklar}
+            onTarihDegisti={setMusaitlikTarihi}
+          />
+          <DersEkleForm
+            siniflar={siniflar}
+            ogretmenler={ogretmenler}
+            program={program}
+            taslaklar={taslaklar}
+            onEklendi={dersEklendiVeyaTaslaklandi}
+            doldurBilgisi={doldurBilgisi}
+            duzenlenenDers={duzenlenenDers}
+            onDuzenlemeBitti={() => setDuzenlenenDers(null)}
+            musaitlikTarihi={musaitlikTarihi}
+            taslakModuAcik={taslakModuAcik}
+            aktifPlanAdi={aktifPlanAdi}
+          />
+          <TaslaklarimDersProgrami
+            taslaklar={taslaklar.filter((t) => t.tur === 'sinif')}
+            siniflar={siniflar}
+            ogretmenler={ogretmenler}
+            program={program}
+            onDegisti={veriyiYenile}
+          />
         </>
       )}
 

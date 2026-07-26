@@ -247,6 +247,11 @@ function BireBirDersEkleForm({
   taslaklar = [],
   onEklendi,
   doldurBilgisi,
+  // Müsaitlik tablosundaki tarih ok/kutusu her değiştiğinde güncellenen değer
+  // (bkz. BireBir() bileşenindeki musaitlikTarihi state'i) — aşağıdaki "Hayır,
+  // sadece bu sefer" modundaki Tarih alanını, elle değiştirmeye gerek kalmadan
+  // müsaitlik tablosuyla aynı tutmak için (kullanıcı isteğiyle eklendi).
+  musaitlikTarihi,
   // Taslak Modu — sayfa üstündeki anahtar açık VE bir plan adı girilmişse,
   // aşağıdaki "Ekle" butonu artık canlı kayda değil, taslaklar tablosuna, bu
   // isimle etiketlenerek kaydeder (bkz. BireBir() bileşenindeki
@@ -326,6 +331,15 @@ function BireBirDersEkleForm({
     ogrenciSelectRef.current?.focus()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [doldurBilgisi])
+
+  // Müsaitlik tablosundaki ◀/▶ ok ya da tarih kutusuyla tarih değiştirildiğinde
+  // (bir hücreye tıklamadan), "Hayır, sadece bu sefer" alanındaki Tarih'i de
+  // otomatik aynı tarihe getirir — elle iki yerde ayrı ayrı değiştirmeye gerek
+  // kalmasın diye (kullanıcı isteğiyle eklendi).
+  useEffect(() => {
+    if (musaitlikTarihi) setTarih(musaitlikTarihi)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [musaitlikTarihi])
 
   // Seçilen öğretmenin, seçili günlerden İLKİNDEKİ tüm dolu saatlerini (hem
   // sınıf dersleri hem diğer bire bir dersleri) tek listede gösterir — sadece
@@ -2489,6 +2503,11 @@ export default function BireBir() {
   // baslangic, bitis } yazılır; BireBirDersEkleForm bunu izleyip kendini otomatik
   // doldurur (bkz. hucreTiklandi).
   const [doldurBilgisi, setDoldurBilgisi] = useState(null)
+  // Müsaitlik tablosunun üstündeki ◀/▶ ok ya da tarih kutusuyla seçilen tarih
+  // — aşağıdaki BireBirDersEkleForm'un "Hayır, sadece bu sefer" modundaki
+  // Tarih alanını bununla otomatik senkron tutmak için (kullanıcı isteğiyle
+  // eklendi, bkz. MusaitlikTablosu.jsx'teki onTarihDegisti).
+  const [musaitlikTarihi, setMusaitlikTarihi] = useState(null)
   // Tıklanan hücreyi tablo üzerinde koyu işaretlemek için — ders eklenene/
   // taslağa kaydedilene kadar kullanıcı "hangi saate ekliyordum" diye
   // unutmasın diye. dersEklendi() içinde temizlenir.
@@ -2742,6 +2761,7 @@ export default function BireBir() {
             taslakModuAcik={taslakModuAcik}
             aktifPlanAdi={aktifPlanAdi.trim()}
             taslaklar={taslaklar}
+            onTarihDegisti={setMusaitlikTarihi}
           />
           <BireBirDersEkleForm
             ogrenciler={ogrenciler}
@@ -2753,6 +2773,7 @@ export default function BireBir() {
             taslaklar={taslaklar}
             onEklendi={dersEklendiVeyaTaslaklandi}
             doldurBilgisi={doldurBilgisi}
+            musaitlikTarihi={musaitlikTarihi}
             taslakModuAcik={taslakModuAcik}
             aktifPlanAdi={aktifPlanAdi}
           />
