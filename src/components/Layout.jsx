@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { NavLink, Outlet, useLocation } from 'react-router-dom'
+import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import { useAuth } from '../lib/AuthContext'
 
 const ROL_ETIKET = {
@@ -187,8 +187,24 @@ export default function Layout() {
   const rol = profile?.rol
   const [menuAcik, setMenuAcik] = useState(false)
   const location = useLocation()
+  const navigate = useNavigate()
 
   const menu = menuOlustur(rol)
+
+  // Giriş yapmadan doğrudan bir sayfaya (ör. /gunluk) girilirse, sistem önce
+  // giriş ekranına atıyor. Giriş başarılı olunca Login sayfası kendi içinde
+  // hep "/" ana sayfaya yönlendirdiği için, kullanıcı asıl gitmek istediği
+  // sayfayı unutup ana sayfada buluyordu kendini. Giriş öncesi App.jsx'te
+  // sessionStorage'a yazılan hedefi burada, oturum açılır açılmaz okuyup
+  // o sayfaya yönlendiriyoruz.
+  useEffect(() => {
+    if (!session) return
+    let hedef = null
+    try { hedef = sessionStorage.getItem('sa_giris_sonrasi_hedef') } catch {}
+    if (!hedef) return
+    try { sessionStorage.removeItem('sa_giris_sonrasi_hedef') } catch {}
+    if (hedef !== location.pathname) navigate(hedef, { replace: true })
+  }, [session])
 
   // "Kim ne zaman nereden girdi" kaydı — Giriş Kayıtları sayfası (yönetici)
   // için. Sekme/tarayıcı oturumu başına SADECE BİR KEZ gönderilir (sessionStorage
