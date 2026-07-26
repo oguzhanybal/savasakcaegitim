@@ -1,4 +1,4 @@
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
+import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom'
 import { AuthProvider, useAuth } from './lib/AuthContext'
 import Layout from './components/Layout'
 import Login from './pages/Login'
@@ -50,16 +50,18 @@ function Yukleniyor() {
 
 function Korumali({ children, izinliRoller }) {
   const { session, profile, loading } = useAuth()
+  const location = useLocation()
   if (loading) return <Yukleniyor />
-  if (!session) return <Navigate to="/giris" replace />
+  if (!session) return <Navigate to="/giris" state={{ from: location.pathname + location.search }} replace />
   if (izinliRoller && !izinliRoller.includes(profile?.rol)) return <Navigate to="/" replace />
   return children
 }
 
 function GirisSayfasi() {
   const { session, loading } = useAuth()
+  const location = useLocation()
   if (loading) return <Yukleniyor />
-  if (session) return <Navigate to="/" replace />
+  if (session) return <Navigate to={location.state?.from || '/'} replace />
   return <Login />
 }
 
