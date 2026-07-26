@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../lib/AuthContext'
 import { DERS_PERIYOTLARI } from '../lib/dersPeriyotlari'
@@ -111,10 +111,22 @@ export default function MusaitlikTablosu({
   taslakModuAcik = false,
   aktifPlanAdi = '',
   taslaklar = [],
+  // Opsiyonel — bu tabloda gösterilen tarih değiştikçe (◀/▶ ok ya da tarih
+  // kutusu) üst sayfaya haber verir. Ör. DersProgrami.jsx/BireBir.jsx bunu
+  // kullanarak, altındaki "Ders Ekle" formunun tarih/gün alanını buradaki
+  // tarihle otomatik aynı tutar (kullanıcı isteğiyle eklendi — müsaitlik
+  // tablosunda tarihi değiştirince, aşağıdaki formun da elle değiştirmeye
+  // gerek kalmadan aynı tarihe/güne geçmesi isteniyor).
+  onTarihDegisti,
 }) {
   const { profile } = useAuth()
   const [tarih, setTarih] = useState(() => new Date().toISOString().slice(0, 10))
   const gun = gunNumaraTarihten(tarih)
+
+  useEffect(() => {
+    onTarihDegisti && onTarihDegisti(tarih)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tarih])
 
   // "Hızlı Ekle" kutusu — bkz. yukarıdaki hizliEkleEtkin açıklaması.
   const [hizliPopup, setHizliPopup] = useState(null)
