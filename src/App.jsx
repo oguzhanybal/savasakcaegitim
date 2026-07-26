@@ -52,7 +52,17 @@ function Korumali({ children, izinliRoller }) {
   const { session, profile, loading } = useAuth()
   const location = useLocation()
   if (loading) return <Yukleniyor />
-  if (!session) return <Navigate to="/giris" state={{ from: location.pathname + location.search }} replace />
+  if (!session) {
+    const hedef = location.pathname + location.search
+    // Sadece location.state'e güvenmek yetmiyor — Login.jsx giriş başarılı
+    // olunca kendi içinde doğrudan "/" ana sayfaya yönlendirebiliyor, o zaman
+    // state kaybolur. sessionStorage'a da yazıp Layout.jsx'te giriş sonrası
+    // bu hedefe dönüyoruz, hangi yoldan "/" ye düşülürse düşülsün çalışsın diye.
+    if (hedef && hedef !== '/giris') {
+      try { sessionStorage.setItem('sa_giris_sonrasi_hedef', hedef) } catch {}
+    }
+    return <Navigate to="/giris" state={{ from: hedef }} replace />
+  }
   if (izinliRoller && !izinliRoller.includes(profile?.rol)) return <Navigate to="/" replace />
   return children
 }
