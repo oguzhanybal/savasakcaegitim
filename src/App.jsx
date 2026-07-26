@@ -9,6 +9,7 @@ import Muhasebe from './pages/Muhasebe'
 import Siniflar from './pages/Siniflar'
 import SinifDetay from './pages/SinifDetay'
 import DersProgrami from './pages/DersProgrami'
+import GunlukProgram from './pages/GunlukProgram'
 import Yoklama from './pages/Yoklama'
 import YoklamaRaporu from './pages/YoklamaRaporu'
 import Makbuz from './pages/Makbuz'
@@ -292,6 +293,14 @@ function AnaUygulama() {
             }
           />
           <Route path="program" element={<DersProgrami />} />
+          <Route
+            path="gunluk"
+            element={
+              <Korumali izinliRoller={['yonetici']}>
+                <GunlukProgram />
+              </Korumali>
+            }
+          />
           <Route path="sifremi-degistir" element={<SifremiDegistir />} />
           <Route
             path="bire-bir"
