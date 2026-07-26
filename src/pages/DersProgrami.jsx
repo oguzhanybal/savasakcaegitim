@@ -6,6 +6,7 @@ import { useTaslakModu } from '../lib/taslakModu'
 import { saatGoster } from '../lib/saatFormat'
 import MusaitlikTablosu from '../components/MusaitlikTablosu'
 import YoklamaKonuModal from '../components/YoklamaKonuModal'
+import GunlukProgramListesi from '../components/GunlukProgramListesi'
 
 const GUNLER = ['', 'Pazartesi', 'Salı', 'Çarşamba', 'Perşembe', 'Cuma', 'Cumartesi', 'Pazar']
 const GUNLER_KISA = ['', 'Pzt', 'Sal', 'Çar', 'Per', 'Cum', 'Cmt', 'Paz']
@@ -964,6 +965,14 @@ export default function DersProgrami() {
   // tutmak için (kullanıcı isteğiyle eklendi, bkz. MusaitlikTablosu.jsx'teki
   // onTarihDegisti).
   const [musaitlikTarihi, setMusaitlikTarihi] = useState(null)
+  // Yönetici için: "Ders Ekleme Aracı" (Müsaitlik + Ekle formu + Taslaklar) ile
+  // "Günlük Program Listesi" (salt-okunur, o gün dersi olanları gösteren)
+  // görünümü arasında geçiş. NOT: bu özellik bir ara ayrı bir sayfaya
+  // (savasakcaportal.com/gunluk) taşınmıştı, ama kullanıcı vazgeçip eski
+  // sekme haline dönmeyi istedi — GunlukProgramListesi bileşeni (artık ayrı
+  // dosyada, src/components/GunlukProgramListesi.jsx) burada AYNI ŞEKİLDE
+  // sekme olarak render ediliyor.
+  const [yonetimGorunum, setYonetimGorunum] = useState('ekle')
   // Tıklanan hücreyi tablo üzerinde koyu işaretlemek için — ders eklenene/
   // taslağa kaydedilene kadar kullanıcı "hangi saate ekliyordum" diye
   // unutmasın diye. dersEklendiVeyaTaslaklandi() içinde temizlenir.
@@ -1313,111 +1322,142 @@ export default function DersProgrami() {
 
       {isYonetici && (
         <>
-          {/* Taslak Modu — sayfa üstündeki anahtar, HEM Müsaitlik
-              Tablosu'ndaki Hızlı Ekle popup'ını HEM aşağıdaki formu
-              etkiler (bkz. yukarıdaki taslakModuAcik state notu). */}
-          <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-4 mb-4 flex items-center gap-3 flex-wrap">
-            <label className="flex items-center gap-2 cursor-pointer select-none">
-              <span className="text-sm font-semibold text-gray-700">Taslak Modu</span>
-              <button
-                type="button"
-                onClick={() => setTaslakModuAcik((v) => !v)}
-                className={`relative w-11 h-6 rounded-full transition-colors ${taslakModuAcik ? 'bg-orange' : 'bg-gray-200'}`}
-              >
-                <span
-                  className={`absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform ${
-                    taslakModuAcik ? 'translate-x-5' : ''
-                  }`}
-                />
-              </button>
-            </label>
-            {taslakModuAcik && (
-              <>
-                <div className="relative flex-1 min-w-[220px]">
-                  <input
-                    type="text"
-                    value={aktifPlanAdi}
-                    onChange={(e) => setAktifPlanAdi(e.target.value)}
-                    onFocus={() => setPlanOneriAcik(true)}
-                    onBlur={() => setTimeout(() => setPlanOneriAcik(false), 150)}
-                    placeholder='Plan adı (ör. "Ekim 2. Hafta Programı")'
-                    // Tarayıcının KENDİ form-doldurma hafızası, aşağıdaki
-                    // özel/React açılır listesinden BAĞIMSIZ olarak,
-                    // silinmiş plan adlarını da hatırlamaya devam
-                    // edebildiği için (native datalist ile yaşanan sorun)
-                    // burada da kapatılıyor.
-                    autoComplete="off"
-                    className="w-full px-3 py-1.5 border border-gray-200 rounded-lg text-sm"
-                  />
-                  {/* Daha önce kullanılmış (hâlâ var olan) plan isimleri
-                      öneri olarak çıksın — Muhasebe.jsx'teki "Öğrenci Seç"
-                      kutusuyla aynı, tamamen kendi yönettiğimiz açılır
-                      liste (native datalist/autofill hafızasına değil,
-                      her zaman güncel taslaklar state'ine dayanır). */}
-                  {planOneriAcik && gorunenPlanOnerileri.length > 0 && (
-                    <div className="absolute z-20 top-full left-0 right-0 mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-48 overflow-y-auto">
-                      {gorunenPlanOnerileri.map((ad) => (
-                        <button
-                          key={ad}
-                          type="button"
-                          onMouseDown={(e) => e.preventDefault()}
-                          onClick={() => {
-                            setAktifPlanAdi(ad)
-                            setPlanOneriAcik(false)
-                          }}
-                          className="w-full text-left px-3 py-1.5 text-sm text-gray-700 hover:bg-orange-50"
-                        >
-                          {ad}
-                        </button>
-                      ))}
-                    </div>
-                  )}
-                </div>
-                <span className="text-xs text-gray-500">
-                  {aktifPlanAdi.trim()
-                    ? `Açık — Hızlı Ekle ve formdan eklenen dersler "${aktifPlanAdi.trim()}" planına kaydediliyor (canlıya değil). Bire Bir sayfasına geçtiğinizde de aynı plan açık gelir.`
-                    : 'Devam etmeden önce bir plan adı yazın.'}
-                </span>
-              </>
-            )}
+          <div className="flex bg-white border border-gray-200 rounded-lg overflow-hidden text-sm mb-4 w-fit">
+            <button
+              type="button"
+              onClick={() => setYonetimGorunum('ekle')}
+              className={`px-3 py-1.5 font-medium transition-colors ${yonetimGorunum === 'ekle' ? 'bg-navy text-white' : 'text-gray-600 hover:bg-gray-50'}`}
+            >
+              Ders Ekleme Aracı
+            </button>
+            <button
+              type="button"
+              onClick={() => setYonetimGorunum('gunluk')}
+              className={`px-3 py-1.5 font-medium transition-colors ${yonetimGorunum === 'gunluk' ? 'bg-navy text-white' : 'text-gray-600 hover:bg-gray-50'}`}
+            >
+              Günlük Program Listesi
+            </button>
           </div>
-          <MusaitlikTablosu
-            ogretmenler={ogretmenler}
-            dersProgrami={program}
-            atamalar={bireBirAtamalar}
-            yoklamalar={bireBirYoklamalar}
-            ogrenciAdMap={ogrenciAdMap}
-            onHucreTikla={hucreTiklandi}
-            secili={seciliHucre}
-            ogrenciler={ogrenciler}
-            siniflar={siniflar}
-            hizliEkleEtkin
-            onHizliEklendi={dersEklendiVeyaTaslaklandi}
-            taslakModuAcik={taslakModuAcik}
-            aktifPlanAdi={aktifPlanAdi.trim()}
-            taslaklar={taslaklar}
-            onTarihDegisti={setMusaitlikTarihi}
-          />
-          <DersEkleForm
-            siniflar={siniflar}
-            ogretmenler={ogretmenler}
-            program={program}
-            taslaklar={taslaklar}
-            onEklendi={dersEklendiVeyaTaslaklandi}
-            doldurBilgisi={doldurBilgisi}
-            duzenlenenDers={duzenlenenDers}
-            onDuzenlemeBitti={() => setDuzenlenenDers(null)}
-            musaitlikTarihi={musaitlikTarihi}
-            taslakModuAcik={taslakModuAcik}
-            aktifPlanAdi={aktifPlanAdi}
-          />
-          <TaslaklarimDersProgrami
-            taslaklar={taslaklar.filter((t) => t.tur === 'sinif')}
-            siniflar={siniflar}
-            ogretmenler={ogretmenler}
-            program={program}
-            onDegisti={veriyiYenile}
-          />
+
+          {yonetimGorunum === 'ekle' && (
+            <>
+              {/* Taslak Modu — sayfa üstündeki anahtar, HEM Müsaitlik
+                  Tablosu'ndaki Hızlı Ekle popup'ını HEM aşağıdaki formu
+                  etkiler (bkz. yukarıdaki taslakModuAcik state notu). */}
+              <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-4 mb-4 flex items-center gap-3 flex-wrap">
+                <label className="flex items-center gap-2 cursor-pointer select-none">
+                  <span className="text-sm font-semibold text-gray-700">Taslak Modu</span>
+                  <button
+                    type="button"
+                    onClick={() => setTaslakModuAcik((v) => !v)}
+                    className={`relative w-11 h-6 rounded-full transition-colors ${taslakModuAcik ? 'bg-orange' : 'bg-gray-200'}`}
+                  >
+                    <span
+                      className={`absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform ${
+                        taslakModuAcik ? 'translate-x-5' : ''
+                      }`}
+                    />
+                  </button>
+                </label>
+                {taslakModuAcik && (
+                  <>
+                    <div className="relative flex-1 min-w-[220px]">
+                      <input
+                        type="text"
+                        value={aktifPlanAdi}
+                        onChange={(e) => setAktifPlanAdi(e.target.value)}
+                        onFocus={() => setPlanOneriAcik(true)}
+                        onBlur={() => setTimeout(() => setPlanOneriAcik(false), 150)}
+                        placeholder='Plan adı (ör. "Ekim 2. Hafta Programı")'
+                        // Tarayıcının KENDİ form-doldurma hafızası, aşağıdaki
+                        // özel/React açılır listesinden BAĞIMSIZ olarak,
+                        // silinmiş plan adlarını da hatırlamaya devam
+                        // edebildiği için (native datalist ile yaşanan sorun)
+                        // burada da kapatılıyor.
+                        autoComplete="off"
+                        className="w-full px-3 py-1.5 border border-gray-200 rounded-lg text-sm"
+                      />
+                      {/* Daha önce kullanılmış (hâlâ var olan) plan isimleri
+                          öneri olarak çıksın — Muhasebe.jsx'teki "Öğrenci Seç"
+                          kutusuyla aynı, tamamen kendi yönettiğimiz açılır
+                          liste (native datalist/autofill hafızasına değil,
+                          her zaman güncel taslaklar state'ine dayanır). */}
+                      {planOneriAcik && gorunenPlanOnerileri.length > 0 && (
+                        <div className="absolute z-20 top-full left-0 right-0 mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-48 overflow-y-auto">
+                          {gorunenPlanOnerileri.map((ad) => (
+                            <button
+                              key={ad}
+                              type="button"
+                              onMouseDown={(e) => e.preventDefault()}
+                              onClick={() => {
+                                setAktifPlanAdi(ad)
+                                setPlanOneriAcik(false)
+                              }}
+                              className="w-full text-left px-3 py-1.5 text-sm text-gray-700 hover:bg-orange-50"
+                            >
+                              {ad}
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                    <span className="text-xs text-gray-500">
+                      {aktifPlanAdi.trim()
+                        ? `Açık — Hızlı Ekle ve formdan eklenen dersler "${aktifPlanAdi.trim()}" planına kaydediliyor (canlıya değil). Bire Bir sayfasına geçtiğinizde de aynı plan açık gelir.`
+                        : 'Devam etmeden önce bir plan adı yazın.'}
+                    </span>
+                  </>
+                )}
+              </div>
+              <MusaitlikTablosu
+                ogretmenler={ogretmenler}
+                dersProgrami={program}
+                atamalar={bireBirAtamalar}
+                yoklamalar={bireBirYoklamalar}
+                ogrenciAdMap={ogrenciAdMap}
+                onHucreTikla={hucreTiklandi}
+                secili={seciliHucre}
+                ogrenciler={ogrenciler}
+                siniflar={siniflar}
+                hizliEkleEtkin
+                onHizliEklendi={dersEklendiVeyaTaslaklandi}
+                taslakModuAcik={taslakModuAcik}
+                aktifPlanAdi={aktifPlanAdi.trim()}
+                taslaklar={taslaklar}
+                onTarihDegisti={setMusaitlikTarihi}
+              />
+              <DersEkleForm
+                siniflar={siniflar}
+                ogretmenler={ogretmenler}
+                program={program}
+                taslaklar={taslaklar}
+                onEklendi={dersEklendiVeyaTaslaklandi}
+                doldurBilgisi={doldurBilgisi}
+                duzenlenenDers={duzenlenenDers}
+                onDuzenlemeBitti={() => setDuzenlenenDers(null)}
+                musaitlikTarihi={musaitlikTarihi}
+                taslakModuAcik={taslakModuAcik}
+                aktifPlanAdi={aktifPlanAdi}
+              />
+              <TaslaklarimDersProgrami
+                taslaklar={taslaklar.filter((t) => t.tur === 'sinif')}
+                siniflar={siniflar}
+                ogretmenler={ogretmenler}
+                program={program}
+                onDegisti={veriyiYenile}
+              />
+            </>
+          )}
+
+          {yonetimGorunum === 'gunluk' && (
+            <GunlukProgramListesi
+              program={program}
+              ogretmenler={ogretmenler}
+              atamalar={bireBirAtamalar}
+              yoklamalar={bireBirYoklamalar}
+              ogrenciAdMap={ogrenciAdMap}
+            />
+          )}
         </>
       )}
 

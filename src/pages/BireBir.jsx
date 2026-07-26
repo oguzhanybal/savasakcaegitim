@@ -4,6 +4,7 @@ import { supabase } from '../lib/supabase'
 import { useAuth } from '../lib/AuthContext'
 import { useTaslakModu } from '../lib/taslakModu'
 import { saatGoster } from '../lib/saatFormat'
+import { useBugununTarihi } from '../lib/bugununTarihi'
 import {
   paraFormat,
   bireBirGunlukOzetMesajiOlustur,
@@ -1576,7 +1577,7 @@ function AtamaListesi({ atamalar, ogretmenler, dersProgrami, onDegisti }) {
   }
 
   return (
-    <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-x-auto mb-6">
+    <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden mb-6">
       <div className="px-4 py-3 border-b border-gray-100 bg-gray-50">
         <h2 className="font-semibold text-gray-700">Haftalık Tekrar Eden Dersler (Atamalar)</h2>
         <p className="text-xs text-gray-400 mt-0.5">
@@ -1584,6 +1585,12 @@ function AtamaListesi({ atamalar, ogretmenler, dersProgrami, onDegisti }) {
           girildiyse "Düzenle" ile gün/saat/öğretmen/ücreti düzeltebilirsiniz.
         </p>
       </div>
+      {/* Mobilde parmakla yana kaydırılabilsin diye — overflow-x-auto ÖNCEDEN
+          başlıktaki metinle (h2/p) BİRLİKTE üstteki karta konmuştu, bu yüzden
+          kaydırma çalışmıyordu (kullanıcı isteğiyle düzeltildi). Artık SADECE
+          tabloyu saran ayrı bir kaydırma kutusu var — MusaitlikTablosu.jsx'teki
+          gibi aynı desen. */}
+      <div className="overflow-x-auto">
       <table className="w-full text-sm min-w-[760px]">
         <thead>
           <tr className="text-left text-gray-500">
@@ -1642,6 +1649,7 @@ function AtamaListesi({ atamalar, ogretmenler, dersProgrami, onDegisti }) {
           )}
         </tbody>
       </table>
+      </div>
     </div>
   )
 }
@@ -2231,7 +2239,19 @@ function TekSeferlikDerslerListesi({ yoklamalar, atamalar, onDegisti, sadeceOgre
 // ============================================================================
 function DersHatirlatmaPaneli({ atamalar, yoklamalar, sadeceOgretmenId }) {
   const [mod, setMod] = useState('gun') // 'gun' | 'hafta'
-  const [tarih, setTarih] = useState(() => yerelBugunTarihi())
+  // Sayfa açık bırakılıp gece yarısı geçildiğinde, hâlâ "bugün"e bakılıyorsa
+  // (kullanıcı elle başka bir tarihe geçmediyse) gösterilen tarih otomatik
+  // yeni güne ilerlesin diye — bkz. lib/bugununTarihi.js (kullanıcı isteğiyle
+  // eklendi: sayfa açık kalınca hep önceki günü göstermeye devam ediyordu).
+  const bugununTarihi = useBugununTarihi()
+  const oncekiBugunRef = useRef(bugununTarihi)
+  const [tarih, setTarih] = useState(bugununTarihi)
+  useEffect(() => {
+    if (bugununTarihi !== oncekiBugunRef.current) {
+      setTarih((mevcut) => (mevcut === oncekiBugunRef.current ? bugununTarihi : mevcut))
+      oncekiBugunRef.current = bugununTarihi
+    }
+  }, [bugununTarihi])
 
   const bugun = yerelBugunTarihi()
   const yarin = gunEkle(bugun, 1)
