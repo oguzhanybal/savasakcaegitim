@@ -66,6 +66,13 @@ function Korumali({ children, izinliRoller }) {
     }
     return <Navigate to="/giris" state={{ from: hedef }} replace />
   }
+  // Rol kontrolü gereken bir sayfaya (ör. /gunluk, sadece yönetici) tam giriş
+  // yaptıktan hemen sonra düşülürse, "session" zaten hazır ama "profile"
+  // (rol bilgisini içeren kayıt) veritabanından ayrı bir istekle geliyor ve
+  // o istek henüz bitmemiş olabiliyor. Bu anda profile hâlâ boş olduğu için
+  // rol kontrolü yanlışlıkla "izni yok" sanıp kullanıcıyı ana sayfaya
+  // atıyordu — asıl bug buradaydı. profile gelene kadar bekleriz.
+  if (izinliRoller && !profile) return <Yukleniyor />
   if (izinliRoller && !izinliRoller.includes(profile?.rol)) return <Navigate to="/" replace />
   return children
 }
