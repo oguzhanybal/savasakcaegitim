@@ -48,6 +48,7 @@ function menuOlustur(rol) {
         ogeler: [
           { to: '/siniflar', label: 'Sınıf Listesi' },
           { to: '/program', label: 'Ders Programı' },
+          { to: '/gunluk', label: 'Günlük Program' },
           { to: '/bire-bir', label: 'Bire Bir' },
           { to: '/odev', label: 'Ödevler' },
         ],
@@ -92,7 +93,12 @@ function menuOlustur(rol) {
       { tur: 'link', to: '/program', label: 'Ders Programım' },
       { tur: 'link', to: '/bire-bir', label: 'Bire Bir Derslerim' },
       { tur: 'link', to: '/odev', label: 'Ödevler' },
-      { tur: 'link', to: '/yoklama', label: 'Yoklama Al' },
+      // "Yoklama Al" linki öğretmen menüsünden kaldırıldı — artık yoklama,
+      // Ders Programım'da derse tıklayıp açılan popup'tan (Yoklama ve Konu
+      // İşaretleme) alınıyor, bu ayrı sayfa öğretmen için gereksiz kaldı
+      // (kullanıcı isteğiyle kaldırıldı). Yönetici menüsündeki "Yoklama Al"
+      // linkine dokunulmadı — yönetici istediği sınıfı seçip kendisi de
+      // yoklama alabilsin diye orada duruyor.
       { tur: 'link', to: '/yoklama-raporu', label: 'Yoklama Raporu' },
       { tur: 'link', to: '/sifremi-degistir', label: 'Şifremi Değiştir' },
     ]
