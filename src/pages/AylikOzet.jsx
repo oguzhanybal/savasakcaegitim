@@ -109,7 +109,8 @@ export default function AylikOzet() {
         @media print {
           .no-print { display: none !important; }
           body { background: white !important; }
-          .aylik-ozet-blok, .aylik-ozet-blok table, tr { break-inside: avoid; page-break-inside: avoid; }
+          tr { break-inside: avoid; page-break-inside: avoid; }
+          .aylik-ozet-baslik { break-after: avoid; page-break-after: avoid; }
         }
       `}</style>
       <div className="max-w-3xl mx-auto">
@@ -193,8 +194,8 @@ export default function AylikOzet() {
               </p>
             )}
 
-            <div className={`aylik-ozet-blok ${sekme === 'birebir' ? '' : 'hidden'}`}>
-              <p className="font-bold text-navy mb-2">Bire Bir Dersler — Öğrenci Bazında</p>
+            <div className={sekme === 'birebir' ? '' : 'hidden'}>
+              <p className="font-bold text-navy mb-2 aylik-ozet-baslik">Bire Bir Dersler — Öğrenci Bazında</p>
               {bireBirOgrenciler.length === 0 ? (
                 <p className="text-sm text-gray-400">Bu ay bire bir ders kaydı yok.</p>
               ) : (
@@ -226,8 +227,8 @@ export default function AylikOzet() {
               )}
             </div>
 
-            <div className={`aylik-ozet-blok ${sekme === 'kantin' ? '' : 'hidden'}`}>
-              <p className="font-bold text-navy mb-2">Kantin — Öğrenci Bazında</p>
+            <div className={sekme === 'kantin' ? '' : 'hidden'}>
+              <p className="font-bold text-navy mb-2 aylik-ozet-baslik">Kantin — Öğrenci Bazında</p>
               {kantinOgrenciler.length === 0 ? (
                 <p className="text-sm text-gray-400">Bu ay kantin alışı kaydı yok.</p>
               ) : (

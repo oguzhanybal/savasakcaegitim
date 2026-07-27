@@ -152,12 +152,22 @@ export default function Ekstre() {
 
   return (
     <div className="min-h-screen bg-cream py-8 px-4">
+      {/* Yazdırma/PDF: "Bire Bir Ders Dökümü" / "Kantin Alış Dökümü" başlıklarını
+          altındaki koca tabloyla (onlarca satır olabilir, tek sayfaya sığmaz)
+          birlikte "break-inside: avoid" ile bölünmez işaretlemek hataydı —
+          tarayıcı koca bloğu bir sonraki sayfaya itiyor, o da sığmayınca
+          başlığı yalnız bırakıp tabloyu bir sayfa daha sonraya itiyordu;
+          sonuç 1-2 neredeyse bomboş sayfa. Artık sadece başlığın hemen
+          altındaki içerikten KOPMASINI (break-after: avoid) engelliyoruz —
+          başlık tek başına sayfa sonunda kalmıyor, koca tablo ise gerektiği
+          yerde sayfalar arasında doğal olarak bölünebiliyor. Satırların
+          (tr) kendi içinde bölünmesini engellemek yeterli ve zaten oradaydı. */}
       <style>{`
         @media print {
           .no-print { display: none !important; }
           body { background: white !important; }
           tr { break-inside: avoid; page-break-inside: avoid; }
-          .bire-bir-baslik-blok { break-inside: avoid; page-break-inside: avoid; }
+          .bire-bir-baslik-metni { break-after: avoid; page-break-after: avoid; }
         }
       `}</style>
       <div className="max-w-2xl mx-auto">
@@ -287,8 +297,8 @@ export default function Ekstre() {
             )}
 
             {bireBirDersleri.length > 0 && (
-              <div className="mt-6 bire-bir-baslik-blok">
-                <p className="font-semibold text-navy mb-2">Bire Bir Ders Dökümü</p>
+              <div className="mt-6">
+                <p className="font-semibold text-navy mb-2 bire-bir-baslik-metni">Bire Bir Ders Dökümü</p>
                 <BireBirDersDokumu
                   dersler={bireBirDersleri.map((d) => ({
                     ...d,
@@ -304,8 +314,8 @@ export default function Ekstre() {
             )}
 
             {kantinAlislari.length > 0 && (
-              <div className="mt-6 bire-bir-baslik-blok">
-                <p className="font-semibold text-navy mb-2">Kantin Alış Dökümü</p>
+              <div className="mt-6">
+                <p className="font-semibold text-navy mb-2 bire-bir-baslik-metni">Kantin Alış Dökümü</p>
                 <KantinAlisDokumu alislar={kantinAlislari} hedefDonem={`${seciliAy}-01`} />
               </div>
             )}
