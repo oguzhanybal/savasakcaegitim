@@ -61,9 +61,15 @@ export default function KantinAlisDokumu({ alislar, hedefDonem = null }) {
 
   return (
     <div>
+      {/* Yazdırma/PDF: dönem başlığı ile altındaki (onlarca satır olabilen,
+          tek sayfaya sığmayan) tabloyu birlikte "break-inside: avoid" ile
+          bölünmez işaretlemek hataydı — bkz. BireBirDersDokumu.jsx'teki aynı
+          düzeltme. Sadece tek bir satırın bölünmesini (tr) ve başlığın hemen
+          altındaki içerikten kopmasını (break-after: avoid) engelliyoruz. */}
       <style>{`
         @media print {
-          .kantin-donem-blok, .kantin-donem-blok table, tr { break-inside: avoid; page-break-inside: avoid; }
+          tr { break-inside: avoid; page-break-inside: avoid; }
+          .kantin-donem-baslik { break-after: avoid; page-break-after: avoid; }
         }
       `}</style>
       <div className="no-print flex gap-1.5 mb-3 items-center flex-wrap">
@@ -111,8 +117,8 @@ export default function KantinAlisDokumu({ alislar, hedefDonem = null }) {
       {gosterilenGruplar.map(([anahtar, grupAlislari]) => {
         const grupToplami = grupAlislari.reduce((t, a) => t + a.tutar, 0)
         return (
-          <div key={anahtar} className="mb-4 kantin-donem-blok">
-            <div className="flex justify-between items-center mb-1">
+          <div key={anahtar} className="mb-4">
+            <div className="flex justify-between items-center mb-1 kantin-donem-baslik">
               <p className="font-semibold text-navy text-sm capitalize">{etiketUret(anahtar)}</p>
               <p className="text-xs text-gray-500">{grupAlislari.length} alış</p>
             </div>

@@ -102,9 +102,20 @@ export default function BireBirDersDokumu({
 
   return (
     <div>
+      {/* Yazdırma/PDF: sadece TEK BİR SATIRIN ortadan bölünmesini engelliyoruz
+          (tr, break-inside:avoid). Ay/hafta başlığı ile altındaki uzun tabloyu
+          (onlarca satır olabilir, tek sayfaya asla sığmaz) TÜMÜYLE bölünmez
+          işaretlemek büyük bir hataydı — tarayıcı o zaman koca bloğu bir
+          sonraki sayfaya itiyor, o da sığmayınca başlığı yalnız bırakıp tabloyu
+          bir sayfa daha sonraya itiyordu; sonuç 1-2 neredeyse bomboş sayfa
+          oluyordu. Bunun yerine sadece başlığın hemen altındaki içerikten
+          KOPARILMASINI (break-after: avoid) engelliyoruz — başlık artık tek
+          başına sayfa sonunda kalmıyor ama koca tablo gerektiği yerde sayfalar
+          arasında doğal olarak bölünebiliyor. */}
       <style>{`
         @media print {
-          .bire-bir-donem-blok, .bire-bir-donem-blok table, tr { break-inside: avoid; page-break-inside: avoid; }
+          tr { break-inside: avoid; page-break-inside: avoid; }
+          .bire-bir-donem-baslik { break-after: avoid; page-break-after: avoid; }
         }
       `}</style>
       <div className="no-print flex gap-1.5 mb-3 items-center flex-wrap">
@@ -211,15 +222,15 @@ export default function BireBirDersDokumu({
         )
 
         return (
-          <div key={anahtar} className="mb-4 bire-bir-donem-blok">
-            <div className="flex justify-between items-center mb-1">
+          <div key={anahtar} className="mb-4">
+            <div className="flex justify-between items-center mb-1 bire-bir-donem-baslik">
               <p className="font-semibold text-navy text-sm capitalize">{etiketUret(anahtar)}</p>
               <p className="text-xs text-gray-500">{grupDersleri.length} ders</p>
             </div>
             {gunGunMu ? (
               gunGruplari.map(([tarih, gunDersleri]) => (
-                <div key={tarih} className="mb-3 last:mb-0 bire-bir-donem-blok">
-                  <p className="text-sm font-bold text-white bg-navy rounded-lg px-3 py-1.5 mb-2 tracking-wide">
+                <div key={tarih} className="mb-3 last:mb-0">
+                  <p className="text-sm font-bold text-white bg-navy rounded-lg px-3 py-1.5 mb-2 tracking-wide bire-bir-donem-baslik">
                     {GUNLER[gunNumaraTarihten(tarih)]} — {new Date(tarih + 'T12:00:00').toLocaleDateString('tr-TR')}
                   </p>
                   {tabloYaz(gunDersleri, gunDersleri.reduce((t, d) => t + d.tutar, 0))}
