@@ -28,6 +28,48 @@ function Card({ label, value, color = 'text-navy', to }) {
   return <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">{icerik}</div>
 }
 
+// Ana sayfaya girer girmez okul geneli mali/istatistik özet ekranı bir anlık
+// yanına biri (ör. veli) gelmiş yöneticinin canına okuyabiliyordu — bu yüzden
+// yönetici için bu bölüm varsayılan olarak GİZLİ geliyor, "Görüntülemek için
+// tıklayın" diyen bir kapak gösteriyor. Sayfaya her girişte (F5, başka
+// sayfadan dönüş vb.) yeniden gizli başlar — kalıcı bir "hep açık kalsın"
+// tercihi YOK, bilinçli olarak: yanında biri varken tekrar unutmasın diye.
+function GizliBolum({ children }) {
+  const [acik, setAcik] = useState(false)
+
+  if (!acik) {
+    return (
+      <button
+        type="button"
+        onClick={() => setAcik(true)}
+        className="w-full bg-white rounded-2xl border border-dashed border-gray-200 p-8 flex flex-col items-center justify-center gap-2 text-gray-400 hover:border-navy/30 hover:text-navy transition-colors"
+      >
+        <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+          <rect x="4" y="10" width="16" height="10" rx="2" />
+          <path d="M8 10V7a4 4 0 0 1 8 0v3" />
+        </svg>
+        <span className="font-semibold text-sm">Okul geneli özet bilgileri görüntülemek için tıklayın</span>
+        <span className="text-xs text-gray-400">Ödeme, yoklama ve istatistik bilgileri gizli tutuluyor</span>
+      </button>
+    )
+  }
+
+  return (
+    <div>
+      <div className="flex justify-end mb-2">
+        <button
+          type="button"
+          onClick={() => setAcik(false)}
+          className="text-xs text-gray-400 hover:text-navy hover:underline"
+        >
+          Gizle
+        </button>
+      </div>
+      {children}
+    </div>
+  )
+}
+
 export default function Dashboard() {
   const { profile } = useAuth()
   const [ogrenciSayisi, setOgrenciSayisi] = useState(null)
@@ -219,86 +261,88 @@ export default function Dashboard() {
       <p className="text-gray-500 mb-6">Bugün {new Date().toLocaleDateString('tr-TR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}</p>
 
       {profile?.rol === 'yonetici' && (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-          <Card label="Aktif Öğrenci" value={ogrenciSayisi ?? '...'} to="/ogrenciler" />
-          <Card label="Toplam Sınıf" value={sinifSayisi ?? '...'} to="/siniflar" />
-          <Card
-            label="Bu Ay Toplam Tahsilat"
-            value={buAyTahsilat !== null ? paraFormat(buAyTahsilat) : '...'}
-            color="text-green-600"
-            to="/gelir-raporu"
-          />
-          <Card
-            label="Bugünkü Devamsızlık"
-            value={bugunDevamsizlik ?? '...'}
-            color={bugunDevamsizlik > 0 ? 'text-red-500' : 'text-navy'}
-            to="/yoklama-raporu"
-          />
-          <Card label="Toplam Öğretmen" value={ogretmenSayisi ?? '...'} to="/ogretmenler" />
-          <Card
-            label="Geciken Ödeme"
-            value={gecikenOdemeSayisi ?? '...'}
-            color={gecikenOdemeSayisi > 0 ? 'text-red-500' : 'text-navy'}
-            to="/toplu-ekstre"
-          />
-          <Card
-            label="Yaklaşan Vade (7 gün)"
-            value={yaklasanVadeSayisi ?? '...'}
-            color={yaklasanVadeSayisi > 0 ? 'text-orange-500' : 'text-navy'}
-            to="/toplu-ekstre"
-          />
-          <Card
-            label="Bu Ay Toplam Gider"
-            value={buAyGider !== null ? paraFormat(buAyGider) : '...'}
-            color="text-red-600"
-            to="/giderler"
-          />
-        </div>
-      )}
+        <GizliBolum>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            <Card label="Aktif Öğrenci" value={ogrenciSayisi ?? '...'} to="/ogrenciler" />
+            <Card label="Toplam Sınıf" value={sinifSayisi ?? '...'} to="/siniflar" />
+            <Card
+              label="Bu Ay Toplam Tahsilat"
+              value={buAyTahsilat !== null ? paraFormat(buAyTahsilat) : '...'}
+              color="text-green-600"
+              to="/gelir-raporu"
+            />
+            <Card
+              label="Bugünkü Devamsızlık"
+              value={bugunDevamsizlik ?? '...'}
+              color={bugunDevamsizlik > 0 ? 'text-red-500' : 'text-navy'}
+              to="/yoklama-raporu"
+            />
+            <Card label="Toplam Öğretmen" value={ogretmenSayisi ?? '...'} to="/ogretmenler" />
+            <Card
+              label="Geciken Ödeme"
+              value={gecikenOdemeSayisi ?? '...'}
+              color={gecikenOdemeSayisi > 0 ? 'text-red-500' : 'text-navy'}
+              to="/toplu-ekstre"
+            />
+            <Card
+              label="Yaklaşan Vade (7 gün)"
+              value={yaklasanVadeSayisi ?? '...'}
+              color={yaklasanVadeSayisi > 0 ? 'text-orange-500' : 'text-navy'}
+              to="/toplu-ekstre"
+            />
+            <Card
+              label="Bu Ay Toplam Gider"
+              value={buAyGider !== null ? paraFormat(buAyGider) : '...'}
+              color="text-red-600"
+              to="/giderler"
+            />
+          </div>
 
-      {profile?.rol === 'yonetici' && (gecikenOgrenciler.length > 0 || sonOdemeler.length > 0) && (
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mt-4">
-          {sonOdemeler.length > 0 && (
-            <div className="bg-white rounded-2xl border border-green-100 shadow-sm p-5">
-              <h3 className="font-semibold text-green-600 mb-3">Son Alınan Ödemeler</h3>
-              <div className="divide-y divide-gray-100">
-                {sonOdemeler.map((o) => (
-                  <Link
-                    key={o.id}
-                    to={`/ekstre/${o.ogrenci_id}`}
-                    className="flex items-center justify-between py-2 px-2 -mx-2 rounded-lg hover:bg-gray-50 transition-colors"
-                  >
-                    <span className="text-sm text-gray-700">
-                      {o.ogrenciler?.ad_soyad || '—'}
-                      <span className="block text-[11px] text-gray-400 font-normal">
-                        {o.kalem || '—'} · {new Date(o.tarih).toLocaleDateString('tr-TR')}
-                      </span>
-                    </span>
-                    <span className="text-sm font-semibold text-green-600 whitespace-nowrap">{paraFormat(o.tutar)}</span>
-                  </Link>
-                ))}
-              </div>
+          {(gecikenOgrenciler.length > 0 || sonOdemeler.length > 0) && (
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mt-4">
+              {sonOdemeler.length > 0 && (
+                <div className="bg-white rounded-2xl border border-green-100 shadow-sm p-5">
+                  <h3 className="font-semibold text-green-600 mb-3">Son Alınan Ödemeler</h3>
+                  <div className="divide-y divide-gray-100">
+                    {sonOdemeler.map((o) => (
+                      <Link
+                        key={o.id}
+                        to={`/ekstre/${o.ogrenci_id}`}
+                        className="flex items-center justify-between py-2 px-2 -mx-2 rounded-lg hover:bg-gray-50 transition-colors"
+                      >
+                        <span className="text-sm text-gray-700">
+                          {o.ogrenciler?.ad_soyad || '—'}
+                          <span className="block text-[11px] text-gray-400 font-normal">
+                            {o.kalem || '—'} · {new Date(o.tarih).toLocaleDateString('tr-TR')}
+                          </span>
+                        </span>
+                        <span className="text-sm font-semibold text-green-600 whitespace-nowrap">{paraFormat(o.tutar)}</span>
+                      </Link>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {gecikenOgrenciler.length > 0 && (
+                <div className="bg-white rounded-2xl border border-red-100 shadow-sm p-5">
+                  <h3 className="font-semibold text-red-600 mb-3">Geciken Ödemesi Olanlar ({gecikenOgrenciler.length})</h3>
+                  <div className="divide-y divide-gray-100">
+                    {gecikenOgrenciler.map((o) => (
+                      <Link
+                        key={o.id}
+                        to={`/ekstre/${o.id}`}
+                        className="flex items-center justify-between py-2 px-2 -mx-2 rounded-lg hover:bg-gray-50 transition-colors"
+                      >
+                        <span className="text-sm text-gray-700">{o.adSoyad}</span>
+                        <span className="text-sm font-semibold text-red-500">{paraFormat(o.tutar)}</span>
+                      </Link>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
           )}
-
-          {gecikenOgrenciler.length > 0 && (
-            <div className="bg-white rounded-2xl border border-red-100 shadow-sm p-5">
-              <h3 className="font-semibold text-red-600 mb-3">Geciken Ödemesi Olanlar ({gecikenOgrenciler.length})</h3>
-              <div className="divide-y divide-gray-100">
-                {gecikenOgrenciler.map((o) => (
-                  <Link
-                    key={o.id}
-                    to={`/ekstre/${o.id}`}
-                    className="flex items-center justify-between py-2 px-2 -mx-2 rounded-lg hover:bg-gray-50 transition-colors"
-                  >
-                    <span className="text-sm text-gray-700">{o.adSoyad}</span>
-                    <span className="text-sm font-semibold text-red-500">{paraFormat(o.tutar)}</span>
-                  </Link>
-                ))}
-              </div>
-            </div>
-          )}
-        </div>
+        </GizliBolum>
       )}
 
       {profile?.rol === 'ogretmen' && (

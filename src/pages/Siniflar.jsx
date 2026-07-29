@@ -19,6 +19,7 @@ export default function Siniflar() {
   const [duzenlenenId, setDuzenlenenId] = useState(null)
   const [duzenleAd, setDuzenleAd] = useState('')
   const [duzenleOgretmen, setDuzenleOgretmen] = useState('')
+  const [ogrenciSayilari, setOgrenciSayilari] = useState({})
 
   async function yukle() {
     setLoading(true)
@@ -26,8 +27,26 @@ export default function Siniflar() {
       supabase.from('siniflar').select('*, profiles:ogretmen_profile_id(ad_soyad, brans)').eq('egitim_yili', seciliYil).order('ad'),
       supabase.from('profiles').select('*').eq('rol', 'ogretmen').order('ad_soyad'),
     ])
-    setSiniflar(s.data || [])
+    const sinifListesi = s.data || []
+    setSiniflar(sinifListesi)
     setOgretmenler(o.data || [])
+
+    // Her sınıfın yanında kaç öğrencisi olduğunu göstermek için — sinif_ogrenciler
+    // eşleştirme tablosundan, bu eğitim yılındaki tüm sınıfların id'lerine ait
+    // kayıtları tek seferde çekip sınıf başına sayıyoruz (her sınıf için ayrı
+    // ayrı sorgu atmak yerine).
+    const sinifIdleri = sinifListesi.map((x) => x.id)
+    if (sinifIdleri.length > 0) {
+      const { data: kayitlar } = await supabase.from('sinif_ogrenciler').select('sinif_id').in('sinif_id', sinifIdleri)
+      const sayilar = {}
+      ;(kayitlar || []).forEach((k) => {
+        sayilar[k.sinif_id] = (sayilar[k.sinif_id] || 0) + 1
+      })
+      setOgrenciSayilari(sayilar)
+    } else {
+      setOgrenciSayilari({})
+    }
+
     setLoading(false)
   }
 
@@ -192,6 +211,9 @@ export default function Siniflar() {
                     <Link to={`/siniflar/${s.id}`} className="text-blue hover:underline">
                       {s.ad}
                     </Link>
+                    <span className="ml-2 text-xs font-normal text-gray-400 whitespace-nowrap">
+                      ({ogrenciSayilari[s.id] || 0} öğrenci)
+                    </span>
                   </td>
                   <td className="px-4 py-3 text-gray-500">
                     {s.profiles?.ad_soyad ? (
