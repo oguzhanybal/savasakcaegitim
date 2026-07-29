@@ -47,12 +47,18 @@ function menuOlustur(rol) {
         label: 'Sınıflar',
         ogeler: [
           { to: '/siniflar', label: 'Sınıf Listesi' },
+        ],
+      },
+      {
+        tur: 'grup',
+        label: 'Program',
+        ogeler: [
           { to: '/program', label: 'Ders Programı' },
           { to: '/gunluk', label: 'Günlük Program' },
           { to: '/bire-bir', label: 'Bire Bir' },
-          { to: '/odev', label: 'Ödevler' },
         ],
       },
+      { tur: 'link', to: '/odev', label: 'Ödevler' },
       {
         tur: 'grup',
         label: 'Yoklama',
