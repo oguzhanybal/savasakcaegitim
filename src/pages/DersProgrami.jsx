@@ -1012,7 +1012,7 @@ export default function DersProgrami() {
     Promise.all([
       supabase
         .from('ders_programi')
-        .select('*, siniflar(ad), profiles:ogretmen_profile_id(ad_soyad)')
+        .select('*, siniflar(ad), profiles:ogretmen_profile_id(ad_soyad, brans)')
         .order('gun')
         .order('baslangic_saat'),
       isYonetici ? supabase.from('siniflar').select('*').order('ad') : Promise.resolve({ data: [] }),
@@ -1044,6 +1044,7 @@ export default function DersProgrami() {
           ...d,
           sinif_adi: d.siniflar?.ad,
           ogretmen_adi: d.profiles?.ad_soyad,
+          ogretmen_brans: d.profiles?.brans,
         }))
       )
       setSiniflar(s.data || [])
@@ -1236,6 +1237,14 @@ export default function DersProgrami() {
     if (isOgretmen) setGorunum('liste')
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOgretmen])
+  // Veli/öğrenci için de sayfa ilk açıldığında varsayılan görünüm Liste olsun
+  // (Tablo değil) — liste daha okunaklı bulunuyor. Öğretmen tarafına
+  // dokunulmuyor, o zaten yukarıdaki effect ile Liste'ye ayarlanıyor. Sadece
+  // BİR KEZ ayarlanır, kullanıcı sonra elle Tablo'ya geçerse geri zorlanmaz.
+  useEffect(() => {
+    if (isVeliYaDaOgrenci) setGorunum('liste')
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isVeliYaDaOgrenci])
   // Öğretmenin Soru Çözümü seansları, sınıf dersleriyle AYNI tabloda/listede
   // görünsün diye (ayrı bir bölüm olarak değil) burada normal ders programı
   // satırlarıyla aynı şekle çevrilip kendiProgram'a ekleniyor. Belirli bir
@@ -1298,16 +1307,16 @@ export default function DersProgrami() {
           {sinifProgramiGoster && (
             <div className="flex bg-white border border-gray-200 rounded-lg overflow-hidden text-sm">
               <button
-                onClick={() => setGorunum('tablo')}
-                className={`px-3 py-1.5 font-medium transition-colors ${gorunum === 'tablo' ? 'bg-navy text-white' : 'text-gray-600 hover:bg-gray-50'}`}
-              >
-                Tablo
-              </button>
-              <button
                 onClick={() => setGorunum('liste')}
                 className={`px-3 py-1.5 font-medium transition-colors ${gorunum === 'liste' ? 'bg-navy text-white' : 'text-gray-600 hover:bg-gray-50'}`}
               >
                 Liste
+              </button>
+              <button
+                onClick={() => setGorunum('tablo')}
+                className={`px-3 py-1.5 font-medium transition-colors ${gorunum === 'tablo' ? 'bg-navy text-white' : 'text-gray-600 hover:bg-gray-50'}`}
+              >
+                Tablo
               </button>
             </div>
           )}
@@ -1525,10 +1534,11 @@ export default function DersProgrami() {
                                   </button>
                                 </div>
                               )}
-                              <p className="font-semibold text-navy text-xs leading-tight">{d.ders_adi || d.sinif_adi}</p>
-                              {/* ders_adi boşsa başlık zaten sinif_adi oluyor — aynı metni burada
-                                  tekrar basmıyoruz (ör. "12-EŞİT AĞIRLIK" iki kez görünmesin diye). */}
-                              {d.ders_adi && d.sinif_adi && (
+                              {/* Başlıkta önce ders adı, o da yoksa öğretmenin branşı gösterilir —
+                                  sınıf adı artık başlık olarak öne çıkmıyor, sadece bilgi amaçlı
+                                  silik bir alt satırda (ve başlıkla aynıysa hiç tekrar basılmadan). */}
+                              <p className="font-semibold text-navy text-xs leading-tight">{d.ders_adi || d.ogretmen_brans || d.sinif_adi}</p>
+                              {d.sinif_adi && d.sinif_adi !== (d.ders_adi || d.ogretmen_brans || d.sinif_adi) && (
                                 <p className="text-[11px] text-gray-500 leading-tight">{d.sinif_adi}</p>
                               )}
                               {d.ogretmen_adi && <p className="text-[11px] text-gray-400 leading-tight">{d.ogretmen_adi}</p>}
@@ -1564,13 +1574,20 @@ export default function DersProgrami() {
               <div key={i} className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
                 <div className="px-4 py-3 bg-navy text-white font-semibold">{GUNLER[i + 1]}</div>
                 <div className="divide-y divide-gray-50">
-                  {dersler.map((d) => (
+                  {dersler.map((d) => {
+                    // Başlıkta önce ders adı, o da yoksa öğretmenin branşı gösterilir —
+                    // sınıf adı başlık olarak öne çıkmıyor, sadece başlıktan farklıysa
+                    // silik bir alt satırda gösteriliyor (bkz. Tablo görünümündeki
+                    // aynı desen).
+                    const baslik = d.ders_adi || d.ogretmen_brans || d.sinif_adi
+                    const sinifAdiGoster = d.sinif_adi && d.sinif_adi !== baslik
+                    return (
                     <div key={d.id} className="px-4 py-3 flex items-start justify-between gap-2">
                       <div>
-                        <p className="font-medium text-gray-800">{d.ders_adi || d.sinif_adi}</p>
+                        <p className="font-medium text-gray-800">{baslik}</p>
                         <p className="text-xs text-gray-400">
-                          {d.ders_adi && d.sinif_adi ? d.sinif_adi : ''}
-                          {d.ogretmen_adi ? `${d.ders_adi && d.sinif_adi ? ' · ' : ''}${d.ogretmen_adi}` : ''}
+                          {sinifAdiGoster ? d.sinif_adi : ''}
+                          {d.ogretmen_adi ? `${sinifAdiGoster ? ' · ' : ''}${d.ogretmen_adi}` : ''}
                         </p>
                         <p className="text-sm text-gray-500">
                           {saatGoster(d.baslangic_saat)} – {saatGoster(d.bitis_saat)}
@@ -1602,7 +1619,7 @@ export default function DersProgrami() {
                         </button>
                       )}
                     </div>
-                  ))}
+                  )})}
                 </div>
               </div>
             )

@@ -49,7 +49,6 @@ function GizliBolum({ children }) {
           <path d="M8 10V7a4 4 0 0 1 8 0v3" />
         </svg>
         <span className="font-semibold text-sm">Okul geneli özet bilgileri görüntülemek için tıklayın</span>
-        <span className="text-xs text-gray-400">Ödeme, yoklama ve istatistik bilgileri gizli tutuluyor</span>
       </button>
     )
   }
