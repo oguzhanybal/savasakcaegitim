@@ -23,7 +23,7 @@ export function jspdfYukle() {
       // jspdf-autotable eklentisi, jsPDF global'i hazır olduktan SONRA
       // yüklenmeli (kendini jsPDF.API'ye ekliyor).
       const autoTableScript = document.createElement('script')
-      autoTableScript.src = 'https://cdn.jsdelivr.net/npm/jspdf-autotable@3.8.2/dist/jspdf-autotable.min.js'
+      autoTableScript.src = 'https://cdn.jsdelivr.net/npm/jspdf-autotable@3.8.2/dist/jspdf.plugin.autotable.min.js'
       autoTableScript.onload = () => resolve(window.jspdf.jsPDF)
       autoTableScript.onerror = () => reject(new Error('jspdf-autotable yüklenemedi (internet bağlantınızı kontrol edin).'))
       document.head.appendChild(autoTableScript)
