@@ -1574,12 +1574,18 @@ export default function DersProgrami() {
       )}
 
       {sinifProgramiGoster && !loading && kendiProgram.length > 0 && gorunum === 'tablo' && (
-        // touch-pan-x + overscroll-x-contain: mobil tarayıcılarda sayfa dikey
-        // kaydırılabilirken bu tablonun YATAY kaydırılabilir olduğunu tarayıcıya
-        // açıkça belirtiyoruz. Bazı mobil tarayıcılarda iç içe bir yatay kaydırma
-        // alanı, dokunma hareketinin dikey mi yatay mı olduğuna karar verirken
-        // "kaymıyor" gibi davranabiliyor; bu class'lar o belirsizliği kaldırıyor.
-        <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-x-auto touch-pan-x overscroll-x-contain">
+        // overscroll-x-contain: mobil tarayıcılarda bu tablonun YATAY kaydırma
+        // alanı olduğunu belirtip, kenara ulaşınca kaydırmanın sayfaya
+        // sızmasını (chaining) engelliyoruz. NOT: burada bilerek touch-action'ı
+        // "pan-x pan-y" (ikisi de) olarak ayarlıyoruz — sadece "pan-x" (yatay)
+        // kullanmak, bu div üzerindeki DİKEY parmak kaydırmayı da devre dışı
+        // bırakıyordu (tablo uzayınca kullanıcı üstünde parmağıyla artık
+        // sayfayı aşağı kaydıramıyordu). "pan-x pan-y" her iki yönü de tarayıcıya
+        // bırakıyor, yatay kayma sorunu da (task #124) hâlâ çözülü kalıyor.
+        <div
+          className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-x-auto overscroll-x-contain"
+          style={{ touchAction: 'pan-x pan-y' }}
+        >
           <table className="border-collapse text-sm min-w-[900px] w-full">
             <thead>
               <tr>
@@ -1603,8 +1609,21 @@ export default function DersProgrami() {
                     return (
                       <td key={gun} className="px-1.5 py-1.5 align-top border-t border-l border-gray-100">
                         <div className="space-y-1">
-                          {dersler.map((d) => (
-                            <div key={d.id} className="bg-blue-50 border border-blue-100 rounded-lg px-2 py-1 relative group">
+                          {dersler.map((d) => {
+                            // Aynı hücrede birden fazla ders üst üste dizildiğinde (ör. art
+                            // arda birkaç Soru Çözümü seansı) hepsi aynı renkte olduğu için
+                            // birbirinden ayırt etmek zorlaşıyordu. Artık türe göre AÇIK/KOYU
+                            // ayrı bir renk teması var — sınıf dersi mavi, bire bir tekil ders
+                            // amber (koyu), soru çözümü mor — hem daha estetik hem de bir
+                            // bakışta hangi türden olduğu anlaşılıyor.
+                            const kutuRengi = d.sinif_id
+                              ? 'bg-blue-50 border-blue-100'
+                              : d._bireBir
+                                ? 'bg-amber-100 border-amber-200'
+                                : 'bg-purple-50 border-purple-100'
+                            const baslikRengi = d.sinif_id ? 'text-navy' : d._bireBir ? 'text-amber-900' : 'text-purple-800'
+                            return (
+                            <div key={d.id} className={`${kutuRengi} border rounded-lg px-2 py-1 relative group`}>
                               {isYonetici && (
                                 <div className="flex items-center justify-end gap-1.5 h-3 mb-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
                                   <button
@@ -1624,7 +1643,7 @@ export default function DersProgrami() {
                               {/* Başlıkta önce ders adı, o da yoksa öğretmenin branşı gösterilir —
                                   sınıf adı artık başlık olarak öne çıkmıyor, sadece bilgi amaçlı
                                   silik bir alt satırda (ve başlıkla aynıysa hiç tekrar basılmadan). */}
-                              <p className="font-semibold text-navy text-xs leading-tight">{d.ders_adi || d.ogretmen_brans || d.sinif_adi}</p>
+                              <p className={`font-semibold ${baslikRengi} text-xs leading-tight`}>{d.ders_adi || d.ogretmen_brans || d.sinif_adi}</p>
                               {d.sinif_adi && d.sinif_adi !== (d.ders_adi || d.ogretmen_brans || d.sinif_adi) && (
                                 <p className="text-[11px] text-gray-500 leading-tight">{d.sinif_adi}</p>
                               )}
@@ -1678,7 +1697,8 @@ export default function DersProgrami() {
                                 </div>
                               )}
                             </div>
-                          ))}
+                            )
+                          })}
                         </div>
                       </td>
                     )
@@ -1704,10 +1724,20 @@ export default function DersProgrami() {
                     // aynı desen).
                     const baslik = d.ders_adi || d.ogretmen_brans || d.sinif_adi
                     const sinifAdiGoster = d.sinif_adi && d.sinif_adi !== baslik
+                    // Tablo görünümündeki AYNI renk teması (task: mobilde "bir açık bir
+                    // koyu" ayrımı istendi) — Liste görünümünde de her satır türüne göre
+                    // (sınıf dersi mavi, bire bir tekil ders amber, soru çözümü mor)
+                    // arka plan rengi alıyor, sadece Tablo'da değil.
+                    const satirRengi = d.sinif_id
+                      ? 'bg-blue-50/60'
+                      : d._bireBir
+                        ? 'bg-amber-100/70'
+                        : 'bg-purple-50/60'
+                    const baslikRengi = d.sinif_id ? 'text-gray-800' : d._bireBir ? 'text-amber-900' : 'text-purple-800'
                     return (
-                    <div key={d.id} className="px-4 py-3 flex items-start justify-between gap-2">
+                    <div key={d.id} className={`px-4 py-3 flex items-start justify-between gap-2 ${satirRengi}`}>
                       <div>
-                        <p className="font-medium text-gray-800">{baslik}</p>
+                        <p className={`font-medium ${baslikRengi}`}>{baslik}</p>
                         <p className="text-xs text-gray-400">
                           {sinifAdiGoster ? d.sinif_adi : ''}
                           {d.ogretmen_adi ? `${sinifAdiGoster ? ' · ' : ''}${d.ogretmen_adi}` : ''}
