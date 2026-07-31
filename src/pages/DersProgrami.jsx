@@ -1002,6 +1002,10 @@ export default function DersProgrami() {
   // Programı sayfasında görsün diye. bire_bir_yoklama'dan, ogrenci_id boş
   // olan tur='soru_cozumu' satırları çekilir.
   const [soruCozumuSeanslarim, setSoruCozumuSeanslarim] = useState([])
+  // Öğretmenin kendi TEKİL bire bir dersleri (haftalık atamaya bağlı olmayan,
+  // tur='ders' kayıtlar) — Soru Çözümü ile aynı şekilde Ders Programı'na
+  // karışık gösteriliyor, ama bunlarda ayrıca Geldi/Gelmedi (yoklama) alınabiliyor.
+  const [bireBirTekilSeanslarim, setBireBirTekilSeanslarim] = useState([])
   // Öğretmen kendi ders programındaki bir derse tıklayınca (Tablo/Liste
   // görünümünde "Yoklama / Konu" butonu) burada o dersin ders_programi
   // satırı tutulur, popup o satır doluyken açık kalır (bkz. YoklamaKonuModal).
@@ -1119,20 +1123,40 @@ export default function DersProgrami() {
       } else if (profile?.rol === 'ogretmen') {
         // Öğretmen için: yöneticinin kendisine atadığı "Soru Çözümü" seansları —
         // veliye/öğrenciye asla gösterilmez (bkz. yukarıdaki not), sadece
-        // atanan öğretmen kendi Ders Programı sayfasında görür.
-        supabase
-          .from('bire_bir_yoklama')
-          .select('*')
-          .eq('ogretmen_profile_id', profile.id)
-          .eq('tur', 'soru_cozumu')
-          .order('tarih')
-          .order('baslangic_saat')
-          .then((res) => {
-            if (res.error) console.error('Soru çözümü sorgusu hatası:', res.error.message)
-            setSoruCozumuSeanslarim(res.data || [])
-            ilkYuklemeTamamRef.current = true
-            setLoading(false)
-          })
+        // atanan öğretmen kendi Ders Programı sayfasında görür. AYNI ZAMANDA
+        // kendi TEKİL bire bir derslerini de (atama_id boş, tur='ders') çekiyoruz
+        // — öğretmen artık bunları da Ders Programı'nda görüp buradan Geldi/Gelmedi
+        // işaretleyebilsin diye (önceden sadece Bire Bir Derslerim sayfasında
+        // yönetiliyordu). Haftalık atamalar (atama_id dolu) burada YOK — onların
+        // "ilk yoklama kaydını oluşturma" akışı Bire Bir Derslerim sayfasındaki
+        // "Yoklama Al" bölümünde kalmaya devam ediyor, o özel akışı burada
+        // tekrarlamıyoruz.
+        Promise.all([
+          supabase
+            .from('bire_bir_yoklama')
+            .select('*')
+            .eq('ogretmen_profile_id', profile.id)
+            .eq('tur', 'soru_cozumu')
+            .order('tarih')
+            .order('baslangic_saat'),
+          supabase
+            .from('bire_bir_yoklama')
+            .select('*, ogrenciler(ad_soyad)')
+            .eq('ogretmen_profile_id', profile.id)
+            .eq('tur', 'ders')
+            .is('atama_id', null)
+            .order('tarih')
+            .order('baslangic_saat'),
+        ]).then(([soruRes, bbRes]) => {
+          if (soruRes.error) console.error('Soru çözümü sorgusu hatası:', soruRes.error.message)
+          if (bbRes.error) console.error('Bire bir (tekil) sorgusu hatası:', bbRes.error.message)
+          setSoruCozumuSeanslarim(soruRes.data || [])
+          setBireBirTekilSeanslarim(
+            (bbRes.data || []).map((y) => ({ ...y, ogrenci_adi: y.ogrenciler?.ad_soyad }))
+          )
+          ilkYuklemeTamamRef.current = true
+          setLoading(false)
+        })
       } else {
         ilkYuklemeTamamRef.current = true
         setLoading(false)
@@ -1197,6 +1221,21 @@ export default function DersProgrami() {
   function musaitlikTablosundanDuzenle(id) {
     const d = program.find((p) => p.id === id)
     if (d) duzenle(d)
+  }
+
+  // Öğretmen, Ders Programı'na karışık gösterilen kendi tekil bire bir
+  // dersinde Geldi/Gelmedi'ye tıklayınca — BireBir.jsx'teki aynı isimli
+  // fonksiyonla (durumDegistir) birebir aynı davranış: "Geldi" zaten borç
+  // eklenmiş bir kaydı "Gelmedi"ye çevirmek onay istiyor, diğer geçişler
+  // istemiyor.
+  async function bireBirDurumDegistir(yoklamaId, mevcutDurum, yeniDurum) {
+    if (mevcutDurum === yeniDurum) return
+    if (mevcutDurum === 'geldi' && yeniDurum === 'gelmedi') {
+      if (!confirm('Bu ders "Geldi" olarak işaretliydi ve öğrenciye borç eklenmişti. "Gelmedi" yapmak istediğinize emin misiniz? (borç kaldırılacak)')) return
+    }
+    const { error } = await supabase.from('bire_bir_yoklama').update({ durum: yeniDurum }).eq('id', yoklamaId)
+    if (error) alert('Hata: ' + error.message)
+    else veriyiYenile()
   }
 
   const ogrenciAdMap = useMemo(() => new Map(ogrenciler.map((o) => [o.id, o.ad_soyad])), [ogrenciler])
@@ -1271,6 +1310,23 @@ export default function DersProgrami() {
           sinif_adi: null,
           ogretmen_adi: null,
           ogretmen_profile_id: profile.id,
+        })),
+        // Öğretmenin kendi TEKİL bire bir dersleri — Soru Çözümü ile aynı
+        // şekilde sentetik satır olarak ekleniyor, ama _bireBir işareti
+        // sayesinde Tablo/Liste render'ı bunlarda "Yoklama / Konu" yerine
+        // basit Geldi/Gelmedi butonlarını gösteriyor (bkz. aşağıdaki JSX).
+        ...bireBirTekilSeanslarim.map((y) => ({
+          id: `bb-${y.id}`,
+          gun: gunNumaraTarihten(y.tarih),
+          baslangic_saat: y.baslangic_saat,
+          bitis_saat: y.bitis_saat,
+          ders_adi: `Bire Bir · ${y.ogrenci_adi || 'Öğrenci'}`,
+          sinif_adi: null,
+          ogretmen_adi: null,
+          ogretmen_profile_id: profile.id,
+          _bireBir: true,
+          _yoklamaId: y.id,
+          _durum: y.durum,
         })),
       ]
     : program
@@ -1565,6 +1621,42 @@ export default function DersProgrami() {
                                   Yoklama / Konu
                                 </button>
                               )}
+                              {/* Bire bir tekil dersler (sınıf dersi değil, d.sinif_id yok) —
+                                  YoklamaKonuModal sınıf yoklamasına özel olduğu için burada
+                                  onun yerine basit Geldi/Gelmedi durumu + butonları gösteriliyor. */}
+                              {isOgretmen && d._bireBir && (
+                                <div className="mt-1 flex items-center gap-1 flex-wrap">
+                                  <span
+                                    className={`text-[9px] font-semibold px-1.5 py-0.5 rounded-full ${
+                                      d._durum === 'geldi'
+                                        ? 'bg-green-100 text-green-700'
+                                        : d._durum === 'gelmedi'
+                                          ? 'bg-red-100 text-red-600'
+                                          : 'bg-yellow-100 text-yellow-700'
+                                    }`}
+                                  >
+                                    {d._durum === 'geldi' ? 'Geldi' : d._durum === 'gelmedi' ? 'Gelmedi' : 'Bekliyor'}
+                                  </span>
+                                  {d._durum !== 'geldi' && (
+                                    <button
+                                      type="button"
+                                      onClick={() => bireBirDurumDegistir(d._yoklamaId, d._durum, 'geldi')}
+                                      className="text-[9px] font-semibold text-green-700 hover:underline"
+                                    >
+                                      Geldi
+                                    </button>
+                                  )}
+                                  {d._durum !== 'gelmedi' && (
+                                    <button
+                                      type="button"
+                                      onClick={() => bireBirDurumDegistir(d._yoklamaId, d._durum, 'gelmedi')}
+                                      className="text-[9px] font-semibold text-red-600 hover:underline"
+                                    >
+                                      Gelmedi
+                                    </button>
+                                  )}
+                                </div>
+                              )}
                             </div>
                           ))}
                         </div>
@@ -1628,6 +1720,41 @@ export default function DersProgrami() {
                         >
                           Yoklama / Konu İşle
                         </button>
+                      )}
+                      {/* Bire bir tekil dersler — YoklamaKonuModal sınıf yoklamasına özel
+                          olduğu için burada basit Geldi/Gelmedi durumu + butonları var. */}
+                      {isOgretmen && d._bireBir && (
+                        <div className="flex items-center gap-2 shrink-0 flex-wrap justify-end">
+                          <span
+                            className={`text-xs font-semibold px-2 py-1 rounded-full ${
+                              d._durum === 'geldi'
+                                ? 'bg-green-100 text-green-700'
+                                : d._durum === 'gelmedi'
+                                  ? 'bg-red-100 text-red-600'
+                                  : 'bg-yellow-100 text-yellow-700'
+                            }`}
+                          >
+                            {d._durum === 'geldi' ? 'Geldi' : d._durum === 'gelmedi' ? 'Gelmedi' : 'Bekliyor'}
+                          </span>
+                          {d._durum !== 'geldi' && (
+                            <button
+                              type="button"
+                              onClick={() => bireBirDurumDegistir(d._yoklamaId, d._durum, 'geldi')}
+                              className="text-xs font-semibold text-green-700 hover:underline"
+                            >
+                              Geldi
+                            </button>
+                          )}
+                          {d._durum !== 'gelmedi' && (
+                            <button
+                              type="button"
+                              onClick={() => bireBirDurumDegistir(d._yoklamaId, d._durum, 'gelmedi')}
+                              className="text-xs font-semibold text-red-600 hover:underline"
+                            >
+                              Gelmedi
+                            </button>
+                          )}
+                        </div>
                       )}
                     </div>
                   )})}

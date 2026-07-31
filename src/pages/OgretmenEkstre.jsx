@@ -3,7 +3,7 @@ import { useParams, Link } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../lib/AuthContext'
 import BireBirDersDokumu from '../components/BireBirDersDokumu'
-import { paraFormat, bireBirDersDetaylariOlustur, ayEtiketi } from '../lib/ekstreHesap'
+import { paraFormat, bireBirDersDetaylariOlustur, sinifDersDetaylariOlustur, ayEtiketi } from '../lib/ekstreHesap'
 
 // Ayı "YYYY-MM" olarak YEREL saate göre üretir (toISOString KULLANMIYORUZ —
 // Türkiye UTC+3 gece yarısına yakın saatlerde bir gün geriye kayabiliyor).
@@ -41,7 +41,13 @@ export default function OgretmenEkstre() {
         .select('*, ogrenciler(ad_soyad)')
         .eq('ogretmen_profile_id', ogretmenId)
         .is('atama_id', null),
-    ]).then(([ogr, bba, ekDersler]) => {
+      // Bu öğretmenin verdiği (yoklaması alınmış) SINIF dersleri — sadece kayıt
+      // için gösteriliyor, ücret hesabına dahil değil (tutar hep 0'dır).
+      supabase
+        .from('yoklama')
+        .select('*, ders_programi!inner(ders_adi, baslangic_saat, bitis_saat, siniflar(ad))')
+        .eq('ders_programi.ogretmen_profile_id', ogretmenId),
+    ]).then(([ogr, bba, ekDersler, sinifYoklamalari]) => {
       const atamalar = bba.data || []
       const atamaIdleri = atamalar.map((x) => x.id)
       const yoklamaSorgusu =
@@ -50,8 +56,10 @@ export default function OgretmenEkstre() {
           : Promise.resolve({ data: [] })
       yoklamaSorgusu.then((by) => {
         const tumYoklamalar = [...(by.data || []), ...(ekDersler.data || [])]
+        const bireBirDersler = bireBirDersDetaylariOlustur(atamalar, tumYoklamalar)
+        const sinifDersler = sinifDersDetaylariOlustur(sinifYoklamalari.data || [])
         setOgretmen(ogr.data)
-        setDersler(bireBirDersDetaylariOlustur(atamalar, tumYoklamalar))
+        setDersler([...bireBirDersler, ...sinifDersler].sort((a, b) => (a.tarih < b.tarih ? 1 : -1)))
         setLoading(false)
       })
     })
@@ -73,6 +81,9 @@ export default function OgretmenEkstre() {
   // toplam ders SAYISINA dahil oluyor — kaç tanesinin ders, kaç tanesinin
   // soru çözümü olduğu ayrıca belirtilmezse yanıltıcı olabiliyor.
   const buAySoruCozumuSayisi = buAyDersler.filter((d) => d.tur === 'soru_cozumu').length
+  // Sınıf dersleri de aynı şekilde ücretsiz (tutara katkısı yok) ama ders
+  // SAYISINA dahil — kaç tanesinin sınıf dersi olduğu ayrıca belirtiliyor.
+  const buAySinifDersSayisi = buAyDersler.filter((d) => d.tur === 'sinif').length
 
   return (
     <div className="min-h-screen bg-cream py-8 px-4">
@@ -128,6 +139,11 @@ export default function OgretmenEkstre() {
               {buAySoruCozumuSayisi > 0 && (
                 <div className="px-4 py-2 bg-purple-50 border-t border-purple-100 text-xs text-purple-700">
                   Bunların <b>{buAySoruCozumuSayisi}</b> tanesi Soru Çözümü seansı (ücretsiz, tutara dahil değil).
+                </div>
+              )}
+              {buAySinifDersSayisi > 0 && (
+                <div className="px-4 py-2 bg-blue-50 border-t border-blue-100 text-xs text-blue-700">
+                  Bunların <b>{buAySinifDersSayisi}</b> tanesi sınıf dersi (ücretsiz, tutara dahil değil).
                 </div>
               )}
             </div>

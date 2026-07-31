@@ -1922,6 +1922,11 @@ function TekSeferlikDerslerListesi({ yoklamalar, atamalar, onDegisti, sadeceOgre
 
   const dersler = useMemo(() => {
     return yoklamalar
+      // Soru Çözümü seansları (tur='soru_cozumu') burada ("Tüm Derslerim")
+      // gösterilmiyor — onlar öğrenciye bağlı olmayan, ücretsiz seanslar ve
+      // zaten Ders Programı'nda ayrıca gösteriliyor. Burada göründüklerinde
+      // "Öğrenci: —" satırları olarak karışıklık yaratıyorlardı.
+      .filter((y) => y.tur !== 'soru_cozumu')
       .map((y) => {
         // Haftalık atamaya bağlıysa öğrenci/öğretmen/saat bilgisi atamadan gelir
         // (yoklama satırının kendisinde bu alanlar boş kalıyor); tek seferlikte
