@@ -696,6 +696,103 @@ export function ogrenciBorcYaslandirmaHesapla(sozlesmeler, aylikBorclar, odemele
 }
 
 // ============================================================================
+// TEK ÖĞRENCİ İÇİN EKSTRE VERİSİ (fetch) — Ekstre.jsx sayfasının kendi
+// useEffect'indeki veri çekme mantığının AYNISI (fatura ortağı grubu, bire
+// bir ders dökümü, kantin alış dökümü, ödeme geçmişi dahil), ama Toplu
+// Ekstre'nin sayfayı hiç açmadan, "PDF ile Gönder" butonuna tıklandığında
+// TEK SEFERLİK çekebilmesi için ayrıca dışa açılmış hali. Ekstre.jsx kendi
+// başına çalışmaya devam ediyor, bu fonksiyona bağımlı DEĞİL — kod
+// tekrarı var ama ikisi ayrı ayrı test edilip doğrulanmış akışlar,
+// birbirini bozma riski almamak için bilerek ayrı tutuldu.
+// ============================================================================
+export async function ekstreVerisiGetir(supabase, ogrenciId, seciliAy) {
+  const { data: kendisi } = await supabase.from('ogrenciler').select('*').eq('id', ogrenciId).single()
+  if (!kendisi) return null
+
+  const efektifId = kendisi.fatura_sahibi_id || kendisi.id
+  const { data: grupOgrencileriVeri } = await supabase
+    .from('ogrenciler')
+    .select('*')
+    .or(`id.eq.${efektifId},fatura_sahibi_id.eq.${efektifId}`)
+  const grupOgrencileri = grupOgrencileriVeri || []
+  const grup = grupOgrencileri.map((g) => g.id)
+
+  const [s, a, od, bba, ekDersler, kantin] = await Promise.all([
+    supabase.from('sozlesmeler').select('*').in('ogrenci_id', grup),
+    supabase.from('aylik_borclar').select('*').in('ogrenci_id', grup),
+    supabase.from('odemeler').select('*, ogrenciler(ad_soyad)').in('ogrenci_id', grup).order('tarih', { ascending: false }),
+    supabase
+      .from('bire_bir_atamalari')
+      .select('*, profiles:ogretmen_profile_id(ad_soyad, brans), ogrenciler(ad_soyad)')
+      .in('ogrenci_id', grup),
+    supabase
+      .from('bire_bir_yoklama')
+      .select('*, profiles:ogretmen_profile_id(ad_soyad, brans), ogrenciler(ad_soyad)')
+      .in('ogrenci_id', grup)
+      .is('atama_id', null),
+    supabase.from('kantin_alislar').select('*').in('ogrenci_id', grup),
+  ])
+
+  const atamalar = bba.data || []
+  const atamaIdleri = atamalar.map((x) => x.id)
+  const by =
+    atamaIdleri.length > 0
+      ? await supabase.from('bire_bir_yoklama').select('*, ogrenciler(ad_soyad)').in('atama_id', atamaIdleri)
+      : { data: [] }
+  const tumYoklamalar = [...(by.data || []), ...(ekDersler.data || [])]
+  const bireBirBorclar = bireBirBorclariOlustur(atamalar, tumYoklamalar)
+  const kantinBorclar = kantinBorclariOlustur(kantin.data || [])
+  const aylikBorclar = [...(a.data || []), ...bireBirBorclar, ...kantinBorclar]
+  const sozlesmeler = s.data || []
+  // Veli, "Devreden Ödeme" (sisteme geçmeden önceki eski ödeme) kayıtlarını
+  // Ekstre.jsx'te görmüyor — PDF de aynı görünürlük kuralına uysun diye
+  // burada da filtreleniyor.
+  const odemeler = (od.data || []).filter((o) => !o.kalem?.includes('Devreden'))
+  // Borç hesaplarına devreden ödemeler YİNE DE dahil olmalı (yukarıdaki
+  // filtre sadece GÖRÜNÜR listeyi etkiler) — bu yüzden hesaplama için ayrı,
+  // filtresiz listeyi kullanıyoruz.
+  const odemelerHesapIcin = od.data || []
+
+  const satirlar = ogrenciSatirlariHesapla(sozlesmeler, aylikBorclar, odemelerHesapIcin, seciliAy)
+  const buAyToplam = satirlar.reduce((t, x) => t + x.buAyTutar, 0)
+  const gecmisBorcToplam = satirlar.reduce((t, x) => t + x.gecmisBorc, 0)
+  const buAyOdenmesiGereken = satirlar.reduce((t, x) => t + x.toplamOdenecek, 0)
+
+  const toplamSozlesme = sozlesmeler.reduce((t, x) => t + Number(x.toplam_tutar), 0)
+  const toplamAylikBorc = aylikBorclar.reduce((t, x) => t + Number(x.tutar), 0)
+  const toplamOdenen = odemelerHesapIcin.reduce((t, x) => t + Number(x.tutar), 0)
+  const genelKalanBakiye = Math.max(0, toplamSozlesme + toplamAylikBorc - toplamOdenen)
+
+  const faturaDigerleri = grupOgrencileri.filter((o) => o.id !== kendisi.id)
+  const bireBirDersleri = bireBirDersDetaylariOlustur(atamalar, tumYoklamalar)
+  const kantinAlislari = (kantin.data || [])
+    .map((k) => ({
+      id: k.id,
+      tarih: k.tarih,
+      urunAdi: k.urun_adi,
+      adet: k.adet,
+      birimFiyat: Number(k.birim_fiyat) || 0,
+      tutar: Number(k.tutar) || 0,
+    }))
+    .sort((x, y) => (x.tarih < y.tarih ? 1 : -1))
+
+  return {
+    ogrenci: kendisi,
+    ogrenciAdi: kendisi.ad_soyad,
+    seciliAy,
+    satirlar,
+    buAyToplam,
+    gecmisBorcToplam,
+    buAyOdenmesiGereken,
+    genelKalanBakiye,
+    bireBirDersleri,
+    kantinAlislari,
+    faturaDigerleri,
+    odemeler,
+  }
+}
+
+// ============================================================================
 // SON ALINAN ÖDEMELER — LİSTEYİ GRUP SINIRINDA KES — Muhasebe.jsx ve
 // Dashboard.jsx'teki "Son Alınan Ödemeler" panelleri kullanır. "Dağıtılmamış"
 // bir ödeme sonradan birden fazla kaleme bölündüğünde (bkz. Muhasebe.jsx
