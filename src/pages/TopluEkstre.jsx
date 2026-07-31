@@ -26,6 +26,17 @@ export default function TopluEkstre() {
   // ya da `${ogrenciId}-baba` şeklinde, o an işlemde olan tek anahtarı tutar.
   const [gonderiliyor, setGonderiliyor] = useState(null)
 
+  // WhatsApp'a giden PDF linkinin okunmaz derecede uzun olmaması için (Supabase'in
+  // imzalı URL'i 600+ karakter bir JWT içeriyor) — gerçek linki bir veritabanı
+  // satırının arkasına saklayıp yerine bu kısa kodu gönderiyoruz. Kod, veli
+  // tıklayınca api/e.js tarafından gerçek (taze, kısa ömürlü) imzalı linke çevrilir.
+  function kisaKodUret() {
+    const harfler = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789' // 0/O, 1/I/l gibi karışabilecek karakterler çıkarıldı
+    let kod = ''
+    for (let i = 0; i < 8; i++) kod += harfler[Math.floor(Math.random() * harfler.length)]
+    return kod
+  }
+
   useEffect(() => {
     Promise.all([
       supabase.from('ogrenciler').select('*').order('ad_soyad'),
@@ -106,10 +117,15 @@ export default function TopluEkstre() {
         .from('ekstre-pdf')
         .upload(dosyaYolu, pdfBlob, { upsert: true, contentType: 'application/pdf' })
       if (yuklemeHatasi) throw yuklemeHatasi
-      const { data: linkVerisi, error: linkHatasi } = await supabase.storage
-        .from('ekstre-pdf')
-        .createSignedUrl(dosyaYolu, 60 * 24 * 60 * 60) // 60 gün geçerli
-      if (linkHatasi) throw linkHatasi
+      // Uzun imzalı Supabase linkini WhatsApp mesajına koymak yerine (600+
+      // karakter, mesajı okunmaz yapıyordu) kısa bir kod üretip veritabanına
+      // kaydediyoruz — mesaja SADECE bu kısa kod gidiyor.
+      const kod = kisaKodUret()
+      const { error: kisaLinkHatasi } = await supabase
+        .from('kisa_linkler')
+        .insert({ kod, bucket: 'ekstre-pdf', dosya_yolu: dosyaYolu })
+      if (kisaLinkHatasi) throw kisaLinkHatasi
+      const kisaLink = `https://savasakcaportal.com/api/e?k=${kod}`
       const ayYil = new Date(seciliAy + '-01').toLocaleDateString('tr-TR', { month: 'long', year: 'numeric' })
       const kalanToplamBuOgrenci = veri.satirlar.reduce((t2, x) => t2 + x.toplamOdenecek, 0)
       const mesaj = whatsappMesajiOlustur({
@@ -117,14 +133,14 @@ export default function TopluEkstre() {
         ayYil,
         buAyTutar: veri.buAyToplam,
         kalanTutar: kalanToplamBuOgrenci,
-        pdfLink: linkVerisi.signedUrl,
+        pdfLink: kisaLink,
       })
       window.open(`https://wa.me/${t}?text=${encodeURIComponent(mesaj)}`, '_blank')
     } catch (err) {
       alert(
         'PDF oluşturulurken/gönderilirken bir hata oluştu: ' +
           (err.message || String(err)) +
-          '\n\nEğer "ekstre-pdf" bucket bulunamadı gibi bir hata görüyorsanız, bu özelliğin ilk kurulumu için verilen SQL dosyasını Supabase\'te çalıştırmanız gerekiyor.'
+          '\n\nEğer "ekstre-pdf" bucket veya "kisa_linkler" tablosu bulunamadı gibi bir hata görüyorsanız, bu özelliğin kurulumu için verilen SQL dosyalarını Supabase\'te çalıştırmanız gerekiyor.'
       )
     } finally {
       setGonderiliyor(null)
