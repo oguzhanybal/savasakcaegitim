@@ -119,6 +119,18 @@ export default function MusaitlikTablosu({
   // tablosunda tarihi değiştirince, aşağıdaki formun da elle değiştirmeye
   // gerek kalmadan aynı tarihe/güne geçmesi isteniyor).
   onTarihDegisti,
+  // Opsiyonel — verilirse, dolu bir SINIF DERSİ hücresinin üzerine gelince
+  // küçük bir "✕" silme butonu belirir (Sınıflar > o sınıfa girip Ders
+  // Saatleri listesinden aramaya gerek kalmadan, buradan direkt silinebilsin
+  // diye — kullanıcı isteğiyle eklendi). Bire bir/soru çözümü/taslak
+  // hücrelerine bilerek dokunulmuyor, onların kendi yönetim ekranları var.
+  onSinifDersiSil,
+  // Opsiyonel — verilirse, dolu bir SINIF DERSİ hücresindeki ✏️ butonuna
+  // tıklanınca çağrılır (id ile) — sayfa bunu, mevcut "Düzenle" akışına
+  // (aşağıdaki forma kaydırma) yönlendirmek için kullanır. Sınıf dersinin
+  // sınıf/ders adı/öğretmen gibi çok alanı olduğu için burada küçük bir
+  // popup açmak yerine, zaten var olan tam formu kullanmak daha güvenilir.
+  onSinifDersiGuncelle,
 }) {
   const { profile } = useAuth()
   // Sayfa açık bırakılıp gece yarısı geçildiğinde, hâlâ "bugün"e bakılıyorsa
@@ -155,6 +167,79 @@ export default function MusaitlikTablosu({
     setSecilen(null)
     setUcret('')
     setHpHata('')
+  }
+
+  // "Yönetim" popup'ı — dolu bir bire bir/soru çözümü hücresindeki ✏️ ikonuna
+  // tıklanınca açılır; saat (ve bire bir/tekil derslerde ayrıca ücret)
+  // düzeltilip kaydedilebilir. Sınıf dersleri için ayrı bir popup açmaya
+  // gerek yok — onlar zaten aşağıdaki "Ders Ekleme Aracı" formuna
+  // yönlendiriliyor (bkz. onSinifDersiGuncelle).
+  const [yonetimPopup, setYonetimPopup] = useState(null) // { ogretmenId, tarih, baslangic, kayit }
+  const [ymBaslangic, setYmBaslangic] = useState('')
+  const [ymBitis, setYmBitis] = useState('')
+  const [ymTutar, setYmTutar] = useState('')
+  const [ymHata, setYmHata] = useState('')
+  const [ymGonderiliyor, setYmGonderiliyor] = useState(false)
+
+  function yonetimPopupAc(ogretmenId, tarih, baslangicSutun, kayit) {
+    setYonetimPopup({ ogretmenId, tarih, baslangic: baslangicSutun, kayit })
+    setYmBaslangic(saatKisalt(kayit.baslangic))
+    setYmBitis(saatKisalt(kayit.bitis))
+    setYmTutar(kayit.tutar != null ? String(kayit.tutar) : '')
+    setYmHata('')
+  }
+
+  function yonetimPopupKapat() {
+    setYonetimPopup(null)
+    setYmHata('')
+  }
+
+  async function yonetimKaydet() {
+    if (!yonetimPopup) return
+    const { kayit } = yonetimPopup
+    if (!ymBaslangic || !ymBitis || ymBaslangic >= ymBitis) {
+      setYmHata('Başlangıç saati bitiş saatinden önce olmalı.')
+      return
+    }
+    setYmGonderiliyor(true)
+    const guncelleme = { baslangic_saat: ymBaslangic, bitis_saat: ymBitis }
+    if (kayit.kaynak === 'bire_bir_atamalari' || (kayit.kaynak === 'bire_bir_yoklama' && !kayit.soruCozumuMu)) {
+      if (!ymTutar || Number(ymTutar) <= 0) {
+        setYmHata('Lütfen geçerli bir ücret girin.')
+        setYmGonderiliyor(false)
+        return
+      }
+      guncelleme.tutar = Number(ymTutar)
+      // bire_bir_atamalari tablosunda ücret kolonu "ders_ucreti", bire_bir_yoklama'da "tutar".
+      if (kayit.kaynak === 'bire_bir_atamalari') {
+        delete guncelleme.tutar
+        guncelleme.ders_ucreti = Number(ymTutar)
+      }
+    }
+    const { error } = await supabase.from(kayit.kaynak).update(guncelleme).eq('id', kayit.id)
+    setYmGonderiliyor(false)
+    if (error) {
+      setYmHata('Hata: ' + error.message)
+      return
+    }
+    yonetimPopupKapat()
+    onHizliEklendi && onHizliEklendi()
+  }
+
+  async function yonetimSil(kayit) {
+    const mesaj =
+      kayit.kaynak === 'bire_bir_atamalari'
+        ? 'Bu atamayı ve tüm yoklama geçmişini silmek istediğinize emin misiniz? Bu işlem geri alınamaz.'
+        : kayit.soruCozumuMu
+        ? 'Bu Soru Çözümü seansını silmek istediğinize emin misiniz?'
+        : 'Bu dersi silmek istediğinize emin misiniz?'
+    if (!confirm(mesaj)) return
+    const { error } = await supabase.from(kayit.kaynak).delete().eq('id', kayit.id)
+    if (error) {
+      alert('Hata: ' + error.message)
+      return
+    }
+    onHizliEklendi && onHizliEklendi()
   }
 
   // Yazılan metne göre öğrenci + sınıf önerileri (en fazla 6'şar tane).
@@ -437,6 +522,8 @@ export default function MusaitlikTablosu({
         // adı gösteriliyor.
         etiket: d.sinif_adi || d.ders_adi || 'Sınıf dersi',
         renk: 'bg-blue-200 text-blue-900 border-l-4 border-l-blue-600',
+        id: d.id,
+        kaynak: 'ders_programi',
       })
     }
     for (const a of atamalar || []) {
@@ -446,6 +533,9 @@ export default function MusaitlikTablosu({
         bitis: a.bitis_saat,
         etiket: a.ogrenci_adi || 'Bire bir',
         renk: 'bg-orange-200 text-orange-900 border-l-4 border-l-orange-600',
+        id: a.id,
+        kaynak: 'bire_bir_atamalari',
+        tutar: a.ders_ucreti,
       })
     }
     for (const y of yoklamalar || []) {
@@ -464,6 +554,10 @@ export default function MusaitlikTablosu({
         renk: soruCozumuMu
           ? 'bg-purple-200 text-purple-900 border-l-4 border-l-purple-600'
           : 'bg-orange-200 text-orange-900 border-l-4 border-l-orange-600',
+        id: y.id,
+        kaynak: 'bire_bir_yoklama',
+        tutar: soruCozumuMu ? null : y.tutar,
+        soruCozumuMu,
       })
     }
     // Bekleyen TASLAKLAR — "taslağa ekleyince o saat hala boş görünüyor, aynı
@@ -604,6 +698,11 @@ export default function MusaitlikTablosu({
                       hizliPopup.ogretmenId === o.id &&
                       hizliPopup.tarih === tarih &&
                       hizliPopup.baslangic === h.baslangic
+                    const yonetimPopupBuradaMi =
+                      yonetimPopup &&
+                      yonetimPopup.ogretmenId === o.id &&
+                      yonetimPopup.tarih === tarih &&
+                      yonetimPopup.baslangic === h.baslangic
                     return (
                       <td
                         key={h.baslangic}
@@ -631,7 +730,7 @@ export default function MusaitlikTablosu({
                               }
                             : undefined
                         }
-                        className={`relative border-t border-l border-gray-100 text-center align-middle py-1 ${
+                        className={`group relative border-t border-l border-gray-100 text-center align-middle py-1 ${
                           h.dolu
                             ? h.dolu.renk
                             : seciliMi
@@ -643,6 +742,60 @@ export default function MusaitlikTablosu({
                       >
                         {h.dolu ? (
                           <span className="leading-none block px-0.5">
+                            {h.dolu.kaynak === 'ders_programi' && onSinifDersiSil && (
+                              <div className="absolute top-0 right-0 flex opacity-0 group-hover:opacity-100 transition-opacity">
+                                {onSinifDersiGuncelle && (
+                                  <button
+                                    type="button"
+                                    title="Bu ders saatini güncelle"
+                                    onClick={(e) => {
+                                      e.stopPropagation()
+                                      onSinifDersiGuncelle(h.dolu.id)
+                                    }}
+                                    className="w-3.5 h-3.5 leading-none flex items-center justify-center bg-blue-600 text-white text-[8px]"
+                                  >
+                                    ✏
+                                  </button>
+                                )}
+                                <button
+                                  type="button"
+                                  title="Bu ders saatini sil"
+                                  onClick={(e) => {
+                                    e.stopPropagation()
+                                    onSinifDersiSil(h.dolu.id)
+                                  }}
+                                  className="w-3.5 h-3.5 leading-none flex items-center justify-center rounded-bl bg-red-600 text-white text-[9px]"
+                                >
+                                  ✕
+                                </button>
+                              </div>
+                            )}
+                            {(h.dolu.kaynak === 'bire_bir_atamalari' || h.dolu.kaynak === 'bire_bir_yoklama') && (
+                              <div className="absolute top-0 right-0 flex opacity-0 group-hover:opacity-100 transition-opacity">
+                                <button
+                                  type="button"
+                                  title="Güncelle"
+                                  onClick={(e) => {
+                                    e.stopPropagation()
+                                    yonetimPopupAc(o.id, tarih, h.baslangic, h.dolu)
+                                  }}
+                                  className="w-3.5 h-3.5 leading-none flex items-center justify-center bg-blue-600 text-white text-[8px]"
+                                >
+                                  ✏
+                                </button>
+                                <button
+                                  type="button"
+                                  title="Sil"
+                                  onClick={(e) => {
+                                    e.stopPropagation()
+                                    yonetimSil(h.dolu)
+                                  }}
+                                  className="w-3.5 h-3.5 leading-none flex items-center justify-center rounded-bl bg-red-600 text-white text-[9px]"
+                                >
+                                  ✕
+                                </button>
+                              </div>
+                            )}
                             <span className="block truncate text-[11px] font-semibold">{h.dolu.etiket}</span>
                             {/* Saat, sütun başlığındaki periyotla (h.baslangic/h.bitis) BİREBİR
                                 aynıysa tekrar yazmıyoruz — zaten sütun başlığında görünüyor.
@@ -759,6 +912,64 @@ export default function MusaitlikTablosu({
                                 </div>
                               </>
                             )}
+                          </div>
+                        )}
+
+                        {yonetimPopupBuradaMi && (
+                          <div
+                            onClick={(e) => e.stopPropagation()}
+                            className="absolute z-30 top-full left-1/2 -translate-x-1/2 mt-1 w-56 bg-white border border-gray-200 rounded-xl shadow-lg p-3 text-left cursor-default normal-case text-gray-700"
+                          >
+                            <div className="flex items-center justify-between mb-2">
+                              <span className="text-[11px] font-semibold text-gray-500">
+                                {yonetimPopup.kayit.etiket} Güncelle
+                              </span>
+                              <button type="button" onClick={yonetimPopupKapat} className="text-gray-300 hover:text-gray-500 text-sm leading-none">
+                                ✕
+                              </button>
+                            </div>
+                            <div className="flex gap-1.5 mb-1.5">
+                              <input
+                                type="time"
+                                value={ymBaslangic}
+                                onChange={(e) => setYmBaslangic(e.target.value)}
+                                className="w-1/2 px-2 py-1.5 border border-gray-200 rounded-lg text-xs font-normal"
+                              />
+                              <input
+                                type="time"
+                                value={ymBitis}
+                                onChange={(e) => setYmBitis(e.target.value)}
+                                className="w-1/2 px-2 py-1.5 border border-gray-200 rounded-lg text-xs font-normal"
+                              />
+                            </div>
+                            {(yonetimPopup.kayit.kaynak === 'bire_bir_atamalari' ||
+                              (yonetimPopup.kayit.kaynak === 'bire_bir_yoklama' && !yonetimPopup.kayit.soruCozumuMu)) && (
+                              <input
+                                type="number"
+                                value={ymTutar}
+                                onChange={(e) => setYmTutar(e.target.value)}
+                                placeholder="Ders ücreti"
+                                className="w-full px-2 py-1.5 border border-gray-200 rounded-lg text-xs mb-1.5 font-normal"
+                              />
+                            )}
+                            {ymHata && <p className="text-[11px] text-red-500 mb-1.5 font-normal">{ymHata}</p>}
+                            <div className="flex gap-1.5">
+                              <button
+                                type="button"
+                                onClick={yonetimPopupKapat}
+                                className="flex-1 px-2 py-1.5 rounded-lg text-xs text-gray-500 bg-gray-50 hover:bg-gray-100"
+                              >
+                                Vazgeç
+                              </button>
+                              <button
+                                type="button"
+                                disabled={ymGonderiliyor}
+                                onClick={yonetimKaydet}
+                                className="flex-1 px-2 py-1.5 rounded-lg text-xs text-white bg-navy hover:bg-navy/90 disabled:opacity-50"
+                              >
+                                {ymGonderiliyor ? 'Kaydediliyor...' : 'Kaydet'}
+                              </button>
+                            </div>
                           </div>
                         )}
                       </td>
