@@ -117,16 +117,18 @@ export default function TopluEkstre() {
         .from('ekstre-pdf')
         .upload(dosyaYolu, pdfBlob, { upsert: true, contentType: 'application/pdf' })
       if (yuklemeHatasi) throw yuklemeHatasi
+      const ayYil = new Date(seciliAy + '-01').toLocaleDateString('tr-TR', { month: 'long', year: 'numeric' })
       // Uzun imzalı Supabase linkini WhatsApp mesajına koymak yerine (600+
       // karakter, mesajı okunmaz yapıyordu) kısa bir kod üretip veritabanına
-      // kaydediyoruz — mesaja SADECE bu kısa kod gidiyor.
+      // kaydediyoruz — mesaja SADECE bu kısa kod gidiyor. "baslik" alanı,
+      // WhatsApp'ta linkin altında küçük bir önizleme kartı (başlık + simge)
+      // çıkması için api/e.js tarafından Open Graph etiketinde kullanılıyor.
       const kod = kisaKodUret()
       const { error: kisaLinkHatasi } = await supabase
         .from('kisa_linkler')
-        .insert({ kod, bucket: 'ekstre-pdf', dosya_yolu: dosyaYolu })
+        .insert({ kod, bucket: 'ekstre-pdf', dosya_yolu: dosyaYolu, baslik: `${ogrenci.ad_soyad} — ${ayYil} Ekstresi` })
       if (kisaLinkHatasi) throw kisaLinkHatasi
       const kisaLink = `https://savasakcaportal.com/api/e?k=${kod}`
-      const ayYil = new Date(seciliAy + '-01').toLocaleDateString('tr-TR', { month: 'long', year: 'numeric' })
       const kalanToplamBuOgrenci = veri.satirlar.reduce((t2, x) => t2 + x.toplamOdenecek, 0)
       const mesaj = whatsappMesajiOlustur({
         ogrenciAdi: ogrenci.ad_soyad,
