@@ -85,7 +85,7 @@ function GoogleDriveBaglanti() {
     const token = oturum?.session?.access_token
     if (!token) return
     try {
-      const yanit = await fetch('/api/google-baglanti-durumu', {
+      const yanit = await fetch('/api/google-drive?action=durumu', {
         headers: { Authorization: `Bearer ${token}` },
       })
       const veri = await yanit.json()
@@ -100,7 +100,7 @@ function GoogleDriveBaglanti() {
     try {
       const { data: oturum } = await supabase.auth.getSession()
       const token = oturum?.session?.access_token
-      const yanit = await fetch('/api/google-oauth-baslat', {
+      const yanit = await fetch('/api/google-drive?action=baslat', {
         headers: { Authorization: `Bearer ${token}` },
       })
       const veri = await yanit.json()
