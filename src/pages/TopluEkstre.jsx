@@ -1,7 +1,16 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
-import { paraFormat, ogrenciSatirlariHesapla, whatsappLinkOlusturTelefonIcin, bireBirBorclariOlustur, kantinBorclariOlustur } from '../lib/ekstreHesap'
+import {
+  paraFormat,
+  ogrenciSatirlariHesapla,
+  telefonNormallestir,
+  whatsappMesajiOlustur,
+  ekstreVerisiGetir,
+  bireBirBorclariOlustur,
+  kantinBorclariOlustur,
+} from '../lib/ekstreHesap'
+import { ekstrePdfOlustur } from '../lib/pdfOlustur'
 
 export default function TopluEkstre() {
   const [ogrenciler, setOgrenciler] = useState([])
@@ -12,6 +21,10 @@ export default function TopluEkstre() {
   const [arama, setArama] = useState('')
   const [sadeceBorclu, setSadeceBorclu] = useState(false)
   const [loading, setLoading] = useState(true)
+  // Bir satırda "Anneye Gönder"/"Babaya Gönder" tıklandığında PDF hazırlanıp
+  // Supabase Storage'a yüklenene kadar geçen süre için — `${ogrenciId}-anne`
+  // ya da `${ogrenciId}-baba` şeklinde, o an işlemde olan tek anahtarı tutar.
+  const [gonderiliyor, setGonderiliyor] = useState(null)
 
   useEffect(() => {
     Promise.all([
@@ -60,8 +73,8 @@ export default function TopluEkstre() {
         kalanToplam,
         gecmisBorc,
         borcluMu: kalanToplam > 0,
-        anneWhatsappLink: whatsappLinkOlusturTelefonIcin(o.anne_telefon, o.ad_soyad, o.id, seciliAy, buAyToplam, kalanToplam),
-        babaWhatsappLink: whatsappLinkOlusturTelefonIcin(o.baba_telefon, o.ad_soyad, o.id, seciliAy, buAyToplam, kalanToplam),
+        anneTelefonVarMi: !!telefonNormallestir(o.anne_telefon),
+        babaTelefonVarMi: !!telefonNormallestir(o.baba_telefon),
       }
     })
     .filter((r) => r.ogrenci.ad_soyad.toLowerCase().includes(arama.toLowerCase()))
@@ -69,6 +82,54 @@ export default function TopluEkstre() {
 
   const genelToplamBorc = satirlar.reduce((t, r) => t + r.kalanToplam, 0)
   const borcluSayisi = satirlar.filter((r) => r.borcluMu).length
+
+  // "Anneye Gönder"/"Babaya Gönder" tıklanınca: önce bu öğrencinin TAM ekstre
+  // verisini (bire bir dökümü, kantin dökümü, ödeme geçmişi dahil) çeker,
+  // gerçek bir PDF dosyasına çevirir, Supabase Storage'a yükler ve imzalı
+  // (60 gün geçerli) bir link üretir — WhatsApp mesajına artık siteye giden
+  // bir sayfa linki değil, doğrudan açılan bu PDF linki gider.
+  async function pdfIleGonder(ogrenci, taraf) {
+    const telefon = taraf === 'anne' ? ogrenci.anne_telefon : ogrenci.baba_telefon
+    const t = telefonNormallestir(telefon)
+    if (!t) {
+      alert(`${taraf === 'anne' ? 'Anne' : 'Baba'} telefonu kayıtlı değil.`)
+      return
+    }
+    const anahtar = `${ogrenci.id}-${taraf}`
+    setGonderiliyor(anahtar)
+    try {
+      const veri = await ekstreVerisiGetir(supabase, ogrenci.id, seciliAy)
+      if (!veri) throw new Error('Öğrenci verisi bulunamadı.')
+      const pdfBlob = await ekstrePdfOlustur(veri)
+      const dosyaYolu = `${ogrenci.id}/${seciliAy}.pdf`
+      const { error: yuklemeHatasi } = await supabase.storage
+        .from('ekstre-pdf')
+        .upload(dosyaYolu, pdfBlob, { upsert: true, contentType: 'application/pdf' })
+      if (yuklemeHatasi) throw yuklemeHatasi
+      const { data: linkVerisi, error: linkHatasi } = await supabase.storage
+        .from('ekstre-pdf')
+        .createSignedUrl(dosyaYolu, 60 * 24 * 60 * 60) // 60 gün geçerli
+      if (linkHatasi) throw linkHatasi
+      const ayYil = new Date(seciliAy + '-01').toLocaleDateString('tr-TR', { month: 'long', year: 'numeric' })
+      const kalanToplamBuOgrenci = veri.satirlar.reduce((t2, x) => t2 + x.toplamOdenecek, 0)
+      const mesaj = whatsappMesajiOlustur({
+        ogrenciAdi: ogrenci.ad_soyad,
+        ayYil,
+        buAyTutar: veri.buAyToplam,
+        kalanTutar: kalanToplamBuOgrenci,
+        pdfLink: linkVerisi.signedUrl,
+      })
+      window.open(`https://wa.me/${t}?text=${encodeURIComponent(mesaj)}`, '_blank')
+    } catch (err) {
+      alert(
+        'PDF oluşturulurken/gönderilirken bir hata oluştu: ' +
+          (err.message || String(err)) +
+          '\n\nEğer "ekstre-pdf" bucket bulunamadı gibi bir hata görüyorsanız, bu özelliğin ilk kurulumu için verilen SQL dosyasını Supabase\'te çalıştırmanız gerekiyor.'
+      )
+    } finally {
+      setGonderiliyor(null)
+    }
+  }
 
   return (
     <div>
@@ -154,27 +215,27 @@ export default function TopluEkstre() {
                   <Link to={`/ekstre/${r.ogrenci.id}`} target="_blank" className="text-blue text-sm hover:underline mr-3">
                     Ekstre
                   </Link>
-                  {r.anneWhatsappLink ? (
-                    <a
-                      href={r.anneWhatsappLink}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="text-green-600 text-sm font-medium hover:underline mr-3"
+                  {r.anneTelefonVarMi ? (
+                    <button
+                      type="button"
+                      disabled={gonderiliyor === `${r.ogrenci.id}-anne`}
+                      onClick={() => pdfIleGonder(r.ogrenci, 'anne')}
+                      className="text-green-600 text-sm font-medium hover:underline mr-3 disabled:opacity-50 disabled:no-underline disabled:cursor-wait"
                     >
-                      Anneye Gönder
-                    </a>
+                      {gonderiliyor === `${r.ogrenci.id}-anne` ? 'PDF Hazırlanıyor...' : 'Anneye Gönder'}
+                    </button>
                   ) : (
                     <span className="text-xs text-gray-400 mr-3">Anne Telefonu Yok</span>
                   )}
-                  {r.babaWhatsappLink ? (
-                    <a
-                      href={r.babaWhatsappLink}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="text-green-600 text-sm font-medium hover:underline"
+                  {r.babaTelefonVarMi ? (
+                    <button
+                      type="button"
+                      disabled={gonderiliyor === `${r.ogrenci.id}-baba`}
+                      onClick={() => pdfIleGonder(r.ogrenci, 'baba')}
+                      className="text-green-600 text-sm font-medium hover:underline disabled:opacity-50 disabled:no-underline disabled:cursor-wait"
                     >
-                      Babaya Gönder
-                    </a>
+                      {gonderiliyor === `${r.ogrenci.id}-baba` ? 'PDF Hazırlanıyor...' : 'Babaya Gönder'}
+                    </button>
                   ) : (
                     <span className="text-xs text-gray-400">Baba Telefonu Yok</span>
                   )}
