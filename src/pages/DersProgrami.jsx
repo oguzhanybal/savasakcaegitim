@@ -813,6 +813,20 @@ function gunNumaraTarihten(tarihStr) {
   return g === 0 ? 7 : g
 }
 
+// Öğretmenin kendi programında aynı güne düşen sınıf dersi / bire bir tekil
+// ders / soru çözümü satırları, ÖNCELİKLE saate göre sıralansın istendi —
+// önceden tür bazında (önce tüm sınıf dersleri, sonra tüm soru çözümleri,
+// en sonda tüm bire birler) art arda ekleniyordu, bu da saat 14.15'teki bir
+// bire bir dersin saat 17.00'deki bir soru çözümünden SONRA görünmesi gibi
+// kafa karıştırıcı bir sıraya yol açıyordu. Saatler eşitse (aynı saat
+// diliminde birden fazla ders varsa) tür önceliğine göre sınıf dersi → bire
+// bir → soru çözümü sırasıyla ikincil bir sıralama yapılır.
+function dersTuruSirasi(d) {
+  if (d.sinif_id) return 0 // sınıf dersi
+  if (d._bireBir) return 1 // bire bir tekil ders
+  return 2 // soru çözümü
+}
+
 
 // Veli ("çocuğumun") ya da öğrenci ("benim") rolüyle giriş yapan kullanıcıya,
 // sınıf ders programının YANINDA, çocuğun/kendisinin HAFTALIK BİRE BİR ders
@@ -1331,13 +1345,19 @@ export default function DersProgrami() {
       ]
     : program
 
-  const gunlereGore = GUNLER.map((_, gun) => kendiProgram.filter((p) => p.gun === gun)).slice(1)
+  const gunlereGore = GUNLER.map((_, gun) =>
+    kendiProgram
+      .filter((p) => p.gun === gun)
+      .sort((a, b) => (a.baslangic_saat || '').localeCompare(b.baslangic_saat || '') || dersTuruSirasi(a) - dersTuruSirasi(b))
+  ).slice(1)
 
   // Tablo görünümü için: programdaki tüm benzersiz başlangıç saatleri, sıralı satırlar olarak.
   const saatSatirlari = [...new Set(kendiProgram.map((p) => saatKisalt(p.baslangic_saat)))].sort()
 
   function hucreDersleri(gun, saat) {
-    return kendiProgram.filter((p) => p.gun === gun && saatKisalt(p.baslangic_saat) === saat)
+    return kendiProgram
+      .filter((p) => p.gun === gun && saatKisalt(p.baslangic_saat) === saat)
+      .sort((a, b) => (a.baslangic_saat || '').localeCompare(b.baslangic_saat || '') || dersTuruSirasi(a) - dersTuruSirasi(b))
   }
 
   // Veli/öğrenci için sınıf ders programı (tablo/liste) sadece bu sekme
