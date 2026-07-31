@@ -1190,6 +1190,15 @@ export default function DersProgrami() {
     setDuzenlenenDers(d)
   }
 
+  // Günlük Müsaitlik tablosundaki ✏️ butonuna basılınca çağrılır — sadece bir
+  // id geliyor (MusaitlikTablosu kendi başına tam kaydı tutmuyor), o yüzden
+  // burada "program" state'i içinden tam kaydı bulup mevcut duzenle() akışına
+  // (aşağıdaki forma kaydırma) yönlendiriyoruz.
+  function musaitlikTablosundanDuzenle(id) {
+    const d = program.find((p) => p.id === id)
+    if (d) duzenle(d)
+  }
+
   const ogrenciAdMap = useMemo(() => new Map(ogrenciler.map((o) => [o.id, o.ad_soyad])), [ogrenciler])
 
   // Plan adı kutusundaki öneriler — şu an var olan (silinmemiş) tüm isimli
@@ -1434,6 +1443,8 @@ export default function DersProgrami() {
                 aktifPlanAdi={aktifPlanAdi.trim()}
                 taslaklar={taslaklar}
                 onTarihDegisti={setMusaitlikTarihi}
+                onSinifDersiSil={sil}
+                onSinifDersiGuncelle={musaitlikTablosundanDuzenle}
               />
               <DersEkleForm
                 siniflar={siniflar}
