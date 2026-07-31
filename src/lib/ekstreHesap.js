@@ -592,6 +592,45 @@ export function bireBirDersDetaylariOlustur(atamalar, yoklamalar) {
     .sort((a, b) => (a.tarih < b.tarih ? 1 : -1))
 }
 
+// ============================================================================
+// ÖĞRETMEN EKSTRESİ — SINIF DERSLERİ DÖKÜMÜ — bir öğretmenin verdiği (yoklaması
+// alınmış) sınıf derslerini, bireBirDersDetaylariOlustur ile AYNI satır
+// şekline ({tarih, baslangicSaat, bitisSaat, ogrenciAdi, tutar, tur}) çevirir —
+// OgretmenEkstre.jsx'te bire bir + soru çözümü ile aynı tabloda, kronolojik
+// karışık gösterilebilsin diye. Sınıf dersleri bu ekstredeki tutara hiç
+// katkı vermez (tutar hep 0) — sadece "hangi tarihte hangi sınıfa, hangi
+// dersi verdi" kaydı için.
+//
+// yoklamaKayitlari: 'yoklama' tablosundan gelen satırlar — HER SATIR bir
+// ÖĞRENCİYE ait olduğu için (aynı ders saati + aynı gün için N öğrenci = N
+// satır), burada (ders_programi_id, tarih) ikilisine göre TEK bir derse
+// indirgeniyor — kaç öğrenci değil, kaç FARKLI ders saati işlendiği önemli.
+// Her satır ".select('*, ders_programi(ders_adi, baslangic_saat, bitis_saat, siniflar(ad)))"
+// join'i içermeli (ders_programi_id null olan genel yoklama satırları atlanır).
+// ============================================================================
+export function sinifDersDetaylariOlustur(yoklamaKayitlari) {
+  const gruplar = new Map()
+  for (const y of yoklamaKayitlari || []) {
+    const dp = y.ders_programi
+    if (!dp || !y.ders_programi_id) continue
+    const anahtar = `${y.ders_programi_id}|${y.tarih}`
+    if (gruplar.has(anahtar)) continue
+    gruplar.set(anahtar, {
+      id: `sn-${anahtar}`,
+      tarih: y.tarih,
+      baslangicSaat: dp.baslangic_saat || null,
+      bitisSaat: dp.bitis_saat || null,
+      ogretmenAdi: null,
+      ogretmenBransi: null,
+      ogrenciAdi: `${dp.siniflar?.ad || 'Sınıf'}${dp.ders_adi ? ' · ' + dp.ders_adi : ''}`,
+      tutar: 0,
+      kaynak: 'Sınıf',
+      tur: 'sinif',
+    })
+  }
+  return Array.from(gruplar.values()).sort((a, b) => (a.tarih < b.tarih ? 1 : -1))
+}
+
 // Bir tarihin (YYYY-MM-DD) içinde bulunduğu haftanın PAZARTESİ gününü bulur —
 // haftalık gruplama için kullanılır.
 export function haftaBaslangici(tarihStr) {
