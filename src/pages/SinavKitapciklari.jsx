@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { supabase } from '../lib/supabase'
+import { useAuth } from '../lib/AuthContext'
 import { ilkHarfleriBuyukYap } from '../lib/adSoyadFormat'
 import {
   pdfBelgesiAc,
@@ -344,6 +345,12 @@ function TopluDersAtamaPaneli({ toplamSoru, onUygula, onVazgec, onGeriDon, basla
 }
 
 export default function SinavKitapciklari() {
+  // Öğretmen bu sayfaya artık erişebiliyor (bkz. Layout.jsx nav) ama SADECE
+  // görüntüleme + PDF indirme yapabilmeli — yükleme/düzenleme/silme
+  // (kitapçık OCR akışının tamamı + sınav/kitapçık Düzenle-Sil butonları)
+  // sadece yöneticiye açık kalıyor.
+  const { profile } = useAuth()
+  const isYonetici = profile?.rol === 'yonetici'
   const [sinavlar, setSinavlar] = useState([])
   const [kitapciklar, setKitapciklar] = useState([])
   const [silinenKitapcikId, setSilinenKitapcikId] = useState(null)
@@ -1178,9 +1185,15 @@ export default function SinavKitapciklari() {
       </datalist>
       <h1 className="text-2xl font-bold text-navy mb-2">Sınav Kitapçıkları</h1>
       <p className="text-sm text-gray-500 mb-6">
-        Bir kitapçığın (A/B) taranmış PDF'ini yükleyin, sistem soruların yaklaşık yerini otomatik bulmaya çalışır,
-        siz her birini kontrol edip onaylarsınız. Bu işlem her kitapçık için SADECE BİR KERE yapılır — sonra o
-        sınavı giren her öğrencinin yanlış sorularını buradan otomatik kesip kişiye özel kitapçık üretebiliriz.
+        {isYonetici ? (
+          <>
+            Bir kitapçığın (A/B) taranmış PDF'ini yükleyin, sistem soruların yaklaşık yerini otomatik bulmaya çalışır,
+            siz her birini kontrol edip onaylarsınız. Bu işlem her kitapçık için SADECE BİR KERE yapılır — sonra o
+            sınavı giren her öğrencinin yanlış sorularını buradan otomatik kesip kişiye özel kitapçık üretebiliriz.
+          </>
+        ) : (
+          'Kayıtlı kitapçıkların listesi aşağıda — hata analizi için orijinal PDF\'i "İndir" ile indirebilirsiniz.'
+        )}
       </p>
 
       {duzenlenenKitapcik && (
@@ -1279,19 +1292,23 @@ export default function SinavKitapciklari() {
                       </span>
                     </td>
                     <td className="px-4 py-2 text-right whitespace-nowrap">
-                      <button
-                        onClick={() => sinavDuzenlemeyeBasla(s)}
-                        className="text-navy text-sm font-semibold hover:underline mr-4"
-                      >
-                        Düzenle
-                      </button>
-                      <button
-                        onClick={() => sinavSil(s)}
-                        disabled={silinenSinavId === s.id}
-                        className="text-red-500 text-sm hover:underline disabled:opacity-50"
-                      >
-                        {silinenSinavId === s.id ? 'Siliniyor...' : 'Sil'}
-                      </button>
+                      {isYonetici && (
+                        <>
+                          <button
+                            onClick={() => sinavDuzenlemeyeBasla(s)}
+                            className="text-navy text-sm font-semibold hover:underline mr-4"
+                          >
+                            Düzenle
+                          </button>
+                          <button
+                            onClick={() => sinavSil(s)}
+                            disabled={silinenSinavId === s.id}
+                            className="text-red-500 text-sm hover:underline disabled:opacity-50"
+                          >
+                            {silinenSinavId === s.id ? 'Siliniyor...' : 'Sil'}
+                          </button>
+                        </>
+                      )}
                     </td>
                   </tr>
                 )
@@ -1337,20 +1354,24 @@ export default function SinavKitapciklari() {
                     >
                       {indirilenKitapcikId === k.id ? 'İndiriliyor...' : 'İndir'}
                     </button>
-                    <button
-                      onClick={() => kitapcikDuzenle(k)}
-                      disabled={duzenlemeYukleniyorId !== null}
-                      className="text-navy text-sm font-semibold hover:underline disabled:opacity-50 mr-4"
-                    >
-                      {duzenlemeYukleniyorId === k.id ? 'Açılıyor...' : 'Düzenle'}
-                    </button>
-                    <button
-                      onClick={() => kitapcikSil(k)}
-                      disabled={silinenKitapcikId === k.id}
-                      className="text-red-500 text-sm hover:underline disabled:opacity-50"
-                    >
-                      {silinenKitapcikId === k.id ? 'Siliniyor...' : 'Sil'}
-                    </button>
+                    {isYonetici && (
+                      <>
+                        <button
+                          onClick={() => kitapcikDuzenle(k)}
+                          disabled={duzenlemeYukleniyorId !== null}
+                          className="text-navy text-sm font-semibold hover:underline disabled:opacity-50 mr-4"
+                        >
+                          {duzenlemeYukleniyorId === k.id ? 'Açılıyor...' : 'Düzenle'}
+                        </button>
+                        <button
+                          onClick={() => kitapcikSil(k)}
+                          disabled={silinenKitapcikId === k.id}
+                          className="text-red-500 text-sm hover:underline disabled:opacity-50"
+                        >
+                          {silinenKitapcikId === k.id ? 'Siliniyor...' : 'Sil'}
+                        </button>
+                      </>
+                    )}
                   </td>
                 </tr>
               ))}
@@ -1359,6 +1380,14 @@ export default function SinavKitapciklari() {
         </div>
       )}
 
+      {/* Kitapçık yükleme + OCR/soru-bölgesi inceleme akışının TAMAMI
+          (aşağıdaki "Yeni Kitapçık Yükle" formundan, en alttaki soru
+          düzenleme popup'ına kadar) SADECE YÖNETİCİYE gösteriliyor —
+          öğretmen bu sayfaya sadece kayıtlı kitapçıkları görmek/indirmek
+          için erişiyor (bkz. yukarıdaki "Kayıtlı Kitapçıklar" tablosu),
+          yükleme/düzenleme/silme yetkisi yok. */}
+      {isYonetici && (
+      <>
       <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5 mb-6">
         <p className="font-semibold text-gray-700 mb-3">Yeni Kitapçık Yükle</p>
         <div className="flex flex-wrap gap-3 items-end mb-3">
@@ -1708,6 +1737,8 @@ export default function SinavKitapciklari() {
             </button>
           </div>
         </div>
+      )}
+      </>
       )}
     </div>
   )
