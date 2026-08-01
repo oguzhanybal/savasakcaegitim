@@ -1213,10 +1213,12 @@ export default function SinavKitapciklari() {
         <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-x-auto mb-6" style={{ touchAction: 'pan-x pan-y' }}>
           <div className="px-4 py-3 border-b border-gray-100 bg-gray-50">
             <h2 className="font-semibold text-gray-700">Sınavlar</h2>
-            <p className="text-xs text-gray-400 mt-0.5">
-              Yanlışlıkla ya da deneme amaçlı eklenmiş bir sınavı buradan silebilirsiniz — o sınava ait TÜM
-              kitapçıklar ve öğrenci sonuçları da birlikte silinir.
-            </p>
+            {isYonetici && (
+              <p className="text-xs text-gray-400 mt-0.5">
+                Yanlışlıkla ya da deneme amaçlı eklenmiş bir sınavı buradan silebilirsiniz — o sınava ait TÜM
+                kitapçıklar ve öğrenci sonuçları da birlikte silinir.
+              </p>
+            )}
           </div>
           <table className="w-full text-sm min-w-[400px]">
             <thead>
