@@ -20,6 +20,9 @@ export default function GunlukProgram() {
       supabase
         .from('ders_programi')
         .select('*, siniflar(ad), profiles:ogretmen_profile_id(ad_soyad)')
+        // Silinmiş (pasif yapılmış) ders saatleri bu listede görünmemeli —
+        // bkz. DersProgrami.jsx'teki sil().
+        .eq('aktif', true)
         .order('gun')
         .order('baslangic_saat'),
       supabase.from('profiles').select('*').eq('rol', 'ogretmen').order('ad_soyad'),
