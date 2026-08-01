@@ -184,7 +184,7 @@ export default function GunlukProgramListesi({ program, ogretmenler, atamalar, y
       {/* Masaüstünde (md ve üzeri) geniş tablo — yatay dilimler. Mobilde bu
           tablo 14 sütun yüzünden yana kaydırma gerektirdiği için gizlenir,
           yerine aşağıdaki dikey/kart görünüm gösterilir (bkz. md:hidden blok). */}
-      <div className="hidden md:block overflow-x-auto">
+      <div className="hidden md:block overflow-x-auto" style={{ touchAction: 'pan-x pan-y' }}>
         <table className="border-collapse text-xs w-full">
           <thead>
             <tr>

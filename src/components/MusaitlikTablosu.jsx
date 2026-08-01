@@ -661,7 +661,7 @@ export default function MusaitlikTablosu({
           <span className="text-xs text-gray-400 whitespace-nowrap">{GUNLER[gun]}</span>
         </div>
       </div>
-      <div className="overflow-x-auto">
+      <div className="overflow-x-auto" style={{ touchAction: 'pan-x pan-y' }}>
         <table className="border-collapse text-xs w-full">
           <thead>
             <tr>
