@@ -28,6 +28,13 @@ function BugunkuYoklamaDurumu({ isYonetici, ogretmenProfileId }) {
       .from('ders_programi')
       .select('*, siniflar(ad), profiles:ogretmen_profile_id(ad_soyad, brans)')
       .eq('gun', bugunGunNo)
+      // Silinmiş (pasif yapılmış) ders saatleri "bugünkü" durum özetinde
+      // görünmemeli — bkz. DersProgrami.jsx'teki sil(). NOT: aşağıdaki
+      // BugunkuYoklamaDurumu bileşeninin DIŞINDAKİ geçmiş sınıf raporu
+      // sorgusuna (yoklama tablosunu ders_programi'ye join eden) BİLEREK bu
+      // filtre eklenmiyor — geçmiş kayıtlar pasif olsa bile ders adını
+      // göstermeye devam etmeli.
+      .eq('aktif', true)
     if (!isYonetici && ogretmenProfileId) sorgu = sorgu.eq('ogretmen_profile_id', ogretmenProfileId)
 
     Promise.all([
