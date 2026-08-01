@@ -28,6 +28,20 @@ export function ayFarki(hedef, ilk) {
   return ayIndexOf(hedef) - ayIndexOf(ilk)
 }
 
+function tarihStr(y, m, d) {
+  return `${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`
+}
+
+// Bir taksitin GERÇEK vade tarihini ("YYYY-MM-DD" string, gün hassasiyetinde)
+// hesaplar — ilk taksit tarihine i ay eklenir. Ay/gün taşmalarını (ör. 31'i
+// olmayan bir aya denk gelmesi, Şubat'ın 28/29 günü) JS Date'in kendi ay
+// aritmetiği hallediyor.
+function vadeTarihiStr(ilkTarih, i) {
+  const d = new Date(ilkTarih)
+  d.setMonth(d.getMonth() + i)
+  return tarihStr(d.getFullYear(), d.getMonth() + 1, d.getDate())
+}
+
 // Bir ödemenin "kalem" alanı tam eşleşme değilse de (ör. "Okul - Devreden Ödeme")
 // ilgili kalemle başlıyorsa sayılır — devreden (eski sistemden gelen) ödemeler de
 // borç hesabına dahil edilsin diye.
@@ -55,26 +69,60 @@ export function sozlesmeKalemHesapla(sozlesme, odemeler, seciliAy) {
 
   const ilkTarih = new Date(sozlesme.ilk_taksit_tarihi)
   const ilk = { yil: ilkTarih.getFullYear(), ay: ilkTarih.getMonth() + 1 }
-  const hedef = ayEkle(seciliAy, 1) // vade ayı: seçili ay + 1 (Excel: EOMONTH(B4,1))
-  const simdi = ayEkle(seciliAy, 0) // seçili ayın kendisi (Excel: EOMONTH(B4,0))
-
+  const ilkIndex = ayIndexOf(ilk)
   const taksitTutari = toplamTutar / taksitSayisi
 
-  const G = Math.max(0, Math.min(taksitSayisi, ayFarki(hedef, ilk) + 1))
-  const H = Math.max(0, Math.min(taksitSayisi, ayFarki(simdi, ilk) + 1))
+  const { yil: seciliYil, ay: seciliAyNo } = ayCoz(seciliAy)
+  const seciliIndex = ayIndexOf({ yil: seciliYil, ay: seciliAyNo })
 
-  const odenen = odemeToplamKalem(odemeler, sozlesme.kalem, hedef)
+  // Bugün, YEREL tarihe göre "YYYY-MM-DD" string (uygulamanın diğer
+  // yerlerindeki yerelBugunTarihi() ile aynı desen) — Date nesnesi yerine
+  // string karşılaştırması kullanmak saat dilimi kaynaklı kaymaları önlüyor.
+  const n = new Date()
+  const bugunStr = tarihStr(n.getFullYear(), n.getMonth() + 1, n.getDate())
+  const bugunAyStr = `${n.getFullYear()}-${String(n.getMonth() + 1).padStart(2, '0')}`
+
+  // Seçili ayın GERÇEK son günü — new Date(yil, ay, 0) JS'in kendi ay
+  // aritmetiğiyle 30/31 farkını ve Şubat'ın (yıla göre) 28/29 gününü otomatik
+  // doğru hesaplıyor, elle tablo tutmaya gerek yok.
+  const sonGun = new Date(seciliYil, seciliAyNo, 0)
+  const ayinSonGunuStr = tarihStr(sonGun.getFullYear(), sonGun.getMonth() + 1, sonGun.getDate())
+
+  // "Ay bitti mi?" — ekstreler her ayın SON GÜNÜNDE veliye gönderiliyor, o
+  // gün bir sonraki ayın taksiti de otomatik eklenip "yaşlandırılıyor" (ör.
+  // 20 Ağustos vadeli taksit ödenmeden 31 Ağustos'a gelinirse, o gün Eylül
+  // taksiti de borca eklenir). Seçili ay bugünün ayı DEĞİLSE (geçmiş bir ayın
+  // ekstresine bakılıyorsa) her zaman "bitmiş" sayılır — geçmiş bir ayın
+  // ekstresi hep o ayın kapanış hâlini (bir sonraki ayın önizlemesiyle
+  // birlikte) göstermeye devam etsin diye. Bugünün ayıysa, sadece takvim
+  // GERÇEKTEN o ayın son gününe ulaştıysa "bitmiş" sayılır.
+  const ayBittiMi = seciliAy !== bugunAyStr || bugunStr >= ayinSonGunuStr
+
+  // Belirli bir hedef aya (dahil) kaç taksitin "sayıldığını" hesaplar. Ay
+  // bittiyse düz ay bazında (eski sistemdeki gibi); bitmediyse (içinde
+  // bulunduğumuz, henüz kapanmamış ay) SADECE seçili aya denk gelen taksitin
+  // kendi GÜNÜ gelmiş mi diye ayrıca kontrol eder — asıl düzeltme burada:
+  // "20 Ağustos vadeli taksit, 1 Ağustos'ta henüz borç sayılmasın".
+  function sayilanTaksit(hedefIndex) {
+    let sayi = Math.max(0, Math.min(taksitSayisi, hedefIndex - ilkIndex + 1))
+    if (!ayBittiMi && sayi > 0) {
+      const sonVadeStr = vadeTarihiStr(ilkTarih, sayi - 1)
+      if (sonVadeStr.slice(0, 7) === seciliAy && sonVadeStr > bugunStr) sayi -= 1
+    }
+    return sayi
+  }
+
+  const hedefIndex = ayBittiMi ? seciliIndex + 1 : seciliIndex
+  const G = sayilanTaksit(hedefIndex)
+  // Bir önceki ayın SONUNA kadar (düz ay bazında, gün kontrolü olmadan) kaç
+  // taksit kesinleşmiş/kapanmıştı — "bu ay yeni eklenen kısmı" bulmak için.
+  const oncekiAyTaksitSayisi = Math.max(0, Math.min(taksitSayisi, seciliIndex - 1 - ilkIndex + 1))
+
+  const hedefAyObj = ayBittiMi ? ayEkle(seciliAy, 1) : { yil: seciliYil, ay: seciliAyNo }
+  const odenen = odemeToplamKalem(odemeler, sozlesme.kalem, hedefAyObj)
 
   const J = taksitTutari * G
-  const L = taksitTutari * H
   const M = taksitTutari > 0 ? Math.min(taksitSayisi, Math.floor(odenen / taksitTutari)) : 0
-
-  let vade = null
-  if (G > 0) {
-    const vadeAyIndex = G >= taksitSayisi ? taksitSayisi - 1 : G - 1
-    vade = new Date(ilkTarih)
-    vade.setMonth(vade.getMonth() + vadeAyIndex)
-  }
 
   const kalanToplam = Math.max(0, J - odenen)
   // Veli, o ana kadar borçlanandan FAZLA ödeme yaptıysa (ör. taksitini önden
@@ -83,10 +131,20 @@ export function sozlesmeKalemHesapla(sozlesme, odemeler, seciliAy) {
   // sonraki ayın taksitinden düşülür (ayrıca bir işlem gerekmez) — burada
   // sadece veli/yönetici görsün diye "+X Alacaklı" olarak da dışa veriyoruz.
   const fazlaOdeme = Math.max(0, odenen - J)
-  const buAyTutar = Math.max(0, J - L)
+  // "Bu ay eklenen tutar" — bir önceki ayın sonuna göre YENİ eklenen kısım:
+  // ya sadece bu ayın kendi taksiti (vadesi geldiyse), ya da (ay bittiyse)
+  // hem bu ayın hem bir sonraki ayın taksiti birlikte. Kalan her şey daha
+  // eski aylardan sürüklenen, hâlâ ödenmemiş borç.
+  const buAyTutar = Math.min(taksitTutari * Math.max(0, G - oncekiAyTaksitSayisi), kalanToplam)
   const gecmisBorc = Math.max(0, kalanToplam - buAyTutar)
 
   if (kalanToplam <= 0 && fazlaOdeme <= 0.01) return null
+
+  let vade = null
+  if (M < taksitSayisi) {
+    vade = new Date(ilkTarih)
+    vade.setMonth(vade.getMonth() + M)
+  }
 
   return {
     label: `${sozlesme.kalem} - Taksit (${M}/${taksitSayisi})`,
