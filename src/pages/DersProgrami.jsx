@@ -1304,13 +1304,44 @@ export default function DersProgrami() {
   })
 
   async function sil(id) {
-    if (!confirm('Bu ders saatini silmek istediğinize emin misiniz? Bu ders saatine ait yoklama kayıtları da (varsa) birlikte silinecek.')) return
-    // Bir ders saati silinirken, o ders saatine bağlı yoklama kayıtları da
-    // silinmezse veritabanında "sahipsiz" (hangi derse ait olduğu belli
-    // olmayan) kayıtlar kalır. Önce yoklamayı, sonra ders saatini siliyoruz.
-    const { error: yoklamaHata } = await supabase.from('yoklama').delete().eq('ders_programi_id', id)
+    if (!confirm('Bu ders saatini silmek istediğinize emin misiniz? Bugünden itibaren ileriye dönük yoklama kayıtları da (varsa) birlikte silinecek — geçmiş (bugünden önceki) yoklama kayıtları KORUNUR, silinmez.')) return
+    // ÖNEMLİ HATA DÜZELTMESİ: bu fonksiyon önceden o ders_programi_id'ye ait
+    // TÜM yoklama kayıtlarını (geçmiş dahil) siliyordu. Ama "ders_programi"
+    // satırı belirli bir TARİHE değil, haftanın GÜNÜNE bağlı tekrarlayan bir
+    // şablon (ör. "her Cumartesi 11:45") — yani geçen haftanın VE gelecek
+    // haftanın Cumartesi dersi AYNI ders_programi_id'yi paylaşıyor. Böylece
+    // Günlük Müsaitlik'te sadece BİR tarihin (ör. 8 Ağustos) hücresinden
+    // "Sil" denildiğinde, önceki haftaların (ör. 1 Ağustos) çoktan alınmış
+    // yoklama kayıtları da silinip gidiyordu.
+    //
+    // Artık sadece BUGÜNDEN İTİBAREN (>= bugün) olan yoklama kayıtları
+    // siliniyor. Geçmiş kayıtları ise SADECE silmemekle yetinmiyoruz — az
+    // sonra ders_programi satırının kendisini sileceğimiz için, geçmiş
+    // yoklama satırlarının ders_programi_id bağlantısını da önden NULL'a
+    // çekip "koparıyoruz". Bunu bilerek yapıyoruz: veritabanındaki foreign key
+    // kuralı CASCADE ise (silinen ders_programi'ye bağlı satırları otomatik
+    // silerdi) geçmiş kayıtlar yine de KORUNMUŞ olur — artık hiçbir satır o
+    // id'yi referans almadığı için silinecek bir şey kalmıyor. Tek yan etkisi:
+    // bu çok eski kayıtlar artık "hangi ders saatine ait olduğu" bilgisini
+    // kaybediyor (öğretmenin KENDİ görünümünde bu çok eski kayıt bir daha
+    // görünmeyebilir) — ama kaydın kendisi (tarih, öğrenci, geldi/gelmedi,
+    // dolayısıyla borç geçmişi) hiç silinmiyor, yönetici ve veli/öğrenci
+    // tarafında görünmeye devam ediyor.
+    const { error: yoklamaHata } = await supabase
+      .from('yoklama')
+      .delete()
+      .eq('ders_programi_id', id)
+      .gte('tarih', yerelBugunTarihi())
     if (yoklamaHata) {
       alert('Hata (yoklama kayıtları silinirken): ' + yoklamaHata.message)
+      return
+    }
+    const { error: koparHata } = await supabase
+      .from('yoklama')
+      .update({ ders_programi_id: null })
+      .eq('ders_programi_id', id)
+    if (koparHata) {
+      alert('Hata (geçmiş yoklama kayıtları ayrılırken): ' + koparHata.message)
       return
     }
     const { error } = await supabase.from('ders_programi').delete().eq('id', id)
