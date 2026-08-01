@@ -35,9 +35,15 @@ export default function Yoklama() {
       .select('*')
       .eq('sinif_id', seciliSinif)
       .eq('gun', bugunGunNo)
-      // Silinmiş (pasif yapılmış) ders saatleri yoklama alma dropdown'ında
-      // görünmemeli — bkz. DersProgrami.jsx'teki sil().
-      .eq('aktif', true)
+      // ÖNEMLİ: sadece aktif=true DEĞİL — bir ders saati TAM BUGÜN (aynı gün
+      // içinde, ör. saat 15:00'te) silinirse (aktif=false yapılırsa), o dersin
+      // BUGÜNKÜ yoklaması hâlâ alınabilir/düzenlenebilir olmalı (belki daha
+      // önce, o ders saatinde zaten alınmıştı). "aktif=true VEYA bugün
+      // silindi (pasif_tarihi >= bugün)" kuralı — DersProgrami.jsx'teki
+      // musaitlikIcinProgram ile birebir aynı mantık, burada D her zaman
+      // "bugün". YARIN bu dropdown'da artık görünmeyecek (pasif_tarihi <
+      // yarının tarihi).
+      .or(`aktif.eq.true,pasif_tarihi.gte.${bugun}`)
       .order('baslangic_saat')
       .then(({ data }) => {
         setGununSaatleri(data || [])
