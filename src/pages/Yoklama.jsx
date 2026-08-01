@@ -35,6 +35,9 @@ export default function Yoklama() {
       .select('*')
       .eq('sinif_id', seciliSinif)
       .eq('gun', bugunGunNo)
+      // Silinmiş (pasif yapılmış) ders saatleri yoklama alma dropdown'ında
+      // görünmemeli — bkz. DersProgrami.jsx'teki sil().
+      .eq('aktif', true)
       .order('baslangic_saat')
       .then(({ data }) => {
         setGununSaatleri(data || [])
