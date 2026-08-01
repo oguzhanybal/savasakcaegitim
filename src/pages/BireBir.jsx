@@ -2560,7 +2560,9 @@ export default function BireBir() {
       // d.sinif_adi olarak ekliyoruz (bkz. DersProgrami.jsx'teki aynı desen).
       // Bu join eksik olduğu için Müsaitlik Tablosu'nda (bu sayfadaki) sınıf
       // dersleri, ders_adi boşsa hep "Sınıf dersi" yazıyordu.
-      isYonetici ? supabase.from('ders_programi').select('*, siniflar(ad)') : Promise.resolve({ data: [] }),
+      // aktif=true: silinmiş (pasif yapılmış) sınıf dersleri Müsaitlik
+      // tablosunda dolu görünmemeli — bkz. DersProgrami.jsx'teki sil().
+      isYonetici ? supabase.from('ders_programi').select('*, siniflar(ad)').eq('aktif', true) : Promise.resolve({ data: [] }),
       // Öğrencinin hangi sınıf(lar)a kayıtlı olduğu — bire bir ders eklerken
       // "bu öğrencinin sınıf dersi var" uyarısını gösterebilmek için.
       isYonetici ? supabase.from('sinif_ogrenciler').select('ogrenci_id, sinif_id') : Promise.resolve({ data: [] }),
