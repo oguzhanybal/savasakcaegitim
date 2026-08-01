@@ -348,6 +348,9 @@ export default function SinavKitapciklari() {
   const [kitapciklar, setKitapciklar] = useState([])
   const [silinenKitapcikId, setSilinenKitapcikId] = useState(null)
   const [silinenSinavId, setSilinenSinavId] = useState(null)
+  // "İndir" butonuna basılınca, o an indirilmekte olan kitapçığın id'si —
+  // buton "İndiriliyor..." gösterip tekrar tıklanmayı engellesin diye.
+  const [indirilenKitapcikId, setIndirilenKitapcikId] = useState(null)
   // Sınavlar tablosundaki inline "Düzenle" — hangi sınavın adı/tarihi o an
   // düzenleniyor (id) ve o satırın taslak değerleri.
   const [duzenlenenSinavId, setDuzenlenenSinavId] = useState(null)
@@ -443,6 +446,37 @@ export default function SinavKitapciklari() {
       alert('Hata: ' + e.message)
     } finally {
       setSilinenKitapcikId(null)
+    }
+  }
+
+  // Kayıtlı bir kitapçığın, Storage'a yüklenmiş ORİJİNAL PDF'ini indirir —
+  // kitapcikDuzenle() ile AYNI şekilde .download() ile blob'u çekip, tarayıcı
+  // üzerinden gerçek bir dosya indirmesi tetikler (görünmez bir <a download>
+  // linkine tıklanmış gibi). Dosya adı "sınav adı - kitapçık.pdf" olsun diye
+  // ayrıca ayarlanıyor — Storage'daki teknik yol adı (ör. "abc123/A-171....pdf")
+  // yerine admin için anlamlı bir isimle iner.
+  async function kitapcikIndir(k) {
+    if (!k.pdf_yolu) {
+      alert('Bu kitapçık için kayıtlı bir PDF bulunamadı.')
+      return
+    }
+    setIndirilenKitapcikId(k.id)
+    try {
+      const { data: pdfBlobu, error } = await supabase.storage.from('sinav-kitapciklari').download(k.pdf_yolu)
+      if (error) throw error
+      const url = URL.createObjectURL(pdfBlobu)
+      const a = document.createElement('a')
+      a.href = url
+      const sinavAdi = (k.sinavlar?.sinav_adi || 'sinav').replace(/[\\/:*?"<>|]/g, ' ').trim()
+      a.download = `${sinavAdi} - ${k.kitapcik}.pdf`
+      document.body.appendChild(a)
+      a.click()
+      a.remove()
+      URL.revokeObjectURL(url)
+    } catch (e) {
+      alert('İndirme hatası: ' + e.message)
+    } finally {
+      setIndirilenKitapcikId(null)
     }
   }
 
@@ -1296,6 +1330,13 @@ export default function SinavKitapciklari() {
                     )}
                   </td>
                   <td className="px-4 py-2 text-right whitespace-nowrap">
+                    <button
+                      onClick={() => kitapcikIndir(k)}
+                      disabled={indirilenKitapcikId === k.id}
+                      className="text-navy text-sm font-semibold hover:underline disabled:opacity-50 mr-4"
+                    >
+                      {indirilenKitapcikId === k.id ? 'İndiriliyor...' : 'İndir'}
+                    </button>
                     <button
                       onClick={() => kitapcikDuzenle(k)}
                       disabled={duzenlemeYukleniyorId !== null}
