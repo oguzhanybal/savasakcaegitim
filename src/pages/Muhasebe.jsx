@@ -605,6 +605,9 @@ export default function Muhasebe() {
   // seçilebilir.
   const [ogrenciArama, setOgrenciArama] = useState('')
   const [ogrenciOneriAcik, setOgrenciOneriAcik] = useState(false)
+  // "Bu Ay Ödenecek" kartına tıklayınca hangi kalemden ne kadar, hangi
+  // vadeyle ödeneceğinin döküldüğü paneli aç/kapa.
+  const [buAyDetayAcik, setBuAyDetayAcik] = useState(false)
   const [sozlesmeler, setSozlesmeler] = useState([])
   const [aylikBorclar, setAylikBorclar] = useState([])
   const [odemeler, setOdemeler] = useState([])
@@ -989,10 +992,17 @@ export default function Muhasebe() {
               <p className="text-sm text-gray-500 font-medium">Toplam Sözleşme</p>
               <p className="text-2xl font-bold text-navy mt-1">{paraFormat(toplamSozlesme)}</p>
             </div>
-            <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
-              <p className="text-sm text-gray-500 font-medium">Bu Ay Ödenecek</p>
+            <button
+              type="button"
+              onClick={() => setBuAyDetayAcik((v) => !v)}
+              className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5 text-left hover:border-orange transition-colors"
+            >
+              <p className="text-sm text-gray-500 font-medium flex items-center justify-between">
+                Bu Ay Ödenecek
+                <span className="text-xs text-blue font-normal">{buAyDetayAcik ? 'Gizle ▲' : 'Detay ▼'}</span>
+              </p>
               <p className="text-2xl font-bold text-orange mt-1">{paraFormat(buAyOdenecek)}</p>
-            </div>
+            </button>
             <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
               <p className="text-sm text-gray-500 font-medium">Toplam Ödenen</p>
               <p className="text-2xl font-bold text-green-600 mt-1">{paraFormat(toplamOdenen)}</p>
@@ -1002,6 +1012,34 @@ export default function Muhasebe() {
               <p className="text-2xl font-bold text-orange mt-1">{paraFormat(kalanBakiye)}</p>
             </div>
           </div>
+
+          {buAyDetayAcik && (
+            <div className="bg-white rounded-2xl border border-orange/30 shadow-sm p-5 mb-6">
+              <p className="font-semibold text-gray-700 mb-3">Bu Ay Ödenecek — Kalem Kalem Döküm</p>
+              {buAySatirlar.filter((s) => s.toplamOdenecek > 0.01).length === 0 ? (
+                <p className="text-sm text-gray-400">Bu ay ödenecek bir kalem görünmüyor.</p>
+              ) : (
+                <div className="space-y-2">
+                  {buAySatirlar
+                    .filter((s) => s.toplamOdenecek > 0.01)
+                    .map((s, i) => (
+                      <div key={i} className="flex items-center justify-between border-b border-gray-50 last:border-0 pb-2 last:pb-0 flex-wrap gap-1">
+                        <div>
+                          <p className="font-medium text-gray-800">{s.label}</p>
+                          <p className="text-xs text-gray-400">{s.durum}</p>
+                          {s.gecmisBorc > 0.01 && (
+                            <p className="text-xs text-red-500">
+                              (bu tutara {paraFormat(s.gecmisBorc)} geçmiş ay bakiyesi dahil)
+                            </p>
+                          )}
+                        </div>
+                        <p className="font-semibold text-orange">{paraFormat(s.toplamOdenecek)}</p>
+                      </div>
+                    ))}
+                </div>
+              )}
+            </div>
+          )}
 
           <FazlaOdemePaneli fazlaOdemeler={fazlaOdemeler} />
 
