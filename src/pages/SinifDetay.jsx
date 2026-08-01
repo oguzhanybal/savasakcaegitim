@@ -356,7 +356,14 @@ export default function SinifDetay() {
     // — satır veritabanında durduğu için geçmiş yoklama kayıtları hep doğru
     // ders adı/saatiyle join edilebiliyor, hiçbir tarih sınırı/kopma
     // mantığına gerek kalmıyor.
-    const { error } = await supabase.from('ders_programi').update({ aktif: false }).eq('id', id)
+    // pasif_tarihi: DersProgrami.jsx'teki sil() ile AYNI sebep (bkz. oradaki
+    // yorum) — Günlük Müsaitlik tablosu geçmiş bir tarihe dönüldüğünde "o gün
+    // bu ders gerçekten oradaydı" diye gösterebilsin diye, buradan silinen
+    // bir ders de tutarlı şekilde ne zaman pasif yapıldığını işaretlemeli.
+    const { error } = await supabase
+      .from('ders_programi')
+      .update({ aktif: false, pasif_tarihi: yerelBugunTarihi() })
+      .eq('id', id)
     if (!error) yukle()
     else alert('Hata: ' + error.message)
   }

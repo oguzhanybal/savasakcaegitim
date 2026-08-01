@@ -977,6 +977,14 @@ export default function DersProgrami() {
   const isVeliYaDaOgrenci = profile?.rol === 'veli' || profile?.rol === 'ogrenci'
 
   const [program, setProgram] = useState([])
+  // Ders Programı'nın HER YERİNDE (Tablo/Liste/çakışma kontrolü/formlar)
+  // kullanılan "program" state'i her zaman sadece AKTİF (silinmemiş) dersleri
+  // içerir — bu, mevcut davranışı bozmamak için bilerek böyle tutuluyor.
+  // "programTum" ise pasif (silinmiş) dersler dahil TÜM satırları tutar —
+  // TEK kullanım amacı, aşağıdaki musaitlikIcinProgram'ın Günlük Müsaitlik
+  // tablosunda GEÇMİŞ bir tarihe dönüldüğünde "o gün bu ders gerçekten
+  // oradaydı" diye yeniden gösterebilmesi (bkz. sil() içindeki açıklama).
+  const [programTum, setProgramTum] = useState([])
   const [siniflar, setSiniflar] = useState([])
   const [ogretmenler, setOgretmenler] = useState([])
   const [bireBirAtamalar, setBireBirAtamalar] = useState([])
@@ -1057,14 +1065,15 @@ export default function DersProgrami() {
   function veriyiYenile() {
     if (!ilkYuklemeTamamRef.current) setLoading(true)
     Promise.all([
+      // NOT: burada artık aktif=true filtresi YOK — pasif (silinmiş) satırlar
+      // da çekiliyor. Filtreleme aşağıda, JS tarafında yapılıyor: "program"
+      // state'i (mevcut TÜM kullanım yerleri) sadece aktif olanları alır,
+      // "programTum" ise hepsini tutar (bkz. musaitlikIcinProgram — Günlük
+      // Müsaitlik'te geçmiş bir tarihe dönülünce "o gün bu ders oradaydı"
+      // diye gösterebilmek için).
       supabase
         .from('ders_programi')
         .select('*, siniflar(ad), profiles:ogretmen_profile_id(ad_soyad, brans)')
-        // Silinen (aktif=false yapılan) ders saatleri canlı programda
-        // görünmemeli — bkz. sil() içindeki uzun açıklama: artık gerçekten
-        // silmiyoruz, "pasif" yapıyoruz ki geçmiş yoklama kayıtları hangi
-        // derse ait olduğunu kaybetmesin.
-        .eq('aktif', true)
         .order('gun')
         .order('baslangic_saat'),
       isYonetici ? supabase.from('siniflar').select('*').order('ad') : Promise.resolve({ data: [] }),
@@ -1091,14 +1100,14 @@ export default function DersProgrami() {
       isYonetici ? supabase.from('taslaklar').select('*').order('created_at') : Promise.resolve({ data: [] }),
     ]).then(([p, s, og, ba, by, o, kendiCocuklarSonuc, t]) => {
       setTaslaklar(t.data || [])
-      setProgram(
-        (p.data || []).map((d) => ({
-          ...d,
-          sinif_adi: d.siniflar?.ad,
-          ogretmen_adi: d.profiles?.ad_soyad,
-          ogretmen_brans: d.profiles?.brans,
-        }))
-      )
+      const dersleriGenislet = (p.data || []).map((d) => ({
+        ...d,
+        sinif_adi: d.siniflar?.ad,
+        ogretmen_adi: d.profiles?.ad_soyad,
+        ogretmen_brans: d.profiles?.brans,
+      }))
+      setProgramTum(dersleriGenislet)
+      setProgram(dersleriGenislet.filter((d) => d.aktif !== false))
       setSiniflar(s.data || [])
       setOgretmenler(og.data || [])
       setBireBirAtamalar(
@@ -1300,6 +1309,25 @@ export default function DersProgrami() {
     if (d) duzenle(d)
   }
 
+  // Günlük Müsaitlik tablosunun ✏️/✕ ikonları ve "dolu" hücre gösterimi için
+  // kullandığı liste — normal "program" (sadece aktif) DEĞİL, bu özel türetilmiş
+  // liste. Amaç: kullanıcı Günlük Müsaitlik'in tarih ok/kutusuyla GEÇMİŞ bir
+  // güne (ör. 1 Ağustos) döndüğünde, o gün sonradan silinmiş (pasif yapılmış)
+  // bir ders varsa bile "o gün bu ders gerçekten oradaydı" diye göstermeye
+  // devam etmesi — "sildim ama geçmişte hâlâ orada duruyormuş gibi
+  // görünüyor" şikâyetinin kök nedeni, bu görünümün SADECE canlı/aktif
+  // programı bilmesiydi, "o tarihte ne vardı"yı değil. Kural: bir ders_programi
+  // satırı D tarihinde "programdaymış" sayılır eğer hâlâ aktifse, YA DA pasif
+  // yapıldığı tarih (pasif_tarihi) D'den sonraysa ya da D'nin kendisiyse
+  // (bugünü koruma prensibiyle aynı: "bugün silsem bile bugünün dersi zaten
+  // olmuştu" — bkz. sil() içindeki .gt() → artık pasif_tarihi mantığı).
+  const musaitlikIcinProgram = useMemo(() => {
+    if (!musaitlikTarihi) return program
+    return programTum.filter(
+      (d) => d.aktif !== false || (d.pasif_tarihi && musaitlikTarihi <= d.pasif_tarihi)
+    )
+  }, [programTum, program, musaitlikTarihi])
+
   // Öğretmen, Ders Programı'na karışık gösterilen kendi tekil bire bir
   // dersinde Geldi/Gelmedi'ye tıklayınca — BireBir.jsx'teki aynı isimli
   // fonksiyonla (durumDegistir) birebir aynı davranış: "Geldi" zaten borç
@@ -1348,7 +1376,14 @@ export default function DersProgrami() {
     // satır veritabanında durduğu için geçmiş yoklama kayıtları (Yoklama
     // Raporu, Öğrenci Zaman Çizelgesi vb.) hep doğru ders adı/saatiyle
     // görünmeye devam eder — hiçbir tarih sınırı/kopma mantığına gerek kalmaz.
-    const { error } = await supabase.from('ders_programi').update({ aktif: false }).eq('id', id)
+    // "pasif_tarihi" ayrıca ne zaman silindiğini de tutuyor (bkz.
+    // ders_programi_pasif_tarihi.sql) — Günlük Müsaitlik tablosunda GEÇMİŞ bir
+    // tarihe dönüldüğünde "o gün bu ders gerçekten oradaydı" diye
+    // gösterebilmek için (bkz. musaitlikIcinProgram).
+    const { error } = await supabase
+      .from('ders_programi')
+      .update({ aktif: false, pasif_tarihi: yerelBugunTarihi() })
+      .eq('id', id)
     if (error) alert('Hata: ' + error.message)
     else veriyiYenile()
   }
@@ -1577,7 +1612,7 @@ export default function DersProgrami() {
               </div>
               <MusaitlikTablosu
                 ogretmenler={ogretmenler}
-                dersProgrami={program}
+                dersProgrami={musaitlikIcinProgram}
                 atamalar={bireBirAtamalar}
                 yoklamalar={bireBirYoklamalar}
                 ogrenciAdMap={ogrenciAdMap}
