@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../lib/AuthContext'
@@ -606,8 +606,18 @@ export default function Muhasebe() {
   const [ogrenciArama, setOgrenciArama] = useState('')
   const [ogrenciOneriAcik, setOgrenciOneriAcik] = useState(false)
   // "Bu Ay Ödenecek" kartına tıklayınca hangi kalemden ne kadar, hangi
-  // vadeyle ödeneceğinin döküldüğü paneli aç/kapa.
+  // vadeyle ödeneceğinin döküldüğü paneli aç/kapa. Panel, özet kartlarının
+  // (grid içindeki diğer 3 kart) ALTINDA açılıyor — mobilde tek sütun olduğu
+  // için veli "Detay"a bastığında panel ekranın epey aşağısında kalıyor ve
+  // hiçbir şey olmamış gibi görünüyordu. Açılınca panele otomatik kaydırıyoruz.
   const [buAyDetayAcik, setBuAyDetayAcik] = useState(false)
+  const buAyDetayRef = useRef(null)
+
+  useEffect(() => {
+    if (buAyDetayAcik && buAyDetayRef.current) {
+      buAyDetayRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    }
+  }, [buAyDetayAcik])
   const [sozlesmeler, setSozlesmeler] = useState([])
   const [aylikBorclar, setAylikBorclar] = useState([])
   const [odemeler, setOdemeler] = useState([])
@@ -1014,7 +1024,7 @@ export default function Muhasebe() {
           </div>
 
           {buAyDetayAcik && (
-            <div className="bg-white rounded-2xl border border-orange/30 shadow-sm p-5 mb-6">
+            <div ref={buAyDetayRef} className="bg-white rounded-2xl border border-orange/30 shadow-sm p-5 mb-6 scroll-mt-20">
               <p className="font-semibold text-gray-700 mb-3">Bu Ay Ödenecek — Kalem Kalem Döküm</p>
               {buAySatirlar.filter((s) => s.toplamOdenecek > 0.01).length === 0 ? (
                 <p className="text-sm text-gray-400">Bu ay ödenecek bir kalem görünmüyor.</p>
