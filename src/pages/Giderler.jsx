@@ -37,6 +37,12 @@ export default function Giderler() {
   const [tutar, setTutar] = useState('')
   const [aciklama, setAciklama] = useState('')
 
+  // Tablodaki "Düzenle"ye basılınca bu, düzenlenen kaydın id'sine ayarlanır —
+  // form o zaman "ekleme" değil "güncelleme" moduna geçer (SinifDetay.jsx'teki
+  // ders saati Düzenle akışıyla aynı desen). Boşsa (null) form normal "ekle"
+  // modunda çalışır.
+  const [duzenlenenId, setDuzenlenenId] = useState(null)
+
   const [seciliAy, setSeciliAy] = useState('tumu')
 
   function yukle() {
@@ -59,23 +65,47 @@ export default function Giderler() {
     e.preventDefault()
     if (!tarih || !kategori.trim() || !tutar) return
     setKaydediliyor(true)
-    const { error } = await supabase.from('giderler').insert({
+    const veri = {
       tarih,
       kategori: kategori.trim(),
       tutar: Number(tutar),
       aciklama: aciklama.trim() || null,
-      ekleyen_profile_id: profile?.id || null,
-    })
+    }
+    const { error } = duzenlenenId
+      ? await supabase.from('giderler').update(veri).eq('id', duzenlenenId)
+      : await supabase.from('giderler').insert({ ...veri, ekleyen_profile_id: profile?.id || null })
     setKaydediliyor(false)
     if (error) {
       alert('Hata: ' + error.message)
       return
     }
+    setDuzenlenenId(null)
     setKategori('')
     setTutar('')
     setAciklama('')
     setTarih(bugunTarihi())
     yukle()
+  }
+
+  // Tablodaki bir satırdan "Düzenle"ye basılınca formu o kaydın güncel
+  // bilgileriyle doldurur ve "ekleme" değil "güncelleme" moduna geçirir.
+  function duzenle(g) {
+    setDuzenlenenId(g.id)
+    setTarih(g.tarih)
+    setKategori(g.kategori || '')
+    setTutar(String(g.tutar ?? ''))
+    setAciklama(g.aciklama || '')
+    requestAnimationFrame(() => {
+      document.getElementById('gider-formu')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    })
+  }
+
+  function duzenlemeyiIptalEt() {
+    setDuzenlenenId(null)
+    setKategori('')
+    setTutar('')
+    setAciklama('')
+    setTarih(bugunTarihi())
   }
 
   async function giderSil(id) {
@@ -85,6 +115,7 @@ export default function Giderler() {
       alert('Hata: ' + error.message)
       return
     }
+    if (duzenlenenId === id) duzenlemeyiIptalEt()
     setGiderler((prev) => prev.filter((g) => g.id !== id))
   }
 
@@ -130,6 +161,7 @@ export default function Giderler() {
       </div>
 
       <form
+        id="gider-formu"
         onSubmit={giderEkle}
         className="bg-white rounded-2xl border border-gray-100 shadow-sm p-4 mb-6 space-y-3"
       >
@@ -179,13 +211,32 @@ export default function Giderler() {
             />
           </div>
         </div>
-        <button
-          type="submit"
-          disabled={kaydediliyor || !tarih || !kategori.trim() || !tutar}
-          className="bg-navy text-white font-semibold px-4 py-2 rounded-lg text-sm hover:bg-blue transition-colors disabled:opacity-50"
-        >
-          {kaydediliyor ? 'Ekleniyor...' : 'Gider Ekle'}
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            type="submit"
+            disabled={kaydediliyor || !tarih || !kategori.trim() || !tutar}
+            className={`text-white font-semibold px-4 py-2 rounded-lg text-sm transition-colors disabled:opacity-50 ${
+              duzenlenenId ? 'bg-orange hover:opacity-90' : 'bg-navy hover:bg-blue'
+            }`}
+          >
+            {kaydediliyor
+              ? duzenlenenId
+                ? 'Güncelleniyor...'
+                : 'Ekleniyor...'
+              : duzenlenenId
+              ? 'Güncelle'
+              : 'Gider Ekle'}
+          </button>
+          {duzenlenenId && (
+            <button
+              type="button"
+              onClick={duzenlemeyiIptalEt}
+              className="px-4 py-2 rounded-lg text-sm font-semibold text-gray-500 bg-gray-50 hover:bg-gray-100"
+            >
+              Vazgeç
+            </button>
+          )}
+        </div>
       </form>
 
       <div className="flex items-center justify-between flex-wrap gap-2 mb-3">
@@ -248,7 +299,14 @@ export default function Giderler() {
                 <td className="px-4 py-2 text-right font-semibold text-red-700 whitespace-nowrap">
                   {paraFormat(g.tutar)}
                 </td>
-                <td className="px-4 py-2 text-right whitespace-nowrap">
+                <td className="px-4 py-2 text-right whitespace-nowrap space-x-3">
+                  <button
+                    type="button"
+                    onClick={() => duzenle(g)}
+                    className="text-gray-400 hover:text-navy text-xs font-medium hover:underline"
+                  >
+                    Düzenle
+                  </button>
                   <button
                     type="button"
                     onClick={() => giderSil(g.id)}
