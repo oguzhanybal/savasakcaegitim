@@ -87,9 +87,12 @@ export default function SinifDetay() {
         .from('ders_programi')
         .select('*, profiles:ogretmen_profile_id(ad_soyad)')
         .eq('sinif_id', sinifId)
+        // Silinen (aktif=false / pasif) ders saatleri canlı listede
+        // görünmemeli — bkz. dersSaatiSil() içindeki açıklama.
+        .eq('aktif', true)
         .order('gun')
         .order('baslangic_saat'),
-      supabase.from('ders_programi').select('*').order('gun'),
+      supabase.from('ders_programi').select('*').eq('aktif', true).order('gun'),
       supabase.from('profiles').select('*').eq('rol', 'ogretmen').order('ad_soyad'),
       // Ders saati eklerken öğretmenin haftalık bire bir dersleriyle de çakışma
       // kontrolü yapılabilsin diye (aksi halde bir öğretmene, zaten bire bir dersi
@@ -343,37 +346,17 @@ export default function SinifDetay() {
         uyari = ` Bu ders ${digerSiniflar.join(', ')} ile birleşik — bu işlem SADECE bu sınıftan siler, diğerini etkilemez (onu silmek isterseniz o sınıfın sayfasından ayrıca silin).`
       }
     }
-    if (!confirm(`Bu ders saatini silmek istediğinize emin misiniz?${uyari} Bugünden itibaren ileriye dönük yoklama kayıtları da (varsa) birlikte silinecek — geçmiş (bugünden önceki) yoklama kayıtları KORUNUR, silinmez.`)) return
-    // ÖNEMLİ HATA DÜZELTMESİ (DersProgrami.jsx'teki sil() ile AYNI kök neden
+    if (!confirm(`Bu ders saatini silmek istediğinize emin misiniz?${uyari} Ders artık programdan (bu hafta dahil bundan sonraki tüm haftalardan) kalkacak. Geçmiş yoklama kayıtları SİLİNMEZ, korunur ve ileride geçmişe dönük raporlarda hangi derse ait olduğuyla birlikte görünmeye devam eder.`)) return
+    // ÖNEMLİ MİMARİ DÜZELTME (DersProgrami.jsx'teki sil() ile AYNI kök neden
     // — bkz. oradaki uzun yorum): "ders_programi" belirli bir TARİHE değil,
     // haftanın GÜNÜNE bağlı tekrarlayan bir şablon (ör. "her Cumartesi
     // 11:45") — yani geçen haftanın VE gelecek haftanın Cumartesi dersi AYNI
-    // ders_programi_id'yi paylaşıyor. Bu yüzden önceden burası da (ayrı bir
-    // kopya fonksiyon olduğu için DersProgrami.jsx'teki fix'ten habersizdi)
-    // sadece BUGÜNDEN İTİBAREN yoklamaları siliyor; geçmiş kayıtları da
-    // silmek yerine ders_programi_id bağlantısını NULL'a çekip koruyoruz —
-    // böylece veritabanındaki silme kuralı (CASCADE/RESTRICT) ne olursa
-    // olsun geçmiş yoklama/borç verisi kaybolmuyor.
-    const { error: yoklamaHata } = await supabase
-      .from('yoklama')
-      .delete()
-      .eq('ders_programi_id', id)
-      // .gte() DEĞİL .gt() — bugün de dahil edilirse (>=), bugün çoktan
-      // alınmış bir yoklama "ileri tarihli" sayılıp yanlışlıkla silinebiliyordu.
-      .gt('tarih', yerelBugunTarihi())
-    if (yoklamaHata) {
-      alert('Hata (yoklama kayıtları silinirken): ' + yoklamaHata.message)
-      return
-    }
-    const { error: koparHata } = await supabase
-      .from('yoklama')
-      .update({ ders_programi_id: null })
-      .eq('ders_programi_id', id)
-    if (koparHata) {
-      alert('Hata (geçmiş yoklama kayıtları ayrılırken): ' + koparHata.message)
-      return
-    }
-    const { error } = await supabase.from('ders_programi').delete().eq('id', id)
+    // ders_programi_id'yi paylaşıyor. Bu satırı gerçekten silmek yerine artık
+    // "aktif" kolonunu false yapıyoruz (soft delete, bkz. ders_programi_aktif.sql)
+    // — satır veritabanında durduğu için geçmiş yoklama kayıtları hep doğru
+    // ders adı/saatiyle join edilebiliyor, hiçbir tarih sınırı/kopma
+    // mantığına gerek kalmıyor.
+    const { error } = await supabase.from('ders_programi').update({ aktif: false }).eq('id', id)
     if (!error) yukle()
     else alert('Hata: ' + error.message)
   }
