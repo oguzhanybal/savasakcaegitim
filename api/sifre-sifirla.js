@@ -35,11 +35,19 @@ export default async function handler(req, res) {
 
   const admin = createClient(supabaseUrl, serviceKey)
 
-  const { error } = await admin.auth.admin.updateUser(id, { password: yeniSifre })
-  if (error) {
-    res.status(400).json({ error: 'Şifre değiştirilemedi: ' + error.message })
-    return
+  try {
+    // ÖNEMLİ: admin namespace'inde doğru fonksiyon "updateUserById" —
+    // "updateUser(id, ...)" (id parametreli) diye bir admin fonksiyonu YOK,
+    // var olmayan bir fonksiyonu çağırmak sunucuda yakalanmamış bir hataya
+    // (ve tarayıcıda "Bağlantı hatası: Unexpected token..." gibi JSON
+    // olmayan bir yanıta) yol açıyordu.
+    const { error } = await admin.auth.admin.updateUserById(id, { password: yeniSifre })
+    if (error) {
+      res.status(400).json({ error: 'Şifre değiştirilemedi: ' + error.message })
+      return
+    }
+    res.status(200).json({ ok: true })
+  } catch (err) {
+    res.status(500).json({ error: 'Sunucu hatası: ' + err.message })
   }
-
-  res.status(200).json({ ok: true })
 }
