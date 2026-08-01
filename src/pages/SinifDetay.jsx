@@ -14,6 +14,14 @@ const DERS_ONERILERI = [
   'Felsefe', 'İngilizce', 'Din Kültürü ve Ahlak Bilgisi', 'Beden Eğitimi', 'Fen Bilimleri', 'Sosyal Bilgiler',
 ]
 
+// Bugünün tarihini "YYYY-MM-DD" olarak YEREL saate göre üretir (toISOString
+// KULLANMIYORUZ — Türkiye UTC+3 gece yarısına yakın saatlerde bir gün geriye
+// kayabiliyor). DersProgrami.jsx'teki aynı isimli fonksiyonla aynı desen.
+function yerelBugunTarihi() {
+  const n = new Date()
+  return `${n.getFullYear()}-${String(n.getMonth() + 1).padStart(2, '0')}-${String(n.getDate()).padStart(2, '0')}`
+}
+
 function saatKisalt(s) {
   return s ? s.slice(0, 5) : s
 }
@@ -335,13 +343,32 @@ export default function SinifDetay() {
         uyari = ` Bu ders ${digerSiniflar.join(', ')} ile birleşik — bu işlem SADECE bu sınıftan siler, diğerini etkilemez (onu silmek isterseniz o sınıfın sayfasından ayrıca silin).`
       }
     }
-    if (!confirm(`Bu ders saatini silmek istediğinize emin misiniz?${uyari} Bu ders saatine ait yoklama kayıtları da (varsa) birlikte silinecek.`)) return
-    // Bir ders saati silinirken, o ders saatine bağlı yoklama kayıtları da
-    // silinmezse veritabanında "sahipsiz" kayıtlar kalır. Önce yoklamayı,
-    // sonra ders saatini siliyoruz.
-    const { error: yoklamaHata } = await supabase.from('yoklama').delete().eq('ders_programi_id', id)
+    if (!confirm(`Bu ders saatini silmek istediğinize emin misiniz?${uyari} Bugünden itibaren ileriye dönük yoklama kayıtları da (varsa) birlikte silinecek — geçmiş (bugünden önceki) yoklama kayıtları KORUNUR, silinmez.`)) return
+    // ÖNEMLİ HATA DÜZELTMESİ (DersProgrami.jsx'teki sil() ile AYNI kök neden
+    // — bkz. oradaki uzun yorum): "ders_programi" belirli bir TARİHE değil,
+    // haftanın GÜNÜNE bağlı tekrarlayan bir şablon (ör. "her Cumartesi
+    // 11:45") — yani geçen haftanın VE gelecek haftanın Cumartesi dersi AYNI
+    // ders_programi_id'yi paylaşıyor. Bu yüzden önceden burası da (ayrı bir
+    // kopya fonksiyon olduğu için DersProgrami.jsx'teki fix'ten habersizdi)
+    // sadece BUGÜNDEN İTİBAREN yoklamaları siliyor; geçmiş kayıtları da
+    // silmek yerine ders_programi_id bağlantısını NULL'a çekip koruyoruz —
+    // böylece veritabanındaki silme kuralı (CASCADE/RESTRICT) ne olursa
+    // olsun geçmiş yoklama/borç verisi kaybolmuyor.
+    const { error: yoklamaHata } = await supabase
+      .from('yoklama')
+      .delete()
+      .eq('ders_programi_id', id)
+      .gte('tarih', yerelBugunTarihi())
     if (yoklamaHata) {
       alert('Hata (yoklama kayıtları silinirken): ' + yoklamaHata.message)
+      return
+    }
+    const { error: koparHata } = await supabase
+      .from('yoklama')
+      .update({ ders_programi_id: null })
+      .eq('ders_programi_id', id)
+    if (koparHata) {
+      alert('Hata (geçmiş yoklama kayıtları ayrılırken): ' + koparHata.message)
       return
     }
     const { error } = await supabase.from('ders_programi').delete().eq('id', id)
