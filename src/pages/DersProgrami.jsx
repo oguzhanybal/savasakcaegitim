@@ -27,6 +27,16 @@ function yerelBugunTarihi() {
   return `${n.getFullYear()}-${String(n.getMonth() + 1).padStart(2, '0')}-${String(n.getDate()).padStart(2, '0')}`
 }
 
+// Bir ISO zaman damgasını (ör. ders_programi.created_at) "YYYY-MM-DD" YEREL
+// tarihine çevirir — yerelBugunTarihi() ile aynı desen, ama "şu an" yerine
+// verilen bir zaman damgası için. musaitlikIcinProgram'ın "bu ders o tarihte
+// zaten var mıydı" kontrolünde kullanılıyor.
+function tarihStrYerel(isoStr) {
+  if (!isoStr) return null
+  const d = new Date(isoStr)
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+}
+
 // Haftalık ders programı belirli bir TARİHE değil, haftanın GÜNÜNE (1-7) bağlı
 // bir şablon — bir derse tıklanınca yoklama/konu popup'ının hangi TARİH için
 // açılacağını bilmemiz gerekiyor. En doğal varsayım: o gün BUGÜNSE bugün,
@@ -1316,16 +1326,28 @@ export default function DersProgrami() {
   // bir ders varsa bile "o gün bu ders gerçekten oradaydı" diye göstermeye
   // devam etmesi — "sildim ama geçmişte hâlâ orada duruyormuş gibi
   // görünüyor" şikâyetinin kök nedeni, bu görünümün SADECE canlı/aktif
-  // programı bilmesiydi, "o tarihte ne vardı"yı değil. Kural: bir ders_programi
-  // satırı D tarihinde "programdaymış" sayılır eğer hâlâ aktifse, YA DA pasif
-  // yapıldığı tarih (pasif_tarihi) D'den sonraysa ya da D'nin kendisiyse
-  // (bugünü koruma prensibiyle aynı: "bugün silsem bile bugünün dersi zaten
-  // olmuştu" — bkz. sil() içindeki .gt() → artık pasif_tarihi mantığı).
+  // programı bilmesiydi, "o tarihte ne vardı"yı değil.
+  //
+  // Kural iki yönlü çalışıyor:
+  // 1) SİLİNEN dersler: hâlâ aktifse HER ZAMAN gösterilir, pasifse sadece
+  //    pasif yapıldığı tarih (pasif_tarihi) D'den sonraysa ya da D'nin
+  //    kendisiyse gösterilir (bkz. sil() içindeki .gt() → pasif_tarihi mantığı).
+  // 2) YENİ EKLENEN dersler: bu, ikinci bir hatanın da kök nedeniydi — "bir
+  //    hafta sonrasına yeni ders açınca, bir hafta ÖNCESİNE dönüldüğünde de
+  //    o ders 'vardı ama yoklaması alınmamış' gibi görünüyor" şikâyeti.
+  //    Sebep: aktif bir satırın hiçbir ALT tarih sınırı yoktu — HER tarihte
+  //    (geçmiş dahil, o satır hiç var olmasa bile) gösteriliyordu. Artık
+  //    aktif bir ders, sadece created_at'i (oluşturulma tarihi) D'den sonra
+  //    DEĞİLSE (yani D'de zaten var olduğu tarihte) gösteriliyor.
   const musaitlikIcinProgram = useMemo(() => {
     if (!musaitlikTarihi) return program
-    return programTum.filter(
-      (d) => d.aktif !== false || (d.pasif_tarihi && musaitlikTarihi <= d.pasif_tarihi)
-    )
+    return programTum.filter((d) => {
+      if (d.aktif !== false) {
+        const olusturmaTarihi = tarihStrYerel(d.created_at)
+        return !olusturmaTarihi || olusturmaTarihi <= musaitlikTarihi
+      }
+      return d.pasif_tarihi && musaitlikTarihi <= d.pasif_tarihi
+    })
   }, [programTum, program, musaitlikTarihi])
 
   // Öğretmen, Ders Programı'na karışık gösterilen kendi tekil bire bir

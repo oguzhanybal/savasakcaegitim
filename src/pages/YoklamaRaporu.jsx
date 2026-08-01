@@ -46,13 +46,22 @@ function BugunkuYoklamaDurumu({ isYonetici, ogretmenProfileId }) {
         .select('ders_programi_id, ogrenci_id, geldi, ogrenciler(ad_soyad)')
         .eq('tarih', bugun),
     ]).then(([dp, y]) => {
-      const sirali = [...(dp.data || [])].sort((a, b) => {
+      const yoklamaVeri = y.data || []
+      // Bugün pasif yapılan (silinen) bir ders saati, sadece o saat için
+      // GERÇEKTEN kayıtlı bir yoklama varsa listede kalsın — yoklaması hiç
+      // alınmamış, aynı gün içinde silinmiş bir kayıt burada göstermek
+      // sadece kafa karıştırıyor (bkz. Yoklama.jsx'teki aynı düzeltme).
+      const yoklamasiOlanIdler = new Set(yoklamaVeri.map((y) => y.ders_programi_id))
+      const filtreli = (dp.data || []).filter(
+        (d) => d.aktif !== false || yoklamasiOlanIdler.has(d.id)
+      )
+      const sirali = filtreli.sort((a, b) => {
         const s = (a.baslangic_saat || '').localeCompare(b.baslangic_saat || '')
         if (s !== 0) return s
         return (a.siniflar?.ad || '').localeCompare(b.siniflar?.ad || '', 'tr')
       })
       setDersSaatleri(sirali)
-      setYoklamalar(y.data || [])
+      setYoklamalar(yoklamaVeri)
       setLoading(false)
     })
     // eslint-disable-next-line react-hooks/exhaustive-deps

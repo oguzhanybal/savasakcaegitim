@@ -35,19 +35,34 @@ export default function Yoklama() {
       .select('*')
       .eq('sinif_id', seciliSinif)
       .eq('gun', bugunGunNo)
-      // ÖNEMLİ: sadece aktif=true DEĞİL — bir ders saati TAM BUGÜN (aynı gün
-      // içinde, ör. saat 15:00'te) silinirse (aktif=false yapılırsa), o dersin
-      // BUGÜNKÜ yoklaması hâlâ alınabilir/düzenlenebilir olmalı (belki daha
-      // önce, o ders saatinde zaten alınmıştı). "aktif=true VEYA bugün
-      // silindi (pasif_tarihi >= bugün)" kuralı — DersProgrami.jsx'teki
-      // musaitlikIcinProgram ile birebir aynı mantık, burada D her zaman
-      // "bugün". YARIN bu dropdown'da artık görünmeyecek (pasif_tarihi <
-      // yarının tarihi).
+      // aktif=true (canlı) satırların yanında, BUGÜN silinmiş (pasif_tarihi
+      // >= bugün) satırları da çekiyoruz — ama bunları aşağıda AYRICA
+      // süzüyoruz: sadece o ders saati için BUGÜNE ait GERÇEK bir yoklama
+      // kaydı varsa (yani silinmeden önce yoklaması alınmışsa) listede
+      // kalıyor. Yoklaması hiç alınmamış, sadece testte/yanlışlıkla
+      // eklenip aynı gün silinmiş bir kayıt burada gösterilmiyor — aksi
+      // halde "aynı saatte iki ders var" gibi kafa karıştırıcı bir
+      // görünüm oluşuyordu (ör. eski öğretmenle kayıt silinip yeni
+      // öğretmenle yeniden eklendiğinde).
       .or(`aktif.eq.true,pasif_tarihi.gte.${bugun}`)
       .order('baslangic_saat')
-      .then(({ data }) => {
-        setGununSaatleri(data || [])
-        setSeciliSaat(data && data.length > 0 ? data[0].id : '')
+      .then(async ({ data }) => {
+        const tumSaatler = data || []
+        const pasifIdler = tumSaatler.filter((d) => d.aktif === false).map((d) => d.id)
+        let yoklamasiOlanPasifIdler = new Set()
+        if (pasifIdler.length > 0) {
+          const { data: yoklamaVarMi } = await supabase
+            .from('yoklama')
+            .select('ders_programi_id')
+            .in('ders_programi_id', pasifIdler)
+            .eq('tarih', bugun)
+          yoklamasiOlanPasifIdler = new Set((yoklamaVarMi || []).map((y) => y.ders_programi_id))
+        }
+        const gosterilecekSaatler = tumSaatler.filter(
+          (d) => d.aktif !== false || yoklamasiOlanPasifIdler.has(d.id)
+        )
+        setGununSaatleri(gosterilecekSaatler)
+        setSeciliSaat(gosterilecekSaatler.length > 0 ? gosterilecekSaatler[0].id : '')
       })
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [seciliSinif])
