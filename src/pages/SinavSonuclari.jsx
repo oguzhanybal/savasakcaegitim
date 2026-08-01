@@ -233,7 +233,7 @@ export default function SinavSonuclari() {
                     </div>
                   </div>
                   {k.dersler && k.dersler.length > 0 && (
-                    <div className="mt-2 overflow-x-auto">
+                    <div className="mt-2 overflow-x-auto" style={{ touchAction: 'pan-x pan-y' }}>
                       <table className="w-full text-xs border-collapse">
                         <thead>
                           <tr className="text-gray-400 border-b border-gray-100">

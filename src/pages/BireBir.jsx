@@ -1277,7 +1277,7 @@ function TaslaklarimBireBir({ taslaklar, ogrenciler, ogretmenler, dersProgrami, 
             </div>
 
             {haftalikListe.length > 0 && (
-              <div className="overflow-x-auto border-b border-gray-100">
+              <div className="overflow-x-auto border-b border-gray-100" style={{ touchAction: 'pan-x pan-y' }}>
                 <div className="flex min-w-[980px] divide-x divide-gray-100">
                   {gunSutunlariOlustur(haftalikListe).map(({ gunNo, gunAdi, gunTaslaklari }) => (
                     <div key={gunNo} className="flex-1 min-w-[140px]">
@@ -1590,7 +1590,7 @@ function AtamaListesi({ atamalar, ogretmenler, dersProgrami, onDegisti }) {
           kaydırma çalışmıyordu (kullanıcı isteğiyle düzeltildi). Artık SADECE
           tabloyu saran ayrı bir kaydırma kutusu var — MusaitlikTablosu.jsx'teki
           gibi aynı desen. */}
-      <div className="overflow-x-auto">
+      <div className="overflow-x-auto" style={{ touchAction: 'pan-x pan-y' }}>
       <table className="w-full text-sm min-w-[760px]">
         <thead>
           <tr className="text-left text-gray-500">

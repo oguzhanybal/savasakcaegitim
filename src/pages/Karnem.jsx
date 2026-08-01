@@ -431,7 +431,7 @@ export default function Karnem() {
                 </div>
               )}
               {acikMi && s.dersler.length > 0 && (
-                <div className="overflow-x-auto">
+                <div className="overflow-x-auto" style={{ touchAction: 'pan-x pan-y' }}>
                   <table className="w-full text-sm min-w-[420px]">
                     <thead>
                       <tr className="text-left text-gray-500">

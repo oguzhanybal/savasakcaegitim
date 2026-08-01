@@ -117,7 +117,7 @@ export default function GirisKayitlari() {
         </select>
       </div>
 
-      <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-x-auto">
+      <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-x-auto" style={{ touchAction: 'pan-x pan-y' }}>
         <table className="w-full text-sm min-w-[760px]">
           <thead>
             <tr className="text-left text-gray-500 bg-gray-50">

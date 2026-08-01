@@ -931,7 +931,7 @@ export default function Muhasebe() {
       {isYonetici && !seciliId && ogrenciler.length > 0 && !loading && (
         <>
           <p className="text-gray-400 mb-6">Devam etmek için yukarıdan bir öğrenci seçin.</p>
-          <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-x-auto">
+          <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-x-auto" style={{ touchAction: 'pan-x pan-y' }}>
             <div className="px-4 py-3 border-b border-gray-100 bg-gray-50">
               <h2 className="font-semibold text-gray-700">Son Alınan Ödemeler</h2>
               <p className="text-xs text-gray-400 mt-0.5">
@@ -1005,7 +1005,7 @@ export default function Muhasebe() {
 
           <FazlaOdemePaneli fazlaOdemeler={fazlaOdemeler} />
 
-          <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-x-auto mb-6">
+          <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-x-auto mb-6" style={{ touchAction: 'pan-x pan-y' }}>
             <div className="px-4 py-3 border-b border-gray-100 bg-gray-50">
               <h2 className="font-semibold text-gray-700">Sözleşmeler</h2>
             </div>
@@ -1209,7 +1209,7 @@ export default function Muhasebe() {
             </div>
           )}
 
-          <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-x-auto mb-6">
+          <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-x-auto mb-6" style={{ touchAction: 'pan-x pan-y' }}>
             <div className="px-4 py-3 border-b border-gray-100 bg-gray-50">
               <h2 className="font-semibold text-gray-700">Aylık Kalem Borçları (Bire Bir / Yemek / Kantin)</h2>
             </div>
@@ -1289,7 +1289,7 @@ export default function Muhasebe() {
                   "Aylık" ile ay ay, "Haftalık" ile hafta hafta görebilirsiniz.
                 </p>
               </div>
-              <div className="p-4 overflow-x-auto">
+              <div className="p-4 overflow-x-auto" style={{ touchAction: 'pan-x pan-y' }}>
                 <BireBirDersDokumu
                   dersler={bireBirDersleri.map((d) => ({
                     ...d,
@@ -1304,7 +1304,7 @@ export default function Muhasebe() {
             </div>
           )}
 
-          <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-x-auto">
+          <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-x-auto" style={{ touchAction: 'pan-x pan-y' }}>
             <div className="px-4 py-3 border-b border-gray-100 bg-gray-50">
               <h2 className="font-semibold text-gray-700">Ödeme Geçmişi</h2>
               {isYonetici && (

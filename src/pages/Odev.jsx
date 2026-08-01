@@ -586,7 +586,7 @@ function VerilenOdevlerListesi({ odevler, isYonetici, onDegisti }) {
   }
 
   return (
-    <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-x-auto mb-6">
+    <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-x-auto mb-6" style={{ touchAction: 'pan-x pan-y' }}>
       <div className="px-4 py-3 border-b border-gray-100 bg-gray-50">
         <h2 className="font-semibold text-gray-700">{isYonetici ? 'Verilen Tüm Ödevler' : 'Verdiğim Ödevler'}</h2>
       </div>
@@ -921,7 +921,7 @@ function OgretmenOdevTakibi({ odevler, ogretmenler }) {
           })}
         </div>
       ) : periyot === 'hafta' ? (
-        <div className="overflow-x-auto">
+        <div className="overflow-x-auto" style={{ touchAction: 'pan-x pan-y' }}>
           <table className="w-full text-sm min-w-[520px]">
             <thead>
               <tr className="text-left text-gray-500 bg-gray-50">

@@ -745,7 +745,7 @@ function TaslaklarimDersProgrami({ taslaklar, siniflar, ogretmenler, program, on
               </button>
             </div>
           </div>
-          <div className="overflow-x-auto">
+          <div className="overflow-x-auto" style={{ touchAction: 'pan-x pan-y' }}>
             <div className="flex min-w-[980px] divide-x divide-gray-100">
               {haftalikTabloOlustur(liste).map(({ gunNo, gunAdi, gunTaslaklari }) => (
                 <div key={gunNo} className="flex-1 min-w-[140px]">
@@ -1042,6 +1042,13 @@ export default function DersProgrami() {
   // tur='ders' kayıtlar) — Soru Çözümü ile aynı şekilde Ders Programı'na
   // karışık gösteriliyor, ama bunlarda ayrıca Geldi/Gelmedi (yoklama) alınabiliyor.
   const [bireBirTekilSeanslarim, setBireBirTekilSeanslarim] = useState([])
+  // Öğretmenin, bu haftaki sınıf derslerinden HANGİLERİNİN yoklaması zaten
+  // alınmış olduğunu tutar (ders_programi_id kümesi) — "Yoklama / Konu İşle"
+  // butonunun yanında/üstünde "Alındı" rozeti göstermek için kullanılıyor.
+  // "ders_programi" haftalık tekrar eden bir şablon olduğu için (belirli bir
+  // tarihe değil güne bağlı), bir id bu haftada EN FAZLA bir kez oluşur —
+  // bu yüzden sadece id'nin bu hafta yoklaması var mı yok mu bilmek yeterli.
+  const [buHaftaYoklamaAlinanlar, setBuHaftaYoklamaAlinanlar] = useState(new Set())
   // Öğretmen kendi ders programındaki bir derse tıklayınca (Tablo/Liste
   // görünümünde "Yoklama / Konu" butonu) burada o dersin ders_programi
   // satırı tutulur, popup o satır doluyken açık kalır (bkz. YoklamaKonuModal).
@@ -1197,14 +1204,28 @@ export default function DersProgrami() {
               .lte('tarih', pazar)
               .order('tarih')
               .order('baslangic_saat'),
+            // Bu haftaki sınıf derslerinden hangilerinin yoklaması ZATEN
+            // alınmış olduğunu bulmak için — "Alındı" rozeti göstermede
+            // kullanılıyor. Join'e "!inner" ekleyip ders_programi üzerinden
+            // öğretmene göre filtreliyoruz (bkz. OgretmenEkstre.jsx'teki aynı
+            // desen) — böylece hangi ders_programi id'lerinin ait olduğunu
+            // önceden bilmemize gerek kalmıyor.
+            supabase
+              .from('yoklama')
+              .select('ders_programi_id, ders_programi!inner(ogretmen_profile_id)')
+              .eq('ders_programi.ogretmen_profile_id', profile.id)
+              .gte('tarih', pazartesi)
+              .lte('tarih', pazar),
           ])
-        })().then(([soruRes, bbRes]) => {
+        })().then(([soruRes, bbRes, yoklamaRes]) => {
           if (soruRes.error) console.error('Soru çözümü sorgusu hatası:', soruRes.error.message)
           if (bbRes.error) console.error('Bire bir (tekil) sorgusu hatası:', bbRes.error.message)
+          if (yoklamaRes.error) console.error('Yoklama (bu hafta) sorgusu hatası:', yoklamaRes.error.message)
           setSoruCozumuSeanslarim(soruRes.data || [])
           setBireBirTekilSeanslarim(
             (bbRes.data || []).map((y) => ({ ...y, ogrenci_adi: y.ogrenciler?.ad_soyad }))
           )
+          setBuHaftaYoklamaAlinanlar(new Set((yoklamaRes.data || []).map((y) => y.ders_programi_id).filter(Boolean)))
           ilkYuklemeTamamRef.current = true
           setLoading(false)
         })
@@ -1720,13 +1741,20 @@ export default function DersProgrami() {
                                 {saatGoster(d.baslangic_saat)}–{saatGoster(d.bitis_saat)}
                               </p>
                               {isOgretmen && d.sinif_id && (
-                                <button
-                                  type="button"
-                                  onClick={() => setYoklamaModalDers(d)}
-                                  className="mt-1 w-full text-[10px] font-semibold text-blue-700 bg-blue-100 hover:bg-blue-200 rounded px-1 py-0.5 transition-colors"
-                                >
-                                  Yoklama / Konu
-                                </button>
+                                <div className="mt-1 flex items-center gap-1">
+                                  {buHaftaYoklamaAlinanlar.has(d.id) && (
+                                    <span className="text-[9px] font-semibold bg-green-100 text-green-700 px-1.5 py-0.5 rounded-full shrink-0">
+                                      Alındı
+                                    </span>
+                                  )}
+                                  <button
+                                    type="button"
+                                    onClick={() => setYoklamaModalDers(d)}
+                                    className="flex-1 text-[10px] font-semibold text-blue-700 bg-blue-100 hover:bg-blue-200 rounded px-1 py-0.5 transition-colors"
+                                  >
+                                    Yoklama / Konu
+                                  </button>
+                                </div>
                               )}
                               {/* Bire bir tekil dersler (sınıf dersi değil, d.sinif_id yok) —
                                   YoklamaKonuModal sınıf yoklamasına özel olduğu için burada
@@ -1831,13 +1859,20 @@ export default function DersProgrami() {
                         </div>
                       )}
                       {isOgretmen && d.sinif_id && (
-                        <button
-                          type="button"
-                          onClick={() => setYoklamaModalDers(d)}
-                          className="text-xs font-semibold text-white bg-blue rounded-lg px-3 py-1.5 hover:bg-navy transition-colors shrink-0"
-                        >
-                          Yoklama / Konu İşle
-                        </button>
+                        <div className="flex items-center gap-2 shrink-0">
+                          {buHaftaYoklamaAlinanlar.has(d.id) && (
+                            <span className="text-xs font-semibold bg-green-100 text-green-700 px-2 py-1 rounded-full">
+                              Alındı
+                            </span>
+                          )}
+                          <button
+                            type="button"
+                            onClick={() => setYoklamaModalDers(d)}
+                            className="text-xs font-semibold text-white bg-blue rounded-lg px-3 py-1.5 hover:bg-navy transition-colors shrink-0"
+                          >
+                            Yoklama / Konu İşle
+                          </button>
+                        </div>
                       )}
                       {/* Bire bir tekil dersler — YoklamaKonuModal sınıf yoklamasına özel
                           olduğu için burada basit Geldi/Gelmedi durumu + butonları var. */}

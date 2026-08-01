@@ -320,7 +320,7 @@ export default function SifreSifirla() {
 
       {hata && <p className="text-red-600 text-sm mb-3">{hata}</p>}
 
-      <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-x-auto">
+      <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-x-auto" style={{ touchAction: 'pan-x pan-y' }}>
         <table className="w-full text-sm min-w-[680px]">
           <thead>
             <tr className="bg-navy text-white text-left">

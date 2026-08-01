@@ -258,7 +258,7 @@ function UrunYonetimi({ urunler, onDegisti }) {
   }
 
   return (
-    <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-x-auto mb-6">
+    <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-x-auto mb-6" style={{ touchAction: 'pan-x pan-y' }}>
       <div className="px-4 py-3 border-b border-gray-100 bg-gray-50 flex items-center justify-between flex-wrap gap-3">
         <div>
           <h2 className="font-semibold text-gray-700">Ürün Yönetimi</h2>
@@ -1028,7 +1028,7 @@ export default function Kantin() {
 
       {isYonetici && <UrunYonetimi urunler={urunler} onDegisti={veriyiYenile} />}
 
-      <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-x-auto">
+      <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-x-auto" style={{ touchAction: 'pan-x pan-y' }}>
         <div className="px-4 py-3 border-b border-gray-100 bg-gray-50 flex items-center justify-between flex-wrap gap-2">
           <div>
             <h2 className="font-semibold text-gray-700">Bugünkü Alışlar</h2>

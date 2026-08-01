@@ -88,7 +88,7 @@ function BugunkuYoklamaDurumu({ isYonetici, ogretmenProfileId }) {
                 belirtiyoruz (Ders Programı tablosunda da aynı çözüm
                 kullanılıyor) — aksi halde bazı mobil tarayıcılarda metin
                 kesilip/sarılıp tablo hiç kaymıyor. */}
-            <div className="overflow-x-auto touch-pan-x overscroll-x-contain">
+            <div className="overflow-x-auto overscroll-x-contain" style={{ touchAction: 'pan-x pan-y' }}>
               <table className="text-sm min-w-[640px] w-full">
                 <thead>
                   <tr className="bg-navy text-white text-left">
@@ -256,7 +256,7 @@ export default function YoklamaRaporu() {
               <span className="font-normal text-gray-400"> — {ogretmenlerMap.get(seciliOgretmen)}</span>
             )}
           </h2>
-          <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-x-auto touch-pan-x overscroll-x-contain mb-8">
+          <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-x-auto overscroll-x-contain mb-8" style={{ touchAction: 'pan-x pan-y' }}>
             <table className="text-sm min-w-[480px] w-full">
               <thead>
                 <tr className="bg-navy text-white text-left">
@@ -286,7 +286,7 @@ export default function YoklamaRaporu() {
           </div>
 
           <h2 className="font-semibold text-gray-700 mb-3">Detaylı Geçmiş (Son Kayıtlar)</h2>
-          <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-x-auto touch-pan-x overscroll-x-contain">
+          <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-x-auto overscroll-x-contain" style={{ touchAction: 'pan-x pan-y' }}>
             <table className="text-sm min-w-[640px] w-full">
               <thead>
                 <tr className="bg-navy text-white text-left">
