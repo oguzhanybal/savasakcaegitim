@@ -359,7 +359,7 @@ function AnaUygulama() {
           <Route
             path="sinav-kitapciklari"
             element={
-              <Korumali izinliRoller={['yonetici']}>
+              <Korumali izinliRoller={['yonetici', 'ogretmen']}>
                 <SinavKitapciklari />
               </Korumali>
             }
