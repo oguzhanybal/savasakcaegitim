@@ -32,16 +32,6 @@ function tarihStr(y, m, d) {
   return `${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`
 }
 
-// Bir taksitin GERÇEK vade tarihini ("YYYY-MM-DD" string, gün hassasiyetinde)
-// hesaplar — ilk taksit tarihine i ay eklenir. Ay/gün taşmalarını (ör. 31'i
-// olmayan bir aya denk gelmesi, Şubat'ın 28/29 günü) JS Date'in kendi ay
-// aritmetiği hallediyor.
-function vadeTarihiStr(ilkTarih, i) {
-  const d = new Date(ilkTarih)
-  d.setMonth(d.getMonth() + i)
-  return tarihStr(d.getFullYear(), d.getMonth() + 1, d.getDate())
-}
-
 // Bir ödemenin "kalem" alanı tam eşleşme değilse de (ör. "Okul - Devreden Ödeme")
 // ilgili kalemle başlıyorsa sayılır — devreden (eski sistemden gelen) ödemeler de
 // borç hesabına dahil edilsin diye.
@@ -98,18 +88,14 @@ export function sozlesmeKalemHesapla(sozlesme, odemeler, seciliAy) {
   // GERÇEKTEN o ayın son gününe ulaştıysa "bitmiş" sayılır.
   const ayBittiMi = seciliAy !== bugunAyStr || bugunStr >= ayinSonGunuStr
 
-  // Belirli bir hedef aya (dahil) kaç taksitin "sayıldığını" hesaplar. Ay
-  // bittiyse düz ay bazında (eski sistemdeki gibi); bitmediyse (içinde
-  // bulunduğumuz, henüz kapanmamış ay) SADECE seçili aya denk gelen taksitin
-  // kendi GÜNÜ gelmiş mi diye ayrıca kontrol eder — asıl düzeltme burada:
-  // "20 Ağustos vadeli taksit, 1 Ağustos'ta henüz borç sayılmasın".
+  // Belirli bir hedef aya (dahil) kaç taksitin "sayıldığını" hesaplar — DÜZ AY
+  // BAZINDA (eski sistemdeki gibi): bir taksit, kendi ayı geldiği andan
+  // (ayın 1'inden) itibaren o AYIN TAMAMI boyunca borç sayılır — sadece kendi
+  // GÜNÜNÜ (ör. ayın 5'i ya da 20'si) beklemez. Gün hassasiyeti burada değil,
+  // SADECE yukarıdaki "ayBittiMi" tespitinde (ayın 28/29/30/31 günü doğru
+  // hesaplanıp bir sonraki ayın erken/geç eklenmemesi için) kullanılıyor.
   function sayilanTaksit(hedefIndex) {
-    let sayi = Math.max(0, Math.min(taksitSayisi, hedefIndex - ilkIndex + 1))
-    if (!ayBittiMi && sayi > 0) {
-      const sonVadeStr = vadeTarihiStr(ilkTarih, sayi - 1)
-      if (sonVadeStr.slice(0, 7) === seciliAy && sonVadeStr > bugunStr) sayi -= 1
-    }
-    return sayi
+    return Math.max(0, Math.min(taksitSayisi, hedefIndex - ilkIndex + 1))
   }
 
   const hedefIndex = ayBittiMi ? seciliIndex + 1 : seciliIndex
