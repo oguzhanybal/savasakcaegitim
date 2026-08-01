@@ -99,6 +99,11 @@ function menuOlustur(rol) {
       { tur: 'link', to: '/program', label: 'Ders Programım' },
       { tur: 'link', to: '/bire-bir', label: 'Bire Bir Derslerim' },
       { tur: 'link', to: '/odev', label: 'Ödevler' },
+      // Öğretmen burada sadece GÖRÜNTÜLEME + İNDİRME yapabilir (kitapçık
+      // yükleme/düzenleme/silme butonları sayfa içinde SinavKitapciklari.jsx'te
+      // isYonetici kontrolüyle gizleniyor) — hata analizi yaparken kitapçığın
+      // orijinal PDF'ini indirebilsin diye eklendi.
+      { tur: 'link', to: '/sinav-kitapciklari', label: 'Sınav Kitapçıkları' },
       // "Yoklama Al" linki öğretmen menüsünden kaldırıldı — artık yoklama,
       // Ders Programım'da derse tıklayıp açılan popup'tan (Yoklama ve Konu
       // İşaretleme) alınıyor, bu ayrı sayfa öğretmen için gereksiz kaldı
