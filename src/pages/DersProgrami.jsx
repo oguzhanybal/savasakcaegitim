@@ -827,6 +827,28 @@ function dersTuruSirasi(d) {
   return 2 // soru çözümü
 }
 
+// Soru Çözümü ve bire bir TEKİL dersler belirli bir TARİHE bağlıdır (sınıf
+// dersleri gibi her hafta tekrar eden bir "gun" şablonu değildir). ÖNEMLİ
+// HATA DÜZELTMESİ: bu iki sorgu önceden tarih filtresi olmadan öğretmenin
+// TÜM GEÇMİŞ kayıtlarını çekiyordu — her kayıt sadece haftanın gününe göre
+// (gunNumaraTarihten) bir sütuna yerleştirildiği için, ay/haftalar önce
+// verilmiş (ve zaten "Geldi" işaretlenmiş) eski dersler bile o haftanın
+// günü hangisiyse SONSUZA KADAR o sütunda "hayalet" satırlar olarak birikip
+// gerçek/güncel derslerle karışıyordu (bir öğretmen, aslında hiç dersi
+// olmayan bir öğrenciyi haftalarca sonra hâlâ programında görebiliyordu).
+// Çözüm: sorguları SADECE İÇİNDE BULUNULAN HAFTAYA (Pazartesi–Pazar) göre
+// sınırlıyoruz — Ders Programı zaten "bu haftaki programım" anlamına geliyor.
+function haftaninPazartesiVePazari() {
+  const bugun = new Date()
+  const gunNo = bugun.getDay() === 0 ? 7 : bugun.getDay() // 1=Pzt...7=Paz
+  const pazartesi = new Date(bugun)
+  pazartesi.setDate(bugun.getDate() - (gunNo - 1))
+  const pazar = new Date(pazartesi)
+  pazar.setDate(pazartesi.getDate() + 6)
+  const tarihStr = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+  return { pazartesi: tarihStr(pazartesi), pazar: tarihStr(pazar) }
+}
+
 
 // Veli ("çocuğumun") ya da öğrenci ("benim") rolüyle giriş yapan kullanıcıya,
 // sınıf ders programının YANINDA, çocuğun/kendisinin HAFTALIK BİRE BİR ders
@@ -1145,23 +1167,38 @@ export default function DersProgrami() {
         // "ilk yoklama kaydını oluşturma" akışı Bire Bir Derslerim sayfasındaki
         // "Yoklama Al" bölümünde kalmaya devam ediyor, o özel akışı burada
         // tekrarlamıyoruz.
-        Promise.all([
-          supabase
-            .from('bire_bir_yoklama')
-            .select('*')
-            .eq('ogretmen_profile_id', profile.id)
-            .eq('tur', 'soru_cozumu')
-            .order('tarih')
-            .order('baslangic_saat'),
-          supabase
-            .from('bire_bir_yoklama')
-            .select('*, ogrenciler(ad_soyad)')
-            .eq('ogretmen_profile_id', profile.id)
-            .eq('tur', 'ders')
-            .is('atama_id', null)
-            .order('tarih')
-            .order('baslangic_saat'),
-        ]).then(([soruRes, bbRes]) => {
+        //
+        // ÖNEMLİ HATA DÜZELTMESİ (bkz. haftaninPazartesiVePazari yorumu): bu iki
+        // sorgu ÖNCEDEN tarih filtresi olmadan öğretmenin TÜM geçmiş soru çözümü/
+        // tekil bire bir kayıtlarını çekiyordu — sonuçta haftalar/aylar önce
+        // verilmiş dersler bile, sadece haftanın hangi gününe denk geldiklerine
+        // göre (gunNumaraTarihten) o gün sütununda SONSUZA KADAR "hayalet"
+        // satırlar olarak birikiyor, gerçek/güncel programla karışıyordu. Artık
+        // SADECE İÇİNDE BULUNULAN HAFTAYA (Pazartesi–Pazar) ait kayıtlar çekiliyor.
+        (() => {
+          const { pazartesi, pazar } = haftaninPazartesiVePazari()
+          return Promise.all([
+            supabase
+              .from('bire_bir_yoklama')
+              .select('*')
+              .eq('ogretmen_profile_id', profile.id)
+              .eq('tur', 'soru_cozumu')
+              .gte('tarih', pazartesi)
+              .lte('tarih', pazar)
+              .order('tarih')
+              .order('baslangic_saat'),
+            supabase
+              .from('bire_bir_yoklama')
+              .select('*, ogrenciler(ad_soyad)')
+              .eq('ogretmen_profile_id', profile.id)
+              .eq('tur', 'ders')
+              .is('atama_id', null)
+              .gte('tarih', pazartesi)
+              .lte('tarih', pazar)
+              .order('tarih')
+              .order('baslangic_saat'),
+          ])
+        })().then(([soruRes, bbRes]) => {
           if (soruRes.error) console.error('Soru çözümü sorgusu hatası:', soruRes.error.message)
           if (bbRes.error) console.error('Bire bir (tekil) sorgusu hatası:', bbRes.error.message)
           setSoruCozumuSeanslarim(soruRes.data || [])
