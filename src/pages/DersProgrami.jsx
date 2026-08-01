@@ -1352,7 +1352,14 @@ export default function DersProgrami() {
       .from('yoklama')
       .delete()
       .eq('ders_programi_id', id)
-      .gte('tarih', yerelBugunTarihi())
+      // ÖNEMLİ: .gte() (>=) DEĞİL .gt() (>) kullanıyoruz — .gte() bugünü de
+      // "silinecek" (ileri tarihli) sayıyordu, ama bugünün dersi çoktan
+      // yapılmış ve yoklaması alınmış olabilir (tam olarak bu yüzden "8
+      // Ağustos'ta değişiklik yapıyorum ama bugünün — 1 Ağustos'un —
+      // yoklaması siliniyor" hatası oluyordu, ders_programi HAFTALIK
+      // TEKRARLI bir şablon olduğu için aynı id her Cumartesi'ye denk
+      // geliyor). .gt() ile bugün her zaman "geçmiş" sayılıp korunuyor.
+      .gt('tarih', yerelBugunTarihi())
     if (yoklamaHata) {
       alert('Hata (yoklama kayıtları silinirken): ' + yoklamaHata.message)
       return

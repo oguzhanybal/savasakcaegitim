@@ -358,7 +358,9 @@ export default function SinifDetay() {
       .from('yoklama')
       .delete()
       .eq('ders_programi_id', id)
-      .gte('tarih', yerelBugunTarihi())
+      // .gte() DEĞİL .gt() — bugün de dahil edilirse (>=), bugün çoktan
+      // alınmış bir yoklama "ileri tarihli" sayılıp yanlışlıkla silinebiliyordu.
+      .gt('tarih', yerelBugunTarihi())
     if (yoklamaHata) {
       alert('Hata (yoklama kayıtları silinirken): ' + yoklamaHata.message)
       return
