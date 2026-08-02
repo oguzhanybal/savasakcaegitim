@@ -883,8 +883,17 @@ function haftaninPazartesiVePazari() {
   const gunNo = bugun.getDay() === 0 ? 7 : bugun.getDay() // 1=Pzt...7=Paz
   const pazartesi = new Date(bugun)
   pazartesi.setDate(bugun.getDate() - (gunNo - 1))
-  const pazar = new Date(pazartesi)
-  pazar.setDate(pazartesi.getDate() + 6)
+  const haftaSonu = new Date(pazartesi)
+  haftaSonu.setDate(pazartesi.getDate() + 6)
+  // EK DÜZELTME: pencerenin bitişi SADECE takvimsel Pazar günü değil, en az
+  // "bugünden itibaren 6 gün sonrası" olacak şekilde de garanti ediliyor.
+  // Hafta sonuna (özellikle Pazar günü) yakın günlerde öğretmen YARIN için
+  // yeni bir bire bir/soru çözümü dersi eklediğinde, "yarın" takvimsel olarak
+  // zaten BİR SONRAKİ haftaya düştüğü için eski pencerede hiç görünmüyordu —
+  // "yeni eklenen ders görünmüyor, eski görünüyor" bug'ının kaynağı buydu.
+  const altiGunSonra = new Date(bugun)
+  altiGunSonra.setDate(bugun.getDate() + 6)
+  const pazar = haftaSonu > altiGunSonra ? haftaSonu : altiGunSonra
   const tarihStr = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
   return { pazartesi: tarihStr(pazartesi), pazar: tarihStr(pazar) }
 }
