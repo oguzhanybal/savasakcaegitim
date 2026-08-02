@@ -9,34 +9,58 @@ function saatKisalt(s) {
   return s ? s.slice(0, 5) : s
 }
 
-// Bugün için: her sınıfın programlı ders saatini, o saat için öğretmenin
+// Bugünün tarihini "YYYY-MM-DD" olarak YEREL saate göre üretir — diğer
+// sayfalardaki (DersProgrami.jsx, BireBirDersDokumu.jsx vb.) aynı desen,
+// toISOString KULLANMIYORUZ çünkü UTC+3'te gece yarısına yakın saatlerde bir
+// gün geriye kayabiliyor.
+function yerelTarih(d) {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+}
+
+function gunNumaraTarihten(tarihStr) {
+  const g = new Date(tarihStr + 'T12:00:00').getDay()
+  return g === 0 ? 7 : g
+}
+
+// Belirli bir GÜN için (varsayılan bugün, ama artık ◀/▶ ile başka güne de
+// bakılabiliyor): her sınıfın programlı ders saatini, o saat için öğretmenin
 // yoklama alıp almadığını (Yoklama Al sayfasından "Yoklamayı Kaydet"e
 // basıldıysa o ders saatine ait satırlar oluşuyor) ve alındıysa kimlerin
 // "Gelmedi" işaretlendiğini TEK bakışta gösteren bölüm. Yönetici bunu tüm
 // sınıflar için görür ("hangi öğretmen yoklama almış, hangisi almamış,
 // alanlarda kim gelmemiş"); öğretmen girerse sadece kendi derslerini görür.
+// ÖNCEDEN sadece "bugün"e bakıyordu — kullanıcı isteğiyle geçmiş/gelecek
+// günlere de gidebilme eklendi (ör. "Cumartesi günü Gülem hocanın 1 tane
+// fazla yoklaması var" gibi bir şeyi kontrol edebilmek için).
 function BugunkuYoklamaDurumu({ isYonetici, ogretmenProfileId }) {
+  const bugunTarih = yerelTarih(new Date())
+  const [secilenTarih, setSecilenTarih] = useState(bugunTarih)
   const [dersSaatleri, setDersSaatleri] = useState([])
   const [yoklamalar, setYoklamalar] = useState([])
   const [loading, setLoading] = useState(true)
-  const bugunGunNo = ((new Date().getDay() + 6) % 7) + 1
+  const secilenGunNo = gunNumaraTarihten(secilenTarih)
+
+  function gunKaydir(fark) {
+    const d = new Date(secilenTarih + 'T12:00:00')
+    d.setDate(d.getDate() + fark)
+    setSecilenTarih(yerelTarih(d))
+  }
 
   useEffect(() => {
     setLoading(true)
-    const bugun = new Date().toISOString().slice(0, 10)
     let sorgu = supabase
       .from('ders_programi')
       .select('*, siniflar(ad), profiles:ogretmen_profile_id(ad_soyad, brans)')
-      .eq('gun', bugunGunNo)
-      // ÖNEMLİ: sadece aktif=true DEĞİL — bir ders TAM BUGÜN silinirse
-      // (aktif=false yapılırsa), bugünkü özet hâlâ o dersi göstermeli (belki
-      // yoklaması zaten alınmıştı). "aktif=true VEYA bugün silindi
-      // (pasif_tarihi >= bugün)" — Yoklama.jsx'teki aynı kural. NOT: aşağıdaki
-      // BugunkuYoklamaDurumu bileşeninin DIŞINDAKİ geçmiş sınıf raporu
-      // sorgusuna (yoklama tablosunu ders_programi'ye join eden) BİLEREK bu
-      // filtre eklenmiyor — geçmiş kayıtlar pasif olsa bile ders adını
-      // göstermeye devam etmeli.
-      .or(`aktif.eq.true,pasif_tarihi.gte.${bugun}`)
+      .eq('gun', secilenGunNo)
+      // ÖNEMLİ: sadece aktif=true DEĞİL — bir ders TAM O GÜN silinirse
+      // (aktif=false yapılırsa), o günün özeti hâlâ o dersi göstermeli (belki
+      // yoklaması zaten alınmıştı). "aktif=true VEYA o gün ya da sonrasında
+      // silindi (pasif_tarihi >= secilenTarih)" — Yoklama.jsx'teki aynı kural.
+      // NOT: aşağıdaki BugunkuYoklamaDurumu bileşeninin DIŞINDAKİ geçmiş
+      // sınıf raporu sorgusuna (yoklama tablosunu ders_programi'ye join eden)
+      // BİLEREK bu filtre eklenmiyor — geçmiş kayıtlar pasif olsa bile ders
+      // adını göstermeye devam etmeli.
+      .or(`aktif.eq.true,pasif_tarihi.gte.${secilenTarih}`)
     if (!isYonetici && ogretmenProfileId) sorgu = sorgu.eq('ogretmen_profile_id', ogretmenProfileId)
 
     Promise.all([
@@ -44,16 +68,22 @@ function BugunkuYoklamaDurumu({ isYonetici, ogretmenProfileId }) {
       supabase
         .from('yoklama')
         .select('ders_programi_id, ogrenci_id, geldi, ogrenciler(ad_soyad)')
-        .eq('tarih', bugun),
+        .eq('tarih', secilenTarih),
     ]).then(([dp, y]) => {
       const yoklamaVeri = y.data || []
-      // Bugün pasif yapılan (silinen) bir ders saati, sadece o saat için
-      // GERÇEKTEN kayıtlı bir yoklama varsa listede kalsın — yoklaması hiç
-      // alınmamış, aynı gün içinde silinmiş bir kayıt burada göstermek
+      // Seçilen gün pasif yapılan (silinen) bir ders saati, sadece o saat
+      // için GERÇEKTEN kayıtlı bir yoklama varsa listede kalsın — yoklaması
+      // hiç alınmamış, aynı gün içinde silinmiş bir kayıt burada göstermek
       // sadece kafa karıştırıyor (bkz. Yoklama.jsx'teki aynı düzeltme).
       const yoklamasiOlanIdler = new Set(yoklamaVeri.map((y) => y.ders_programi_id))
+      // "baslangic_tarihi" elle girilmiş ve seçilen günden ilerideyse (bkz.
+      // DersProgrami.jsx/SinifDetay.jsx'teki opsiyonel alan, Yoklama.jsx'teki
+      // aynı düzeltme), bu ders o gün henüz başlamamış demektir — özete hiç
+      // girmemeli.
       const filtreli = (dp.data || []).filter(
-        (d) => d.aktif !== false || yoklamasiOlanIdler.has(d.id)
+        (d) =>
+          (!d.baslangic_tarihi || d.baslangic_tarihi <= secilenTarih) &&
+          (d.aktif !== false || yoklamasiOlanIdler.has(d.id))
       )
       const sirali = filtreli.sort((a, b) => {
         const s = (a.baslangic_saat || '').localeCompare(b.baslangic_saat || '')
@@ -65,7 +95,7 @@ function BugunkuYoklamaDurumu({ isYonetici, ogretmenProfileId }) {
       setLoading(false)
     })
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isYonetici, ogretmenProfileId])
+  }, [isYonetici, ogretmenProfileId, secilenTarih, secilenGunNo])
 
   const ozet = dersSaatleri.map((ders) => {
     const kayitlar = yoklamalar.filter((y) => y.ders_programi_id === ders.id)
@@ -76,19 +106,58 @@ function BugunkuYoklamaDurumu({ isYonetici, ogretmenProfileId }) {
   const alinanSayisi = ozet.filter((o) => o.alindiMi).length
   const alinmayanSayisi = ozet.length - alinanSayisi
 
+  const secilenBugunMu = secilenTarih === bugunTarih
+
   return (
     <div className="mb-8">
-      <h2 className="font-semibold text-gray-700 mb-1">
-        {isYonetici ? 'Bugünkü Yoklama Durumu (Tüm Sınıflar)' : 'Bugünkü Yoklama Durumum'}
-      </h2>
+      <div className="flex items-center justify-between flex-wrap gap-2 mb-1">
+        <h2 className="font-semibold text-gray-700">
+          {isYonetici ? 'Yoklama Durumu (Tüm Sınıflar)' : 'Yoklama Durumum'}
+        </h2>
+        <div className="flex items-center gap-1.5">
+          <button
+            type="button"
+            onClick={() => gunKaydir(-1)}
+            className="px-2 py-1 rounded-lg text-sm bg-white border border-gray-200 text-gray-600 hover:bg-gray-50"
+            title="Önceki gün"
+          >
+            ◀
+          </button>
+          <input
+            type="date"
+            value={secilenTarih}
+            onChange={(e) => setSecilenTarih(e.target.value)}
+            className="px-2 py-1 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue bg-white"
+          />
+          <button
+            type="button"
+            onClick={() => gunKaydir(1)}
+            className="px-2 py-1 rounded-lg text-sm bg-white border border-gray-200 text-gray-600 hover:bg-gray-50"
+            title="Sonraki gün"
+          >
+            ▶
+          </button>
+          {!secilenBugunMu && (
+            <button
+              type="button"
+              onClick={() => setSecilenTarih(bugunTarih)}
+              className="px-2.5 py-1 rounded-lg text-xs font-semibold bg-navy/5 text-navy hover:bg-navy/10"
+            >
+              Bugün
+            </button>
+          )}
+        </div>
+      </div>
       <p className="text-xs text-gray-400 mb-3">
-        Bugün {GUNLER[bugunGunNo]} — hangi ders saati için yoklama alınmış, hangisi için henüz alınmamış ve alınanlarda kim gelmemiş burada görünür.
+        {secilenBugunMu ? 'Bugün' : new Date(secilenTarih + 'T12:00:00').toLocaleDateString('tr-TR')} {GUNLER[secilenGunNo]} — hangi ders saati için yoklama alınmış, hangisi için henüz alınmamış ve alınanlarda kim gelmemiş burada görünür.
       </p>
 
       <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
         {loading && <p className="p-4 text-gray-400 text-sm">Yükleniyor...</p>}
         {!loading && ozet.length === 0 && (
-          <p className="p-4 text-gray-400 text-sm">Bugün ({GUNLER[bugunGunNo]}) programlı ders saati yok.</p>
+          <p className="p-4 text-gray-400 text-sm">
+            {secilenBugunMu ? 'Bugün' : new Date(secilenTarih + 'T12:00:00').toLocaleDateString('tr-TR')} ({GUNLER[secilenGunNo]}) programlı ders saati yok.
+          </p>
         )}
         {!loading && ozet.length > 0 && (
           <>
