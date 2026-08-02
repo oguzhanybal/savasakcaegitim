@@ -1997,7 +1997,7 @@ export default function DersProgrami() {
                     return (
                     <div
                       key={d.id}
-                      className={`px-4 py-3 flex items-start justify-between gap-2 flex-wrap ${satirRengi}`}
+                      className={`px-4 py-3 flex flex-col sm:flex-row sm:items-center justify-between gap-2 ${satirRengi}`}
                     >
                       <div className="min-w-0">
                         <p className={`font-medium ${baslikRengi} break-words`}>{baslik}</p>
@@ -2026,7 +2026,7 @@ export default function DersProgrami() {
                         </div>
                       )}
                       {isOgretmen && d.sinif_id && (
-                        <div className="flex items-center gap-2 shrink-0">
+                        <div className="flex items-center gap-2 flex-wrap shrink-0">
                           {buHaftaYoklamaAlinanlar.has(d.id) && (
                             <span className="text-xs font-semibold bg-green-100 text-green-700 px-2 py-1 rounded-full">
                               Alındı
