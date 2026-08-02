@@ -1251,17 +1251,29 @@ export default function DersProgrami() {
         // tekil bire bir kayıtlarını çekiyordu — sonuçta haftalar/aylar önce
         // verilmiş dersler bile, sadece haftanın hangi gününe denk geldiklerine
         // göre (gunNumaraTarihten) o gün sütununda SONSUZA KADAR "hayalet"
-        // satırlar olarak birikiyor, gerçek/güncel programla karışıyordu. Artık
-        // SADECE İÇİNDE BULUNULAN HAFTAYA (Pazartesi–Pazar) ait kayıtlar çekiliyor.
+        // satırlar olarak birikiyor, gerçek/güncel programla karışıyordu. Bunun
+        // düzeltmesi olarak önce "SADECE İÇİNDE BULUNULAN HAFTAYA (Pazartesi–
+        // Pazar)" bağlandı — AMA bu da yeni bir soruna yol açtı: hafta içinde
+        // BUGÜNDEN ÖNCEki günlere (ör. bugün Pazarsa, o haftanın Pazartesi/
+        // Çarşambası) ait, tek seferlik ve zaten tamamlanmış ("geldi" işaretli)
+        // dersler de haftanın sonuna kadar ekranda kalmaya devam ediyor, bu da
+        // öğretmene "hâlâ bu günlerde dersim var" izlenimi veriyordu (öğretmenin
+        // aslında o gün(ler)de artık düzenli bir dersi olmadığı halde, geçmiş
+        // tek seferlik bir ders yüzünden hâlâ o günün sütununda bir şey görmesi).
+        // ÇÖZÜM: bu iki sorgu artık haftanın Pazartesi'sinden değil, doğrudan
+        // BUGÜNDEN başlıyor (bitiş sınırı aynı kalıyor) — böylece sadece bugün
+        // ve ondan sonraki (yaklaşan) tek seferlik dersler görünür, geçmişte
+        // kalmış ve zaten işlenmiş günler artık ekranda birikmiyor.
         (() => {
           const { pazartesi, pazar } = haftaninPazartesiVePazari()
+          const bugun = yerelBugunTarihi()
           return Promise.all([
             supabase
               .from('bire_bir_yoklama')
               .select('*')
               .eq('ogretmen_profile_id', profile.id)
               .eq('tur', 'soru_cozumu')
-              .gte('tarih', pazartesi)
+              .gte('tarih', bugun)
               .lte('tarih', pazar)
               .order('tarih')
               .order('baslangic_saat'),
@@ -1271,7 +1283,7 @@ export default function DersProgrami() {
               .eq('ogretmen_profile_id', profile.id)
               .eq('tur', 'ders')
               .is('atama_id', null)
-              .gte('tarih', pazartesi)
+              .gte('tarih', bugun)
               .lte('tarih', pazar)
               .order('tarih')
               .order('baslangic_saat'),
