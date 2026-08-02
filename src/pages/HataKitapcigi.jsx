@@ -380,7 +380,7 @@ export default function HataKitapcigi() {
                     </p>
                     <p className="text-[10px] text-gray-400 mb-1 leading-tight">
                       {s.sonuc === 'bos'
-                        ? 'Boş bırakılmış'
+                        ? `Boş bırakılmış — Doğru: ${s.dogru_cevap || '—'}`
                         : `Yanlış — İşaretlenen: ${s.ogrenci_cevap || '—'}, Doğru: ${s.dogru_cevap || '—'}`}
                     </p>
                     <img

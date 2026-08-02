@@ -243,11 +243,18 @@ function TopluDersAtamaPaneli({ toplamSoru, onUygula, onVazgec, onGeriDon, basla
       </p>
       <p className="text-xs text-orange bg-orange/10 border border-orange/20 rounded-lg px-3 py-2 mb-4">
         Önemli: "Sosyal" ve "Fen" bloklarını TEK satırda toplamayın — sonuç karnesindeki Konu Analizi tablosu
-        bunları ayrı ayrı sayar (Tarih, Coğrafya, Felsefe, Din Kültürü / Fizik, Kimya, Biyoloji). AMA bu dersler
-        kendi içinde 1'den BAŞLAMAZ — grup içinde kesintisiz devam eder: Tarih 1-5, Coğrafya 6-10, Felsefe 11-15,
-        Din Kültürü 16-20; Fizik 1-7, Kimya 8-14, Biyoloji 15-20 gibi. Her blok için aşağıdaki
-        <b> "Başlangıç No"</b> kutusuna doğru sayıyı yazın (bir önceki dersin devamıysa yanındaki
-        <b> "↳ öncekinin devamı"</b> butonuna basmanız yeterli).
+        bunları ayrı ayrı sayar (Tarih, Coğrafya, Felsefe, Din Kültürü / Fizik, Kimya, Biyoloji). Bu dersler
+        kendi GRUBU içinde 1'den BAŞLAMAZ — grup içinde kesintisiz devam eder: Tarih 1-5, Coğrafya 6-10,
+        Felsefe 11-15, Din Kültürü 16-20; Fizik 1-7, Kimya 8-14, Biyoloji 15-20 gibi ("↳ öncekinin devamı"
+        butonu bunun için).
+        <br />
+        <b>AMA her YENİ TEST (Türkçe Testi → Sosyal Bilimler Testi → Matematik Testi → Fen Bilimleri Testi
+        geçişlerinde) numarayı MUTLAKA 1'e SIFIRLAYIN</b> — karnede her test kendi başına yeniden 1'den başlar,
+        kitapçık boyunca kesintisiz saymaz. Yani "↳ öncekinin devamı" SADECE aynı grubun İÇİNDEKİ bir sonraki
+        derse (ör. Tarih'ten Coğrafya'ya) geçerken kullanılır — Sosyal Bilimler'den Matematik'e ya da Matematik'ten
+        Fen Bilimleri'ne geçerken YENİ satırın Başlangıç No'sunu elle <b>1</b> yazın, "öncekinin devamı"na
+        BASMAYIN. (Bu karıştırılırsa tüm sorular yanlış numaralanır ve Hata Kitapçığı hiçbirini eşleştiremez —
+        sonradan SQL ile düzeltmek gerekir, o yüzden en başta doğru girmek önemli.)
       </p>
 
       <div className="space-y-2 mb-3">
