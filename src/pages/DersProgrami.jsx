@@ -1995,9 +1995,12 @@ export default function DersProgrami() {
                         : 'bg-purple-50/60'
                     const baslikRengi = d.sinif_id ? 'text-gray-800' : d._bireBir ? 'text-amber-900' : 'text-purple-800'
                     return (
-                    <div key={d.id} className={`px-4 py-3 flex items-start justify-between gap-2 ${satirRengi}`}>
-                      <div>
-                        <p className={`font-medium ${baslikRengi}`}>{baslik}</p>
+                    <div
+                      key={d.id}
+                      className={`px-4 py-3 flex items-start justify-between gap-2 flex-wrap ${satirRengi}`}
+                    >
+                      <div className="min-w-0">
+                        <p className={`font-medium ${baslikRengi} break-words`}>{baslik}</p>
                         <p className="text-xs text-gray-400">
                           {sinifAdiGoster ? d.sinif_adi : ''}
                           {d.ogretmen_adi ? `${sinifAdiGoster ? ' · ' : ''}${d.ogretmen_adi}` : ''}
