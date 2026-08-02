@@ -23,7 +23,7 @@ const DERS_ONERILERI = [
 // sürükle-bırak) yöneten katman. Koordinatlar her zaman sayfanın DOĞAL piksel
 // boyutunda (canvas render boyutu) saklanır; ekranda ne kadar küçük/büyük
 // gösterilirse gösterilsin, % tabanlı konumlandırma sayesinde eşleşme bozulmaz.
-function KutuKatmani({ sayfaGoruntusu, sorularBuSayfada, seciliGeciciId, cizimModu, onCizimBitti }) {
+function KutuKatmani({ sayfaGoruntusu, sorularBuSayfada, seciliGeciciId, cizimModu, onCizimBitti, parcaKutusu }) {
   const containerRef = useRef(null)
   const [cizilen, setCizilen] = useState(null)
 
@@ -98,6 +98,21 @@ function KutuKatmani({ sayfaGoruntusu, sorularBuSayfada, seciliGeciciId, cizimMo
           </span>
         </div>
       ))}
+      {parcaKutusu && (
+        <div
+          className="absolute border-2 border-dashed border-purple-500 bg-purple-500/10 pointer-events-none"
+          style={{
+            left: `${(parcaKutusu.x / sayfaGoruntusu.genislik) * 100}%`,
+            top: `${(parcaKutusu.y / sayfaGoruntusu.yukseklik) * 100}%`,
+            width: `${(parcaKutusu.genislik / sayfaGoruntusu.genislik) * 100}%`,
+            height: `${(parcaKutusu.yukseklik / sayfaGoruntusu.yukseklik) * 100}%`,
+          }}
+        >
+          <span className="absolute -top-5 left-0 text-[10px] font-semibold bg-purple-600 text-white px-1 rounded">
+            Ortak Parça
+          </span>
+        </div>
+      )}
       {cizilen && (
         <div
           className="absolute border-2 border-orange bg-orange/20 pointer-events-none"
@@ -390,6 +405,15 @@ export default function SinavKitapciklari() {
   const [sorular, setSorular] = useState([])
   const [seciliIndex, setSeciliIndex] = useState(0)
   const [cizimModu, setCizimModu] = useState(false)
+  // cizimModu açıkken sürüklenen dikdörtgenin NEREYE yazılacağını belirler:
+  // 'soru' → sorunun kendi kutusu (eskisi gibi), 'parca' → aşağıdaki "Ortak
+  // Parça" özelliği için ayrı bir kutu (bkz. onCizimBitti ve parça bölümü).
+  const [cizimAlani, setCizimAlani] = useState('soru')
+  // "39-40. soruları aşağıdaki parçaya göre cevaplayınız" gibi ortak parçalı
+  // soru çiftlerinde, seçili sorunun az önce çizilen/kayıtlı parça kutusunu
+  // TEK TIKLA aynı sayfadaki başka sorulara da uygulayabilmek için — işaretli
+  // gecici_id'ler burada tutulur.
+  const [parcaUygulanacakIdler, setParcaUygulanacakIdler] = useState([])
   // Yeni bir analiz sonucu geldiğinde varsayılan olarak TOPLU DERS ATAMA
   // paneli gösterilir (bkz. TopluDersAtamaPaneli) — admin isterse "Bunu atla"
   // deyip eski tek-tek düzenleme akışına geçebilir.
@@ -643,6 +667,14 @@ export default function SinavKitapciklari() {
           y: Number(s.y),
           genislik: Number(s.genislik),
           yukseklik: Number(s.yukseklik),
+          // Ortak Parça (bkz. migration_sinav_kitapcik_ortak_parca.sql) — eski
+          // kayıtlarda bu alanlar hiç yoktur, o zaman hepsi null/undefined
+          // kalır ve "parça yok" olarak yorumlanır (bkz. seciliSoru.parca_x != null kontrolleri).
+          parca_sayfa_no: s.parca_sayfa_no ?? null,
+          parca_x: s.parca_x !== null && s.parca_x !== undefined ? Number(s.parca_x) : null,
+          parca_y: s.parca_y !== null && s.parca_y !== undefined ? Number(s.parca_y) : null,
+          parca_genislik: s.parca_genislik !== null && s.parca_genislik !== undefined ? Number(s.parca_genislik) : null,
+          parca_yukseklik: s.parca_yukseklik !== null && s.parca_yukseklik !== undefined ? Number(s.parca_yukseklik) : null,
         }))
       )
       setSeciliIndex(0)
@@ -688,6 +720,16 @@ export default function SinavKitapciklari() {
   useEffect(() => {
     veriyiYenile()
   }, [])
+
+  // Farklı bir soruya geçince ("Sonraki"/"Önceki"/tıklama), önceki sorunun
+  // "Bu Parçayı Şunlara da Uygula" seçimleri (checkbox'lar) yanlışlıkla yeni
+  // soruya taşınmasın diye sıfırlanır — ayrıca çizim modu da (bir soru için
+  // yarım kalmış bir kutu çizimi başka soruya karışmasın diye) kapatılır.
+  useEffect(() => {
+    setParcaUygulanacakIdler([])
+    setCizimModu(false)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [seciliIndex])
 
   // Elle işaretleme modundayken ok tuşlarıyla sayfa arasında gezinmeyi ve
   // Backspace/Delete ile son noktayı geri almayı sağlıyor — admin her sayfada
@@ -1146,6 +1188,13 @@ export default function SinavKitapciklari() {
         y: s.y,
         genislik: s.genislik,
         yukseklik: s.yukseklik,
+        // Ortak Parça — bkz. migration_sinav_kitapcik_ortak_parca.sql. Parçası
+        // olmayan sorularda hepsi null kalır.
+        parca_sayfa_no: s.parca_sayfa_no ?? null,
+        parca_x: s.parca_x ?? null,
+        parca_y: s.parca_y ?? null,
+        parca_genislik: s.parca_genislik ?? null,
+        parca_yukseklik: s.parca_yukseklik ?? null,
       }))
       const { error: soruHatasi } = await supabase.from('sinav_kitapcik_sorulari').insert(satirlar)
       if (soruHatasi) throw soruHatasi
@@ -1657,9 +1706,29 @@ export default function SinavKitapciklari() {
                   seciliGeciciId={seciliSoru.gecici_id}
                   cizimModu={cizimModu}
                   onCizimBitti={(kutu) => {
-                    soruGuncelle(seciliSoru.gecici_id, kutu)
+                    if (cizimAlani === 'parca') {
+                      soruGuncelle(seciliSoru.gecici_id, {
+                        parca_sayfa_no: seciliSoru.sayfa_no,
+                        parca_x: kutu.x,
+                        parca_y: kutu.y,
+                        parca_genislik: kutu.genislik,
+                        parca_yukseklik: kutu.yukseklik,
+                      })
+                    } else {
+                      soruGuncelle(seciliSoru.gecici_id, kutu)
+                    }
                     setCizimModu(false)
                   }}
+                  parcaKutusu={
+                    seciliSoru.parca_x != null
+                      ? {
+                          x: seciliSoru.parca_x,
+                          y: seciliSoru.parca_y,
+                          genislik: seciliSoru.parca_genislik,
+                          yukseklik: seciliSoru.parca_yukseklik,
+                        }
+                      : null
+                  }
                 />
               )}
               <p className="text-xs text-gray-400 mt-2">Sayfa {seciliSoru.sayfa_no}</p>
@@ -1689,12 +1758,15 @@ export default function SinavKitapciklari() {
 
               <button
                 type="button"
-                onClick={() => setCizimModu(true)}
+                onClick={() => {
+                  setCizimAlani('soru')
+                  setCizimModu(true)
+                }}
                 className={`w-full px-3 py-2 rounded-lg text-sm font-semibold transition-colors ${
-                  cizimModu ? 'bg-orange text-white' : 'bg-white border border-gray-200 text-gray-700 hover:bg-gray-100'
+                  cizimModu && cizimAlani === 'soru' ? 'bg-orange text-white' : 'bg-white border border-gray-200 text-gray-700 hover:bg-gray-100'
                 }`}
               >
-                {cizimModu ? '👆 Yukarıda sayfada sürükleyerek kutu çiz' : 'Kutuyu Yeniden Çiz'}
+                {cizimModu && cizimAlani === 'soru' ? '👆 Yukarıda sayfada sürükleyerek kutu çiz' : 'Kutuyu Yeniden Çiz'}
               </button>
               {cizimModu && (
                 <button
@@ -1705,6 +1777,103 @@ export default function SinavKitapciklari() {
                   Vazgeç (kutu çizmeden çık)
                 </button>
               )}
+
+              {/* ORTAK PARÇA — "39-40. soruları aşağıdaki parçaya göre
+                  cevaplayınız" gibi, bir okuma parçasının birden fazla soruya
+                  bağlı olduğu durumlar için. Parça, sorunun kendi kutusundan
+                  AYRI bir dikdörtgen olarak saklanır (bkz. yukarıdaki
+                  onCizimBitti) — Hata Kitapçığı, bir soru yanlış/boş çıkınca
+                  bu parçayı kendi kutusunun ÜSTÜNE ekleyerek basar. */}
+              <div className="pt-3 mt-1 border-t border-gray-100 space-y-2">
+                <p className="text-xs font-semibold text-purple-600">
+                  Ortak Parça {seciliSoru.parca_x != null ? '(tanımlı)' : '(yok)'}
+                </p>
+                <p className="text-[11px] text-gray-400 leading-snug">
+                  Bu soru, bir okuma parçasına bağlıysa (ör. "39-40. soruları aşağıdaki parçaya göre
+                  cevaplayınız") parçayı burada ayrı bir kutu olarak işaretle — Hata Kitapçığı'nda bu soru
+                  yanlış/boş çıkarsa parça, sorunun üstüne otomatik eklenir.
+                </p>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setCizimAlani('parca')
+                    setCizimModu(true)
+                  }}
+                  className={`w-full px-3 py-2 rounded-lg text-sm font-semibold transition-colors ${
+                    cizimModu && cizimAlani === 'parca'
+                      ? 'bg-purple-600 text-white'
+                      : 'bg-white border border-purple-200 text-purple-700 hover:bg-purple-50'
+                  }`}
+                >
+                  {cizimModu && cizimAlani === 'parca'
+                    ? '👆 Yukarıda parçayı sürükleyerek çiz'
+                    : seciliSoru.parca_x != null
+                    ? 'Parça Kutusunu Yeniden Çiz'
+                    : '+ Ortak Parça Kutusu Çiz'}
+                </button>
+                {seciliSoru.parca_x != null && (
+                  <button
+                    type="button"
+                    onClick={() =>
+                      soruGuncelle(seciliSoru.gecici_id, {
+                        parca_sayfa_no: null,
+                        parca_x: null,
+                        parca_y: null,
+                        parca_genislik: null,
+                        parca_yukseklik: null,
+                      })
+                    }
+                    className="w-full px-3 py-2 rounded-lg text-sm font-semibold text-red-600 border border-red-200 hover:bg-red-50"
+                  >
+                    Parçayı Kaldır
+                  </button>
+                )}
+                {seciliSoru.parca_x != null && buSayfadakiSorular.length > 1 && (
+                  <div className="bg-purple-50/60 border border-purple-100 rounded-lg p-2.5 space-y-1.5">
+                    <p className="text-[11px] font-semibold text-purple-700">
+                      Bu parçayı aynı sayfadaki başka sorulara da uygula:
+                    </p>
+                    <div className="max-h-28 overflow-auto space-y-1">
+                      {buSayfadakiSorular
+                        .filter((s) => s.gecici_id !== seciliSoru.gecici_id)
+                        .map((s) => (
+                          <label key={s.gecici_id} className="flex items-center gap-1.5 text-xs text-gray-600">
+                            <input
+                              type="checkbox"
+                              checked={parcaUygulanacakIdler.includes(s.gecici_id)}
+                              onChange={(e) =>
+                                setParcaUygulanacakIdler((liste) =>
+                                  e.target.checked
+                                    ? [...liste, s.gecici_id]
+                                    : liste.filter((id) => id !== s.gecici_id)
+                                )
+                              }
+                            />
+                            {s.ders_adi || '?'} {s.soru_no}
+                          </label>
+                        ))}
+                    </div>
+                    <button
+                      type="button"
+                      disabled={parcaUygulanacakIdler.length === 0}
+                      onClick={() => {
+                        const { parca_sayfa_no, parca_x, parca_y, parca_genislik, parca_yukseklik } = seciliSoru
+                        setSorular((liste) =>
+                          liste.map((s) =>
+                            parcaUygulanacakIdler.includes(s.gecici_id)
+                              ? { ...s, parca_sayfa_no, parca_x, parca_y, parca_genislik, parca_yukseklik }
+                              : s
+                          )
+                        )
+                        setParcaUygulanacakIdler([])
+                      }}
+                      className="w-full px-2.5 py-1.5 rounded-lg text-xs font-semibold bg-purple-600 text-white hover:opacity-90 disabled:opacity-40"
+                    >
+                      Seçilenlere Uygula
+                    </button>
+                  </div>
+                )}
+              </div>
 
               <button
                 type="button"

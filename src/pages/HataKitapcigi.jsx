@@ -159,17 +159,61 @@ export default function HataKitapcigi() {
           const sayfaCanvas = await sayfaCanvasGetir(kutu.sayfa_no)
           const genislikPx = Math.max(1, Math.round(kutu.genislik))
           const yukseklikPx = Math.max(1, Math.round(kutu.yukseklik))
-          const kirpmaCanvas = document.createElement('canvas')
-          kirpmaCanvas.width = genislikPx
-          kirpmaCanvas.height = yukseklikPx
-          kirpmaCanvas
+          const soruKirpmaCanvas = document.createElement('canvas')
+          soruKirpmaCanvas.width = genislikPx
+          soruKirpmaCanvas.height = yukseklikPx
+          soruKirpmaCanvas
             .getContext('2d')
             .drawImage(sayfaCanvas, kutu.x, kutu.y, kutu.genislik, kutu.yukseklik, 0, 0, genislikPx, yukseklikPx)
+
+          // ORTAK PARÇA (bkz. migration_sinav_kitapcik_ortak_parca.sql ve
+          // SinavKitapciklari.jsx'teki "Ortak Parça" bölümü) — "39-40. soruları
+          // aşağıdaki parçaya göre cevaplayınız" gibi, bir okuma parçasının
+          // birden fazla soruya bağlı olduğu durumlar için. Bu soruda parça
+          // tanımlıysa, parça görüntüsü ayrıca kesilip sorunun kendi
+          // görüntüsünün ÜSTÜNE eklenir — tek bir dikdörtgenle mümkün olmayan
+          // "parça + kendi kutusu" birleşimini burada iki ayrı kırpmayı
+          // dikey olarak üst üste bindirerek elde ediyoruz.
+          let nihaiCanvas = soruKirpmaCanvas
+          let nihaiGenislikPt = kutu.genislik / olcek
+          let nihaiYukseklikPt = kutu.yukseklik / olcek
+          if (kutu.parca_x != null && kutu.parca_y != null && kutu.parca_genislik != null && kutu.parca_yukseklik != null) {
+            const parcaSayfaNo = kutu.parca_sayfa_no || kutu.sayfa_no
+            const parcaSayfaCanvas = await sayfaCanvasGetir(parcaSayfaNo)
+            const parcaGenislikPx = Math.max(1, Math.round(kutu.parca_genislik))
+            const parcaYukseklikPx = Math.max(1, Math.round(kutu.parca_yukseklik))
+            const parcaKirpmaCanvas = document.createElement('canvas')
+            parcaKirpmaCanvas.width = parcaGenislikPx
+            parcaKirpmaCanvas.height = parcaYukseklikPx
+            parcaKirpmaCanvas
+              .getContext('2d')
+              .drawImage(parcaSayfaCanvas, kutu.parca_x, kutu.parca_y, kutu.parca_genislik, kutu.parca_yukseklik, 0, 0, parcaGenislikPx, parcaYukseklikPx)
+
+            const araBosluk = 6
+            const birlesikGenislikPx = Math.max(genislikPx, parcaGenislikPx)
+            const birlesikYukseklikPx = parcaYukseklikPx + araBosluk + yukseklikPx
+            const birlesikCanvas = document.createElement('canvas')
+            birlesikCanvas.width = birlesikGenislikPx
+            birlesikCanvas.height = birlesikYukseklikPx
+            const bctx = birlesikCanvas.getContext('2d')
+            bctx.fillStyle = '#ffffff'
+            bctx.fillRect(0, 0, birlesikGenislikPx, birlesikYukseklikPx)
+            bctx.drawImage(parcaKirpmaCanvas, 0, 0)
+            bctx.strokeStyle = '#d1d5db'
+            bctx.lineWidth = 1
+            bctx.strokeRect(0.5, 0.5, parcaGenislikPx - 1, parcaYukseklikPx - 1)
+            bctx.drawImage(soruKirpmaCanvas, 0, parcaYukseklikPx + araBosluk)
+
+            nihaiCanvas = birlesikCanvas
+            nihaiGenislikPt = birlesikGenislikPx / olcek
+            nihaiYukseklikPt = birlesikYukseklikPx / olcek
+          }
+
           hazirSorular.push({
             ...s,
-            dataUrl: kirpmaCanvas.toDataURL('image/png'),
-            genislikPt: kutu.genislik / olcek,
-            yukseklikPt: kutu.yukseklik / olcek,
+            dataUrl: nihaiCanvas.toDataURL('image/png'),
+            genislikPt: nihaiGenislikPt,
+            yukseklikPt: nihaiYukseklikPt,
           })
         }
         if (iptalEdildi) return
