@@ -129,6 +129,13 @@ function DersEkleForm({
   const [seciliGunler, setSeciliGunler] = useState([])
   const [baslangic, setBaslangic] = useState('')
   const [bitis, setBitis] = useState('')
+  // Opsiyonel: "bu ders hangi tarihten itibaren geçerli olsun" — boş
+  // bırakılırsa mevcut davranış (eklendiği andan itibaren, bkz.
+  // musaitlikIcinProgram'daki created_at kuralı). Doldurulursa, örn. bugün
+  // Cumartesiyse ve "gelecek Cumartesi"ye (haftaya) özel bir ders eklemek
+  // istiyorsak, buraya o tarihi yazınca ders bugüne sızmaz, sadece o tarihten
+  // itibaren her haftanın o gününde görünür.
+  const [baslangicTarihi, setBaslangicTarihi] = useState('')
   const [hata, setHata] = useState('')
   const [basari, setBasari] = useState('')
   const [gonderiliyor, setGonderiliyor] = useState(false)
@@ -202,6 +209,7 @@ function DersEkleForm({
     setSeciliGunler([duzenlenenDers.gun])
     setBaslangic(saatKisalt(duzenlenenDers.baslangic_saat) || '')
     setBitis(saatKisalt(duzenlenenDers.bitis_saat) || '')
+    setBaslangicTarihi(duzenlenenDers.baslangic_tarihi || '')
     setHata('')
     setBasari('')
     requestAnimationFrame(() => {
@@ -216,6 +224,7 @@ function DersEkleForm({
     setOgretmenId('')
     setBaslangic('')
     setBitis('')
+    setBaslangicTarihi('')
     setBirlesikSiniflar([])
     setSeciliGunler([])
     setHata('')
@@ -298,6 +307,11 @@ function DersEkleForm({
       ders_adi: dersAdi.trim() ? ilkHarfleriBuyukYap(dersAdi.trim()) : null,
       ogretmen_profile_id: ogretmenId || null,
       birlesik_grup_id: grupId,
+      // Boşsa null — mevcut davranış (musaitlikIcinProgram'da created_at
+      // esas alınır, yani "eklendiği andan itibaren"). Doluysa, "hangi
+      // tarihten itibaren geçerli" olarak bu tarih esas alınır (bkz. o
+      // useMemo'daki güncellenmiş kural).
+      baslangic_tarihi: baslangicTarihi || null,
     })
     const { error } = duzenleModu
       ? await supabase.from('ders_programi').update(veriUret(sinifId, gunler[0])).eq('id', duzenlenenDers.id)
@@ -312,11 +326,13 @@ function DersEkleForm({
         setOgretmenId('')
         setBaslangic('')
         setBitis('')
+        setBaslangicTarihi('')
         setSeciliGunler([])
         onDuzenlemeBitti()
       } else {
         setBaslangic('')
         setBitis('')
+        setBaslangicTarihi('')
         setDersAdi('')
         setBirlesikSiniflar([])
         setSeciliGunler([])
@@ -402,6 +418,7 @@ function DersEkleForm({
         bitis_saat: bitis,
         ders_adi: dersAdi.trim() ? ilkHarfleriBuyukYap(dersAdi.trim()) : null,
         ogretmen_profile_id: ogretmenId || null,
+        baslangic_tarihi: baslangicTarihi || null,
       },
       olusturan_profile_id: profile?.id,
       // Taslak Modu açıksa (bkz. yukarıdaki ekle() içindeki yönlendirme), her
@@ -520,6 +537,18 @@ function DersEkleForm({
             className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue"
           />
         </div>
+        <div className="min-w-[160px]">
+          <label className="block text-sm font-medium text-gray-700 mb-1">
+            Başlangıç Tarihi <span className="text-gray-400 font-normal">(opsiyonel)</span>
+          </label>
+          <input
+            type="date"
+            value={baslangicTarihi}
+            onChange={(e) => setBaslangicTarihi(e.target.value)}
+            title="Boş bırakırsanız ders bugünden itibaren (eklendiği andan itibaren) geçerli olur. Doldurursanız, o tarihten önceki günlerde (bugün dahil) bu ders hiçbir yerde görünmez — ör. bugün Cumartesiyse ve derse sadece 'gelecek Cumartesi'den itibaren başlamasını istiyorsanız buraya o tarihi yazın."
+            className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue"
+          />
+        </div>
         <button
           type="submit"
           disabled={gonderiliyor}
@@ -633,6 +662,7 @@ function TaslaklarimDersProgrami({ taslaklar, siniflar, ogretmenler, program, on
       bitis_saat: v.bitis_saat,
       ders_adi: v.ders_adi,
       ogretmen_profile_id: v.ogretmen_profile_id,
+      baslangic_tarihi: v.baslangic_tarihi || null,
     })
     if (error) {
       setHataMap((h) => ({ ...h, [t.id]: 'Hata: ' + error.message }))
@@ -1006,6 +1036,14 @@ export default function DersProgrami() {
   const [taslaklar, setTaslaklar] = useState([])
   const [loading, setLoading] = useState(true)
   const [gorunum, setGorunum] = useState('tablo')
+  // Öğrenci/veli/öğretmen haftalık programa girdiğinde, o günün Pazartesi mi
+  // Pazar mı olduğuna bakmaksızın hep en baştan (Pazartesi) görmek yerine,
+  // sayfa açılır açılmaz BUGÜNÜN gününe otomatik kaysın istendi — Tablo
+  // görünümünde yatay, Liste görünümünde dikey kaydırarak diğer günlere
+  // ulaşılabilsin. Her gün bloğuna (Tablo'da <th>, Liste'de kart) bu ref
+  // üzerinden erişip gorunum değiştiğinde/veri ilk geldiğinde bir kez kaydırıyoruz.
+  const gunRefleri = useRef({})
+  const sonKaydirilanGorunum = useRef(null)
   // Veli/öğrenci için: "Bire Bir" ve "Ders Programı" bölümleri alt alta uzun
   // uzun sıralanmak yerine, sekme (tab) ile geçilerek gösterilir — tıklayınca
   // Bire Bir'e, tıklayınca Ders Programı'na geçer. Sadece veli/öğrenci
@@ -1343,8 +1381,13 @@ export default function DersProgrami() {
     if (!musaitlikTarihi) return program
     return programTum.filter((d) => {
       if (d.aktif !== false) {
-        const olusturmaTarihi = tarihStrYerel(d.created_at)
-        return !olusturmaTarihi || olusturmaTarihi <= musaitlikTarihi
+        // "baslangic_tarihi" elle girilmişse (bkz. DersEkleForm'daki opsiyonel
+        // alan), o tarih created_at'in YERİNE esas alınır — kullanıcı bugün
+        // bir ders eklerken "aslında bu 9 Ağustos'tan itibaren geçerli olsun"
+        // diye işaretlediyse, bugüne (ve arasındaki günlere) sızmaması için.
+        // Boşsa eskisi gibi created_at (eklendiği tarih) kullanılır.
+        const esasTarih = d.baslangic_tarihi || tarihStrYerel(d.created_at)
+        return !esasTarih || esasTarih <= musaitlikTarihi
       }
       return d.pasif_tarihi && musaitlikTarihi <= d.pasif_tarihi
     })
@@ -1496,6 +1539,28 @@ export default function DersProgrami() {
   // Program Listesi" sekmeleri var, aynı bilgiyi tekrar aşağıda kalabalık
   // bir haftalık tabloyla göstermek gereksizdi.
   const sinifProgramiGoster = isYonetici ? false : !isVeliYaDaOgrenci || veliSekme === 'program'
+
+  // Bugünün gün numarası (1=Pazartesi...7=Pazar) — hem Tablo'da o günün
+  // sütun başlığını turuncu yapmak hem de sayfa açılır açılmaz o güne
+  // otomatik kaymak için.
+  const bugunGunNo = gunNumaraTarihten(yerelBugunTarihi())
+
+  useEffect(() => {
+    if (!sinifProgramiGoster || loading || kendiProgram.length === 0) return
+    // Aynı görünümde (ör. Geldi/Gelmedi tıklanınca) her render'da tekrar
+    // kaydırmasın diye, sadece görünüm değiştiğinde (ilk yüklemede ya da
+    // Tablo↔Liste geçişinde) bir kez kaydırıyoruz.
+    if (sonKaydirilanGorunum.current === gorunum) return
+    const hedef = gunRefleri.current[bugunGunNo]
+    if (hedef) {
+      sonKaydirilanGorunum.current = gorunum
+      // requestAnimationFrame: tarayıcı yeni görünümü boyayana kadar bekle,
+      // yoksa scrollIntoView eski (henüz DOM'a yazılmamış) konuma göre hesaplanabiliyor.
+      requestAnimationFrame(() => {
+        hedef.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'start' })
+      })
+    }
+  }, [gorunum, loading, kendiProgram.length, sinifProgramiGoster, bugunGunNo])
 
   return (
     <div>
@@ -1719,11 +1784,24 @@ export default function DersProgrami() {
             <thead>
               <tr>
                 <th className="sticky left-0 z-10 bg-navy text-white px-3 py-2.5 text-left font-semibold w-24">Saat</th>
-                {GUNLER.slice(1).map((g, i) => (
-                  <th key={i + 1} className="bg-navy text-white px-3 py-2.5 text-left font-semibold min-w-[150px] border-l border-white/10">
-                    {GUNLER_KISA[i + 1]}
-                  </th>
-                ))}
+                {GUNLER.slice(1).map((g, i) => {
+                  const gunNo = i + 1
+                  const buGunMu = gunNo === bugunGunNo
+                  return (
+                    <th
+                      key={gunNo}
+                      ref={(el) => {
+                        gunRefleri.current[gunNo] = el
+                      }}
+                      className={`px-3 py-2.5 text-left font-semibold min-w-[150px] border-l border-white/10 ${
+                        buGunMu ? 'bg-orange text-white' : 'bg-navy text-white'
+                      }`}
+                    >
+                      {GUNLER_KISA[gunNo]}
+                      {buGunMu && <span className="ml-1 text-[9px] font-normal opacity-90">(bugün)</span>}
+                    </th>
+                  )
+                })}
               </tr>
             </thead>
             <tbody>
@@ -1848,10 +1926,25 @@ export default function DersProgrami() {
 
       {sinifProgramiGoster && !loading && kendiProgram.length > 0 && gorunum === 'liste' && (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {gunlereGore.map((dersler, i) =>
-            dersler.length === 0 ? null : (
-              <div key={i} className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
-                <div className="px-4 py-3 bg-navy text-white font-semibold">{GUNLER[i + 1]}</div>
+          {gunlereGore.map((dersler, i) => {
+            const gunNo = i + 1
+            const buGunMu = gunNo === bugunGunNo
+            return dersler.length === 0 ? null : (
+              <div
+                key={i}
+                ref={(el) => {
+                  gunRefleri.current[gunNo] = el
+                }}
+                className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden scroll-mt-20"
+              >
+                <div
+                  className={`px-4 py-3 font-semibold flex items-center gap-2 ${buGunMu ? 'bg-orange text-white' : 'bg-navy text-white'}`}
+                >
+                  <span>{GUNLER[gunNo]}</span>
+                  {buGunMu && (
+                    <span className="text-[10px] font-semibold bg-white/25 px-2 py-0.5 rounded-full">Bugün</span>
+                  )}
+                </div>
                 <div className="divide-y divide-gray-50">
                   {dersler.map((d) => {
                     // Başlıkta önce ders adı, o da yoksa öğretmenin branşı gösterilir —
@@ -1954,7 +2047,7 @@ export default function DersProgrami() {
                 </div>
               </div>
             )
-          )}
+          })}
         </div>
       )}
 
