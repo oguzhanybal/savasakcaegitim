@@ -22,6 +22,14 @@ function gunNumaraTarihten(tarihStr) {
   return g === 0 ? 7 : g
 }
 
+// Bir zaman damgasını (created_at gibi) YEREL tarihe çevirir — DersProgrami.jsx
+// içindeki musaitlikIcinProgram ile aynı mantık: bir ders satırı, geçmişte
+// (o satır henüz OLUŞTURULMADAN önceki) bir tarih için "varmış" gibi
+// sayılmamalı.
+function tarihStrYerel(ts) {
+  return yerelTarih(new Date(ts))
+}
+
 // Belirli bir GÜN için (varsayılan bugün, ama artık ◀/▶ ile başka güne de
 // bakılabiliyor): her sınıfın programlı ders saatini, o saat için öğretmenin
 // yoklama alıp almadığını (Yoklama Al sayfasından "Yoklamayı Kaydet"e
@@ -80,11 +88,16 @@ function BugunkuYoklamaDurumu({ isYonetici, ogretmenProfileId }) {
       // DersProgrami.jsx/SinifDetay.jsx'teki opsiyonel alan, Yoklama.jsx'teki
       // aynı düzeltme), bu ders o gün henüz başlamamış demektir — özete hiç
       // girmemeli.
-      const filtreli = (dp.data || []).filter(
-        (d) =>
-          (!d.baslangic_tarihi || d.baslangic_tarihi <= secilenTarih) &&
-          (d.aktif !== false || yoklamasiOlanIdler.has(d.id))
-      )
+      const filtreli = (dp.data || []).filter((d) => {
+        if (d.baslangic_tarihi && d.baslangic_tarihi > secilenTarih) return false
+        if (d.aktif === false) return yoklamasiOlanIdler.has(d.id)
+        // AKTİF bir satır bile, seçilen günden SONRA oluşturulmuşsa o günün
+        // programında sayılmamalı — yoksa bir ders saati bugün yeniden
+        // düzenlendiğinde (eski satır pasif + yeni satır eklendiğinde), yeni
+        // (henüz yoklamasız) satır geçmiş bir tarihte de "varmış" gibi
+        // görünüp eski (gerçek yoklamalı) satırla birlikte iki kez listelenir.
+        return tarihStrYerel(d.created_at) <= secilenTarih
+      })
       const sirali = filtreli.sort((a, b) => {
         const s = (a.baslangic_saat || '').localeCompare(b.baslangic_saat || '')
         if (s !== 0) return s
