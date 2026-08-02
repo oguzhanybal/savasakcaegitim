@@ -66,13 +66,20 @@ function Korumali({ children, izinliRoller }) {
     }
     return <Navigate to="/giris" state={{ from: hedef }} replace />
   }
-  // Rol kontrolü gereken bir sayfaya (ör. /gunluk, sadece yönetici) tam giriş
-  // yaptıktan hemen sonra düşülürse, "session" zaten hazır ama "profile"
-  // (rol bilgisini içeren kayıt) veritabanından ayrı bir istekle geliyor ve
-  // o istek henüz bitmemiş olabiliyor. Bu anda profile hâlâ boş olduğu için
-  // rol kontrolü yanlışlıkla "izni yok" sanıp kullanıcıyı ana sayfaya
-  // atıyordu — asıl bug buradaydı. profile gelene kadar bekleriz.
-  if (izinliRoller && !profile) return <Yukleniyor />
+  // Tam giriş yaptıktan hemen sonra bir sayfaya düşülürse "session" zaten
+  // hazır ama "profile" (rol bilgisini içeren kayıt) veritabanından AYRI bir
+  // istekle geliyor ve o istek henüz bitmemiş olabiliyor. ÖNCEDEN bu bekleme
+  // sadece izinliRoller belirtilen sayfalarda yapılıyordu — izinliRoller
+  // belirtilmeyen sayfalarda (ör. /program, ana sayfa) profile boşken hemen
+  // çocuklar render ediliyordu. Bu sayfaların KENDİ içindeki "sayfa açılır
+  // açılmaz veri çek" efektleri de genelde sadece BİR KEZ ([] bağımlılıkla)
+  // çalıştığı için, o an profile boş olduğunda role özel veri (ör. öğretmenin
+  // Bire Bir/Soru Çözümü seansları) hiç çekilmiyor, sayfa geç yenilenmedikçe
+  // (başka bir işlem tekrar veri çekene kadar) hiç görünmüyordu — kullanıcının
+  // "bazen geç geliyor" dediği asıl kök neden buydu. Artık profile,
+  // izinliRoller olsun olmasın HER durumda beklenir; sayfa bileşenleri artık
+  // her zaman dolu bir profile ile monte olur.
+  if (!profile) return <Yukleniyor />
   if (izinliRoller && !izinliRoller.includes(profile?.rol)) return <Navigate to="/" replace />
   return children
 }
