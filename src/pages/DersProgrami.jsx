@@ -1546,10 +1546,20 @@ export default function DersProgrami() {
   const bugunGunNo = gunNumaraTarihten(yerelBugunTarihi())
 
   useEffect(() => {
-    if (!sinifProgramiGoster || loading || kendiProgram.length === 0) return
+    // Veli/öğrenci "Bire Bir" sekmesine geçince bu bölüm DOM'dan tamamen
+    // kalkıyor (sinifProgramiGoster false oluyor); "Ders Programı"na geri
+    // dönüldüğünde ise YENİDEN monte ediliyor. Önceki "zaten kaydırdım"
+    // bilgisini burada sıfırlamazsak, geri dönüşte gorunum değeri aynı
+    // kaldığı için hiç kaydırma yapılmıyor ve sayfa en baştan (Pazartesi)
+    // görünüyordu — asıl bug buradaydı.
+    if (!sinifProgramiGoster) {
+      sonKaydirilanGorunum.current = null
+      return
+    }
+    if (loading || kendiProgram.length === 0) return
     // Aynı görünümde (ör. Geldi/Gelmedi tıklanınca) her render'da tekrar
-    // kaydırmasın diye, sadece görünüm değiştiğinde (ilk yüklemede ya da
-    // Tablo↔Liste geçişinde) bir kez kaydırıyoruz.
+    // kaydırmasın diye, sadece görünüm değiştiğinde (ilk yüklemede, sekmeler
+    // arası geçişte ya da Tablo↔Liste geçişinde) bir kez kaydırıyoruz.
     if (sonKaydirilanGorunum.current === gorunum) return
     const hedef = gunRefleri.current[bugunGunNo]
     if (hedef) {
