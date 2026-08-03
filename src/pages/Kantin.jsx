@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../lib/AuthContext'
-import { paraFormat, bireBirBorclariOlustur, kantinBorclariOlustur } from '../lib/ekstreHesap'
+import { paraFormat, kantinBorclariOlustur, aylikKalemHesapla } from '../lib/ekstreHesap'
 import { ilkHarfleriBuyukYap } from '../lib/adSoyadFormat'
 
 function yerelBugunTarihi() {
@@ -554,11 +554,10 @@ export default function Kantin() {
   const [ogrenciId, setOgrenciId] = useState('')
   const [ogrenciArama, setOgrenciArama] = useState('')
   const [ogrenciOneriAcik, setOgrenciOneriAcik] = useState(false)
-  // Seçili öğrencinin toplam kalan bakiyesi — Muhasebe.jsx'teki BİREBİR AYNI
-  // hesaplama (bkz. borcHesaplaVeGoster): sözleşme taksitleri + aylık borçlar
-  // (Bire Bir/Kantin dahil, aynı sentetik borç üreticileriyle) toplamından
-  // ödemeler düşülüyor. Kantin görevlisi satış yaparken Muhasebe'ye gitmeden
-  // öğrencinin ne kadar borcu olduğunu görebilsin diye.
+  // Seçili öğrencinin SADECE Kantin kalemindeki kalan bakiyesi (bkz.
+  // borcHesaplaVeGoster) — sözleşme/Bire Bir gibi diğer kalemler kasıtlı
+  // olarak dahil değil, kantin görevlisi burada sadece kendi alanıyla
+  // ilgileniyor.
   const [ogrenciBorcu, setOgrenciBorcu] = useState(null) // { kalanBakiye } | null
   const [borcYukleniyor, setBorcYukleniyor] = useState(false)
   // Ürün ızgarasının üstündeki arama kutusu — bkz. gorunenUrunler.
@@ -644,12 +643,12 @@ export default function Kantin() {
     ekranBildirimGoster(sonuc.ok ? 'basari' : 'hata', sonuc.mesaj)
   }
 
-  // Muhasebe.jsx'teki veriyiYenile() ile BİREBİR AYNI hesaplama (Fatura
-  // Ortağı grubu + sözleşme taksitleri + aylık borçlar + Bire Bir/Kantin
-  // sentetik borçları - ödemeler). Kantin görevlisinin gördüğü "Toplam Borç"
-  // rakamı Muhasebe sayfasındaki "Kalan Bakiye" ile HER ZAMAN aynı çıksın
-  // diye, ayrı/basitleştirilmiş bir hesap yerine aynı ekstreHesap.js
-  // yardımcıları (bireBirBorclariOlustur, kantinBorclariOlustur) kullanılıyor.
+  // SADECE Kantin borcu — Muhasebe/Ekstre'deki "Kantin" kalem satırıyla
+  // (aylikKalemHesapla) AYNI hesap: kantin_alislar'dan üretilen sentetik
+  // borç satırları (kantinBorclariOlustur) ile SADECE kalem'i "Kantin" olan
+  // ödemeler kümülatif olarak karşılaştırılıyor. Sözleşme taksitleri, Bire
+  // Bir borcu gibi diğer kalemler kasıtlı olarak DIŞARIDA — kantin görevlisi
+  // burada sadece kendi alanıyla (kantin borcu) ilgileniyor.
   async function borcHesaplaVeGoster(id) {
     const kendisi = ogrenciler.find((o) => o.id === id)
     if (!kendisi) {
@@ -659,29 +658,14 @@ export default function Kantin() {
     const efektifId = kendisi.fatura_sahibi_id || kendisi.id
     const grup = [...new Set([efektifId, ...ogrenciler.filter((o) => o.fatura_sahibi_id === efektifId).map((o) => o.id)])]
     setBorcYukleniyor(true)
-    const [s, a, o, bba, kantin] = await Promise.all([
-      supabase.from('sozlesmeler').select('toplam_tutar').in('ogrenci_id', grup),
-      supabase.from('aylik_borclar').select('tutar').in('ogrenci_id', grup),
-      supabase.from('odemeler').select('tutar').in('ogrenci_id', grup),
-      supabase.from('bire_bir_atamalari').select('*').in('ogrenci_id', grup),
+    const [kantin, o] = await Promise.all([
       supabase.from('kantin_alislar').select('*').in('ogrenci_id', grup),
+      supabase.from('odemeler').select('tarih, kalem, tutar').in('ogrenci_id', grup),
     ])
-    const atamalar = bba.data || []
-    const atamaIdleri = atamalar.map((x) => x.id)
-    const [by, ekDersler] = await Promise.all([
-      atamaIdleri.length > 0
-        ? supabase.from('bire_bir_yoklama').select('*').in('atama_id', atamaIdleri)
-        : Promise.resolve({ data: [] }),
-      supabase.from('bire_bir_yoklama').select('*').in('ogrenci_id', grup).is('atama_id', null),
-    ])
-    const tumYoklamalar = [...(by.data || []), ...(ekDersler.data || [])]
-    const bireBirBorclar = bireBirBorclariOlustur(atamalar, tumYoklamalar)
     const kantinBorclar = kantinBorclariOlustur(kantin.data || [])
-    const toplamSozlesme = (s.data || []).reduce((t, x) => t + Number(x.toplam_tutar), 0)
-    const toplamAylikBorc = [...(a.data || []), ...bireBirBorclar, ...kantinBorclar].reduce((t, x) => t + Number(x.tutar), 0)
-    const toplamOdenen = (o.data || []).reduce((t, x) => t + Number(x.tutar), 0)
-    const kalanBakiye = Math.max(0, toplamSozlesme + toplamAylikBorc - toplamOdenen)
-    setOgrenciBorcu({ kalanBakiye })
+    const buAy = new Date().toISOString().slice(0, 7)
+    const sonuc = aylikKalemHesapla('Kantin', kantinBorclar, o.data || [], buAy)
+    setOgrenciBorcu({ kalanBakiye: sonuc ? sonuc.toplamOdenecek : 0 })
     setBorcYukleniyor(false)
   }
 
@@ -788,7 +772,7 @@ export default function Kantin() {
       setAdet(1)
       veriyiYenile()
       // Yeni bir Kantin alışı, öğrencinin toplam borcunu ANINDA artırır —
-      // "Toplam Borç" rakamının güncel kalması için burada da yeniliyoruz.
+      // "Kantin Borcu" rakamının güncel kalması için burada da yeniliyoruz.
       borcHesaplaVeGoster(ogrenciId)
       sonuc = { ok: true, mesaj }
     }
@@ -1200,7 +1184,7 @@ export default function Kantin() {
                       ogrenciBorcu.kalanBakiye > 0 ? 'bg-red-100 text-red-700' : 'bg-green-100 text-green-700'
                     }`}
                   >
-                    Toplam Borç: {paraFormat(ogrenciBorcu.kalanBakiye)}
+                    Kantin Borcu: {paraFormat(ogrenciBorcu.kalanBakiye)}
                   </span>
                 )
               )}
