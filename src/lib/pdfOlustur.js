@@ -437,8 +437,15 @@ export async function makbuzPdfOlustur({ ogrenciAdi, tarihMetni, odemeler, topla
   doc.setFont(font, 'normal')
   doc.text('TAHSİLAT MAKBUZU', metinX, basligYuksekligi / 2 + 12)
 
-  let y = basligYuksekligi + 26
-  doc.setTextColor(30, 30, 30)
+  let y = basligYuksekligi + 22
+  // "Nüsha: ÖĞRENCİ KOPYASI" — MakbuzGunluk.jsx'teki (yazdırılan) kartla
+  // BİREBİR AYNI görünüm olsun diye; WhatsApp'a giden bu PDF her zaman
+  // öğrenci kopyası — kurum kopyası (fiziksel dosyalama içindir) burada yok.
+  doc.setFontSize(9)
+  doc.setFont(font, 'normal')
+  doc.setTextColor(156, 163, 175) // site: text-gray-400
+  doc.text('Nüsha: ÖĞRENCİ KOPYASI', kenar, y)
+  y += 14
 
   doc.autoTable({
     startY: y,
@@ -448,13 +455,21 @@ export async function makbuzPdfOlustur({ ogrenciAdi, tarihMetni, odemeler, topla
       ['Tarih', tarihMetni],
     ],
     theme: 'plain',
-    styles: { fontSize: 10, font, cellPadding: { top: 5, bottom: 5, left: 8, right: 8 } },
-    columnStyles: { 0: { fontStyle: 'bold', textColor: [100, 100, 100], cellWidth: 90 } },
+    styles: { fontSize: 10, font, cellPadding: { top: 6, bottom: 6, left: 8, right: 8 } },
+    columnStyles: { 0: { fontStyle: 'bold', textColor: [75, 85, 99], cellWidth: 90 } }, // site: text-gray-600
     didParseCell: (data) => {
-      data.cell.styles.fillColor = data.row.index % 2 === 0 ? GRI_ACIK : 255
+      if (data.row.index === 0) {
+        data.cell.styles.fillColor = GRI_ACIK // site: bg-gray-50
+        if (data.column.index === 1) {
+          data.cell.styles.fontStyle = 'bold'
+          data.cell.styles.textColor = NAVY // site: font-bold text-navy
+        }
+      } else {
+        data.cell.styles.fillColor = 255
+      }
     },
   })
-  y = doc.lastAutoTable.finalY + 14
+  y = doc.lastAutoTable.finalY + 10
 
   const sutunSayisi = 1 + (ogrenciSutunuGoster ? 1 : 0)
   doc.autoTable({
@@ -472,22 +487,29 @@ export async function makbuzPdfOlustur({ ogrenciAdi, tarihMetni, odemeler, topla
         paraStr(toplam),
       ],
     ],
-    headStyles: { fillColor: NAVY, textColor: 255, fontSize: 9, font },
+    headStyles: { fillColor: GRI_ACIK, textColor: [75, 85, 99], fontSize: 9, font, fontStyle: 'bold' }, // site: bg-gray-50 text-gray-600
     bodyStyles: { fontSize: 9, font },
-    footStyles: { fillColor: ORANGE_ACIK, textColor: ORANGE, fontStyle: 'bold', font, fontSize: 10 },
-    alternateRowStyles: { fillColor: GRI_ACIK },
+    footStyles: { fillColor: ORANGE_ACIK, textColor: ORANGE, fontStyle: 'bold', font, fontSize: 10 }, // site: bg-orange/10 text-orange
   })
-  y = doc.lastAutoTable.finalY + 18
+  y = doc.lastAutoTable.finalY + 16
 
   try {
     doc.setFontSize(9)
     doc.setFont(font, 'normal')
-    doc.setTextColor(90, 90, 90)
+    doc.setTextColor(75, 85, 99) // site: text-gray-600
     const yazi = doc.splitTextToSize(tutarYaziyla(toplam), sayfaGenisligi - kenar * 2)
     doc.text(yazi, kenar, y)
+    y += yazi.length * 11 + 14
   } catch (e) {
     // yazıyla tutar üretilemezse (beklenmeyen bir format hatası) sessizce atla
+    y += 14
   }
+
+  // "Ad Soyad / İmza" — site: text-right text-sm text-gray-500 mt-3
+  doc.setFontSize(9)
+  doc.setFont(font, 'normal')
+  doc.setTextColor(107, 114, 128) // site: text-gray-500
+  doc.text('Ad Soyad / İmza', sayfaGenisligi - kenar, y, { align: 'right' })
 
   return doc.output('blob')
 }
