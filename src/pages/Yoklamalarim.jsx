@@ -44,21 +44,24 @@ function DevamsizlikOzeti({ kayitlar }) {
   const genelGelmedi = kayitlar.length - genelGeldi
   const genelOran = kayitlar.length > 0 ? Math.round((genelGelmedi / kayitlar.length) * 100) : 0
 
-  // Öğretmen adına göre değil, DERS ADINA göre grupluyoruz — asıl belirgin
-  // bilgi hangi dersten kaç kez devamsızlık yapıldığı, öğretmen adı ise
-  // küçük/ikincil bir bilgi (bkz. aşağıdaki kart görünümü). Aynı ders adı
-  // için tek öğretmen olması beklenir ama garantiye almak adına birden
-  // fazla öğretmen adı varsa hepsi küçük yazıda virgülle listeleniyor.
+  // Kartta ders adı büyük/belirgin, öğretmen adı küçük — ama aynı dersi
+  // (ör. "Matematik") farklı öğretmenler veriyorsa (dönem içinde öğretmen
+  // değişmiş olabilir) bunları TEK satırda birleştirmiyoruz, her öğretmen
+  // kendi satırında ayrı ayrı görünüyor. Bu yüzden grup anahtarı ders adı +
+  // öğretmen adı ikilisi.
   const dersMap = new Map()
   for (const y of kayitlar) {
     const baslik = dersBasligi(y)
-    if (!dersMap.has(baslik)) dersMap.set(baslik, { geldi: 0, gelmedi: 0, ogretmenler: new Set() })
-    const s = dersMap.get(baslik)
+    const ogretmen = y.ders_programi?.profiles?.ad_soyad || ''
+    const anahtar = `${baslik}||${ogretmen}`
+    if (!dersMap.has(anahtar)) dersMap.set(anahtar, { baslik, ogretmen, geldi: 0, gelmedi: 0 })
+    const s = dersMap.get(anahtar)
     if (y.geldi) s.geldi += 1
     else s.gelmedi += 1
-    if (y.ders_programi?.profiles?.ad_soyad) s.ogretmenler.add(y.ders_programi.profiles.ad_soyad)
   }
-  const dersListesi = [...dersMap.entries()].sort((a, b) => a[0].localeCompare(b[0], 'tr'))
+  const dersListesi = [...dersMap.values()].sort(
+    (a, b) => a.baslik.localeCompare(b.baslik, 'tr') || a.ogretmen.localeCompare(b.ogretmen, 'tr')
+  )
 
   return (
     <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5 mb-6">
@@ -77,16 +80,14 @@ function DevamsizlikOzeti({ kayitlar }) {
       </div>
       {dersListesi.length > 0 && (
         <div className="divide-y divide-gray-50 border-t border-gray-100">
-          {dersListesi.map(([baslik, s]) => {
+          {dersListesi.map((s) => {
             const toplam = s.geldi + s.gelmedi
             const oran = toplam > 0 ? Math.round((s.gelmedi / toplam) * 100) : 0
             return (
-              <div key={baslik} className="py-2.5 flex items-center justify-between gap-3 flex-wrap">
+              <div key={`${s.baslik}||${s.ogretmen}`} className="py-2.5 flex items-center justify-between gap-3 flex-wrap">
                 <div className="min-w-0">
-                  <p className="font-medium text-gray-800 text-sm">{baslik}</p>
-                  {s.ogretmenler.size > 0 && (
-                    <p className="text-xs text-gray-400">{[...s.ogretmenler].join(', ')}</p>
-                  )}
+                  <p className="font-medium text-gray-800 text-sm">{s.baslik}</p>
+                  {s.ogretmen && <p className="text-xs text-gray-400">{s.ogretmen}</p>}
                 </div>
                 <span className="text-sm text-gray-500 shrink-0">
                   <span className="text-red-500 font-semibold">{s.gelmedi}</span>/{toplam} derse gelmedi{' '}
