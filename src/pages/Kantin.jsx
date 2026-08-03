@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../lib/AuthContext'
-import { paraFormat } from '../lib/ekstreHesap'
+import { paraFormat, bireBirBorclariOlustur, kantinBorclariOlustur } from '../lib/ekstreHesap'
 import { ilkHarfleriBuyukYap } from '../lib/adSoyadFormat'
 
 function yerelBugunTarihi() {
@@ -554,6 +554,13 @@ export default function Kantin() {
   const [ogrenciId, setOgrenciId] = useState('')
   const [ogrenciArama, setOgrenciArama] = useState('')
   const [ogrenciOneriAcik, setOgrenciOneriAcik] = useState(false)
+  // Seçili öğrencinin toplam kalan bakiyesi — Muhasebe.jsx'teki BİREBİR AYNI
+  // hesaplama (bkz. borcHesaplaVeGoster): sözleşme taksitleri + aylık borçlar
+  // (Bire Bir/Kantin dahil, aynı sentetik borç üreticileriyle) toplamından
+  // ödemeler düşülüyor. Kantin görevlisi satış yaparken Muhasebe'ye gitmeden
+  // öğrencinin ne kadar borcu olduğunu görebilsin diye.
+  const [ogrenciBorcu, setOgrenciBorcu] = useState(null) // { kalanBakiye } | null
+  const [borcYukleniyor, setBorcYukleniyor] = useState(false)
   const [adet, setAdet] = useState(1)
   const [ekleniyorUrunId, setEkleniyorUrunId] = useState(null)
   // Butona hızlı hızlı basılınca ya da barkod arka arkaya okununca birden
@@ -607,6 +614,83 @@ export default function Kantin() {
       kameraBildirimZamanlayiciRef.current = setTimeout(() => setKameraBildirim(null), sureMs)
     }
   }
+
+  // Ürün ızgarasındaki kartlara dokunulunca (kamera/barkod DIŞINDA) — mobilde
+  // sayfanın üstünde küçük bir kırmızı/yeşil yazı (hata/basari state'i)
+  // kolayca fark edilmiyordu, özellikle "önce öğrenci seçin" uyarısı: buton
+  // aşağıdaydı ve kullanıcı yukarı kaydırmadan uyarıyı göremiyordu. Bunun
+  // yerine TÜM EKRANI kaplayan, birkaç saniye görünüp kendiliğinden kapanan
+  // büyük bir bildirim gösteriyoruz (kameradaki aynı yeşil/kırmızı desen).
+  const [ekranBildirimi, setEkranBildirimi] = useState(null) // { tur: 'basari'|'hata', mesaj }
+  const ekranBildirimZamanlayiciRef = useRef(null)
+
+  function ekranBildirimGoster(tur, mesaj, sureMs = 1600) {
+    setEkranBildirimi({ tur, mesaj })
+    if (ekranBildirimZamanlayiciRef.current) clearTimeout(ekranBildirimZamanlayiciRef.current)
+    ekranBildirimZamanlayiciRef.current = setTimeout(() => setEkranBildirimi(null), sureMs)
+  }
+
+  // Izgaradaki bir ürüne dokunulunca çağrılır — urunEkle'nin sonucunu
+  // (öğrenci seçilmemişse, art arda hızlı dokunulmuşsa ya da başarıyla
+  // eklenmişse) doğrudan tam ekran bildirime çeviriyor. Başarılı eklemede
+  // telefon var olan (kameradaki) titreşimle aynı desen — ama çok kısa,
+  // rahatsız etmesin diye ("minicik").
+  async function gridTiklaEkle(urun) {
+    const sonuc = await urunEkle(urun)
+    if (!sonuc) return
+    if (sonuc.ok && navigator.vibrate) navigator.vibrate(25)
+    ekranBildirimGoster(sonuc.ok ? 'basari' : 'hata', sonuc.mesaj)
+  }
+
+  // Muhasebe.jsx'teki veriyiYenile() ile BİREBİR AYNI hesaplama (Fatura
+  // Ortağı grubu + sözleşme taksitleri + aylık borçlar + Bire Bir/Kantin
+  // sentetik borçları - ödemeler). Kantin görevlisinin gördüğü "Toplam Borç"
+  // rakamı Muhasebe sayfasındaki "Kalan Bakiye" ile HER ZAMAN aynı çıksın
+  // diye, ayrı/basitleştirilmiş bir hesap yerine aynı ekstreHesap.js
+  // yardımcıları (bireBirBorclariOlustur, kantinBorclariOlustur) kullanılıyor.
+  async function borcHesaplaVeGoster(id) {
+    const kendisi = ogrenciler.find((o) => o.id === id)
+    if (!kendisi) {
+      setOgrenciBorcu(null)
+      return
+    }
+    const efektifId = kendisi.fatura_sahibi_id || kendisi.id
+    const grup = [...new Set([efektifId, ...ogrenciler.filter((o) => o.fatura_sahibi_id === efektifId).map((o) => o.id)])]
+    setBorcYukleniyor(true)
+    const [s, a, o, bba, kantin] = await Promise.all([
+      supabase.from('sozlesmeler').select('toplam_tutar').in('ogrenci_id', grup),
+      supabase.from('aylik_borclar').select('tutar').in('ogrenci_id', grup),
+      supabase.from('odemeler').select('tutar').in('ogrenci_id', grup),
+      supabase.from('bire_bir_atamalari').select('*').in('ogrenci_id', grup),
+      supabase.from('kantin_alislar').select('*').in('ogrenci_id', grup),
+    ])
+    const atamalar = bba.data || []
+    const atamaIdleri = atamalar.map((x) => x.id)
+    const [by, ekDersler] = await Promise.all([
+      atamaIdleri.length > 0
+        ? supabase.from('bire_bir_yoklama').select('*').in('atama_id', atamaIdleri)
+        : Promise.resolve({ data: [] }),
+      supabase.from('bire_bir_yoklama').select('*').in('ogrenci_id', grup).is('atama_id', null),
+    ])
+    const tumYoklamalar = [...(by.data || []), ...(ekDersler.data || [])]
+    const bireBirBorclar = bireBirBorclariOlustur(atamalar, tumYoklamalar)
+    const kantinBorclar = kantinBorclariOlustur(kantin.data || [])
+    const toplamSozlesme = (s.data || []).reduce((t, x) => t + Number(x.toplam_tutar), 0)
+    const toplamAylikBorc = [...(a.data || []), ...bireBirBorclar, ...kantinBorclar].reduce((t, x) => t + Number(x.tutar), 0)
+    const toplamOdenen = (o.data || []).reduce((t, x) => t + Number(x.tutar), 0)
+    const kalanBakiye = Math.max(0, toplamSozlesme + toplamAylikBorc - toplamOdenen)
+    setOgrenciBorcu({ kalanBakiye })
+    setBorcYukleniyor(false)
+  }
+
+  useEffect(() => {
+    if (!ogrenciId) {
+      setOgrenciBorcu(null)
+      return
+    }
+    borcHesaplaVeGoster(ogrenciId)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ogrenciId])
 
   function veriyiYenile() {
     if (!ilkYuklemeTamamRef.current) setLoading(true)
@@ -691,6 +775,9 @@ export default function Kantin() {
       setBasari(`✓ ${mesaj}.`)
       setAdet(1)
       veriyiYenile()
+      // Yeni bir Kantin alışı, öğrencinin toplam borcunu ANINDA artırır —
+      // "Toplam Borç" rakamının güncel kalması için burada da yeniliyoruz.
+      borcHesaplaVeGoster(ogrenciId)
       sonuc = { ok: true, mesaj }
     }
     barkodInputRef.current?.focus()
@@ -968,6 +1055,7 @@ export default function Kantin() {
       if (algilamaAralikRef.current) clearInterval(algilamaAralikRef.current)
       if (mediaStreamRef.current) mediaStreamRef.current.getTracks().forEach((t) => t.stop())
       if (kameraBildirimZamanlayiciRef.current) clearTimeout(kameraBildirimZamanlayiciRef.current)
+      if (ekranBildirimZamanlayiciRef.current) clearTimeout(ekranBildirimZamanlayiciRef.current)
     }
   }, [])
 
@@ -984,6 +1072,28 @@ export default function Kantin() {
 
   return (
     <div>
+      {/* Ürün ızgarasına dokununca (kamera/barkod DIŞINDA) tüm ekranı kaplayan
+          büyük bildirim — mobilde sayfanın altındaki küçük kırmızı/yeşil
+          yazı fark edilmiyordu, özellikle "önce öğrenci seçin" uyarısı
+          yukarı kaydırmadan görünmüyordu. Kameradaki yeşil/kırmızı desenle
+          AYNI dil: yarı saydam renkli fon + ortada koyu renkli kart. */}
+      {ekranBildirimi && (
+        <div
+          className={`fixed inset-0 z-50 flex items-center justify-center px-6 pointer-events-none transition-colors ${
+            ekranBildirimi.tur === 'basari' ? 'bg-green-500/20' : 'bg-red-500/20'
+          }`}
+        >
+          <div
+            className={`max-w-sm w-full rounded-2xl shadow-2xl px-6 py-5 text-center text-white font-bold text-lg ${
+              ekranBildirimi.tur === 'basari' ? 'bg-green-600' : 'bg-red-600'
+            }`}
+          >
+            {ekranBildirimi.tur === 'basari' ? '✓ ' : '✗ '}
+            {ekranBildirimi.mesaj}
+          </div>
+        </div>
+      )}
+
       <h1 className="text-2xl font-bold text-navy mb-6">Kantin</h1>
 
       <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5 mb-6">
@@ -1064,9 +1174,26 @@ export default function Kantin() {
         </div>
 
         {ogrenciId ? (
-          <p className="text-sm text-gray-500 mb-2">
-            Seçili öğrenci: <span className="font-semibold text-navy">{ogrenciAdMap.get(ogrenciId)}</span> — barkod okutun ya da aşağıdan ürüne tıklayın, anında kaydedilir.
-          </p>
+          <div className="mb-2">
+            <p className="text-sm text-gray-500">
+              Seçili öğrenci: <span className="font-semibold text-navy">{ogrenciAdMap.get(ogrenciId)}</span> — barkod okutun ya da aşağıdan ürüne tıklayın, anında kaydedilir.
+            </p>
+            <p className="mt-1">
+              {borcYukleniyor ? (
+                <span className="text-xs text-gray-400">Toplam borç hesaplanıyor...</span>
+              ) : (
+                ogrenciBorcu && (
+                  <span
+                    className={`inline-block text-xs font-semibold px-2.5 py-1 rounded-full ${
+                      ogrenciBorcu.kalanBakiye > 0 ? 'bg-red-100 text-red-700' : 'bg-green-100 text-green-700'
+                    }`}
+                  >
+                    Toplam Borç: {paraFormat(ogrenciBorcu.kalanBakiye)}
+                  </span>
+                )
+              )}
+            </p>
+          </div>
         ) : (
           <p className="text-sm text-orange-600 mb-2">Önce yukarıdan bir öğrenci seçin.</p>
         )}
@@ -1202,9 +1329,11 @@ export default function Kantin() {
             <button
               key={u.id}
               type="button"
-              disabled={!ogrenciId || ekleniyorUrunId === u.id}
-              onClick={() => urunEkle(u)}
-              className="text-left px-3 py-2.5 rounded-lg border border-gray-200 hover:border-orange hover:bg-orange-50 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+              disabled={ekleniyorUrunId === u.id}
+              onClick={() => gridTiklaEkle(u)}
+              className={`text-left px-3 py-2.5 rounded-lg border border-gray-200 hover:border-orange hover:bg-orange-50 transition-colors disabled:opacity-40 disabled:cursor-not-allowed ${
+                !ogrenciId ? 'opacity-70' : ''
+              }`}
             >
               <p className="font-semibold text-gray-800 text-sm leading-tight">{u.ad}</p>
               <p className="text-xs text-gray-500">{paraFormat(u.fiyat)}</p>
