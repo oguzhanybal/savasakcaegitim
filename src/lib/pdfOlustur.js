@@ -145,6 +145,16 @@ function paraStr(n) {
   return `${Number(n || 0).toLocaleString('tr-TR', { minimumFractionDigits: 2 })} TL`
 }
 
+// Sitedeki "₺30.000,00" formatının AYNISI (bkz. MakbuzGunluk.jsx'teki
+// paraFormat) — SADECE makbuzPdfOlustur'da kullanılıyor, "asıl makbuz" (site
+// üzerindeki yazdırılan sayfa) ile WhatsApp'a giden PDF birebir aynı görünsün
+// diye. Yerleşik Roboto fontu (pdfmake'in vfs_fonts.js'i) Türk Lirası
+// sembolünü (₺) destekliyor, bu yüzden ekstrePdfOlustur'daki eski " TL"
+// soneki burada kasıtlı olarak kullanılmıyor.
+function paraStrSembol(n) {
+  return `₺${Number(n || 0).toLocaleString('tr-TR', { minimumFractionDigits: 2 })}`
+}
+
 // veri: ekstreHesap.js -> ekstreVerisiGetir()'in döndürdüğü obje.
 export async function ekstrePdfOlustur(veri) {
   const jsPDF = await jspdfYukle()
@@ -479,12 +489,12 @@ export async function makbuzPdfOlustur({ ogrenciAdi, tarihMetni, odemeler, topla
     body: odemeler.map((o) => [
       o.kalem || '—',
       ...(ogrenciSutunuGoster ? [adBul ? adBul(o.ogrenci_id) : '—'] : []),
-      paraStr(o.tutar),
+      paraStrSembol(o.tutar),
     ]),
     foot: [
       [
         { content: 'TOPLAM', colSpan: sutunSayisi, styles: { halign: 'right', fontStyle: 'bold' } },
-        paraStr(toplam),
+        paraStrSembol(toplam),
       ],
     ],
     headStyles: { fillColor: GRI_ACIK, textColor: [75, 85, 99], fontSize: 9, font, fontStyle: 'bold' }, // site: bg-gray-50 text-gray-600
