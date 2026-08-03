@@ -7,7 +7,7 @@ const ROL_ETIKET = {
   ogretmen: 'Öğretmen',
   veli: 'Veli',
   ogrenci: 'Öğrenci',
-  kantin: 'Kantin Görevlisi',
+  kantin: 'Kantin',
   zil: 'Zil Ekranı',
 }
 
@@ -119,6 +119,7 @@ function menuOlustur(rol) {
       { tur: 'link', to: '/', label: 'Ana Sayfa', end: true },
       { tur: 'link', to: '/muhasebe', label: 'Ödeme Durumu' },
       { tur: 'link', to: '/program', label: 'Ders Programı' },
+      { tur: 'link', to: '/yoklamalarim', label: 'Yoklamalar' },
       { tur: 'link', to: '/odev', label: 'Ödevler' },
       { tur: 'link', to: '/karnem', label: 'Sınav Sonuçları' },
       { tur: 'link', to: '/sifremi-degistir', label: 'Şifremi Değiştir' },
@@ -128,6 +129,7 @@ function menuOlustur(rol) {
     return [
       { tur: 'link', to: '/', label: 'Ana Sayfa', end: true },
       { tur: 'link', to: '/program', label: 'Ders Programım' },
+      { tur: 'link', to: '/yoklamalarim', label: 'Yoklamalarım' },
       { tur: 'link', to: '/odev', label: 'Ödevlerim' },
       { tur: 'link', to: '/karnem', label: 'Sınav Sonuçlarım' },
       { tur: 'link', to: '/sifremi-degistir', label: 'Şifremi Değiştir' },
