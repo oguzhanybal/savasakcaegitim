@@ -16,6 +16,17 @@ function yeniBarkodUret() {
   return String(Date.now()).slice(-8)
 }
 
+// Kamerayla okuma SADECE 'code_39' (bizim ürettiğimiz/yazdırdığımız
+// etiketler) için ayarlanmıştı. Ama admin artık bir ürünün barkodunu ELLE
+// GİREBİLİYOR — çoğu zaman bu, ürünün paketinin ÜZERİNDEKİ gerçek fabrika
+// barkodu (neredeyse her zaman EAN-13, bazen EAN-8/UPC-A) oluyor. Kamera
+// hâlâ sadece code_39 arıyorsa bu gerçek barkodları hiç tanımıyordu — bu
+// yüzden hem native BarcodeDetector hem Quagga yedeği için yaygın perakende
+// barkod türlerini de ekliyoruz. (USB barkod okuyucu + Enter ile giriş zaten
+// etkilenmiyordu, o zaten okuyucunun kendi donanım çözümlemesine dayanıyor.)
+const DESTEKLENEN_BARKOD_TURLERI = ['code_39', 'ean_13', 'ean_8', 'upc_a', 'upc_e']
+const QUAGGA_OKUYUCULAR = ['code_39_reader', 'ean_reader', 'ean_8_reader', 'upc_reader', 'upc_e_reader']
+
 // ============================================================================
 // BARKOD (Code 39) — dışarıdan kütüphane eklemeden, saf JS ile barkod çizimi.
 // Code 39, ucuz USB barkod okuyucuların neredeyse tamamının fabrika ayarıyla
@@ -128,6 +139,65 @@ function barkoduYazdir(urun) {
         <button class="yazdirma-gizli" onclick="window.print()" style="margin-top:14px;padding:10px 22px;font-size:14px;font-weight:600;background:#1e3a5f;color:white;border:none;border-radius:8px;cursor:pointer;">
           Yazdır
         </button>
+      </body>
+    </html>
+  `)
+  pencere.document.close()
+}
+
+// Birden fazla ürünün barkodunu TEK yazdırma penceresinde, küçük kartlar
+// hâlinde ızgaraya diziyor — "Barkodu Yazdır" (tek ürün) her seferinde tüm
+// bir sayfayı harcıyordu, çok sayıda ürün için kağıt/etiket israfı oluyordu.
+// Burada aynı sayfaya sığabildiğince çok barkod yerleşiyor (flex-wrap +
+// break-inside:avoid — bir kartın ortadan ikiye bölünmesini engelliyor).
+function barkodlariTopluYazdir(urunlerListesi) {
+  if (urunlerListesi.length === 0) return
+  const darBirim = 2.2
+  const yukseklik = 45
+  const pencere = window.open('', '_blank')
+  if (!pencere) {
+    alert('Yazdırma penceresi açılamadı — tarayıcınız pop-up\'ı engellemiş olabilir.')
+    return
+  }
+  const kartlar = urunlerListesi
+    .map(
+      (u) => `
+        <div class="kart">
+          <p class="ad">${u.ad}</p>
+          ${barkodSvgMetni(u.barkod, darBirim, yukseklik)}
+        </div>`
+    )
+    .join('')
+  pencere.document.write(`
+    <html>
+      <head>
+        <title>Barkodlar (${urunlerListesi.length} ürün)</title>
+        <style>
+          * { box-sizing: border-box; }
+          body { font-family: sans-serif; margin: 0; padding: 16px; }
+          .izgara { display: flex; flex-wrap: wrap; gap: 10px; }
+          .kart {
+            border: 1px dashed #ccc;
+            border-radius: 6px;
+            padding: 8px 10px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            break-inside: avoid;
+            page-break-inside: avoid;
+          }
+          .ad { margin: 0 0 4px; font-size: 11px; font-weight: 600; text-align: center; max-width: 170px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+          @media print { .yazdirma-gizli { display: none; } .kart { border: none; } }
+        </style>
+      </head>
+      <body>
+        <button class="yazdirma-gizli" onclick="window.print()" style="margin-bottom:14px;padding:10px 22px;font-size:14px;font-weight:600;background:#1e3a5f;color:white;border:none;border-radius:8px;cursor:pointer;">
+          Yazdır
+        </button>
+        <p class="yazdirma-gizli" style="margin:0 0 14px;font-size:12px;color:#888;max-width:480px;">
+          ${urunlerListesi.length} ürünün barkodu aşağıda tek sayfada sıralandı — "Yazdır"a basıp etiket kağıdına basabilirsiniz.
+        </p>
+        <div class="izgara">${kartlar}</div>
       </body>
     </html>
   `)
@@ -326,6 +396,24 @@ function UrunSatiri({ u, digerBarkodlar, onKaydedildi, onVazgec }) {
 
 function UrunYonetimi({ urunler, onDegisti }) {
   const [duzenlenenId, setDuzenlenenId] = useState(null)
+  // Toplu barkod yazdırma için seçilen ürünler — sadece barkodu OLAN ürünler
+  // seçilebilir/yazdırılabilir.
+  const [seciliIdler, setSeciliIdler] = useState(new Set())
+  const barkodluUrunler = urunler.filter((u) => u.barkod)
+  const hepsiSecili = barkodluUrunler.length > 0 && barkodluUrunler.every((u) => seciliIdler.has(u.id))
+
+  function secimDegistir(id) {
+    setSeciliIdler((eski) => {
+      const yeni = new Set(eski)
+      if (yeni.has(id)) yeni.delete(id)
+      else yeni.add(id)
+      return yeni
+    })
+  }
+
+  function hepsiniSecVeyaKaldir() {
+    setSeciliIdler(hepsiSecili ? new Set() : new Set(barkodluUrunler.map((u) => u.id)))
+  }
 
   async function aktiflikDegistir(u) {
     const { error } = await supabase.from('kantin_urunler').update({ aktif: !u.aktif }).eq('id', u.id)
@@ -347,13 +435,23 @@ function UrunYonetimi({ urunler, onDegisti }) {
           <h2 className="font-semibold text-gray-700">Ürün Yönetimi</h2>
           <p className="text-xs text-gray-400 mt-0.5">Kantin görevlisi satış ekranında sadece "Aktif" ürünleri görür.</p>
         </div>
-        <Link
-          to="/kantin-fiyat-listesi"
-          target="_blank"
-          className="text-navy text-sm font-semibold hover:underline whitespace-nowrap"
-        >
-          Fiyat Listesini Yazdır / PDF Al →
-        </Link>
+        <div className="flex items-center gap-4 flex-wrap">
+          {seciliIdler.size > 0 && (
+            <button
+              onClick={() => barkodlariTopluYazdir(urunler.filter((u) => seciliIdler.has(u.id)))}
+              className="text-orange text-sm font-semibold hover:underline whitespace-nowrap"
+            >
+              Seçili {seciliIdler.size} Barkodu Toplu Yazdır →
+            </button>
+          )}
+          <Link
+            to="/kantin-fiyat-listesi"
+            target="_blank"
+            className="text-navy text-sm font-semibold hover:underline whitespace-nowrap"
+          >
+            Fiyat Listesini Yazdır / PDF Al →
+          </Link>
+        </div>
       </div>
       <div className="p-4 border-b border-gray-50">
         <UrunEkleForm
@@ -361,9 +459,14 @@ function UrunYonetimi({ urunler, onDegisti }) {
           mevcutBarkodlar={new Set(urunler.map((u) => u.barkod).filter(Boolean))}
         />
       </div>
-      <table className="w-full text-sm min-w-[560px]">
+      <table className="w-full text-sm min-w-[600px]">
         <thead>
           <tr className="text-left text-gray-500">
+            <th className="px-4 py-2 font-medium w-8">
+              {barkodluUrunler.length > 0 && (
+                <input type="checkbox" checked={hepsiSecili} onChange={hepsiniSecVeyaKaldir} title="Barkodu olan tüm ürünleri seç" />
+              )}
+            </th>
             <th className="px-4 py-2 font-medium">Ürün</th>
             <th className="px-4 py-2 font-medium">Fiyat</th>
             <th className="px-4 py-2 font-medium">Barkod</th>
@@ -374,7 +477,7 @@ function UrunYonetimi({ urunler, onDegisti }) {
         <tbody>
           {urunler.length === 0 && (
             <tr>
-              <td colSpan={5} className="px-4 py-4 text-center text-gray-400">Henüz ürün eklenmedi.</td>
+              <td colSpan={6} className="px-4 py-4 text-center text-gray-400">Henüz ürün eklenmedi.</td>
             </tr>
           )}
           {urunler.map((u) =>
@@ -388,6 +491,11 @@ function UrunYonetimi({ urunler, onDegisti }) {
               />
             ) : (
               <tr key={u.id} className="border-t border-gray-50">
+                <td className="px-4 py-2">
+                  {u.barkod && (
+                    <input type="checkbox" checked={seciliIdler.has(u.id)} onChange={() => secimDegistir(u.id)} />
+                  )}
+                </td>
                 <td className="px-4 py-2 font-medium text-gray-800">{u.ad}</td>
                 <td className="px-4 py-2">{paraFormat(u.fiyat)}</td>
                 <td className="px-4 py-2">
@@ -698,7 +806,7 @@ export default function Kantin() {
     if (typeof window === 'undefined' || !('BarcodeDetector' in window)) return false
     try {
       const formatlar = await window.BarcodeDetector.getSupportedFormats()
-      return formatlar.includes('code_39')
+      return DESTEKLENEN_BARKOD_TURLERI.some((f) => formatlar.includes(f))
     } catch {
       return false
     }
@@ -727,7 +835,7 @@ export default function Kantin() {
       }
       clearTimeout(zamanAsimi)
       setKameraYukleniyor(false)
-      const detector = new window.BarcodeDetector({ formats: ['code_39'] })
+      const detector = new window.BarcodeDetector({ formats: DESTEKLENEN_BARKOD_TURLERI })
       algilamaAralikRef.current = setInterval(async () => {
         if (!video || video.readyState < 2) return
         try {
@@ -767,7 +875,7 @@ export default function Kantin() {
           numOfWorkers: 0,
           frequency: 10,
           locator: { patchSize: 'medium', halfSample: true },
-          decoder: { readers: ['code_39_reader'], multiple: false },
+          decoder: { readers: QUAGGA_OKUYUCULAR, multiple: false },
           locate: true,
         },
         (hata) => {
