@@ -138,9 +138,16 @@ function barkoduYazdir(urun) {
 // ÜRÜN YÖNETİMİ — sadece yönetici görür. Kantin görevlisi ürün ekleyip
 // düzenleyemez, sadece listeden seçip satış girer.
 // ============================================================================
-function UrunEkleForm({ onEklendi }) {
+function UrunEkleForm({ onEklendi, mevcutBarkodlar }) {
   const [ad, setAd] = useState('')
   const [fiyat, setFiyat] = useState('')
+  // Barkod: varsayılan olarak otomatik üretiliyordu (Date.now() bazlı 8
+  // haneli sayı) — ama bazı ürünlerin zaten ÜZERİNDE (paketin kendi
+  // fabrika barkodu) bir barkod var, kantin görevlisi elindeki okuyucuyla
+  // ürünü doğrudan o barkodla okutmak istiyor. Artık kullanıcı seçiyor:
+  // otomatik üret ya da kendisi gir.
+  const [barkodModu, setBarkodModu] = useState('otomatik')
+  const [barkodDeger, setBarkodDeger] = useState('')
   const [gonderiliyor, setGonderiliyor] = useState(false)
   const [hata, setHata] = useState('')
 
@@ -151,16 +158,35 @@ function UrunEkleForm({ onEklendi }) {
       setHata('Ürün adı ve fiyatı girin.')
       return
     }
+    let barkod = yeniBarkodUret()
+    if (barkodModu === 'elle') {
+      const girilen = barkodDeger.trim()
+      if (!girilen) {
+        setHata('Barkod değerini girin (sadece rakam) ya da "Otomatik oluştur"u seçin.')
+        return
+      }
+      if (!/^[0-9]+$/.test(girilen)) {
+        setHata('Barkod sadece rakamlardan oluşmalı (Code 39 barkod türü harf desteklemiyor).')
+        return
+      }
+      if (mevcutBarkodlar?.has(girilen)) {
+        setHata('Bu barkod zaten başka bir ürüne kayıtlı.')
+        return
+      }
+      barkod = girilen
+    }
     setGonderiliyor(true)
     const { error } = await supabase
       .from('kantin_urunler')
-      .insert({ ad: ilkHarfleriBuyukYap(ad.trim()), fiyat: Number(fiyat), barkod: yeniBarkodUret() })
+      .insert({ ad: ilkHarfleriBuyukYap(ad.trim()), fiyat: Number(fiyat), barkod })
     setGonderiliyor(false)
     if (error) {
       setHata('Hata: ' + error.message)
     } else {
       setAd('')
       setFiyat('')
+      setBarkodDeger('')
+      setBarkodModu('otomatik')
       onEklendi()
     }
   }
@@ -188,6 +214,36 @@ function UrunEkleForm({ onEklendi }) {
           className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue"
         />
       </div>
+      <div className="min-w-[220px]">
+        <label className="block text-sm font-medium text-gray-700 mb-1">Barkod</label>
+        <div className="flex items-center gap-3 mb-1.5">
+          <label className="flex items-center gap-1.5 text-xs text-gray-600 cursor-pointer">
+            <input
+              type="radio"
+              checked={barkodModu === 'otomatik'}
+              onChange={() => { setBarkodModu('otomatik'); setBarkodDeger('') }}
+            />
+            Otomatik oluştur
+          </label>
+          <label className="flex items-center gap-1.5 text-xs text-gray-600 cursor-pointer">
+            <input
+              type="radio"
+              checked={barkodModu === 'elle'}
+              onChange={() => setBarkodModu('elle')}
+            />
+            Elle gir
+          </label>
+        </div>
+        {barkodModu === 'elle' && (
+          <input
+            value={barkodDeger}
+            onChange={(e) => setBarkodDeger(e.target.value)}
+            placeholder="örn. 8690504..."
+            inputMode="numeric"
+            className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue font-mono"
+          />
+        )}
+      </div>
       <button
         type="submit"
         disabled={gonderiliyor}
@@ -200,15 +256,33 @@ function UrunEkleForm({ onEklendi }) {
   )
 }
 
-function UrunSatiri({ u, onKaydedildi, onVazgec }) {
+function UrunSatiri({ u, digerBarkodlar, onKaydedildi, onVazgec }) {
   const [ad, setAd] = useState(u.ad)
   const [fiyat, setFiyat] = useState(String(u.fiyat))
+  // Barkod da düzenlenebilsin diye eklendi — ürünün üzerindeki barkod
+  // yanlış okutulmuşsa ya da ürün değiştiyse admin burada düzeltebilir.
+  // Boş bırakılırsa barkod tamamen kaldırılır (null).
+  const [barkod, setBarkod] = useState(u.barkod || '')
   const [gonderiliyor, setGonderiliyor] = useState(false)
+  const [hata, setHata] = useState('')
 
   async function kaydet() {
+    setHata('')
     if (!ad.trim() || !fiyat) return
+    const girilenBarkod = barkod.trim()
+    if (girilenBarkod && !/^[0-9]+$/.test(girilenBarkod)) {
+      setHata('Barkod sadece rakamlardan oluşmalı.')
+      return
+    }
+    if (girilenBarkod && digerBarkodlar?.has(girilenBarkod)) {
+      setHata('Bu barkod zaten başka bir ürüne kayıtlı.')
+      return
+    }
     setGonderiliyor(true)
-    const { error } = await supabase.from('kantin_urunler').update({ ad: ilkHarfleriBuyukYap(ad.trim()), fiyat: Number(fiyat) }).eq('id', u.id)
+    const { error } = await supabase
+      .from('kantin_urunler')
+      .update({ ad: ilkHarfleriBuyukYap(ad.trim()), fiyat: Number(fiyat), barkod: girilenBarkod || null })
+      .eq('id', u.id)
     setGonderiliyor(false)
     if (error) alert('Hata: ' + error.message)
     else onKaydedildi()
@@ -229,7 +303,16 @@ function UrunSatiri({ u, onKaydedildi, onVazgec }) {
           className="w-28 px-2 py-1.5 border border-gray-300 rounded-lg text-sm"
         />
       </td>
-      <td className="px-4 py-2 text-xs font-mono text-gray-400">{u.barkod || '—'}</td>
+      <td className="px-4 py-2">
+        <input
+          value={barkod}
+          onChange={(e) => setBarkod(e.target.value)}
+          placeholder="—"
+          inputMode="numeric"
+          className="w-32 px-2 py-1.5 border border-gray-300 rounded-lg text-sm font-mono"
+        />
+        {hata && <p className="text-red-600 text-xs mt-1">{hata}</p>}
+      </td>
       <td className="px-4 py-2 text-gray-400 text-xs">—</td>
       <td className="px-4 py-2 text-right space-x-3 whitespace-nowrap">
         <button onClick={kaydet} disabled={gonderiliyor} className="text-green-600 text-sm font-semibold hover:underline">
@@ -273,7 +356,10 @@ function UrunYonetimi({ urunler, onDegisti }) {
         </Link>
       </div>
       <div className="p-4 border-b border-gray-50">
-        <UrunEkleForm onEklendi={onDegisti} />
+        <UrunEkleForm
+          onEklendi={onDegisti}
+          mevcutBarkodlar={new Set(urunler.map((u) => u.barkod).filter(Boolean))}
+        />
       </div>
       <table className="w-full text-sm min-w-[560px]">
         <thead>
@@ -296,6 +382,7 @@ function UrunYonetimi({ urunler, onDegisti }) {
               <UrunSatiri
                 key={u.id}
                 u={u}
+                digerBarkodlar={new Set(urunler.filter((d) => d.id !== u.id).map((d) => d.barkod).filter(Boolean))}
                 onKaydedildi={() => { setDuzenlenenId(null); onDegisti() }}
                 onVazgec={() => setDuzenlenenId(null)}
               />
