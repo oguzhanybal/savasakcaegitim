@@ -12,6 +12,8 @@
 // için uğraştığımız "break-inside/break-after" hilelerine burada gerek yok;
 // autoTable bunu kendiliğinden doğru yapıyor.
 
+import { tutarYaziyla } from './sayiYaziyla'
+
 let jspdfYuklemePromise = null
 export function jspdfYukle() {
   if (window.jspdf?.jsPDF) return Promise.resolve(window.jspdf.jsPDF)
@@ -375,6 +377,117 @@ export async function ekstrePdfOlustur(veri) {
         : undefined,
     footStyles: { fillColor: GRI_ACIK, textColor: 30, fontStyle: 'bold', font },
   })
+
+  return doc.output('blob')
+}
+
+// ============================================================================
+// MAKBUZ PDF — Muhasebe.jsx'teki "Makbuz Yazdır" (MakbuzGunluk.jsx sayfasının
+// bastığı kart) ile AYNI gün-birleştirme mantığıyla, o günün TÜM kalemlerini
+// TEK bir gerçek PDF dosyasında toplar — "WhatsApp'tan Gönder" butonu bunu
+// kullanır (Toplu Ekstre'deki "PDF ile Gönder" ile birebir aynı desen: PDF
+// üretilir, Storage'a yüklenir, kısa link ile WhatsApp mesajına eklenir).
+// veli: { ogrenciAdi, tarihMetni, odemeler: [{kalem, tutar, ogrenci_id}],
+//         toplam, ogrenciSutunuGoster, adBul(ogrenciId) }
+// ============================================================================
+export async function makbuzPdfOlustur({ ogrenciAdi, tarihMetni, odemeler, toplam, ogrenciSutunuGoster, adBul }) {
+  const jsPDF = await jspdfYukle()
+  const doc = new jsPDF({ unit: 'pt', format: 'a4' })
+  const sayfaGenisligi = doc.internal.pageSize.getWidth()
+  const kenar = 32
+
+  let font = 'helvetica'
+  try {
+    await turkceFontHazirla(doc)
+    font = 'Roboto'
+  } catch (e) {
+    console.warn('Türkçe font yüklenemedi, temel fontla devam ediliyor:', e)
+  }
+
+  let logoDataUrl = null
+  try {
+    logoDataUrl = await logoHazirla()
+  } catch (e) {
+    // logosuz da devam edilebilir
+  }
+
+  const basligYuksekligi = 64
+  doc.setFillColor(...NAVY)
+  doc.rect(0, 0, sayfaGenisligi, basligYuksekligi, 'F')
+
+  let metinX = kenar
+  if (logoDataUrl) {
+    const kutu = 40
+    const kutuY = (basligYuksekligi - kutu) / 2
+    doc.setFillColor(255, 255, 255)
+    doc.roundedRect(kenar, kutuY, kutu, kutu, 5, 5, 'F')
+    try {
+      doc.addImage(logoDataUrl, 'PNG', kenar + 4, kutuY + 4, kutu - 8, kutu - 8)
+      metinX = kenar + kutu + 14
+    } catch (e) {
+      // görsel formatı algılanamazsa logosuz devam
+    }
+  }
+
+  doc.setTextColor(255, 255, 255)
+  doc.setFontSize(16)
+  doc.setFont(font, 'bold')
+  doc.text('SAVAŞ AKÇA EĞİTİM', metinX, basligYuksekligi / 2 - 4)
+  doc.setFontSize(10)
+  doc.setFont(font, 'normal')
+  doc.text('TAHSİLAT MAKBUZU', metinX, basligYuksekligi / 2 + 12)
+
+  let y = basligYuksekligi + 26
+  doc.setTextColor(30, 30, 30)
+
+  doc.autoTable({
+    startY: y,
+    margin: { left: kenar, right: kenar },
+    body: [
+      ['Öğrenci', ogrenciAdi],
+      ['Tarih', tarihMetni],
+    ],
+    theme: 'plain',
+    styles: { fontSize: 10, font, cellPadding: { top: 5, bottom: 5, left: 8, right: 8 } },
+    columnStyles: { 0: { fontStyle: 'bold', textColor: [100, 100, 100], cellWidth: 90 } },
+    didParseCell: (data) => {
+      data.cell.styles.fillColor = data.row.index % 2 === 0 ? GRI_ACIK : 255
+    },
+  })
+  y = doc.lastAutoTable.finalY + 14
+
+  const sutunSayisi = 1 + (ogrenciSutunuGoster ? 1 : 0)
+  doc.autoTable({
+    startY: y,
+    margin: { left: kenar, right: kenar },
+    head: [['Kalem', ...(ogrenciSutunuGoster ? ['Öğrenci'] : []), 'Tutar']],
+    body: odemeler.map((o) => [
+      o.kalem || '—',
+      ...(ogrenciSutunuGoster ? [adBul ? adBul(o.ogrenci_id) : '—'] : []),
+      paraStr(o.tutar),
+    ]),
+    foot: [
+      [
+        { content: 'TOPLAM', colSpan: sutunSayisi, styles: { halign: 'right', fontStyle: 'bold' } },
+        paraStr(toplam),
+      ],
+    ],
+    headStyles: { fillColor: NAVY, textColor: 255, fontSize: 9, font },
+    bodyStyles: { fontSize: 9, font },
+    footStyles: { fillColor: ORANGE_ACIK, textColor: ORANGE, fontStyle: 'bold', font, fontSize: 10 },
+    alternateRowStyles: { fillColor: GRI_ACIK },
+  })
+  y = doc.lastAutoTable.finalY + 18
+
+  try {
+    doc.setFontSize(9)
+    doc.setFont(font, 'normal')
+    doc.setTextColor(90, 90, 90)
+    const yazi = doc.splitTextToSize(tutarYaziyla(toplam), sayfaGenisligi - kenar * 2)
+    doc.text(yazi, kenar, y)
+  } catch (e) {
+    // yazıyla tutar üretilemezse (beklenmeyen bir format hatası) sessizce atla
+  }
 
   return doc.output('blob')
 }

@@ -251,6 +251,25 @@ export function whatsappMesajiOlustur({ ogrenciAdi, ayYil, buAyTutar, kalanTutar
   )
 }
 
+// ============================================================================
+// MAKBUZ WHATSAPP MESAJI — Muhasebe.jsx'teki "WhatsApp'tan Gönder" butonu
+// için. "Makbuz Yazdır" (MakbuzGunluk.jsx) ile AYNI gün-birleştirme mantığı:
+// o günün TÜM kalemleri (kalemler dizisi) burada tek bir mesajda özetlenir,
+// tek tek her kalem için ayrı mesaj gitmez.
+// ============================================================================
+export function makbuzWhatsappMesajiOlustur({ ogrenciAdi, tarihMetni, kalemler, toplam, pdfLink }) {
+  const kalemSatirlari = kalemler
+    .map((k) => `• ${k.kalem || 'Ödeme'}: ₺${Number(k.tutar || 0).toLocaleString('tr-TR', { minimumFractionDigits: 2 })}`)
+    .join('\n')
+  return (
+    `Değerli Velimiz, \n${ogrenciAdi} için ${tarihMetni} tarihli ödemeniz alınmıştır.\n\n` +
+    `${kalemSatirlari}\n\n` +
+    `Toplam: *₺${Number(toplam || 0).toLocaleString('tr-TR', { minimumFractionDigits: 2 })}*\n` +
+    `Makbuz: ${pdfLink}\n\n` +
+    `Teşekkür ederiz.`
+  )
+}
+
 export function whatsappLinkOlustur(ogrenci, seciliAy, buAyTutar, kalanTutar) {
   const telefon = telefonNormallestir(ogrenci.telefon)
   if (!telefon) return null
