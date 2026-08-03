@@ -31,20 +31,34 @@ function ayBasligi(tarihStr) {
     .replace(/^./, (c) => c.toUpperCase())
 }
 
+// Başlıkta önce ders adı, o da yoksa öğretmenin branşı gösterilir (ör.
+// "Türkçe/Edebiyat") — Ders Programı sayfasındaki AYNI kural. Sınıf adı
+// ("12-Eşit Ağırlık" gibi) tek başına bir ders adı değil, o yüzden en son
+// çare olarak kullanılıyor.
+function dersBasligi(k) {
+  return k.ders_programi?.ders_adi || k.ders_programi?.profiles?.brans || k.ders_programi?.siniflar?.ad || 'Ders'
+}
+
 function DevamsizlikOzeti({ kayitlar }) {
   const genelGeldi = kayitlar.filter((y) => y.geldi).length
   const genelGelmedi = kayitlar.length - genelGeldi
   const genelOran = kayitlar.length > 0 ? Math.round((genelGelmedi / kayitlar.length) * 100) : 0
 
-  const ogretmenMap = new Map()
+  // Öğretmen adına göre değil, DERS ADINA göre grupluyoruz — asıl belirgin
+  // bilgi hangi dersten kaç kez devamsızlık yapıldığı, öğretmen adı ise
+  // küçük/ikincil bir bilgi (bkz. aşağıdaki kart görünümü). Aynı ders adı
+  // için tek öğretmen olması beklenir ama garantiye almak adına birden
+  // fazla öğretmen adı varsa hepsi küçük yazıda virgülle listeleniyor.
+  const dersMap = new Map()
   for (const y of kayitlar) {
-    const ad = y.ders_programi?.profiles?.ad_soyad || 'Bilinmeyen öğretmen'
-    if (!ogretmenMap.has(ad)) ogretmenMap.set(ad, { geldi: 0, gelmedi: 0 })
-    const s = ogretmenMap.get(ad)
+    const baslik = dersBasligi(y)
+    if (!dersMap.has(baslik)) dersMap.set(baslik, { geldi: 0, gelmedi: 0, ogretmenler: new Set() })
+    const s = dersMap.get(baslik)
     if (y.geldi) s.geldi += 1
     else s.gelmedi += 1
+    if (y.ders_programi?.profiles?.ad_soyad) s.ogretmenler.add(y.ders_programi.profiles.ad_soyad)
   }
-  const ogretmenListesi = [...ogretmenMap.entries()].sort((a, b) => a[0].localeCompare(b[0], 'tr'))
+  const dersListesi = [...dersMap.entries()].sort((a, b) => a[0].localeCompare(b[0], 'tr'))
 
   return (
     <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5 mb-6">
@@ -61,15 +75,20 @@ function DevamsizlikOzeti({ kayitlar }) {
           </span>
         )}
       </div>
-      {ogretmenListesi.length > 0 && (
+      {dersListesi.length > 0 && (
         <div className="divide-y divide-gray-50 border-t border-gray-100">
-          {ogretmenListesi.map(([ad, s]) => {
+          {dersListesi.map(([baslik, s]) => {
             const toplam = s.geldi + s.gelmedi
             const oran = toplam > 0 ? Math.round((s.gelmedi / toplam) * 100) : 0
             return (
-              <div key={ad} className="py-2.5 flex items-center justify-between gap-3 flex-wrap">
-                <span className="font-medium text-gray-800 text-sm">{ad}</span>
-                <span className="text-sm text-gray-500">
+              <div key={baslik} className="py-2.5 flex items-center justify-between gap-3 flex-wrap">
+                <div className="min-w-0">
+                  <p className="font-medium text-gray-800 text-sm">{baslik}</p>
+                  {s.ogretmenler.size > 0 && (
+                    <p className="text-xs text-gray-400">{[...s.ogretmenler].join(', ')}</p>
+                  )}
+                </div>
+                <span className="text-sm text-gray-500 shrink-0">
                   <span className="text-red-500 font-semibold">{s.gelmedi}</span>/{toplam} derse gelmedi{' '}
                   <span className={`font-semibold ${oran > 20 ? 'text-red-500' : 'text-gray-400'}`}>(%{oran})</span>
                 </span>
@@ -200,14 +219,11 @@ export default function Yoklamalarim() {
                         >
                           <div className="min-w-0">
                             {(() => {
-                              // Başlıkta önce ders adı, o da yoksa öğretmenin
-                              // branşı gösterilir (ör. "Türkçe/Edebiyat") —
-                              // Ders Programı sayfasındaki AYNI kural.
-                              // sinifProgramiGoster'daki gibi sınıf adı öne
-                              // çıkmıyor, öğretmen adıyla birlikte küçük ve
-                              // silik bir alt satırda gösteriliyor.
-                              const baslik =
-                                k.ders_programi?.ders_adi || k.ders_programi?.profiles?.brans || k.ders_programi?.siniflar?.ad || 'Ders'
+                              // Ders adı büyük/belirgin, sınıf adı + öğretmen
+                              // adı küçük ve silik bir alt satırda — sınıf
+                              // adı başlıktan farklıysa gösterilir (bkz.
+                              // dersBasligi ve Ders Programı'ndaki aynı kural).
+                              const baslik = dersBasligi(k)
                               const sinifAdiGoster = k.ders_programi?.siniflar?.ad && k.ders_programi.siniflar.ad !== baslik
                               return (
                                 <>
