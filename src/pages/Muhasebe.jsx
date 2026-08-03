@@ -802,15 +802,19 @@ export default function Muhasebe() {
     return kod
   }
 
-  // "WhatsApp'tan Gönder" tıklanınca: "Makbuz Yazdır" (MakbuzGunluk.jsx) ile
-  // BİREBİR AYNI gün-birleştirme mantığı — Fatura Ortağı varsa (ör. ikiz
+  // "Anneye Gönder"/"Babaya Gönder" tıklanınca: "Makbuz Yazdır" (MakbuzGunluk.jsx)
+  // ile BİREBİR AYNI gün-birleştirme mantığı — Fatura Ortağı varsa (ör. ikiz
   // kardeşler) o günkü grubun TÜM ödemeleri tek makbuzda toplanır, partneri
   // olmayan bir öğrenci için grup tek kişiliktir. "odemeler" state'i zaten bu
   // grubun (seciliId'nin fatura grubunun) tüm kayıtlarını içeriyor (bkz.
   // veriyiYenile), o yüzden ekstra bir sorguya gerek yok.
-  async function makbuzWhatsappGonder(o) {
+  //
+  // taraf: 'anne' | 'baba' — Toplu Ekstre'deki "Anneye Gönder"/"Babaya
+  // Gönder" ayrı butonlarıyla AYNI desen; hangi tarafa basıldıysa makbuz O
+  // numaraya gider (otomatik anne||baba seçimi yerine).
+  async function makbuzWhatsappGonder(o, taraf) {
     const gun = gunAnahtari(o.tarih)
-    const anahtar = `${o.ogrenci_id}-${gun}`
+    const anahtar = `${o.ogrenci_id}-${gun}-${taraf}`
     const kendisi = ogrenciler.find((x) => x.id === o.ogrenci_id)
     if (!kendisi) {
       alert('Öğrenci bulunamadı.')
@@ -820,11 +824,9 @@ export default function Muhasebe() {
     const grupOgrencileri = ogrenciler.filter((x) => x.id === efektifId || x.fatura_sahibi_id === efektifId)
     const grupIdleri = grupOgrencileri.length > 0 ? grupOgrencileri.map((x) => x.id) : [kendisi.id]
     const ogrenciAdiBirlesik = (grupOgrencileri.length > 0 ? grupOgrencileri : [kendisi]).map((x) => x.ad_soyad).join(' ve ')
-    // Makbuz her zaman ödemenin gerçek sahibinin (kendisi) telefonuna gider —
-    // grup içindeki tüm öğrencilerin anne/baba telefonu farklı olabilir.
-    const telefon = telefonNormallestir(kendisi.anne_telefon) || telefonNormallestir(kendisi.baba_telefon)
+    const telefon = telefonNormallestir(taraf === 'anne' ? kendisi.anne_telefon : kendisi.baba_telefon)
     if (!telefon) {
-      alert('Bu öğrencinin anne/baba telefonu kayıtlı değil.')
+      alert(`Bu öğrencinin ${taraf === 'anne' ? 'anne' : 'baba'} telefonu kayıtlı değil.`)
       return
     }
     setMakbuzGonderiliyor(anahtar)
@@ -1469,43 +1471,64 @@ export default function Muhasebe() {
                 {odemeler.length === 0 && (
                   <tr><td colSpan={isYonetici ? (faturaDigerleri.length > 0 ? 5 : 4) : (faturaDigerleri.length > 0 ? 4 : 3)} className="px-4 py-4 text-center text-gray-400">Ödeme kaydı bulunamadı.</td></tr>
                 )}
-                {odemeler.map((o) => (
-                  <tr key={o.id} className="border-t border-gray-50">
-                    <td className="px-4 py-2">{new Date(o.tarih).toLocaleDateString('tr-TR')}</td>
-                    {faturaDigerleri.length > 0 && (
-                      <td className="px-4 py-2 text-purple-700">{o.ogrenciler?.ad_soyad || adSoyadBul(o.ogrenci_id)}</td>
-                    )}
-                    <td className="px-4 py-2">{o.kalem || '—'}</td>
-                    <td className="px-4 py-2 font-medium">{paraFormat(o.tutar)}</td>
-                    {isYonetici && (
-                      <td className="px-4 py-2 text-right whitespace-nowrap space-x-3">
-                        {/* ÖNEMLİ: Fatura Ortağı ile birleşik görünümde bu liste
-                            İKİ öğrencinin ödemelerini birden gösterebilir — makbuz
-                            linki seçili öğrenci (seciliId) yerine HER ZAMAN o
-                            ödemenin GERÇEK sahibi olan o.ogrenci_id'yi kullanmalı,
-                            yoksa partnerin ödemesi için yanlış öğrenci adına (ya da
-                            boş) bir makbuz üretilirdi. */}
-                        <Link
-                          to={`/makbuz-gun/${o.ogrenci_id}/${gunAnahtari(o.tarih)}`}
-                          target="_blank"
-                          className="text-blue text-sm hover:underline"
-                        >
-                          Makbuz Yazdır
-                        </Link>
-                        <button
-                          onClick={() => makbuzWhatsappGonder(o)}
-                          disabled={makbuzGonderiliyor === `${o.ogrenci_id}-${gunAnahtari(o.tarih)}`}
-                          className="text-green-600 text-sm hover:underline disabled:opacity-50"
-                        >
-                          {makbuzGonderiliyor === `${o.ogrenci_id}-${gunAnahtari(o.tarih)}` ? 'Gönderiliyor...' : "WhatsApp'tan Gönder"}
-                        </button>
-                        <button onClick={() => odemeSil(o)} className="text-red-500 text-sm hover:underline">
-                          Sil
-                        </button>
-                      </td>
-                    )}
-                  </tr>
-                ))}
+                {odemeler.map((o) => {
+                  // WhatsApp butonlarının hangisinin (anne/baba) görüneceğini
+                  // belirlemek için ödemenin GERÇEK sahibinin (o.ogrenci_id —
+                  // birleşik görünümde partnerin ödemesi olabilir) telefon
+                  // kayıtlarına bakıyoruz.
+                  const sahibi = ogrenciler.find((x) => x.id === o.ogrenci_id)
+                  const anneVarMi = !!telefonNormallestir(sahibi?.anne_telefon)
+                  const babaVarMi = !!telefonNormallestir(sahibi?.baba_telefon)
+                  const gun = gunAnahtari(o.tarih)
+                  return (
+                    <tr key={o.id} className="border-t border-gray-50">
+                      <td className="px-4 py-2">{new Date(o.tarih).toLocaleDateString('tr-TR')}</td>
+                      {faturaDigerleri.length > 0 && (
+                        <td className="px-4 py-2 text-purple-700">{o.ogrenciler?.ad_soyad || adSoyadBul(o.ogrenci_id)}</td>
+                      )}
+                      <td className="px-4 py-2">{o.kalem || '—'}</td>
+                      <td className="px-4 py-2 font-medium">{paraFormat(o.tutar)}</td>
+                      {isYonetici && (
+                        <td className="px-4 py-2 text-right whitespace-nowrap space-x-3">
+                          {/* ÖNEMLİ: Fatura Ortağı ile birleşik görünümde bu liste
+                              İKİ öğrencinin ödemelerini birden gösterebilir — makbuz
+                              linki seçili öğrenci (seciliId) yerine HER ZAMAN o
+                              ödemenin GERÇEK sahibi olan o.ogrenci_id'yi kullanmalı,
+                              yoksa partnerin ödemesi için yanlış öğrenci adına (ya da
+                              boş) bir makbuz üretilirdi. */}
+                          <Link
+                            to={`/makbuz-gun/${o.ogrenci_id}/${gun}`}
+                            target="_blank"
+                            className="text-blue text-sm hover:underline"
+                          >
+                            Makbuz Yazdır
+                          </Link>
+                          {anneVarMi && (
+                            <button
+                              onClick={() => makbuzWhatsappGonder(o, 'anne')}
+                              disabled={makbuzGonderiliyor === `${o.ogrenci_id}-${gun}-anne`}
+                              className="text-green-600 text-sm hover:underline disabled:opacity-50"
+                            >
+                              {makbuzGonderiliyor === `${o.ogrenci_id}-${gun}-anne` ? 'Gönderiliyor...' : 'Anneye Gönder'}
+                            </button>
+                          )}
+                          {babaVarMi && (
+                            <button
+                              onClick={() => makbuzWhatsappGonder(o, 'baba')}
+                              disabled={makbuzGonderiliyor === `${o.ogrenci_id}-${gun}-baba`}
+                              className="text-green-600 text-sm hover:underline disabled:opacity-50"
+                            >
+                              {makbuzGonderiliyor === `${o.ogrenci_id}-${gun}-baba` ? 'Gönderiliyor...' : 'Babaya Gönder'}
+                            </button>
+                          )}
+                          <button onClick={() => odemeSil(o)} className="text-red-500 text-sm hover:underline">
+                            Sil
+                          </button>
+                        </td>
+                      )}
+                    </tr>
+                  )
+                })}
               </tbody>
             </table>
           </div>
