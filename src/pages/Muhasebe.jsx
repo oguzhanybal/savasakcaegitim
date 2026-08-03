@@ -15,7 +15,10 @@ import {
   fazlaOdemeleriHesapla,
   ogrenciSatirlariHesapla,
   sonOdemeleriGrupSiniriylaKes,
+  telefonNormallestir,
+  makbuzWhatsappMesajiOlustur,
 } from '../lib/ekstreHesap'
+import { makbuzPdfOlustur } from '../lib/pdfOlustur'
 
 function paraFormat(n) {
   return new Intl.NumberFormat('tr-TR', { style: 'currency', currency: 'TRY' }).format(n || 0)
@@ -622,6 +625,11 @@ export default function Muhasebe() {
   const [aylikBorclar, setAylikBorclar] = useState([])
   const [odemeler, setOdemeler] = useState([])
   const [bireBirDersleri, setBireBirDersleri] = useState([])
+  // "WhatsApp'tan Gönder" tıklanınca PDF hazırlanıp Storage'a yüklenene kadar
+  // geçen süre için — `${ogrenciId}-${gunAnahtari}` şeklinde o an işlemde
+  // olan tek satırın anahtarını tutar (Toplu Ekstre'deki "gonderiliyor" ile
+  // aynı desen).
+  const [makbuzGonderiliyor, setMakbuzGonderiliyor] = useState(null)
   const [loading, setLoading] = useState(true)
   // Herhangi bir öğrenci seçilmeden ÖNCE, giriş ekranında "en son kim ne
   // ödedi" görülsün diye tüm öğrencilerin son ödemelerini ayrıca tutuyoruz
@@ -782,6 +790,90 @@ export default function Muhasebe() {
     const { error } = await supabase.from('odemeler').delete().eq('id', o.id)
     if (error) alert('Hata: ' + error.message)
     else veriyiYenile()
+  }
+
+  // WhatsApp'a giden PDF linkinin okunmaz derecede uzun olmaması için (Toplu
+  // Ekstre'deki AYNI çözüm) — gerçek linki bir veritabanı satırının arkasına
+  // saklayıp yerine kısa bir kod gönderiyoruz.
+  function kisaKodUret() {
+    const harfler = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789'
+    let kod = ''
+    for (let i = 0; i < 8; i++) kod += harfler[Math.floor(Math.random() * harfler.length)]
+    return kod
+  }
+
+  // "WhatsApp'tan Gönder" tıklanınca: "Makbuz Yazdır" (MakbuzGunluk.jsx) ile
+  // BİREBİR AYNI gün-birleştirme mantığı — Fatura Ortağı varsa (ör. ikiz
+  // kardeşler) o günkü grubun TÜM ödemeleri tek makbuzda toplanır, partneri
+  // olmayan bir öğrenci için grup tek kişiliktir. "odemeler" state'i zaten bu
+  // grubun (seciliId'nin fatura grubunun) tüm kayıtlarını içeriyor (bkz.
+  // veriyiYenile), o yüzden ekstra bir sorguya gerek yok.
+  async function makbuzWhatsappGonder(o) {
+    const gun = gunAnahtari(o.tarih)
+    const anahtar = `${o.ogrenci_id}-${gun}`
+    const kendisi = ogrenciler.find((x) => x.id === o.ogrenci_id)
+    if (!kendisi) {
+      alert('Öğrenci bulunamadı.')
+      return
+    }
+    const efektifId = kendisi.fatura_sahibi_id || kendisi.id
+    const grupOgrencileri = ogrenciler.filter((x) => x.id === efektifId || x.fatura_sahibi_id === efektifId)
+    const grupIdleri = grupOgrencileri.length > 0 ? grupOgrencileri.map((x) => x.id) : [kendisi.id]
+    const ogrenciAdiBirlesik = (grupOgrencileri.length > 0 ? grupOgrencileri : [kendisi]).map((x) => x.ad_soyad).join(' ve ')
+    // Makbuz her zaman ödemenin gerçek sahibinin (kendisi) telefonuna gider —
+    // grup içindeki tüm öğrencilerin anne/baba telefonu farklı olabilir.
+    const telefon = telefonNormallestir(kendisi.anne_telefon) || telefonNormallestir(kendisi.baba_telefon)
+    if (!telefon) {
+      alert('Bu öğrencinin anne/baba telefonu kayıtlı değil.')
+      return
+    }
+    setMakbuzGonderiliyor(anahtar)
+    try {
+      const gununKalemleri = odemeler.filter((x) => grupIdleri.includes(x.ogrenci_id) && gunAnahtari(x.tarih) === gun)
+      if (gununKalemleri.length === 0) throw new Error('Bu tarihte ödeme kaydı bulunamadı.')
+      const ogrenciSutunuGoster = grupIdleri.length > 1
+      const toplam = gununKalemleri.reduce((t, x) => t + Number(x.tutar), 0)
+      const tarihMetni = new Date(`${gun}T12:00:00`).toLocaleDateString('tr-TR', {
+        day: '2-digit',
+        month: 'long',
+        year: 'numeric',
+      })
+      const pdfBlob = await makbuzPdfOlustur({
+        ogrenciAdi: ogrenciAdiBirlesik,
+        tarihMetni,
+        odemeler: gununKalemleri,
+        toplam,
+        ogrenciSutunuGoster,
+        adBul: adSoyadBul,
+      })
+      const dosyaYolu = `${o.ogrenci_id}/${gun}.pdf`
+      const { error: yuklemeHatasi } = await supabase.storage
+        .from('makbuz-pdf')
+        .upload(dosyaYolu, pdfBlob, { upsert: true, contentType: 'application/pdf' })
+      if (yuklemeHatasi) throw yuklemeHatasi
+      const kod = kisaKodUret()
+      const { error: kisaLinkHatasi } = await supabase
+        .from('kisa_linkler')
+        .insert({ kod, bucket: 'makbuz-pdf', dosya_yolu: dosyaYolu, baslik: `${ogrenciAdiBirlesik} — ${tarihMetni} Makbuzu` })
+      if (kisaLinkHatasi) throw kisaLinkHatasi
+      const kisaLink = `https://savasakcaportal.com/api/e?k=${kod}`
+      const mesaj = makbuzWhatsappMesajiOlustur({
+        ogrenciAdi: ogrenciAdiBirlesik,
+        tarihMetni,
+        kalemler: gununKalemleri,
+        toplam,
+        pdfLink: kisaLink,
+      })
+      window.open(`https://wa.me/${telefon}?text=${encodeURIComponent(mesaj)}`, '_blank')
+    } catch (err) {
+      alert(
+        'Makbuz gönderilirken bir hata oluştu: ' +
+          (err.message || String(err)) +
+          '\n\nEğer "makbuz-pdf" bucket veya "kisa_linkler" tablosu bulunamadı gibi bir hata görüyorsanız, bu özelliğin kurulumu için verilen SQL dosyasını Supabase\'te çalıştırmanız gerekiyor.'
+      )
+    } finally {
+      setMakbuzGonderiliyor(null)
+    }
   }
 
   async function sozlesmeSil(s) {
@@ -1358,6 +1450,7 @@ export default function Muhasebe() {
               {isYonetici && (
                 <p className="text-xs text-gray-400 mt-0.5">
                   "Makbuz Yazdır" o günün TÜM kalemlerini tek makbuzda toplu gösterir — her kalem için ayrı ayrı basmanıza gerek yok.
+                  "WhatsApp'tan Gönder" de AYNI mantıkla o günün tüm kalemlerini TEK bir PDF makbuzda birleştirip veliye gönderir.
                   {faturaDigerleri.length > 0 && ' Fatura Ortağı ile birleşik görünümde, makbuz her zaman ödemenin KENDİ öğrencisi adına kesilir.'}
                 </p>
               )}
@@ -1399,6 +1492,13 @@ export default function Muhasebe() {
                         >
                           Makbuz Yazdır
                         </Link>
+                        <button
+                          onClick={() => makbuzWhatsappGonder(o)}
+                          disabled={makbuzGonderiliyor === `${o.ogrenci_id}-${gunAnahtari(o.tarih)}`}
+                          className="text-green-600 text-sm hover:underline disabled:opacity-50"
+                        >
+                          {makbuzGonderiliyor === `${o.ogrenci_id}-${gunAnahtari(o.tarih)}` ? 'Gönderiliyor...' : "WhatsApp'tan Gönder"}
+                        </button>
                         <button onClick={() => odemeSil(o)} className="text-red-500 text-sm hover:underline">
                           Sil
                         </button>
