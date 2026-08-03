@@ -1,0 +1,236 @@
+import { useEffect, useMemo, useState } from 'react'
+import { supabase } from '../lib/supabase'
+import { useAuth } from '../lib/AuthContext'
+import { saatGoster } from '../lib/saatFormat'
+
+// ============================================================================
+// YOKLAMALARIM — veli/öğrenci için, SADECE KENDİ çocuğunun/kendisinin sınıf
+// dersi yoklama geçmişini gösteren salt-okunur sayfa. Yoklama Raporu (tüm
+// öğrenciler/sınıflar) ve Öğrenci Zaman Çizelgesi (tam hikaye) sayfaları
+// sadece yönetici/öğretmene açık — bu sayfa onların veli/öğrenci karşılığı,
+// ama SADECE kendi öğrencisiyle sınırlı. Erişim App.jsx'te izinliRoller
+// ['veli','ogrenci'] ile kısıtlanıyor; veri tarafında da (Karnem.jsx/
+// Muhasebe.jsx/DersProgrami.jsx'teki AYNI kanıtlanmış yöntem) sunucudaki
+// RLS'ye körü körüne güvenmek yerine istemci tarafında da sadece
+// veli_profile_id/ogrenci_profile_id kendisiyle eşleşen öğrenci(ler) alınıyor.
+// ============================================================================
+
+function tarihUzunFormat(tarihStr) {
+  if (!tarihStr) return '—'
+  return new Date(tarihStr + 'T12:00:00').toLocaleDateString('tr-TR', {
+    day: '2-digit',
+    month: 'long',
+    year: 'numeric',
+  })
+}
+
+function ayBasligi(tarihStr) {
+  if (!tarihStr) return ''
+  return new Date(tarihStr + 'T12:00:00')
+    .toLocaleDateString('tr-TR', { month: 'long', year: 'numeric' })
+    .replace(/^./, (c) => c.toUpperCase())
+}
+
+function DevamsizlikOzeti({ kayitlar }) {
+  const genelGeldi = kayitlar.filter((y) => y.geldi).length
+  const genelGelmedi = kayitlar.length - genelGeldi
+  const genelOran = kayitlar.length > 0 ? Math.round((genelGelmedi / kayitlar.length) * 100) : 0
+
+  const ogretmenMap = new Map()
+  for (const y of kayitlar) {
+    const ad = y.ders_programi?.profiles?.ad_soyad || 'Bilinmeyen öğretmen'
+    if (!ogretmenMap.has(ad)) ogretmenMap.set(ad, { geldi: 0, gelmedi: 0 })
+    const s = ogretmenMap.get(ad)
+    if (y.geldi) s.geldi += 1
+    else s.gelmedi += 1
+  }
+  const ogretmenListesi = [...ogretmenMap.entries()].sort((a, b) => a[0].localeCompare(b[0], 'tr'))
+
+  return (
+    <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5 mb-6">
+      <h2 className="font-semibold text-gray-700 mb-3">Devamsızlık Özeti</h2>
+      <div className="flex flex-wrap gap-4 mb-4 text-sm">
+        <span className="text-gray-500">
+          Toplam <span className="font-semibold text-gray-800">{kayitlar.length}</span> ders
+        </span>
+        <span className="text-green-600 font-semibold">{genelGeldi} geldi</span>
+        <span className="text-red-500 font-semibold">{genelGelmedi} gelmedi</span>
+        {kayitlar.length > 0 && (
+          <span className={`font-semibold ${genelOran > 20 ? 'text-red-500' : 'text-gray-400'}`}>
+            (%{genelOran} devamsızlık)
+          </span>
+        )}
+      </div>
+      {ogretmenListesi.length > 0 && (
+        <div className="divide-y divide-gray-50 border-t border-gray-100">
+          {ogretmenListesi.map(([ad, s]) => {
+            const toplam = s.geldi + s.gelmedi
+            const oran = toplam > 0 ? Math.round((s.gelmedi / toplam) * 100) : 0
+            return (
+              <div key={ad} className="py-2.5 flex items-center justify-between gap-3 flex-wrap">
+                <span className="font-medium text-gray-800 text-sm">{ad}</span>
+                <span className="text-sm text-gray-500">
+                  <span className="text-red-500 font-semibold">{s.gelmedi}</span>/{toplam} derse gelmedi{' '}
+                  <span className={`font-semibold ${oran > 20 ? 'text-red-500' : 'text-gray-400'}`}>(%{oran})</span>
+                </span>
+              </div>
+            )
+          })}
+        </div>
+      )}
+    </div>
+  )
+}
+
+export default function Yoklamalarim() {
+  const { profile } = useAuth()
+  const [ogrenciler, setOgrenciler] = useState([])
+  const [seciliId, setSeciliId] = useState('')
+  const [kayitlar, setKayitlar] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [ilkYuklemeTamam, setIlkYuklemeTamam] = useState(false)
+
+  useEffect(() => {
+    if (!profile) return
+    supabase
+      .from('ogrenciler')
+      .select('id, ad_soyad, veli_profile_id, ogrenci_profile_id')
+      .order('ad_soyad')
+      .then(({ data }) => {
+        const liste = (data || []).filter(
+          (o) => o.veli_profile_id === profile.id || o.ogrenci_profile_id === profile.id
+        )
+        setOgrenciler(liste)
+        if (liste.length > 0) {
+          setSeciliId(liste[0].id)
+        } else {
+          setIlkYuklemeTamam(true)
+          setLoading(false)
+        }
+      })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [profile?.id])
+
+  useEffect(() => {
+    if (!seciliId) return
+    setLoading(true)
+    supabase
+      .from('yoklama')
+      .select(
+        '*, ders_programi(ders_adi, baslangic_saat, bitis_saat, siniflar(ad), profiles:ogretmen_profile_id(ad_soyad))'
+      )
+      .eq('ogrenci_id', seciliId)
+      .order('tarih', { ascending: false })
+      .then(({ data, error }) => {
+        if (error) console.error('Yoklama sorgusu hatası:', error.message)
+        setKayitlar(data || [])
+        setIlkYuklemeTamam(true)
+        setLoading(false)
+      })
+  }, [seciliId])
+
+  const seciciGoster = ogrenciler.length > 1
+  const seciliOgrenci = ogrenciler.find((o) => o.id === seciliId)
+
+  // Kronolojik listeyi ay başlıklarına göre grupluyoruz — tek bir uzun tarih
+  // listesi yerine (Ders Hatırlatma paneli / Giriş Kayıtları'ndaki aynı
+  // "gruplayıp ayır" mantığı), okunması çok daha kolay oluyor.
+  const aylikGruplar = useMemo(() => {
+    const gruplar = new Map()
+    for (const k of kayitlar) {
+      const anahtar = (k.tarih || '').slice(0, 7)
+      if (!gruplar.has(anahtar)) gruplar.set(anahtar, [])
+      gruplar.get(anahtar).push(k)
+    }
+    return [...gruplar.entries()].sort((a, b) => b[0].localeCompare(a[0]))
+  }, [kayitlar])
+
+  return (
+    <div className="max-w-3xl mx-auto">
+      <div className="flex items-center justify-between gap-3 flex-wrap mb-6">
+        <h1 className="text-xl font-bold text-navy">Yoklamalarım</h1>
+        {seciciGoster && (
+          <select
+            value={seciliId}
+            onChange={(e) => setSeciliId(e.target.value)}
+            className="border border-gray-200 rounded-lg px-3 py-2 text-sm"
+          >
+            {ogrenciler.map((o) => (
+              <option key={o.id} value={o.id}>
+                {o.ad_soyad}
+              </option>
+            ))}
+          </select>
+        )}
+      </div>
+
+      {loading && !ilkYuklemeTamam && <p className="text-gray-400">Yükleniyor...</p>}
+
+      {ilkYuklemeTamam && ogrenciler.length === 0 && (
+        <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6 text-center text-gray-500">
+          Bağlı bir öğrenci kaydı bulunamadı.
+        </div>
+      )}
+
+      {ilkYuklemeTamam && ogrenciler.length > 0 && (
+        <>
+          {seciliOgrenci && !seciciGoster && (
+            <p className="text-sm text-gray-500 mb-4">{seciliOgrenci.ad_soyad}</p>
+          )}
+
+          {kayitlar.length === 0 ? (
+            <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6 text-center text-gray-500">
+              Henüz kaydedilmiş bir sınıf dersi yoklaması yok.
+            </div>
+          ) : (
+            <>
+              <DevamsizlikOzeti kayitlar={kayitlar} />
+
+              <div className="space-y-6">
+                {aylikGruplar.map(([ay, ayKayitlari]) => (
+                  <div key={ay}>
+                    <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2 px-1">
+                      {ayBasligi(ayKayitlari[0]?.tarih)}
+                    </h3>
+                    <div className="bg-white rounded-2xl border border-gray-100 shadow-sm divide-y divide-gray-50 overflow-hidden">
+                      {ayKayitlari.map((k) => (
+                        <div
+                          key={k.id}
+                          className="px-4 py-3 flex flex-col sm:flex-row sm:items-center justify-between gap-2"
+                        >
+                          <div className="min-w-0">
+                            <p className="font-medium text-gray-800 break-words">
+                              {k.ders_programi?.ders_adi || k.ders_programi?.siniflar?.ad || 'Ders'}
+                            </p>
+                            <p className="text-xs text-gray-400">
+                              {k.ders_programi?.profiles?.ad_soyad}
+                              {k.ders_programi?.baslangic_saat && (
+                                <>
+                                  {k.ders_programi?.profiles?.ad_soyad ? ' · ' : ''}
+                                  {saatGoster(k.ders_programi.baslangic_saat)}
+                                  {k.ders_programi.bitis_saat ? ` – ${saatGoster(k.ders_programi.bitis_saat)}` : ''}
+                                </>
+                              )}
+                            </p>
+                            <p className="text-sm text-gray-500">{tarihUzunFormat(k.tarih)}</p>
+                          </div>
+                          <span
+                            className={`text-xs font-semibold px-2.5 py-1 rounded-full self-start sm:self-center shrink-0 ${
+                              k.geldi ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-600'
+                            }`}
+                          >
+                            {k.geldi ? 'Geldi' : 'Gelmedi'}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </>
+          )}
+        </>
+      )}
+    </div>
+  )
+}
