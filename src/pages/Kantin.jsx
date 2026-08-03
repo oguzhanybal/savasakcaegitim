@@ -561,6 +561,8 @@ export default function Kantin() {
   // öğrencinin ne kadar borcu olduğunu görebilsin diye.
   const [ogrenciBorcu, setOgrenciBorcu] = useState(null) // { kalanBakiye } | null
   const [borcYukleniyor, setBorcYukleniyor] = useState(false)
+  // Ürün ızgarasının üstündeki arama kutusu — bkz. gorunenUrunler.
+  const [urunArama, setUrunArama] = useState('')
   const [adet, setAdet] = useState(1)
   const [ekleniyorUrunId, setEkleniyorUrunId] = useState(null)
   // Butona hızlı hızlı basılınca ya da barkod arka arkaya okununca birden
@@ -726,6 +728,16 @@ export default function Kantin() {
   }, [ogrenciler, ogrenciArama])
 
   const aktifUrunler = urunler.filter((u) => u.aktif)
+
+  // Ürün ızgarasında arama — kantin görevlisi bazen 10'larca ürün arasından
+  // tek bir şeyi bulmak için aşağı kaydırmak zorunda kalıyordu; öğrenci arama
+  // kutusundaki (gorunenOgrenciler) AYNI basit "içeriyor mu" mantığı.
+  const gorunenUrunler = useMemo(() => {
+    const aranan = urunArama.trim().toLocaleLowerCase('tr-TR')
+    if (!aranan) return aktifUrunler
+    return aktifUrunler.filter((u) => u.ad.toLocaleLowerCase('tr-TR').includes(aranan))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [urunler, urunArama])
 
   useEffect(() => {
     aktifUrunlerRef.current = aktifUrunler
@@ -1324,8 +1336,29 @@ export default function Kantin() {
           </div>
         </div>
 
+        <div className="relative mb-2">
+          <input
+            type="text"
+            value={urunArama}
+            onChange={(e) => setUrunArama(e.target.value)}
+            placeholder="Ürün ara..."
+            autoComplete="off"
+            className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue"
+          />
+          {urunArama && (
+            <button
+              type="button"
+              onClick={() => setUrunArama('')}
+              className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 text-sm"
+              aria-label="Aramayı temizle"
+            >
+              ✕
+            </button>
+          )}
+        </div>
+
         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2">
-          {aktifUrunler.map((u) => (
+          {gorunenUrunler.map((u) => (
             <button
               key={u.id}
               type="button"
@@ -1339,6 +1372,9 @@ export default function Kantin() {
               <p className="text-xs text-gray-500">{paraFormat(u.fiyat)}</p>
             </button>
           ))}
+          {aktifUrunler.length > 0 && gorunenUrunler.length === 0 && (
+            <p className="text-sm text-gray-400 col-span-full">Eşleşen ürün bulunamadı.</p>
+          )}
           {aktifUrunler.length === 0 && (
             <p className="text-sm text-gray-400 col-span-full">
               {isYonetici ? 'Henüz ürün eklenmedi, aşağıdaki "Ürün Yönetimi"nden ekleyin.' : 'Henüz ürün eklenmedi.'}
