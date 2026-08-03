@@ -117,7 +117,7 @@ export default function Yoklamalarim() {
     supabase
       .from('yoklama')
       .select(
-        '*, ders_programi(ders_adi, baslangic_saat, bitis_saat, siniflar(ad), profiles:ogretmen_profile_id(ad_soyad))'
+        '*, ders_programi(ders_adi, baslangic_saat, bitis_saat, siniflar(ad), profiles:ogretmen_profile_id(ad_soyad, brans))'
       )
       .eq('ogrenci_id', seciliId)
       .order('tarih', { ascending: false })
@@ -199,19 +199,35 @@ export default function Yoklamalarim() {
                           className="px-4 py-3 flex flex-col sm:flex-row sm:items-center justify-between gap-2"
                         >
                           <div className="min-w-0">
-                            <p className="font-medium text-gray-800 break-words">
-                              {k.ders_programi?.ders_adi || k.ders_programi?.siniflar?.ad || 'Ders'}
-                            </p>
-                            <p className="text-xs text-gray-400">
-                              {k.ders_programi?.profiles?.ad_soyad}
-                              {k.ders_programi?.baslangic_saat && (
+                            {(() => {
+                              // Başlıkta önce ders adı, o da yoksa öğretmenin
+                              // branşı gösterilir (ör. "Türkçe/Edebiyat") —
+                              // Ders Programı sayfasındaki AYNI kural.
+                              // sinifProgramiGoster'daki gibi sınıf adı öne
+                              // çıkmıyor, öğretmen adıyla birlikte küçük ve
+                              // silik bir alt satırda gösteriliyor.
+                              const baslik =
+                                k.ders_programi?.ders_adi || k.ders_programi?.profiles?.brans || k.ders_programi?.siniflar?.ad || 'Ders'
+                              const sinifAdiGoster = k.ders_programi?.siniflar?.ad && k.ders_programi.siniflar.ad !== baslik
+                              return (
                                 <>
-                                  {k.ders_programi?.profiles?.ad_soyad ? ' · ' : ''}
-                                  {saatGoster(k.ders_programi.baslangic_saat)}
-                                  {k.ders_programi.bitis_saat ? ` – ${saatGoster(k.ders_programi.bitis_saat)}` : ''}
+                                  <p className="font-medium text-gray-800 break-words">{baslik}</p>
+                                  <p className="text-xs text-gray-400">
+                                    {sinifAdiGoster ? k.ders_programi.siniflar.ad : ''}
+                                    {k.ders_programi?.profiles?.ad_soyad
+                                      ? `${sinifAdiGoster ? ' · ' : ''}${k.ders_programi.profiles.ad_soyad}`
+                                      : ''}
+                                    {k.ders_programi?.baslangic_saat && (
+                                      <>
+                                        {sinifAdiGoster || k.ders_programi?.profiles?.ad_soyad ? ' · ' : ''}
+                                        {saatGoster(k.ders_programi.baslangic_saat)}
+                                        {k.ders_programi.bitis_saat ? ` – ${saatGoster(k.ders_programi.bitis_saat)}` : ''}
+                                      </>
+                                    )}
+                                  </p>
                                 </>
-                              )}
-                            </p>
+                              )
+                            })()}
                             <p className="text-sm text-gray-500">{tarihUzunFormat(k.tarih)}</p>
                           </div>
                           <span

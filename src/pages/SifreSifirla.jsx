@@ -5,7 +5,7 @@ const ROL_ETIKET = {
   ogretmen: 'Öğretmen',
   veli: 'Veli',
   ogrenci: 'Öğrenci',
-  kantin: 'Kantin Görevlisi',
+  kantin: 'Kantin',
 }
 
 const ROL_SIRASI = ['yonetici', 'ogretmen', 'veli', 'ogrenci', 'kantin']

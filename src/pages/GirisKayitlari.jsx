@@ -6,7 +6,7 @@ const ROL_ETIKET = {
   ogretmen: 'Öğretmen',
   veli: 'Veli',
   ogrenci: 'Öğrenci',
-  kantin: 'Kantin Görevlisi',
+  kantin: 'Kantin',
   zil: 'Zil Ekranı',
 }
 
