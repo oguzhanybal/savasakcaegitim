@@ -61,30 +61,39 @@ export function zilSesiCal() {
 }
 
 // ============================================================================
-// ÖZEL ZİL SESİ — Öğrenci, Öğretmen VE Çıkış zillerinin ÜÇÜ DE aynı özel sesi
-// kullanır. Öncelik sırası:
-//   1) Yönetici Zil Sistemi > "Zil Sesi" kartından Supabase Storage'a
-//      ("zil-sesi" bucket) kendi yüklediği özel dosya varsa O çalar — kodla/
-//      GitHub'la hiç uğraşmadan istediği zaman değiştirebilsin diye.
-//   2) Özel bir dosya yüklenmemişse, projenin KÖK dizinindeki (src'nin içi
-//      DEĞİL) "public" klasöründeki "cikis-zili.mp3" (kurumun kendi MEB zil
-//      sesi kesiti / öntanımlı dosya) çalar.
+// ÖZEL ZİL SESİ — Öğrenci, Öğretmen ve Çıkış zillerinin HER BİRİ kendi ayrı
+// özel sesini kullanabilir (ör. öğretmen zili farklı, öğrenci/çıkış farklı
+// çalabilsin diye). Her tür Storage'da kendi sabit dosya adıyla saklanır:
+// "aktif-ogrenci.<uzanti>", "aktif-ogretmen.<uzanti>", "aktif-cikis.<uzanti>".
+// Öncelik sırası (tür bazında):
+//   1) Yönetici Zil Sistemi > "Zil Sesi" kartından o tür için Supabase
+//      Storage'a ("zil-sesi" bucket) kendi yüklediği özel dosya varsa O çalar
+//      — kodla/GitHub'la hiç uğraşmadan istediği zaman değiştirebilsin diye.
+//   2) O tür için özel bir dosya yüklenmemişse, projenin KÖK dizinindeki
+//      (src'nin içi DEĞİL) "public" klasöründeki "cikis-zili.mp3" (kurumun
+//      kendi MEB zil sesi kesiti / ortak öntanımlı dosya) çalar.
 //   3) İkisi de yoksa veya tarayıcı hiçbirini çalıştıramazsa, standart
 //      sentetik "ding-dong" sesine (zilSesiCal) geri döner.
 // ============================================================================
 
-// Storage'daki güncel özel zil dosyasının genel (public) URL'ini getirir —
-// dosya adı sabit değil (yüklenen dosyanın uzantısını koruyoruz), bu yüzden
-// önce bucket'ı listeleyip "aktif" ile başlayan dosyayı buluyoruz. Özel dosya
-// hiç yüklenmemişse (ya da geçici bir ağ hatası olursa) sessizce null döner —
-// çağıran taraf o zaman bir sonraki kademeye (yerel dosya) geçer. Sondaki
-// "?t=" cache-kırıcı, yönetici sesi değiştirdikten hemen sonra tarayıcının
-// eski (önbelleğe alınmış) dosyayı çalmaya devam etmesini engelliyor.
-export async function aktifOzelZilUrlGetir() {
+// Geçerli zil türleri — Storage'daki dosya öneki bu değerlerle eşleşir.
+export const ZIL_TURLERI = ['ogrenci', 'ogretmen', 'cikis']
+
+// Storage'daki güncel özel zil dosyasının (belirli bir TÜR için) genel
+// (public) URL'ini getirir — dosya adı sabit değil (yüklenen dosyanın
+// uzantısını koruyoruz), bu yüzden önce bucket'ı "aktif-<tur>" önekiyle
+// listeleyip eşleşen dosyayı buluyoruz. O tür için özel dosya hiç
+// yüklenmemişse (ya da geçici bir ağ hatası olursa) sessizce null döner —
+// çağıran taraf o zaman bir sonraki kademeye (ortak yerel dosya) geçer.
+// Sondaki "?t=" cache-kırıcı, yönetici sesi değiştirdikten hemen sonra
+// tarayıcının eski (önbelleğe alınmış) dosyayı çalmaya devam etmesini
+// engelliyor.
+export async function aktifOzelZilUrlGetir(tur) {
   try {
-    const { data, error } = await supabase.storage.from('zil-sesi').list('', { search: 'aktif' })
+    const onek = `aktif-${tur}`
+    const { data, error } = await supabase.storage.from('zil-sesi').list('', { search: onek })
     if (error || !data) return null
-    const dosya = data.find((d) => d.name.startsWith('aktif'))
+    const dosya = data.find((d) => d.name.startsWith(onek))
     if (!dosya) return null
     const { data: pub } = supabase.storage.from('zil-sesi').getPublicUrl(dosya.name)
     return pub?.publicUrl ? `${pub.publicUrl}?t=${Date.now()}` : null
@@ -119,8 +128,15 @@ function siraylaCal(urlListesi, index = 0) {
   }
 }
 
-export function cikisZiliCal() {
-  aktifOzelZilUrlGetir().then((ozelUrl) => {
+// tur: 'ogrenci' | 'ogretmen' | 'cikis' — hangi zilin çaldığını belirtir,
+// önce o türe özel yüklenmiş sesi arar. tur verilmezse (ör. eski kod ya da
+// genel bir "test" çağrısı) ortak öntanımlı sese düşer.
+export function cikisZiliCal(tur) {
+  if (!tur) {
+    siraylaCal(['/cikis-zili.mp3'])
+    return
+  }
+  aktifOzelZilUrlGetir(tur).then((ozelUrl) => {
     siraylaCal([ozelUrl, '/cikis-zili.mp3'].filter(Boolean))
   })
 }
@@ -178,7 +194,11 @@ function manuelUrlDene(url, sonrakiAdim) {
   }
 }
 
-export function manuelZilCalBaslat(bittiginde) {
+// "Manuel Çal" belirli bir derse değil, genel amaçlı ani bir zil çalışına
+// bağlı olduğu için (ör. duyuru öncesi) varsayılan olarak Çıkış zili sesini
+// kullanır — bu, GitHub'la değiştirilen ortak öntanımlı sesle de en tutarlı
+// olan seçim.
+export function manuelZilCalBaslat(bittiginde, tur = 'cikis') {
   manuelTemizle() // önceki bir çalma varsa (callback tetiklemeden) sessizce temizle
   manuelBittiCallback = bittiginde || null
   const benimNeslim = ++manuelNesil
@@ -189,7 +209,7 @@ export function manuelZilCalBaslat(bittiginde) {
   }
   const yerelDosyayaGec = () => manuelUrlDene('/cikis-zili.mp3', sentetigeGec)
 
-  aktifOzelZilUrlGetir().then((ozelUrl) => {
+  aktifOzelZilUrlGetir(tur).then((ozelUrl) => {
     // Beklerken "Durdur"a basıldı ya da tekrar "Manuel Çal"a basıldıysa, bu
     // artık eski bir çağrı — hiçbir şey başlatma.
     if (benimNeslim !== manuelNesil) return
