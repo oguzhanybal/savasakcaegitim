@@ -25,6 +25,17 @@ export default function KantinFiyatListesi() {
 
   if (loading) return <p className="p-6 text-gray-400">Yükleniyor...</p>
 
+  // Liste TEK sayfaya, İKİ SÜTUN halinde sığsın diye burada ikiye bölünüyor —
+  // eskiden tarayıcının "Yaprak başına sayfa: 2" özelliğine güveniliyordu,
+  // ama o özellik başlığı (logo/isim) sadece SOL sayfada gösterip sağ tarafı
+  // başlıksız ve sola yaslanmış bırakıyordu. Artık sayfa kendi içinde zaten
+  // 2 sütunlu olarak tasarlandığı için yazdırırken "Yaprak başına sayfa"
+  // ayarını 1 (varsayılan) bırakmak yeterli — liste tek, ortalanmış bir
+  // sayfada çıkıyor.
+  const yari = Math.ceil(urunler.length / 2)
+  const solSutun = urunler.slice(0, yari)
+  const sagSutun = urunler.slice(yari)
+
   return (
     <div className="min-h-screen bg-cream py-8 px-4">
       <style>{`
@@ -34,7 +45,7 @@ export default function KantinFiyatListesi() {
           tr { break-inside: avoid; page-break-inside: avoid; }
         }
       `}</style>
-      <div className="max-w-xl mx-auto">
+      <div className="max-w-3xl mx-auto">
         <div className="no-print flex items-center justify-between mb-4 flex-wrap gap-3">
           <Link to="/kantin" className="text-sm text-blue hover:underline">← Kantin'e Dön</Link>
           <button
@@ -65,26 +76,35 @@ export default function KantinFiyatListesi() {
             {urunler.length === 0 ? (
               <p className="text-sm text-gray-400">Kayıtlı ürün bulunamadı.</p>
             ) : (
-              <table className="w-full text-sm border border-gray-200 rounded-lg overflow-hidden">
-                <thead>
-                  <tr className="bg-navy text-white text-left">
-                    <th className="px-3 py-2 font-semibold">Ürün</th>
-                    <th className="px-3 py-2 font-semibold text-right">Fiyat</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {urunler.map((u, i) => (
-                    <tr key={u.id} className={i % 2 ? 'bg-gray-50' : ''}>
-                      <td className="px-3 py-2">{u.ad}</td>
-                      <td className="px-3 py-2 text-right font-medium">{paraFormat(u.fiyat)}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+              <div className="grid grid-cols-2 gap-6">
+                <UrunTablosu liste={solSutun} />
+                <UrunTablosu liste={sagSutun} />
+              </div>
             )}
           </div>
         </div>
       </div>
     </div>
+  )
+}
+
+function UrunTablosu({ liste }) {
+  return (
+    <table className="w-full text-sm border border-gray-200 rounded-lg overflow-hidden self-start">
+      <thead>
+        <tr className="bg-navy text-white text-left">
+          <th className="px-3 py-2 font-semibold">Ürün</th>
+          <th className="px-3 py-2 font-semibold text-right">Fiyat</th>
+        </tr>
+      </thead>
+      <tbody>
+        {liste.map((u, i) => (
+          <tr key={u.id} className={i % 2 ? 'bg-gray-50' : ''}>
+            <td className="px-3 py-2">{u.ad}</td>
+            <td className="px-3 py-2 text-right font-medium">{paraFormat(u.fiyat)}</td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
   )
 }
