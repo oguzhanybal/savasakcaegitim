@@ -776,14 +776,20 @@ export default function Kantin() {
       borcHesaplaVeGoster(ogrenciId)
       sonuc = { ok: true, mesaj }
     }
-    barkodInputRef.current?.focus()
+    // ÖNEMLİ: burada ARTIK barkod kutusuna otomatik odak verilMİYOR — eskiden
+    // her eklemeden sonra (ızgaradan tıklayarak eklense BİLE) barkod input'una
+    // odaklanılıyordu, bu da mobilde her satıştan sonra klavyenin istenmeden
+    // açılmasına sebep oluyordu. Odak artık SADECE gerçekten barkod okutarak
+    // ekleyen akışta (bkz. barkodOkutuldu) veriliyor — ızgaradan tıklayarak
+    // (gridTiklaEkle) ya da kamerayla ekleyen kantin görevlisi hiç etkilenmiyor.
     eklemeKilitliRef.current = false
     return sonuc
   }
 
   // Barkod okuyucu, tarattığı kodu klavyeden yazılmış gibi yazıp en sonunda
   // Enter'a basar — bu yüzden burada özel bir donanım/API entegrasyonu
-  // gerekmiyor, sadece bu input'un odakta kalması yeterli.
+  // gerekmiyor, sadece bu input'un odakta kalması yeterli. Odağı SADECE bu
+  // fonksiyon (gerçek barkod okutma akışı) veriyor — bkz. urunEkle'deki not.
   async function barkodOkutuldu(e) {
     e.preventDefault()
     const deger = barkodDeger.trim()
@@ -803,6 +809,7 @@ export default function Kantin() {
       return
     }
     await urunEkle(urun)
+    barkodInputRef.current?.focus()
   }
 
   // urunEkle her render'da yeniden oluşuyor (ogrenciId'yi kendi içinde okuyor);
@@ -1194,107 +1201,11 @@ export default function Kantin() {
           <p className="text-sm text-orange-600 mb-2">Önce yukarıdan bir öğrenci seçin.</p>
         )}
 
-        <div className="flex flex-wrap items-end gap-3 mb-4">
-          <form onSubmit={barkodOkutuldu} className="flex-1 min-w-[240px]">
-            <label className="block text-sm font-medium text-gray-700 mb-1">Barkod Okut</label>
-            <input
-              ref={barkodInputRef}
-              type="text"
-              value={barkodDeger}
-              onChange={(e) => setBarkodDeger(e.target.value)}
-              placeholder="USB okuyucuyla okutun (ya da elle yazıp Enter'a basın)"
-              autoComplete="off"
-              className="w-full max-w-sm px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue"
-            />
-          </form>
-          {!kameraAcik ? (
-            <button
-              type="button"
-              onClick={kamerayiAc}
-              disabled={kameraYukleniyor}
-              className="px-4 py-2 rounded-lg text-sm font-semibold border border-gray-200 text-gray-700 hover:bg-gray-50 disabled:opacity-50"
-            >
-              {kameraYukleniyor ? 'Kamera açılıyor...' : '📷 Kamerayla Okut'}
-            </button>
-          ) : (
-            <button
-              type="button"
-              onClick={kamerayiKapat}
-              className="px-4 py-2 rounded-lg text-sm font-semibold border border-red-200 text-red-600 hover:bg-red-50"
-            >
-              Kamerayı Kapat
-            </button>
-          )}
-        </div>
-
-        {kameraAcik && (
-          <div className="mb-4">
-            <div
-              className="relative w-full max-w-sm rounded-lg overflow-hidden border border-gray-200 bg-black"
-              style={{ minHeight: 220 }}
-            >
-              {kameraModu === 'algilayici' ? (
-                <video
-                  ref={videoElRef}
-                  className="absolute inset-0 w-full h-full object-cover"
-                  playsInline
-                  muted
-                />
-              ) : (
-                // Quagga sadece bu iç kutunun içine video/canvas ekliyor — üstteki
-                // bildirim ayrı bir katman olduğu için birbirine karışmıyor.
-                <div ref={kameraKutusuRef} className="absolute inset-0" />
-              )}
-
-              {kameraBildirim && (
-                <>
-                  <div
-                    className={`absolute inset-0 pointer-events-none transition-colors ${
-                      kameraBildirim.tur === 'basari'
-                        ? 'bg-green-500/30'
-                        : kameraBildirim.tur === 'hata'
-                        ? 'bg-red-500/30'
-                        : 'bg-black/10'
-                    }`}
-                  />
-                  <div
-                    className={`absolute inset-x-0 bottom-0 px-3 py-3 text-center text-sm font-bold text-white ${
-                      kameraBildirim.tur === 'basari'
-                        ? 'bg-green-600'
-                        : kameraBildirim.tur === 'hata'
-                        ? 'bg-red-600'
-                        : 'bg-gray-700'
-                    }`}
-                  >
-                    {kameraBildirim.tur === 'basari' && '✓ '}
-                    {kameraBildirim.tur === 'hata' && '✗ '}
-                    {kameraBildirim.mesaj}
-                  </div>
-                </>
-              )}
-            </div>
-            {/* Kameranın hemen altında da bir "kapat" butonu — kutuya bakarken elinizi
-                yukarı kaydırmadan da kapatabilesiniz diye. */}
-            <button
-              type="button"
-              onClick={kamerayiKapat}
-              className="mt-2 w-full max-w-sm px-4 py-2 rounded-lg text-sm font-semibold border border-red-200 text-red-600 hover:bg-red-50"
-            >
-              Kamerayı Kapat
-            </button>
-            <p className="text-xs text-gray-400 mt-1">
-              Barkodu kameradan yaklaşık 10-15 cm uzakta, iyi ışıkta ve tüm barkod (etrafındaki boşluklarla
-              birlikte) kutunun içinde kalacak şekilde sabit tutun — bulanıksa biraz uzaklaştırıp yaklaştırarak
-              netleşmesini bekleyin. Ürün okunduğunda kutunun üstünde yeşil bir onay yazısı çıkar. Aynı ürünü
-              tekrar eklemek için barkodu bir an kameradan uzaklaştırıp tekrar gösterin — kamerada göründüğü
-              sürece aynı ürün ikinci kez eklenmez.
-            </p>
-          </div>
-        )}
-
-        {/* Ürün listesinin hemen üstünde adet hatırlatıcısı — kullanıcı yukarı
-            kaydırmadan, tam ürüne basacağı yerde kaç adet ekleyeceğini görsün
-            ve isterse buradan da değiştirebilsin. */}
+        {/* Kantin görevlisi çoğunlukla ürüne DOKUNARAK seçiyor (barkod
+            değil) — bu yüzden ürün arama + ızgara artık üstte, barkod/kamera
+            bölümü altta ikincil bir seçenek olarak duruyor. Adet hatırlatıcısı
+            ürün ızgarasının hemen üstünde, kullanıcı yukarı kaydırmadan tam
+            basacağı yerde kaç adet ekleyeceğini görsün diye. */}
         <div className="flex items-center justify-between gap-3 mb-2 bg-gray-50 border border-gray-200 rounded-lg px-3 py-2">
           <span className="text-sm text-gray-500">
             Aşağıdaki bir ürüne bastığınızda <span className="font-semibold text-gray-700">{adet} adet</span> eklenecek
@@ -1341,19 +1252,23 @@ export default function Kantin() {
           )}
         </div>
 
-        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2">
+        {/* Butonlar büyütüldü (py-2.5 → py-3.5, ad text-sm → text-base) ve
+            dokununca anında görsel tepki versin diye active:scale-95 eklendi
+            — kantin görevlisi elindeki telefondan/tabletten hızlı hızlı
+            dokunurken tam isabet etsin diye. */}
+        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2.5">
           {gorunenUrunler.map((u) => (
             <button
               key={u.id}
               type="button"
               disabled={ekleniyorUrunId === u.id}
               onClick={() => gridTiklaEkle(u)}
-              className={`text-left px-3 py-2.5 rounded-lg border border-gray-200 hover:border-orange hover:bg-orange-50 transition-colors disabled:opacity-40 disabled:cursor-not-allowed ${
+              className={`text-left px-3.5 py-3.5 rounded-xl border border-gray-200 hover:border-orange hover:bg-orange-50 active:scale-95 active:bg-orange-100 transition-all disabled:opacity-40 disabled:cursor-not-allowed ${
                 !ogrenciId ? 'opacity-70' : ''
               }`}
             >
-              <p className="font-semibold text-gray-800 text-sm leading-tight">{u.ad}</p>
-              <p className="text-xs text-gray-500">{paraFormat(u.fiyat)}</p>
+              <p className="font-semibold text-gray-800 text-base leading-tight">{u.ad}</p>
+              <p className="text-sm text-gray-500 mt-0.5">{paraFormat(u.fiyat)}</p>
             </button>
           ))}
           {aktifUrunler.length > 0 && gorunenUrunler.length === 0 && (
@@ -1368,6 +1283,109 @@ export default function Kantin() {
 
         {hata && <p className="text-red-600 text-sm mt-3">{hata}</p>}
         {!hata && basari && <p className="text-green-600 text-sm mt-3">{basari}</p>}
+
+        {/* Barkod/kamera ile ekleme — gerçek ürün barkodu okutmak isteyenler
+            için ikincil bir yöntem, bu yüzden ürün ızgarasının altına alındı. */}
+        <div className="mt-5 pt-4 border-t border-gray-100">
+          <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">Barkod ile Ekle</p>
+          <div className="flex flex-wrap items-end gap-3 mb-4">
+            <form onSubmit={barkodOkutuldu} className="flex-1 min-w-[240px]">
+              <label className="block text-sm font-medium text-gray-700 mb-1">Barkod Okut</label>
+              <input
+                ref={barkodInputRef}
+                type="text"
+                value={barkodDeger}
+                onChange={(e) => setBarkodDeger(e.target.value)}
+                placeholder="USB okuyucuyla okutun (ya da elle yazıp Enter'a basın)"
+                autoComplete="off"
+                className="w-full max-w-sm px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue"
+              />
+            </form>
+            {!kameraAcik ? (
+              <button
+                type="button"
+                onClick={kamerayiAc}
+                disabled={kameraYukleniyor}
+                className="px-4 py-2 rounded-lg text-sm font-semibold border border-gray-200 text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+              >
+                {kameraYukleniyor ? 'Kamera açılıyor...' : '📷 Kamerayla Okut'}
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={kamerayiKapat}
+                className="px-4 py-2 rounded-lg text-sm font-semibold border border-red-200 text-red-600 hover:bg-red-50"
+              >
+                Kamerayı Kapat
+              </button>
+            )}
+          </div>
+
+          {kameraAcik && (
+            <div className="mb-2">
+              <div
+                className="relative w-full max-w-sm rounded-lg overflow-hidden border border-gray-200 bg-black"
+                style={{ minHeight: 220 }}
+              >
+                {kameraModu === 'algilayici' ? (
+                  <video
+                    ref={videoElRef}
+                    className="absolute inset-0 w-full h-full object-cover"
+                    playsInline
+                    muted
+                  />
+                ) : (
+                  // Quagga sadece bu iç kutunun içine video/canvas ekliyor — üstteki
+                  // bildirim ayrı bir katman olduğu için birbirine karışmıyor.
+                  <div ref={kameraKutusuRef} className="absolute inset-0" />
+                )}
+
+                {kameraBildirim && (
+                  <>
+                    <div
+                      className={`absolute inset-0 pointer-events-none transition-colors ${
+                        kameraBildirim.tur === 'basari'
+                          ? 'bg-green-500/30'
+                          : kameraBildirim.tur === 'hata'
+                          ? 'bg-red-500/30'
+                          : 'bg-black/10'
+                      }`}
+                    />
+                    <div
+                      className={`absolute inset-x-0 bottom-0 px-3 py-3 text-center text-sm font-bold text-white ${
+                        kameraBildirim.tur === 'basari'
+                          ? 'bg-green-600'
+                          : kameraBildirim.tur === 'hata'
+                          ? 'bg-red-600'
+                          : 'bg-gray-700'
+                      }`}
+                    >
+                      {kameraBildirim.tur === 'basari' && '✓ '}
+                      {kameraBildirim.tur === 'hata' && '✗ '}
+                      {kameraBildirim.mesaj}
+                    </div>
+                  </>
+                )}
+              </div>
+              {/* Kameranın hemen altında da bir "kapat" butonu — kutuya bakarken elinizi
+                  yukarı kaydırmadan da kapatabilesiniz diye. */}
+              <button
+                type="button"
+                onClick={kamerayiKapat}
+                className="mt-2 w-full max-w-sm px-4 py-2 rounded-lg text-sm font-semibold border border-red-200 text-red-600 hover:bg-red-50"
+              >
+                Kamerayı Kapat
+              </button>
+              <p className="text-xs text-gray-400 mt-1">
+                Barkodu kameradan yaklaşık 10-15 cm uzakta, iyi ışıkta ve tüm barkod (etrafındaki boşluklarla
+                birlikte) kutunun içinde kalacak şekilde sabit tutun — bulanıksa biraz uzaklaştırıp yaklaştırarak
+                netleşmesini bekleyin. Ürün okunduğunda kutunun üstünde yeşil bir onay yazısı çıkar. Aynı ürünü
+                tekrar eklemek için barkodu bir an kameradan uzaklaştırıp tekrar gösterin — kamerada göründüğü
+                sürece aynı ürün ikinci kez eklenmez.
+              </p>
+            </div>
+          )}
+        </div>
       </div>
 
       {isYonetici && <UrunYonetimi urunler={urunler} onDegisti={veriyiYenile} />}
