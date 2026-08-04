@@ -248,6 +248,17 @@ export default function HataKitapcigi() {
     }
   }, [sonucId])
 
+  // İndirilen PDF/yazdırma çıktısının dosya adı (ve tarayıcı sekme başlığı)
+  // öğrenci ve sınav adını göstersin diye — "Savaş Akça Eğitim Portalı" gibi
+  // genel bir isimle kaydedilmesin.
+  useEffect(() => {
+    if (!ogrenciAdi) return
+    document.title = `${ogrenciAdi} — Hata Kitapçığı${sinavAdi ? ` (${sinavAdi})` : ''}`
+    return () => {
+      document.title = 'Savaş Akça Eğitim Portalı'
+    }
+  }, [ogrenciAdi, sinavAdi])
+
   return (
     <div className="min-h-screen bg-cream py-8 px-4">
       <style>{`

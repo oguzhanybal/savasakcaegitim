@@ -75,6 +75,16 @@ export default function AylikOzet() {
     })
   }, [])
 
+  // İndirilen PDF/yazdırma çıktısının dosya adı (ve tarayıcı sekme başlığı)
+  // hangi sekme + hangi ay olduğunu göstersin diye — "Savaş Akça Eğitim
+  // Portalı" gibi genel bir isimle kaydedilmesin.
+  useEffect(() => {
+    document.title = `Aylık Özet — ${sekme === 'kantin' ? 'Kantin' : 'Bire Bir'} — ${ayEtiketiUret(seciliAy)}`
+    return () => {
+      document.title = 'Savaş Akça Eğitim Portalı'
+    }
+  }, [sekme, seciliAy])
+
   const { bireBirBuAy, kantinBuAy, soruCozumuSayisi, aylar } = useMemo(() => {
     const bireBirBuAy = bireBirDersler.filter((d) => d.tarih?.slice(0, 7) === seciliAy && d.tur !== 'soru_cozumu')
     const soruCozumuSayisi = bireBirDersler.filter(

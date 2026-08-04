@@ -114,6 +114,17 @@ export default function MakbuzGunluk() {
       })
   }, [ogrenciId, tarih])
 
+  // İndirilen PDF/yazdırma çıktısının dosya adı (ve tarayıcı sekme başlığı)
+  // öğrenci adı ve tarihi göstersin diye — "Savaş Akça Eğitim Portalı" gibi
+  // genel bir isimle kaydedilmesin.
+  useEffect(() => {
+    if (!ogrenciAdi) return
+    document.title = `${ogrenciAdi} — ${tarih} Makbuzu`
+    return () => {
+      document.title = 'Savaş Akça Eğitim Portalı'
+    }
+  }, [ogrenciAdi, tarih])
+
   function adBul(id) {
     return grupOgrencileri.find((g) => g.id === id)?.ad_soyad || '—'
   }

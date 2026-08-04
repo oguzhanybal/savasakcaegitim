@@ -23,6 +23,16 @@ export default function KantinFiyatListesi() {
       })
   }, [])
 
+  // İndirilen PDF/yazdırma çıktısının dosya adı (ve tarayıcı sekme başlığı)
+  // "Savaş Akça Eğitim Portalı" gibi genel bir isimle değil, ne olduğunu
+  // belli eden bir isimle kaydedilsin diye.
+  useEffect(() => {
+    document.title = 'Kantin Fiyat Listesi'
+    return () => {
+      document.title = 'Savaş Akça Eğitim Portalı'
+    }
+  }, [])
+
   if (loading) return <p className="p-6 text-gray-400">Yükleniyor...</p>
 
   // Liste TEK sayfaya, İKİ SÜTUN halinde sığsın diye burada ikiye bölünüyor —

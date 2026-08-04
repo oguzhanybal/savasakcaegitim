@@ -65,6 +65,17 @@ export default function OgretmenEkstre() {
     })
   }, [ogretmenId])
 
+  // İndirilen PDF/yazdırma çıktısının dosya adı (ve tarayıcı sekme başlığı)
+  // öğretmen adını göstersin diye — "Savaş Akça Eğitim Portalı" gibi genel
+  // bir isimle kaydedilmesin.
+  useEffect(() => {
+    if (!ogretmen) return
+    document.title = `${ogretmen.ad_soyad} Ekstresi`
+    return () => {
+      document.title = 'Savaş Akça Eğitim Portalı'
+    }
+  }, [ogretmen])
+
   if (loading) return <p className="p-6 text-gray-400">Yükleniyor...</p>
   if (!ogretmen) return <p className="p-6 text-gray-400">Öğretmen bulunamadı.</p>
 

@@ -47,6 +47,16 @@ export default function GenelBireBirEkstre() {
     })
   }, [])
 
+  // İndirilen PDF/yazdırma çıktısının dosya adı (ve tarayıcı sekme başlığı)
+  // "Savaş Akça Eğitim Portalı" gibi genel bir isimle değil, ne olduğunu
+  // belli eden bir isimle kaydedilsin diye.
+  useEffect(() => {
+    document.title = 'Genel Bire Bir Ekstresi'
+    return () => {
+      document.title = 'Savaş Akça Eğitim Portalı'
+    }
+  }, [])
+
   if (loading) return <p className="p-6 text-gray-400">Yükleniyor...</p>
 
   // OgretmenEkstre.jsx'teki aynı düzeltmeyle tutarlı olsun diye: bu kutu

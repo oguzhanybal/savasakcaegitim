@@ -70,6 +70,17 @@ export default function Makbuz() {
       })
   }, [odemeId])
 
+  // İndirilen PDF/yazdırma çıktısının dosya adı (ve tarayıcı sekme başlığı)
+  // öğrenci adını göstersin diye — "Savaş Akça Eğitim Portalı" gibi genel
+  // bir isimle kaydedilmesin.
+  useEffect(() => {
+    if (!ogrenciAdi) return
+    document.title = `${ogrenciAdi} Makbuzu`
+    return () => {
+      document.title = 'Savaş Akça Eğitim Portalı'
+    }
+  }, [ogrenciAdi])
+
   if (loading) return <p className="p-6 text-gray-400">Yükleniyor...</p>
   if (!odeme) return <p className="p-6 text-gray-400">Ödeme kaydı bulunamadı.</p>
 
