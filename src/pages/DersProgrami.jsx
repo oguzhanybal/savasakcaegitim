@@ -1798,6 +1798,16 @@ export default function DersProgrami() {
         </div>
       )}
 
+      {/* Haftada başka gün ders(ler)i olsa bile BUGÜN hiç yoksa (ör. Cuma
+          günleri ders yoksa) bunu açıkça belirtiyoruz — eskiden o gün sadece
+          Liste görünümünden sessizce kayboluyordu, "acaba program mı
+          yüklenmedi" diye kafa karıştırıyordu. */}
+      {sinifProgramiGoster && !loading && kendiProgram.length > 0 && (gunlereGore[bugunGunNo - 1]?.length ?? 0) === 0 && (
+        <div className="mb-4 bg-blue-50 border border-blue-100 text-blue-800 rounded-xl px-4 py-3 text-sm font-medium">
+          Bugün ({GUNLER[bugunGunNo]}) dersiniz yoktur.
+        </div>
+      )}
+
       {sinifProgramiGoster && !loading && kendiProgram.length > 0 && gorunum === 'tablo' && (
         // overscroll-x-contain: mobil tarayıcılarda bu tablonun YATAY kaydırma
         // alanı olduğunu belirtip, kenara ulaşınca kaydırmanın sayfaya
