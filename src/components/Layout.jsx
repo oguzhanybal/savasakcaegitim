@@ -249,8 +249,18 @@ export default function Layout() {
 
   return (
     <div className="min-h-screen bg-cream">
-      {/* Mobil üst çubuk — sadece küçük ekranlarda görünür */}
-      <div className="md:hidden flex items-center justify-between bg-navy text-white px-4 py-3 sticky top-0 z-20">
+      {/* Mobil üst çubuk — sadece küçük ekranlarda görünür. iPhone'da
+          "uygulama olarak yükle"nen (Ana Ekrana Ekle) sürümde, status bar
+          stilimiz "black-translucent" olduğu için saat/pil/sinyal simgeleri
+          normalde bu çubuğun ÜZERİNE biniyordu — üstteki güvenli alan kadar
+          (çentik/Dynamic Island yüksekliği) ekstra boşluk ekleyerek çubuğun
+          içeriği status bar'ın ALTINDAN başlıyor, ama lacivert arka plan
+          status bar'ın arkasına kadar devam ediyor (böylece boş beyaz bir
+          şerit görünmüyor). */}
+      <div
+        className="md:hidden flex items-center justify-between bg-navy text-white px-4 py-3 sticky top-0 z-20"
+        style={{ paddingTop: 'calc(0.75rem + env(safe-area-inset-top))' }}
+      >
         <div className="flex items-center gap-2 min-w-0">
           <div className="bg-white rounded-lg p-1 shrink-0">
             <img src="/logo.png" alt="Savaş Akça Eğitim" className="w-7 h-7 object-contain" />
@@ -284,7 +294,13 @@ export default function Layout() {
           menuAcik ? 'translate-x-0' : '-translate-x-full'
         } md:translate-x-0`}
       >
-        <div className="p-5 border-b border-white/10 flex flex-col items-center text-center shrink-0">
+        {/* Açılan kenar menü de iPhone'da status bar'ın altına aynı şekilde
+            güvenli boşluk alıyor (masaüstünde env() zaten 0 döndüğü için
+            hiçbir şey değişmiyor). */}
+        <div
+          className="p-5 border-b border-white/10 flex flex-col items-center text-center shrink-0"
+          style={{ paddingTop: 'calc(1.25rem + env(safe-area-inset-top))' }}
+        >
           <div className="bg-white rounded-xl p-1.5 mb-2">
             <img src="/logo.png" alt="Savaş Akça Eğitim" className="w-14 h-14 object-contain" />
           </div>
