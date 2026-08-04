@@ -149,6 +149,17 @@ export default function ZilSistemi() {
   const [uzaktanBilgi, setUzaktanBilgi] = useState('')
   const [susturmaSaatSecimi, setSusturmaSaatSecimi] = useState(1)
   const [manuelCalIsliyor, setManuelCalIsliyor] = useState(false)
+
+  // ---- Zil Sesi (yönetici kendi özel sesini yükleyip değiştirebilsin) ----
+  // Dosya "zil-sesi" storage bucket'ında hep "aktif.<uzanti>" adıyla saklanır
+  // (bkz. zilSesiCal.js'teki aktifOzelZilUrlGetir) — yeni bir dosya
+  // yüklenince eskisi TAMAMEN silinip yerine konur, aynı anda "aktif" ile
+  // başlayan birden fazla dosya olmasın diye (hangisinin çalınacağı belirsiz
+  // olurdu).
+  const [zilSesiDurumu, setZilSesiDurumu] = useState({ yukleniyor: true, dosyaAdi: null, url: null })
+  const [zilSesiYukluyor, setZilSesiYukluyor] = useState(false)
+  const [zilSesiHata, setZilSesiHata] = useState('')
+  const zilSesiInputRef = useRef(null)
   // "2 saat zil çalma" gibi geçici susturma — bu, doğru (sunucudan alınan)
   // saate göre bir bitiş anı (ms) tutar. Süre dolunca otomatik olarak
   // kendiliğinden kalkar, "Zili Durdur"un aksine elle "Başlat"a gerek yoktur.
@@ -482,6 +493,77 @@ export default function ZilSistemi() {
     uzaktanKomutGonder('manuel_cal_durdur')
   }
 
+  // Şu an "zil-sesi" bucket'ında yüklü özel bir ses var mı, varsa dosya adı
+  // ve önizleme için genel (public) URL'i getirir. zilSesiCal.js'teki
+  // aktifOzelZilUrlGetir ile AYNI arama mantığı (dosya adı "aktif" ile
+  // başlıyor mu) — o fonksiyon sadece URL döndürür, burada ayrıca dosya adını
+  // da göstermek istediğimiz için ayrı bir sorgu yapıyoruz.
+  async function zilSesiDurumunuYukle() {
+    const { data } = await supabase.storage.from('zil-sesi').list('', { search: 'aktif' })
+    const dosya = (data || []).find((d) => d.name.startsWith('aktif'))
+    if (dosya) {
+      const { data: pub } = supabase.storage.from('zil-sesi').getPublicUrl(dosya.name)
+      setZilSesiDurumu({
+        yukleniyor: false,
+        dosyaAdi: dosya.name,
+        url: pub?.publicUrl ? `${pub.publicUrl}?t=${Date.now()}` : null,
+      })
+    } else {
+      setZilSesiDurumu({ yukleniyor: false, dosyaAdi: null, url: null })
+    }
+  }
+
+  useEffect(() => {
+    if (!isYonetici) return
+    zilSesiDurumunuYukle()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isYonetici])
+
+  async function zilSesiYukle(e) {
+    const dosya = e.target.files?.[0]
+    if (!dosya) return
+    setZilSesiHata('')
+    setZilSesiYukluyor(true)
+    try {
+      // Önce eski özel sesi (varsa) tamamen kaldır — uzantısı farklı olabilir
+      // (ör. eskiden "aktif.mp3", şimdi "aktif.wav" yükleniyor), "aktif" ile
+      // başlayan İKİ dosya birden kalırsa hangisinin çalınacağı belirsizleşir.
+      const { data: eskiler } = await supabase.storage.from('zil-sesi').list('', { search: 'aktif' })
+      if (eskiler && eskiler.length > 0) {
+        await supabase.storage.from('zil-sesi').remove(eskiler.map((d) => d.name))
+      }
+      const uzanti = dosya.name.includes('.') ? dosya.name.split('.').pop() : 'mp3'
+      const { error } = await supabase.storage
+        .from('zil-sesi')
+        .upload(`aktif.${uzanti}`, dosya, { upsert: true, contentType: dosya.type || 'audio/mpeg' })
+      if (error) throw error
+      await zilSesiDurumunuYukle()
+      if (zilSesiInputRef.current) zilSesiInputRef.current.value = ''
+    } catch (err) {
+      setZilSesiHata(
+        'Yüklenirken hata oluştu: ' +
+          (err.message || String(err)) +
+          '\n\nEğer "zil-sesi" bucket bulunamadı gibi bir hata görüyorsanız, bu özelliğin kurulumu için verilen SQL dosyasını Supabase\'te çalıştırmanız gerekiyor.'
+      )
+    } finally {
+      setZilSesiYukluyor(false)
+    }
+  }
+
+  async function zilSesiKaldir() {
+    if (!confirm('Özel zil sesini kaldırıp öntanımlı sese dönmek istediğinize emin misiniz?')) return
+    setZilSesiHata('')
+    const { data: dosyalar } = await supabase.storage.from('zil-sesi').list('', { search: 'aktif' })
+    if (dosyalar && dosyalar.length > 0) {
+      const { error } = await supabase.storage.from('zil-sesi').remove(dosyalar.map((d) => d.name))
+      if (error) {
+        setZilSesiHata('Kaldırılırken hata oluştu: ' + error.message)
+        return
+      }
+    }
+    await zilSesiDurumunuYukle()
+  }
+
   const susturuluyorMu = susturBitisMs != null && gosterilenSaat.getTime() < susturBitisMs
 
   const siradakiZil = useMemo(() => {
@@ -733,6 +815,79 @@ export default function ZilSistemi() {
           </div>
         </div>
       </div>
+
+      {isYonetici && (
+        <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6 mb-6">
+          <h2 className="font-semibold text-gray-700 mb-1">Zil Sesi</h2>
+          <p className="text-xs text-gray-400 mb-4">
+            Zilde çalacak sesi kendin değiştirebilirsin — bilgisayar/telefonundan bir ses dosyası (MP3 vb.) yükle,
+            hem otomatik zil hem "Manuel Çal" bundan sonra o dosyayı çalar. Hiç özel dosya yüklemezsen öntanımlı zil
+            sesi kullanılır.
+          </p>
+
+          {zilSesiDurumu.yukleniyor ? (
+            <p className="text-sm text-gray-400">Yükleniyor...</p>
+          ) : (
+            <>
+              {zilSesiDurumu.dosyaAdi ? (
+                <div className="mb-4">
+                  <p className="text-sm text-gray-600 mb-2">
+                    Şu an aktif özel ses: <span className="font-medium">{zilSesiDurumu.dosyaAdi}</span>
+                  </p>
+                  {zilSesiDurumu.url && (
+                    <audio controls src={zilSesiDurumu.url} className="w-full max-w-sm">
+                      Tarayıcınız ses oynatmayı desteklemiyor.
+                    </audio>
+                  )}
+                </div>
+              ) : (
+                <p className="text-sm text-gray-500 mb-4">Şu an özel bir ses yüklenmemiş, öntanımlı zil sesi çalıyor.</p>
+              )}
+
+              {zilSesiHata && (
+                <p className="text-xs text-red-500 whitespace-pre-line bg-red-50 rounded-lg px-3 py-2 mb-4">
+                  {zilSesiHata}
+                </p>
+              )}
+
+              <div className="flex flex-wrap gap-2">
+                <input
+                  ref={zilSesiInputRef}
+                  type="file"
+                  accept="audio/*"
+                  onChange={zilSesiYukle}
+                  className="hidden"
+                  id="zil-sesi-dosya-input"
+                />
+                <label
+                  htmlFor="zil-sesi-dosya-input"
+                  className={`bg-navy text-white text-sm font-semibold px-5 py-2.5 rounded-lg hover:opacity-90 transition-opacity cursor-pointer ${
+                    zilSesiYukluyor ? 'opacity-50 pointer-events-none' : ''
+                  }`}
+                >
+                  {zilSesiYukluyor ? 'Yükleniyor...' : '📤 Yeni Ses Yükle'}
+                </label>
+                <button
+                  type="button"
+                  onClick={() => cikisZiliCal()}
+                  className="bg-gray-100 text-gray-700 text-sm font-semibold px-5 py-2.5 rounded-lg hover:bg-gray-200 transition-colors"
+                >
+                  ▶ Test Et
+                </button>
+                {zilSesiDurumu.dosyaAdi && (
+                  <button
+                    type="button"
+                    onClick={zilSesiKaldir}
+                    className="text-gray-400 text-sm px-4 py-2.5 hover:underline"
+                  >
+                    Öntanımlıya Dön
+                  </button>
+                )}
+              </div>
+            </>
+          )}
+        </div>
+      )}
 
       <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden mb-6">
         <div className="px-4 py-3 border-b border-gray-100 bg-gray-50">
