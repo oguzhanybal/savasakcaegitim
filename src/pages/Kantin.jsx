@@ -1260,18 +1260,23 @@ export default function Kantin() {
             dokununca anında görsel tepki versin diye active:scale-95 eklendi
             — kantin görevlisi elindeki telefondan/tabletten hızlı hızlı
             dokunurken tam isabet etsin diye. */}
-        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2.5">
+        {/* items-stretch + butonun kendisi flex flex-col: "Menü 1
+            (çorba+köfte+patates)" gibi uzun/2-3 satıra sarkan ürün adlarında
+            fiyatın komşu karta taşıp üst üste binmesini engeller — kutu her
+            zaman kendi içeriğine göre büyür, satırdaki DİĞER kart da (grid
+            stretch sayesinde) aynı yüksekliğe gelir, taşma olmaz. */}
+        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2.5 items-stretch">
           {gorunenUrunler.map((u) => (
             <button
               key={u.id}
               type="button"
               disabled={ekleniyorUrunId === u.id}
               onClick={() => gridTiklaEkle(u)}
-              className={`text-left px-3.5 py-3.5 rounded-xl border border-gray-200 hover:border-orange hover:bg-orange-50 active:scale-95 active:bg-orange-100 transition-all disabled:opacity-40 disabled:cursor-not-allowed ${
+              className={`flex flex-col text-left px-3.5 py-3.5 rounded-xl border border-gray-200 hover:border-orange hover:bg-orange-50 active:scale-95 active:bg-orange-100 transition-all disabled:opacity-40 disabled:cursor-not-allowed ${
                 !ogrenciId ? 'opacity-70' : ''
               }`}
             >
-              <p className="font-semibold text-gray-800 text-base leading-tight">{u.ad}</p>
+              <p className="font-semibold text-gray-800 text-base leading-tight break-words">{u.ad}</p>
               <p className="text-sm text-gray-500 mt-0.5">{paraFormat(u.fiyat)}</p>
             </button>
           ))}
