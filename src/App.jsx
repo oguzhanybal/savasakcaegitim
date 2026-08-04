@@ -40,6 +40,7 @@ import Odev from './pages/Odev'
 import OgrenciZamanCizelgesi from './pages/OgrenciZamanCizelgesi'
 import YedekAl from './pages/YedekAl'
 import ZilSistemi from './pages/ZilSistemi'
+import Duyurular from './pages/Duyurular'
 
 function Yukleniyor() {
   return (
@@ -247,6 +248,14 @@ function AnaUygulama() {
             element={
               <Korumali izinliRoller={['yonetici']}>
                 <YedekAl />
+              </Korumali>
+            }
+          />
+          <Route
+            path="duyurular"
+            element={
+              <Korumali izinliRoller={['yonetici']}>
+                <Duyurular />
               </Korumali>
             }
           />
