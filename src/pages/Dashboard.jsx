@@ -34,6 +34,62 @@ function Card({ label, value, color = 'text-navy', to }) {
 // tıklayın" diyen bir kapak gösteriyor. Sayfaya her girişte (F5, başka
 // sayfadan dönüş vb.) yeniden gizli başlar — kalıcı bir "hep açık kalsın"
 // tercihi YOK, bilinçli olarak: yanında biri varken tekrar unutmasın diye.
+const HEDEF_RENKLERI = {
+  ogrenci: 'bg-purple-100 text-purple-700',
+  veli: 'bg-blue-100 text-blue-700',
+  ogretmen: 'bg-amber-100 text-amber-700',
+  herkes: 'bg-green-100 text-green-700',
+}
+
+// Yönetici > Duyurular sayfasında eklenen, role hedeflenmiş duyuruları Ana
+// Sayfa'nın en üstünde gösterir. RLS zaten sadece kullanıcının kendi rolüne
+// (ya da "herkes"e) hedeflenmiş satırları döndürüyor — TEK istisna yönetici:
+// yönetim sayfasında görebilsin diye RLS yöneticiye TÜM duyuruları açıyor,
+// bu yüzden burada yönetici için ayrıca "herkes"e hedeflenmiş olanlarla
+// sınırlıyoruz (yoksa yönetici, öğrenciye/veliye/öğretmene özel duyuruları da
+// kendi Ana Sayfa'sında görürdü).
+function DuyurularBolumu({ profile }) {
+  const [duyurular, setDuyurular] = useState([])
+
+  useEffect(() => {
+    if (!profile) return
+    supabase
+      .from('duyurular')
+      .select('*')
+      .order('created_at', { ascending: false })
+      .then(({ data }) => {
+        const bugun = new Date().toISOString().slice(0, 10)
+        const gorunecekler = (data || []).filter((d) => {
+          if (d.bitis_tarihi && d.bitis_tarihi < bugun) return false
+          if (profile.rol === 'yonetici') return d.hedef_rol === 'herkes'
+          return d.hedef_rol === 'herkes' || d.hedef_rol === profile.rol
+        })
+        setDuyurular(gorunecekler)
+      })
+  }, [profile])
+
+  if (duyurular.length === 0) return null
+
+  return (
+    <div className="space-y-3 mb-6">
+      {duyurular.map((d) => (
+        <div key={d.id} className="bg-white rounded-2xl border border-orange-100 shadow-sm p-4 flex items-start gap-3">
+          <span className="text-xl leading-none">📢</span>
+          <div className="min-w-0">
+            <div className="flex items-center gap-2 flex-wrap mb-0.5">
+              {d.baslik && <p className="font-semibold text-gray-800">{d.baslik}</p>}
+              {d.hedef_rol === 'herkes' && (
+                <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${HEDEF_RENKLERI.herkes}`}>Herkes</span>
+              )}
+            </div>
+            <p className="text-sm text-gray-600 whitespace-pre-wrap break-words">{d.icerik}</p>
+          </div>
+        </div>
+      ))}
+    </div>
+  )
+}
+
 function GizliBolum({ children }) {
   const [acik, setAcik] = useState(false)
 
@@ -258,6 +314,8 @@ export default function Dashboard() {
     <div>
       <h1 className="text-2xl font-bold text-navy mb-1">Hoş geldiniz, {profile?.ad_soyad}</h1>
       <p className="text-gray-500 mb-6">Bugün {new Date().toLocaleDateString('tr-TR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}</p>
+
+      <DuyurularBolumu profile={profile} />
 
       {profile?.rol === 'yonetici' && (
         <GizliBolum>
