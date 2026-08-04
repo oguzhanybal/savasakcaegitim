@@ -360,6 +360,10 @@ function UrunSatiri({ u, digerBarkodlar, onKaydedildi, onVazgec }) {
 
   return (
     <tr className="bg-blue-50">
+      {/* Baştaki boş hücre — üst satırlardaki "seç" onay kutusu sütunuyla
+          hizalanması için (bu olmadan tüm alanlar bir sütun sola kayıyordu:
+          fiyat isim kutusunda, barkod fiyat kutusunda görünüyordu). */}
+      <td className="px-4 py-2"></td>
       <td className="px-4 py-2">
         <input value={ad} onChange={(e) => setAd(e.target.value)} className="w-full px-2 py-1.5 border border-gray-300 rounded-lg text-sm" />
       </td>
