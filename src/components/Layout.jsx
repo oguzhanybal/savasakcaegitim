@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import { useAuth } from '../lib/AuthContext'
+import UygulamaYukleBanner from './UygulamaYukleBanner'
 
 const ROL_ETIKET = {
   yonetici: 'Yönetici',
@@ -26,6 +27,7 @@ function menuOlustur(rol) {
           { to: '/sifre-sifirla', label: 'Şifre Sıfırla' },
           { to: '/giris-kayitlari', label: 'Giriş Kayıtları' },
           { to: '/duyurular', label: 'Duyurular' },
+          { to: '/uygulama-yuklemeleri', label: 'Uygulama İndirmeleri' },
           { to: '/yedek-al', label: 'Yedek Al' },
           { to: '/zil-sistemi', label: 'Zil Sistemi' },
         ],
@@ -331,6 +333,11 @@ export default function Layout() {
       <main className="md:ml-60 p-4 md:p-6 overflow-x-hidden min-h-screen">
         <Outlet />
       </main>
+
+      {/* Tüm roller için ortak "Uygulama olarak yükle" teklifi — burada,
+          Layout'ta tek bir yerde durduğu için her rolün her sayfasında
+          otomatik olarak devreye girer. */}
+      <UygulamaYukleBanner />
     </div>
   )
 }
