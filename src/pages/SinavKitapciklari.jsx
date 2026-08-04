@@ -699,7 +699,7 @@ export default function SinavKitapciklari() {
       setDosya(null)
       setSeciliSinavId(k.sinav_id)
       setKitapcikTuru(k.kitapcik)
-      setDuzenlenenKitapcik({ id: k.id, pdf_yolu: k.pdf_yolu, sinav_id: k.sinav_id })
+      setDuzenlenenKitapcik({ id: k.id, pdf_yolu: k.pdf_yolu, sinav_id: k.sinav_id, kitapcik: k.kitapcik })
       setAnalizDurumu('')
       setBasari(
         `"${k.sinavlar?.sinav_adi || 'Kitapçık'}" — ${k.kitapcik} kitapçığı düzenleme için açıldı (${
@@ -1155,7 +1155,17 @@ export default function SinavKitapciklari() {
       // Storage'da duran dosyanın yolunu (pdf_yolu) aynen koruyoruz. Sadece
       // yeni PDF seçilmişse (ör. yanlış dosya yüklenmiş, düzeltiliyor) gerçek
       // bir yükleme yapılır.
-      let dosyaYolu = duzenlenenKitapcik?.pdf_yolu || null
+      // GÜVENLİK KİLİDİ: duzenlenenKitapcik'in pdf_yolu'sunu SADECE hâlâ AYNI
+      // harf (A/B) düzenleniyorsa miras alıyoruz. Eskiden buradaki kontrol
+      // harfe bakmıyordu — admin "A"yı düzenlerken (Düzenle) harfi "B"ye
+      // değiştirip yeni bir PDF SEÇMEDEN kaydederse, B kaydı A'nın PDF'ini
+      // sessizce çalıyordu. Batuhan Aka'nın TYT sonucundaki "A/B karışıklığı"
+      // teşhisinin kök nedeni tam olarak buydu: sistemde aynı sınav için A ve
+      // B kitapçığı, İKİSİ DE aynı PDF dosyasına işaret ediyordu. Artık harf
+      // uyuşmuyorsa dosyaYolu null kalır ve aşağıdaki "Lütfen bir PDF seçin"
+      // hatası admin'i gerçek bir B dosyası seçmeye zorlar.
+      let dosyaYolu =
+        duzenlenenKitapcik && duzenlenenKitapcik.kitapcik === kitapcikTuru ? duzenlenenKitapcik.pdf_yolu : null
       if (dosya) {
         dosyaYolu = `${sinavId}/${kitapcikTuru}-${Date.now()}.pdf`
         const { error: yuklemeHatasi } = await supabase.storage
@@ -1468,14 +1478,37 @@ export default function SinavKitapciklari() {
             <div className="flex gap-2">
               <button
                 type="button"
-                onClick={() => setKitapcikTuru('A')}
+                onClick={() => {
+                  // Düzenlenmekte olan kitapçık (Düzenle'ye basılmış) BAŞKA
+                  // bir harfe aitse, harf değişimiyle birlikte o eski
+                  // düzenleme durumunu/önizlemeyi tamamen temizliyoruz —
+                  // yoksa eski PDF/soru kutuları yeni harfe yanlışlıkla
+                  // miras kalabilirdi (bkz. kaydet() içindeki güvenlik kilidi).
+                  if (duzenlenenKitapcik && duzenlenenKitapcik.kitapcik !== 'A') {
+                    setDuzenlenenKitapcik(null)
+                    setDosya(null)
+                    setSayfaGoruntuleri([])
+                    setSorular([])
+                    setKullanilanOlcek(null)
+                  }
+                  setKitapcikTuru('A')
+                }}
                 className={`px-3 py-2 rounded-lg text-sm font-semibold ${kitapcikTuru === 'A' ? 'bg-navy text-white' : 'bg-white border border-gray-200 text-gray-600'}`}
               >
                 A
               </button>
               <button
                 type="button"
-                onClick={() => setKitapcikTuru('B')}
+                onClick={() => {
+                  if (duzenlenenKitapcik && duzenlenenKitapcik.kitapcik !== 'B') {
+                    setDuzenlenenKitapcik(null)
+                    setDosya(null)
+                    setSayfaGoruntuleri([])
+                    setSorular([])
+                    setKullanilanOlcek(null)
+                  }
+                  setKitapcikTuru('B')
+                }}
                 className={`px-3 py-2 rounded-lg text-sm font-semibold ${kitapcikTuru === 'B' ? 'bg-navy text-white' : 'bg-white border border-gray-200 text-gray-600'}`}
               >
                 B
