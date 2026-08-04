@@ -90,7 +90,7 @@ function DevamsizlikOzeti({ kayitlar }) {
                   {s.ogretmen && <p className="text-xs text-gray-400">{s.ogretmen}</p>}
                 </div>
                 <span className="text-sm text-gray-500 shrink-0">
-                  <span className="text-red-500 font-semibold">{s.gelmedi}</span>/{toplam} derse gelmedi{' '}
+                  <span className={`font-semibold ${s.gelmedi > 0 ? 'text-red-500' : 'text-green-600'}`}>{s.gelmedi}</span>/{toplam} derse gelmedi{' '}
                   <span className={`font-semibold ${oran > 20 ? 'text-red-500' : 'text-gray-400'}`}>(%{oran})</span>
                 </span>
               </div>
