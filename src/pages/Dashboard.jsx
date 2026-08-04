@@ -404,13 +404,13 @@ export default function Dashboard() {
 
       {profile?.rol === 'ogretmen' && (
         <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6">
-          <p className="text-gray-600">Sol menüden "Ders Programım" ile haftalık programınızı görebilir, dersinize tıklayarak yoklama alabilirsiniz.</p>
+          <p className="text-gray-600">Menüden "Ders Programım" ile haftalık programınızı görebilir, dersinize tıklayarak yoklama alabilirsiniz.</p>
         </div>
       )}
 
       {(profile?.rol === 'veli' || profile?.rol === 'ogrenci') && (
         <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6">
-          <p className="text-gray-600">Sol menüden ilgili sayfalara ulaşabilirsiniz.</p>
+          <p className="text-gray-600">Menüden ilgili sayfalara ulaşabilirsiniz.</p>
         </div>
       )}
     </div>
