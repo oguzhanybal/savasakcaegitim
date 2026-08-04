@@ -41,6 +41,7 @@ import OgrenciZamanCizelgesi from './pages/OgrenciZamanCizelgesi'
 import YedekAl from './pages/YedekAl'
 import ZilSistemi from './pages/ZilSistemi'
 import Duyurular from './pages/Duyurular'
+import UygulamaYuklemeleri from './pages/UygulamaYuklemeleri'
 
 function Yukleniyor() {
   return (
@@ -256,6 +257,14 @@ function AnaUygulama() {
             element={
               <Korumali izinliRoller={['yonetici']}>
                 <Duyurular />
+              </Korumali>
+            }
+          />
+          <Route
+            path="uygulama-yuklemeleri"
+            element={
+              <Korumali izinliRoller={['yonetici']}>
+                <UygulamaYuklemeleri />
               </Korumali>
             }
           />
