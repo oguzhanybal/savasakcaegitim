@@ -49,10 +49,13 @@ function netFormat(n) {
 // yüklendiğinin ya da sınavın türünün yanlış seçildiğinin işareti — admin'i
 // ENGELLEMEDEN (belki gerçekten farklı bir kullanım vardır), sadece uyarıyoruz.
 const TYT_OZEL_DERSLER = ['türkçe', 'sosyal bilimler', 'fen bilimleri']
-const AYT_OZEL_DERSLER = [
-  'fizik', 'kimya', 'biyoloji', 'felsefe', 'din kültürü', 'edebiyat',
-  'tarih-1', 'tarih-2', 'coğrafya-1', 'coğrafya-2',
-]
+// NOT: Fizik/Kimya/Biyoloji/Felsefe/Din Kültürü buradan ÇIKARILDI — bu
+// okulun TYT karne formatı Fen ve Sosyal bloklarını "Fen Bilimleri"/"Sosyal
+// Bilimler" diye tek kalemde değil, her dersi AYRI ADLA gösteriyor (TYT'de
+// de, AYT'de de aynı isimlerle geçebiliyorlar), o yüzden bunlar TYT'ye özel
+// değil sayılmalı. Sadece "-1"/"-2" son ekli (Tarih-1, Coğrafya-2 gibi) ve
+// "Edebiyat" isimleri gerçekten AYT'ye özel — TYT'de bu adlarla geçmez.
+const AYT_OZEL_DERSLER = ['edebiyat', 'tarih-1', 'tarih-2', 'coğrafya-1', 'coğrafya-2']
 function turUyusmazlikUyarisi(dersSonuclari, tur) {
   if (!dersSonuclari || dersSonuclari.length === 0) return null
   const normalize = (s) => (s || '').toLocaleLowerCase('tr-TR')
