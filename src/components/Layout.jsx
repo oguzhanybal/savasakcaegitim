@@ -25,6 +25,7 @@ function menuOlustur(rol) {
           { to: '/kullanici-olustur', label: 'Kullanıcı Oluştur' },
           { to: '/sifre-sifirla', label: 'Şifre Sıfırla' },
           { to: '/giris-kayitlari', label: 'Giriş Kayıtları' },
+          { to: '/duyurular', label: 'Duyurular' },
           { to: '/yedek-al', label: 'Yedek Al' },
           { to: '/zil-sistemi', label: 'Zil Sistemi' },
         ],
