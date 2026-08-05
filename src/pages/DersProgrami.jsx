@@ -1970,7 +1970,7 @@ export default function DersProgrami() {
           {gunlereGore.map((dersler, i) => {
             const gunNo = i + 1
             const buGunMu = gunNo === bugunGunNo
-            return dersler.length === 0 ? null : (
+            return (
               <div
                 key={i}
                 ref={(el) => {
@@ -1986,6 +1986,13 @@ export default function DersProgrami() {
                     <span className="text-[10px] font-semibold bg-white/25 px-2 py-0.5 rounded-full">Bugün</span>
                   )}
                 </div>
+                {/* Eskiden bu günün hiç dersi yoksa kart tamamen gizleniyordu —
+                    hangi günün boş olduğu (ör. Cuma) belli olmuyor, "program mı
+                    yüklenmedi" diye kafa karıştırıyordu. Artık her gün (boş olsa
+                    da) kendi kartıyla görünüyor, boşsa içinde açık bir mesaj var. */}
+                {dersler.length === 0 ? (
+                  <p className="px-4 py-4 text-sm text-gray-400">Bu güne ait ders bulunmuyor.</p>
+                ) : (
                 <div className="divide-y divide-gray-50">
                   {dersler.map((d) => {
                     // Başlıkta önce ders adı, o da yoksa öğretmenin branşı gösterilir —
@@ -2089,6 +2096,7 @@ export default function DersProgrami() {
                     </div>
                   )})}
                 </div>
+                )}
               </div>
             )
           })}
