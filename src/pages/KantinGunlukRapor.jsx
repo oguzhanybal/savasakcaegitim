@@ -62,6 +62,11 @@ export default function KantinGunlukRapor() {
   const [yeniAdet, setYeniAdet] = useState('1')
   const [yeniTarih, setYeniTarih] = useState(bugunTarihi())
 
+  // Öğrenci Bazında Dökümü listesindeki kartları isimle süzmek için — okulda
+  // yüzlerce öğrenci olabileceğinden alt alta duran kart listesinde aranan
+  // öğrenciyi bulmak aşağı kaydırmadan zorlaşıyordu.
+  const [ogrenciFiltre, setOgrenciFiltre] = useState('')
+
   async function veriyiYukle() {
     setYukleniyor(true)
     setHata('')
@@ -132,6 +137,15 @@ export default function KantinGunlukRapor() {
     }
     return [...map.values()].sort((a, b) => a.ad.localeCompare(b.ad, 'tr-TR'))
   }, [alislar])
+
+  // Arama kutusuna göre süzülmüş liste — üstteki özet kartları (toplam/adet/
+  // öğrenci sayısı) ve Ürün Bazında Kırılım hâlâ TÜM öğrencileri baz alır,
+  // sadece aşağıdaki kart listesi filtreleniyor.
+  const gorunenOgrenciGruplari = useMemo(() => {
+    const aranan = ogrenciFiltre.trim().toLocaleLowerCase('tr-TR')
+    if (!aranan) return ogrenciGruplari
+    return ogrenciGruplari.filter((g) => g.ad.toLocaleLowerCase('tr-TR').includes(aranan))
+  }, [ogrenciGruplari, ogrenciFiltre])
 
   // Aylık/Tüm Zamanlar gibi BİRDEN FAZLA günü kapsayan görünümlerde, aynı
   // ürün birden çok kez alınmışsa (ör. bir öğrenci ayda 3 kere su almışsa)
@@ -526,11 +540,36 @@ export default function KantinGunlukRapor() {
             </div>
           )}
 
+          {ogrenciGruplari.length > 0 && (
+            <div className="relative mb-4">
+              <input
+                type="text"
+                value={ogrenciFiltre}
+                onChange={(e) => setOgrenciFiltre(e.target.value)}
+                placeholder="Öğrenci ara..."
+                autoComplete="off"
+                className="w-full px-3 py-2 rounded-lg border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-blue"
+              />
+              {ogrenciFiltre && (
+                <button
+                  type="button"
+                  onClick={() => setOgrenciFiltre('')}
+                  className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 text-sm"
+                  aria-label="Aramayı temizle"
+                >
+                  ✕
+                </button>
+              )}
+            </div>
+          )}
+
           {ogrenciGruplari.length === 0 ? (
             <p className="text-sm text-gray-400">{bosMesaji}</p>
+          ) : gorunenOgrenciGruplari.length === 0 ? (
+            <p className="text-sm text-gray-400">Aramanla eşleşen öğrenci bulunamadı.</p>
           ) : (
             <div className="space-y-4">
-              {ogrenciGruplari.map((g) => (
+              {gorunenOgrenciGruplari.map((g) => (
                 <div key={g.id} className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
                   <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100">
                     <p className="font-semibold text-navy text-sm">{g.ad}</p>
