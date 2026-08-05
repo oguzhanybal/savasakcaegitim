@@ -2,11 +2,15 @@ import { useEffect, useMemo, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { paraFormat } from '../lib/ekstreHesap'
 
-// Yönetici için: seçilen GÜNE ait TÜM kantin alışlarını hem kurum geneli
-// (toplam tutar + ürün bazında kırılım) hem öğrenci bazında gösterir, ve o
-// güne ait satırları (ürün/adet/fiyat) düzeltme veya silme, ya da unutulmuş
-// bir satışı sonradan ekleme imkanı verir. YoklamaRaporu.jsx'teki ◀/▶ gün
-// gezinme deseniyle aynı mantık.
+// Yönetici VE kantin rolü için: seçilen GÜNE ait TÜM kantin alışlarını hem
+// kurum geneli (toplam tutar + ürün bazında kırılım) hem öğrenci bazında
+// gösterir, ve o güne ait satırları (ürün/adet/fiyat) düzeltme veya silme,
+// ya da unutulmuş bir satışı sonradan ekleme imkanı verir — geçmiş günlere
+// de ◀/▶ ile gidilebilir (bkz. YoklamaRaporu.jsx'teki aynı gün gezinme
+// deseni). Kantin rolünün kantin_alislar üzerinde UPDATE yapabilmesi için
+// migration_kantin_gunluk_rapor_guncelleme.sql'in çalıştırılmış olması
+// gerekir (eski migration_kantin.sql'de kantin rolü için sadece
+// INSERT/SELECT/DELETE politikaları vardı, UPDATE yoktu).
 
 function bugunTarihi() {
   const n = new Date()
