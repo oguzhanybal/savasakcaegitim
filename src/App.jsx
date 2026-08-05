@@ -26,6 +26,7 @@ import BorcYaslandirma from './pages/BorcYaslandirma'
 import KullaniciOlustur from './pages/KullaniciOlustur'
 import Kantin from './pages/Kantin'
 import KantinFiyatListesi from './pages/KantinFiyatListesi'
+import KantinGunlukRapor from './pages/KantinGunlukRapor'
 import SinavKitapciklari from './pages/SinavKitapciklari'
 import SinavYukle from './pages/SinavYukle'
 import SinavSonuclari from './pages/SinavSonuclari'
@@ -193,6 +194,14 @@ function AnaUygulama() {
             element={
               <Korumali izinliRoller={['yonetici', 'kantin']}>
                 <Kantin />
+              </Korumali>
+            }
+          />
+          <Route
+            path="kantin-gunluk-rapor"
+            element={
+              <Korumali izinliRoller={['yonetici', 'kantin']}>
+                <KantinGunlukRapor />
               </Korumali>
             }
           />
