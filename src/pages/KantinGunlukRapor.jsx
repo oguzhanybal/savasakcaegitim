@@ -37,7 +37,11 @@ export default function KantinGunlukRapor() {
   const [duzenlemeAdet, setDuzenlemeAdet] = useState('1')
   const [duzenlemeBirimFiyat, setDuzenlemeBirimFiyat] = useState('')
 
-  const [yeniEkleAcik, setYeniEkleAcik] = useState(false)
+  // null: hiçbir ekleme formu açık değil. 'yeni': üstteki genel "+ Yeni Alış
+  // Ekle" formu (isim aramalı, henüz o gün hiç alışverişi olmayan bir
+  // öğrenci için). Bir öğrenci id'si: o öğrencinin kartının altındaki
+  // aramasız/hızlı ekleme formu (öğrenci zaten belli, sadece ürün+adet sorar).
+  const [ekleHedefi, setEkleHedefi] = useState(null)
   const [yeniOgrenciArama, setYeniOgrenciArama] = useState('')
   const [yeniOgrenciId, setYeniOgrenciId] = useState('')
   const [yeniOgrenciAdi, setYeniOgrenciAdi] = useState('')
@@ -66,7 +70,7 @@ export default function KantinGunlukRapor() {
   useEffect(() => {
     veriyiYukle()
     setDuzenlenenId(null)
-    setYeniEkleAcik(false)
+    setEkleHedefi(null)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [seciliTarih])
 
@@ -90,7 +94,7 @@ export default function KantinGunlukRapor() {
     const map = new Map()
     for (const a of alislar) {
       const ad = a.ogrenciler?.ad_soyad || 'Bilinmeyen Öğrenci'
-      if (!map.has(a.ogrenci_id)) map.set(a.ogrenci_id, { ad, kayitlar: [], toplam: 0 })
+      if (!map.has(a.ogrenci_id)) map.set(a.ogrenci_id, { id: a.ogrenci_id, ad, kayitlar: [], toplam: 0 })
       const g = map.get(a.ogrenci_id)
       g.kayitlar.push(a)
       g.toplam += Number(a.tutar)
@@ -99,7 +103,7 @@ export default function KantinGunlukRapor() {
   }, [alislar])
 
   function duzenlemeyeBasla(a) {
-    setYeniEkleAcik(false)
+    setEkleHedefi(null)
     setDuzenlenenId(a.id)
     setDuzenlemeUrunId(a.urun_id || '')
     setDuzenlemeAdet(String(a.adet))
@@ -142,8 +146,13 @@ export default function KantinGunlukRapor() {
     return ogrenciler.filter((o) => o.ad_soyad.toLocaleLowerCase('tr-TR').includes(aranan)).slice(0, 8)
   }, [ogrenciler, yeniOgrenciArama, yeniOgrenciId])
 
-  async function yeniAlisEkle() {
-    if (!yeniOgrenciId) return alert('Önce listeden bir öğrenci seçin.')
+  // hedefOgrenciId verilirse (bir öğrencinin kartındaki hızlı ekleme
+  // formundan çağrılırsa) isim aramasına gerek yok — direkt o öğrenciye
+  // eklenir. Verilmezse üstteki genel formdaki (isimle aranıp seçilen)
+  // yeniOgrenciId kullanılır.
+  async function yeniAlisEkle(hedefOgrenciId) {
+    const ogrenciId = hedefOgrenciId || yeniOgrenciId
+    if (!ogrenciId) return alert('Önce listeden bir öğrenci seçin.')
     if (!yeniUrunId) return alert('Ürün seçin.')
     const adet = Number(yeniAdet)
     if (!adet || adet <= 0) return alert('Adet 0\'dan büyük olmalı.')
@@ -151,7 +160,7 @@ export default function KantinGunlukRapor() {
     if (!urun) return alert('Ürün bulunamadı.')
     setKaydediliyor(true)
     const { error } = await supabase.from('kantin_alislar').insert({
-      ogrenci_id: yeniOgrenciId,
+      ogrenci_id: ogrenciId,
       urun_id: urun.id,
       urun_adi: urun.ad,
       birim_fiyat: urun.fiyat,
@@ -166,7 +175,7 @@ export default function KantinGunlukRapor() {
     setYeniOgrenciAdi('')
     setYeniUrunId('')
     setYeniAdet('1')
-    setYeniEkleAcik(false)
+    setEkleHedefi(null)
     veriyiYukle()
   }
 
@@ -264,14 +273,14 @@ export default function KantinGunlukRapor() {
             <h2 className="font-semibold text-navy">Öğrenci Bazında Dökümü</h2>
             <button
               type="button"
-              onClick={() => { setDuzenlenenId(null); setYeniEkleAcik((v) => !v) }}
+              onClick={() => { setDuzenlenenId(null); setEkleHedefi((v) => (v === 'yeni' ? null : 'yeni')) }}
               className="px-3 py-2 rounded-lg bg-navy text-white text-sm font-semibold"
             >
-              {yeniEkleAcik ? 'Vazgeç' : '+ Yeni Alış Ekle'}
+              {ekleHedefi === 'yeni' ? 'Vazgeç' : '+ Yeni Alış Ekle'}
             </button>
           </div>
 
-          {yeniEkleAcik && (
+          {ekleHedefi === 'yeni' && (
             <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-4 mb-5">
               <div className="grid sm:grid-cols-4 gap-3 items-end">
                 <div className="sm:col-span-2 relative">
@@ -334,7 +343,7 @@ export default function KantinGunlukRapor() {
                 <button
                   type="button"
                   disabled={kaydediliyor}
-                  onClick={yeniAlisEkle}
+                  onClick={() => yeniAlisEkle()}
                   className="px-4 py-2 rounded-lg bg-blue text-white text-sm font-semibold disabled:opacity-50"
                 >
                   {kaydediliyor ? 'Kaydediliyor...' : 'Kaydet'}
@@ -348,11 +357,60 @@ export default function KantinGunlukRapor() {
           ) : (
             <div className="space-y-4">
               {ogrenciGruplari.map((g) => (
-                <div key={g.ad + g.kayitlar[0].id} className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+                <div key={g.id} className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
                   <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100">
                     <p className="font-semibold text-navy text-sm">{g.ad}</p>
-                    <p className="text-sm font-semibold text-gray-600">{paraFormat(g.toplam)}</p>
+                    <div className="flex items-center gap-3">
+                      <p className="text-sm font-semibold text-gray-600">{paraFormat(g.toplam)}</p>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setDuzenlenenId(null)
+                          setYeniUrunId('')
+                          setYeniAdet('1')
+                          setEkleHedefi((v) => (v === g.id ? null : g.id))
+                        }}
+                        className="text-navy text-xs font-semibold underline hover:no-underline"
+                      >
+                        {ekleHedefi === g.id ? 'Vazgeç' : '+ Alış Ekle'}
+                      </button>
+                    </div>
                   </div>
+                  {ekleHedefi === g.id && (
+                    <div className="px-4 py-3 border-b border-gray-100 bg-gray-50 flex flex-wrap items-end gap-3">
+                      <div>
+                        <label className="block text-xs font-semibold text-gray-500 mb-1">Ürün</label>
+                        <select
+                          value={yeniUrunId}
+                          onChange={(e) => setYeniUrunId(e.target.value)}
+                          className="px-3 py-2 rounded-lg border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-blue"
+                        >
+                          <option value="">Seçin...</option>
+                          {urunler.map((u) => (
+                            <option key={u.id} value={u.id}>{u.ad} · {paraFormat(u.fiyat)}</option>
+                          ))}
+                        </select>
+                      </div>
+                      <div>
+                        <label className="block text-xs font-semibold text-gray-500 mb-1">Adet</label>
+                        <input
+                          type="number"
+                          min="1"
+                          value={yeniAdet}
+                          onChange={(e) => setYeniAdet(e.target.value)}
+                          className="w-20 px-3 py-2 rounded-lg border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-blue"
+                        />
+                      </div>
+                      <button
+                        type="button"
+                        disabled={kaydediliyor}
+                        onClick={() => yeniAlisEkle(g.id)}
+                        className="px-4 py-2 rounded-lg bg-blue text-white text-sm font-semibold disabled:opacity-50"
+                      >
+                        {kaydediliyor ? 'Kaydediliyor...' : 'Kaydet'}
+                      </button>
+                    </div>
+                  )}
                   <table className="w-full text-sm">
                     <tbody>
                       {g.kayitlar.map((a) => (
