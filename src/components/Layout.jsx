@@ -43,6 +43,7 @@ function menuOlustur(rol) {
           { to: '/aylik-ozet', label: 'Aylık Özet' },
           { to: '/borc-yaslandirma', label: 'Borç Yaşlandırma' },
           { to: '/kantin', label: 'Kantin' },
+          { to: '/kantin-gunluk-rapor', label: 'Kantin Günlük Rapor' },
         ],
       },
       {
@@ -85,6 +86,7 @@ function menuOlustur(rol) {
   if (rol === 'kantin') {
     return [
       { tur: 'link', to: '/kantin', label: 'Kantin', end: true },
+      { tur: 'link', to: '/kantin-gunluk-rapor', label: 'Kantin Günlük Rapor' },
       { tur: 'link', to: '/sifremi-degistir', label: 'Şifremi Değiştir' },
     ]
   }
