@@ -1,16 +1,16 @@
 import { useEffect, useMemo, useState } from 'react'
 import { supabase } from '../lib/supabase'
-import { paraFormat } from '../lib/ekstreHesap'
+import { paraFormat, ayBaslangici, ayEtiketi } from '../lib/ekstreHesap'
 
-// Yönetici VE kantin rolü için: seçilen GÜNE ait TÜM kantin alışlarını hem
-// kurum geneli (toplam tutar + ürün bazında kırılım) hem öğrenci bazında
-// gösterir, ve o güne ait satırları (ürün/adet/fiyat) düzeltme veya silme,
-// ya da unutulmuş bir satışı sonradan ekleme imkanı verir — geçmiş günlere
-// de ◀/▶ ile gidilebilir (bkz. YoklamaRaporu.jsx'teki aynı gün gezinme
-// deseni). Kantin rolünün kantin_alislar üzerinde UPDATE yapabilmesi için
-// migration_kantin_gunluk_rapor_guncelleme.sql'in çalıştırılmış olması
-// gerekir (eski migration_kantin.sql'de kantin rolü için sadece
-// INSERT/SELECT/DELETE politikaları vardı, UPDATE yoktu).
+// Yönetici VE kantin rolü için: seçilen dönem (Günlük / Aylık / Tüm Zamanlar)
+// için TÜM kantin alışlarını hem kurum geneli (toplam tutar + ürün bazında
+// kırılım) hem öğrenci bazında gösterir, ve satırları (ürün/adet/fiyat)
+// düzeltme veya silme, ya da unutulmuş bir satışı sonradan ekleme imkanı
+// verir — geçmiş gün/aylara da ◀/▶ ile gidilebilir (bkz. YoklamaRaporu.jsx'teki
+// aynı gezinme deseni). Kantin rolünün kantin_alislar üzerinde UPDATE
+// yapabilmesi için migration_kantin_gunluk_rapor_guncelleme.sql'in
+// çalıştırılmış olması gerekir (eski migration_kantin.sql'de kantin rolü
+// için sadece INSERT/SELECT/DELETE politikaları vardı, UPDATE yoktu).
 
 function bugunTarihi() {
   const n = new Date()
@@ -23,8 +23,16 @@ function tarihKaydir(tarihStr, gunSayisi) {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
 }
 
+function ayKaydir(ayBaslangicStr, adet) {
+  const d = new Date(ayBaslangicStr + 'T12:00:00')
+  d.setMonth(d.getMonth() + adet)
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-01`
+}
+
 export default function KantinGunlukRapor() {
+  const [donem, setDonem] = useState('gun') // 'gun' | 'ay' | 'hepsi'
   const [seciliTarih, setSeciliTarih] = useState(bugunTarihi())
+  const [seciliAy, setSeciliAy] = useState(ayBaslangici(bugunTarihi()))
   const [alislar, setAlislar] = useState([])
   const [urunler, setUrunler] = useState([])
   const [ogrenciler, setOgrenciler] = useState([])
@@ -38,7 +46,7 @@ export default function KantinGunlukRapor() {
   const [duzenlemeBirimFiyat, setDuzenlemeBirimFiyat] = useState('')
 
   // null: hiçbir ekleme formu açık değil. 'yeni': üstteki genel "+ Yeni Alış
-  // Ekle" formu (isim aramalı, henüz o gün hiç alışverişi olmayan bir
+  // Ekle" formu (isim aramalı, henüz o dönemde hiç alışverişi olmayan bir
   // öğrenci için). Bir öğrenci id'si: o öğrencinin kartının altındaki
   // aramasız/hızlı ekleme formu (öğrenci zaten belli, sadece ürün+adet sorar).
   const [ekleHedefi, setEkleHedefi] = useState(null)
@@ -47,16 +55,23 @@ export default function KantinGunlukRapor() {
   const [yeniOgrenciAdi, setYeniOgrenciAdi] = useState('')
   const [yeniUrunId, setYeniUrunId] = useState('')
   const [yeniAdet, setYeniAdet] = useState('1')
+  const [yeniTarih, setYeniTarih] = useState(bugunTarihi())
 
   async function veriyiYukle() {
     setYukleniyor(true)
     setHata('')
+    let sorgu = supabase
+      .from('kantin_alislar')
+      .select('*, ogrenciler(ad_soyad)')
+      .order('tarih', { ascending: true })
+      .order('created_at', { ascending: true })
+    if (donem === 'gun') {
+      sorgu = sorgu.eq('tarih', seciliTarih)
+    } else if (donem === 'ay') {
+      sorgu = sorgu.gte('tarih', seciliAy).lt('tarih', ayKaydir(seciliAy, 1))
+    }
     const [alisRes, urunRes, ogrenciRes] = await Promise.all([
-      supabase
-        .from('kantin_alislar')
-        .select('*, ogrenciler(ad_soyad)')
-        .eq('tarih', seciliTarih)
-        .order('created_at', { ascending: true }),
+      sorgu,
       supabase.from('kantin_urunler').select('*').order('ad'),
       supabase.from('ogrenciler').select('id, ad_soyad').order('ad_soyad'),
     ])
@@ -72,9 +87,20 @@ export default function KantinGunlukRapor() {
     setDuzenlenenId(null)
     setEkleHedefi(null)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [seciliTarih])
+  }, [donem, seciliTarih, seciliAy])
 
   const bugunMu = seciliTarih === bugunTarihi()
+  const buAyMi = seciliAy === ayBaslangici(bugunTarihi())
+
+  // Ekleme formunu açarken önerilecek varsayılan tarih: Günlük'te seçili
+  // gün, Aylık'ta (seçili ay bugünü içeriyorsa bugün, yoksa ayın 1'i),
+  // Tüm Zamanlar'da bugün — sonrasında dönem 'gun' değilse kullanıcı bunu
+  // formdaki tarih alanından değiştirebilir.
+  function varsayilanYeniTarih() {
+    if (donem === 'gun') return seciliTarih
+    if (donem === 'ay') return buAyMi ? bugunTarihi() : seciliAy
+    return bugunTarihi()
+  }
 
   const genelToplam = useMemo(() => alislar.reduce((t, a) => t + Number(a.tutar), 0), [alislar])
 
@@ -101,6 +127,23 @@ export default function KantinGunlukRapor() {
     }
     return [...map.values()].sort((a, b) => a.ad.localeCompare(b.ad, 'tr-TR'))
   }, [alislar])
+
+  // Aylık/Tüm Zamanlar gibi BİRDEN FAZLA günü kapsayan görünümlerde, aynı
+  // ürün birden çok kez alınmışsa (ör. bir öğrenci ayda 3 kere su almışsa)
+  // her alışı ayrı satır olarak göstermek yerine ürün bazında TOPLAYIP tek
+  // satırda adediyle gösteriyoruz — Günlük'te (tek gün, az sayıda satır)
+  // bunun gereği yok, orada tek tek düzenlenebilir/silinebilir kalıyor.
+  function urunBazindaGrupla(kayitlar) {
+    const map = new Map()
+    for (const a of kayitlar) {
+      const k = a.urun_adi || 'Belirtilmemiş'
+      const mevcut = map.get(k) || { adet: 0, tutar: 0 }
+      mevcut.adet += a.adet
+      mevcut.tutar += Number(a.tutar)
+      map.set(k, mevcut)
+    }
+    return [...map.entries()].sort((a, b) => b[1].tutar - a[1].tutar)
+  }
 
   function duzenlemeyeBasla(a) {
     setEkleHedefi(null)
@@ -154,6 +197,7 @@ export default function KantinGunlukRapor() {
     const ogrenciId = hedefOgrenciId || yeniOgrenciId
     if (!ogrenciId) return alert('Önce listeden bir öğrenci seçin.')
     if (!yeniUrunId) return alert('Ürün seçin.')
+    if (!yeniTarih) return alert('Tarih seçin.')
     const adet = Number(yeniAdet)
     if (!adet || adet <= 0) return alert('Adet 0\'dan büyük olmalı.')
     const urun = urunler.find((u) => u.id === yeniUrunId)
@@ -166,7 +210,7 @@ export default function KantinGunlukRapor() {
       birim_fiyat: urun.fiyat,
       adet,
       tutar: urun.fiyat * adet,
-      tarih: seciliTarih,
+      tarih: yeniTarih,
     })
     setKaydediliyor(false)
     if (error) return alert('Eklenemedi: ' + error.message)
@@ -179,50 +223,119 @@ export default function KantinGunlukRapor() {
     veriyiYukle()
   }
 
+  const donemEtiketi = donem === 'gun' ? 'Günün' : donem === 'ay' ? 'Ayın' : 'Genel'
+  const bosMesaji =
+    donem === 'gun' ? 'Bu güne ait kantin alışı yok.' : donem === 'ay' ? 'Bu aya ait kantin alışı yok.' : 'Hiç kantin alışı kaydı yok.'
+
   return (
     <div>
       <h1 className="text-2xl font-bold text-navy mb-2">Kantin Günlük Rapor</h1>
       <p className="text-sm text-gray-500 mb-6">
-        Seçilen güne ait kurum geneli kantin satışı ve öğrenci bazında dökümü — hatalı bir satırı düzeltebilir,
+        Seçilen döneme ait kurum geneli kantin satışı ve öğrenci bazında dökümü — hatalı bir satırı düzeltebilir,
         silebilir ya da unutulmuş bir satışı sonradan ekleyebilirsin.
       </p>
 
-      <div className="flex items-center gap-2 mb-6 flex-wrap">
+      <div className="flex gap-1.5 mb-3 flex-wrap">
         <button
           type="button"
-          onClick={() => setSeciliTarih((t) => tarihKaydir(t, -1))}
-          className="w-9 h-9 flex items-center justify-center rounded-lg bg-white border border-gray-200 text-gray-600 hover:bg-gray-100 font-semibold"
+          onClick={() => setDonem('gun')}
+          className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors ${
+            donem === 'gun' ? 'bg-navy text-white' : 'bg-white border border-gray-200 text-gray-600 hover:bg-gray-100'
+          }`}
         >
-          ◀
+          Günlük
         </button>
-        <input
-          type="date"
-          value={seciliTarih}
-          onChange={(e) => setSeciliTarih(e.target.value)}
-          className="px-3 py-2 rounded-lg border border-gray-200 text-sm font-semibold text-navy focus:outline-none focus:ring-2 focus:ring-blue"
-        />
         <button
           type="button"
-          onClick={() => setSeciliTarih((t) => tarihKaydir(t, 1))}
-          className="w-9 h-9 flex items-center justify-center rounded-lg bg-white border border-gray-200 text-gray-600 hover:bg-gray-100 font-semibold"
+          onClick={() => setDonem('ay')}
+          className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors ${
+            donem === 'ay' ? 'bg-navy text-white' : 'bg-white border border-gray-200 text-gray-600 hover:bg-gray-100'
+          }`}
         >
-          ▶
+          Aylık
         </button>
-        {!bugunMu && (
+        <button
+          type="button"
+          onClick={() => setDonem('hepsi')}
+          className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors ${
+            donem === 'hepsi' ? 'bg-navy text-white' : 'bg-white border border-gray-200 text-gray-600 hover:bg-gray-100'
+          }`}
+        >
+          Tüm Zamanlar
+        </button>
+      </div>
+
+      {donem === 'gun' && (
+        <div className="flex items-center gap-2 mb-6 flex-wrap">
           <button
             type="button"
-            onClick={() => setSeciliTarih(bugunTarihi())}
-            className="px-3 py-2 rounded-lg bg-navy text-white text-sm font-semibold"
+            onClick={() => setSeciliTarih((t) => tarihKaydir(t, -1))}
+            className="w-9 h-9 flex items-center justify-center rounded-lg bg-white border border-gray-200 text-gray-600 hover:bg-gray-100 font-semibold"
           >
-            Bugün
+            ◀
           </button>
-        )}
-        <span className="text-sm text-gray-500 ml-1">
-          {new Date(seciliTarih + 'T12:00:00').toLocaleDateString('tr-TR', {
-            weekday: 'long', day: 'numeric', month: 'long', year: 'numeric',
-          })}
-        </span>
-      </div>
+          <input
+            type="date"
+            value={seciliTarih}
+            onChange={(e) => setSeciliTarih(e.target.value)}
+            className="px-3 py-2 rounded-lg border border-gray-200 text-sm font-semibold text-navy focus:outline-none focus:ring-2 focus:ring-blue"
+          />
+          <button
+            type="button"
+            onClick={() => setSeciliTarih((t) => tarihKaydir(t, 1))}
+            className="w-9 h-9 flex items-center justify-center rounded-lg bg-white border border-gray-200 text-gray-600 hover:bg-gray-100 font-semibold"
+          >
+            ▶
+          </button>
+          {!bugunMu && (
+            <button
+              type="button"
+              onClick={() => setSeciliTarih(bugunTarihi())}
+              className="px-3 py-2 rounded-lg bg-navy text-white text-sm font-semibold"
+            >
+              Bugün
+            </button>
+          )}
+          <span className="text-sm text-gray-500 ml-1">
+            {new Date(seciliTarih + 'T12:00:00').toLocaleDateString('tr-TR', {
+              weekday: 'long', day: 'numeric', month: 'long', year: 'numeric',
+            })}
+          </span>
+        </div>
+      )}
+
+      {donem === 'ay' && (
+        <div className="flex items-center gap-2 mb-6 flex-wrap">
+          <button
+            type="button"
+            onClick={() => setSeciliAy((a) => ayKaydir(a, -1))}
+            className="w-9 h-9 flex items-center justify-center rounded-lg bg-white border border-gray-200 text-gray-600 hover:bg-gray-100 font-semibold"
+          >
+            ◀
+          </button>
+          <span className="px-3 py-2 rounded-lg border border-gray-200 text-sm font-semibold text-navy capitalize min-w-[10rem] text-center">
+            {ayEtiketi(seciliAy)}
+          </span>
+          <button
+            type="button"
+            onClick={() => setSeciliAy((a) => ayKaydir(a, 1))}
+            className="w-9 h-9 flex items-center justify-center rounded-lg bg-white border border-gray-200 text-gray-600 hover:bg-gray-100 font-semibold"
+          >
+            ▶
+          </button>
+          {!buAyMi && (
+            <button
+              type="button"
+              onClick={() => setSeciliAy(ayBaslangici(bugunTarihi()))}
+              className="px-3 py-2 rounded-lg bg-navy text-white text-sm font-semibold"
+            >
+              Bu Ay
+            </button>
+          )}
+        </div>
+      )}
+
+      {donem === 'hepsi' && <p className="text-sm text-gray-500 mb-6">Kayıtlı tüm zamanlardaki kantin alışları.</p>}
 
       {yukleniyor ? (
         <p className="text-gray-400">Yükleniyor...</p>
@@ -232,7 +345,7 @@ export default function KantinGunlukRapor() {
         <>
           <div className="flex flex-wrap gap-4 mb-6">
             <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
-              <p className="text-sm text-gray-500 font-medium">Bu Günün Toplamı</p>
+              <p className="text-sm text-gray-500 font-medium">{donemEtiketi} Toplamı</p>
               <p className="text-2xl font-bold text-navy mt-1">{paraFormat(genelToplam)}</p>
             </div>
             <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
@@ -248,24 +361,26 @@ export default function KantinGunlukRapor() {
           {urunKirilimi.length > 0 && (
             <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden mb-6">
               <p className="px-4 pt-4 pb-1 font-semibold text-navy text-sm">Ürün Bazında Kırılım (Kurum Geneli)</p>
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="text-left text-gray-500 border-b border-gray-100">
-                    <th className="px-4 py-2 font-medium">Ürün</th>
-                    <th className="px-4 py-2 font-medium text-right">Adet</th>
-                    <th className="px-4 py-2 font-medium text-right">Tutar</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {urunKirilimi.map(([ad, v]) => (
-                    <tr key={ad} className="border-b border-gray-50 last:border-0">
-                      <td className="px-4 py-2">{ad}</td>
-                      <td className="px-4 py-2 text-right">{v.adet}</td>
-                      <td className="px-4 py-2 text-right font-medium">{paraFormat(v.tutar)}</td>
+              <div className="overflow-x-auto" style={{ touchAction: 'pan-x pan-y' }}>
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="text-left text-gray-500 border-b border-gray-100">
+                      <th className="px-4 py-2 font-medium">Ürün</th>
+                      <th className="px-4 py-2 font-medium text-right">Adet</th>
+                      <th className="px-4 py-2 font-medium text-right">Tutar</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
+                  </thead>
+                  <tbody>
+                    {urunKirilimi.map(([ad, v]) => (
+                      <tr key={ad} className="border-b border-gray-50 last:border-0">
+                        <td className="px-4 py-2">{ad}</td>
+                        <td className="px-4 py-2 text-right">{v.adet}</td>
+                        <td className="px-4 py-2 text-right font-medium">{paraFormat(v.tutar)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             </div>
           )}
 
@@ -273,7 +388,14 @@ export default function KantinGunlukRapor() {
             <h2 className="font-semibold text-navy">Öğrenci Bazında Dökümü</h2>
             <button
               type="button"
-              onClick={() => { setDuzenlenenId(null); setEkleHedefi((v) => (v === 'yeni' ? null : 'yeni')) }}
+              onClick={() => {
+                setDuzenlenenId(null)
+                setEkleHedefi((v) => {
+                  if (v === 'yeni') return null
+                  setYeniTarih(varsayilanYeniTarih())
+                  return 'yeni'
+                })
+              }}
               className="px-3 py-2 rounded-lg bg-navy text-white text-sm font-semibold"
             >
               {ekleHedefi === 'yeni' ? 'Vazgeç' : '+ Yeni Alış Ekle'}
@@ -282,7 +404,7 @@ export default function KantinGunlukRapor() {
 
           {ekleHedefi === 'yeni' && (
             <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-4 mb-5">
-              <div className="grid sm:grid-cols-4 gap-3 items-end">
+              <div className="grid sm:grid-cols-5 gap-3 items-end">
                 <div className="sm:col-span-2 relative">
                   <label className="block text-xs font-semibold text-gray-500 mb-1">Öğrenci</label>
                   <input
@@ -338,6 +460,17 @@ export default function KantinGunlukRapor() {
                     className="w-full px-3 py-2 rounded-lg border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-blue"
                   />
                 </div>
+                {donem !== 'gun' && (
+                  <div>
+                    <label className="block text-xs font-semibold text-gray-500 mb-1">Tarih</label>
+                    <input
+                      type="date"
+                      value={yeniTarih}
+                      onChange={(e) => setYeniTarih(e.target.value)}
+                      className="w-full px-3 py-2 rounded-lg border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-blue"
+                    />
+                  </div>
+                )}
               </div>
               <div className="flex justify-end mt-3">
                 <button
@@ -353,7 +486,7 @@ export default function KantinGunlukRapor() {
           )}
 
           {ogrenciGruplari.length === 0 ? (
-            <p className="text-sm text-gray-400">Bu güne ait kantin alışı yok.</p>
+            <p className="text-sm text-gray-400">{bosMesaji}</p>
           ) : (
             <div className="space-y-4">
               {ogrenciGruplari.map((g) => (
@@ -368,9 +501,13 @@ export default function KantinGunlukRapor() {
                           setDuzenlenenId(null)
                           setYeniUrunId('')
                           setYeniAdet('1')
-                          setEkleHedefi((v) => (v === g.id ? null : g.id))
+                          setEkleHedefi((v) => {
+                            if (v === g.id) return null
+                            setYeniTarih(varsayilanYeniTarih())
+                            return g.id
+                          })
                         }}
-                        className="text-navy text-xs font-semibold underline hover:no-underline"
+                        className="px-3 py-1.5 rounded-lg bg-navy text-white text-xs font-semibold"
                       >
                         {ekleHedefi === g.id ? 'Vazgeç' : '+ Alış Ekle'}
                       </button>
@@ -401,6 +538,17 @@ export default function KantinGunlukRapor() {
                           className="w-20 px-3 py-2 rounded-lg border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-blue"
                         />
                       </div>
+                      {donem !== 'gun' && (
+                        <div>
+                          <label className="block text-xs font-semibold text-gray-500 mb-1">Tarih</label>
+                          <input
+                            type="date"
+                            value={yeniTarih}
+                            onChange={(e) => setYeniTarih(e.target.value)}
+                            className="px-3 py-2 rounded-lg border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-blue"
+                          />
+                        </div>
+                      )}
                       <button
                         type="button"
                         disabled={kaydediliyor}
@@ -411,92 +559,113 @@ export default function KantinGunlukRapor() {
                       </button>
                     </div>
                   )}
-                  <table className="w-full text-sm">
-                    <tbody>
-                      {g.kayitlar.map((a) => (
-                        <tr key={a.id} className="border-b border-gray-50 last:border-0">
-                          {duzenlenenId === a.id ? (
-                            <>
-                              <td className="px-4 py-2">
-                                <select
-                                  value={duzenlemeUrunId}
-                                  onChange={(e) => {
-                                    setDuzenlemeUrunId(e.target.value)
-                                    const u = urunler.find((x) => x.id === e.target.value)
-                                    if (u) setDuzenlemeBirimFiyat(String(u.fiyat))
-                                  }}
-                                  className="px-2 py-1.5 rounded-lg border border-gray-200 text-sm w-full"
-                                >
-                                  <option value="">{a.urun_adi}</option>
-                                  {urunler.map((u) => (
-                                    <option key={u.id} value={u.id}>{u.ad}</option>
-                                  ))}
-                                </select>
-                              </td>
-                              <td className="px-2 py-2 text-right w-20">
-                                <input
-                                  type="number"
-                                  min="1"
-                                  value={duzenlemeAdet}
-                                  onChange={(e) => setDuzenlemeAdet(e.target.value)}
-                                  className="w-16 px-2 py-1.5 rounded-lg border border-gray-200 text-sm text-right"
-                                />
-                              </td>
-                              <td className="px-2 py-2 text-right w-28">
-                                <input
-                                  type="number"
-                                  min="0"
-                                  step="0.01"
-                                  value={duzenlemeBirimFiyat}
-                                  onChange={(e) => setDuzenlemeBirimFiyat(e.target.value)}
-                                  className="w-24 px-2 py-1.5 rounded-lg border border-gray-200 text-sm text-right"
-                                />
-                              </td>
-                              <td className="px-4 py-2 text-right whitespace-nowrap">
-                                <button
-                                  type="button"
-                                  disabled={kaydediliyor}
-                                  onClick={() => duzenlemeyiKaydet(a)}
-                                  className="text-blue text-xs font-semibold mr-3 disabled:opacity-50"
-                                >
-                                  Kaydet
-                                </button>
-                                <button
-                                  type="button"
-                                  onClick={() => setDuzenlenenId(null)}
-                                  className="text-gray-400 text-xs font-semibold"
-                                >
-                                  İptal
-                                </button>
-                              </td>
-                            </>
-                          ) : (
-                            <>
-                              <td className="px-4 py-2">{a.urun_adi}</td>
-                              <td className="px-2 py-2 text-right text-gray-500">{a.adet} adet</td>
-                              <td className="px-2 py-2 text-right font-medium">{paraFormat(a.tutar)}</td>
-                              <td className="px-4 py-2 text-right whitespace-nowrap">
-                                <button
-                                  type="button"
-                                  onClick={() => duzenlemeyeBasla(a)}
-                                  className="text-navy text-xs font-semibold mr-3"
-                                >
-                                  Düzenle
-                                </button>
-                                <button
-                                  type="button"
-                                  onClick={() => sil(a.id)}
-                                  className="text-red-600 text-xs font-semibold"
-                                >
-                                  Sil
-                                </button>
-                              </td>
-                            </>
-                          )}
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
+                  <div className="overflow-x-auto" style={{ touchAction: 'pan-x pan-y' }}>
+                    {donem === 'gun' ? (
+                      <table className="w-full text-sm">
+                        <tbody>
+                          {g.kayitlar.map((a) => (
+                            <tr key={a.id} className="border-b border-gray-50 last:border-0">
+                              {duzenlenenId === a.id ? (
+                                <>
+                                  <td className="px-4 py-2">
+                                    <select
+                                      value={duzenlemeUrunId}
+                                      onChange={(e) => {
+                                        setDuzenlemeUrunId(e.target.value)
+                                        const u = urunler.find((x) => x.id === e.target.value)
+                                        if (u) setDuzenlemeBirimFiyat(String(u.fiyat))
+                                      }}
+                                      className="px-2 py-1.5 rounded-lg border border-gray-200 text-sm w-full"
+                                    >
+                                      <option value="">{a.urun_adi}</option>
+                                      {urunler.map((u) => (
+                                        <option key={u.id} value={u.id}>{u.ad}</option>
+                                      ))}
+                                    </select>
+                                  </td>
+                                  <td className="px-2 py-2 text-right w-20">
+                                    <input
+                                      type="number"
+                                      min="1"
+                                      value={duzenlemeAdet}
+                                      onChange={(e) => setDuzenlemeAdet(e.target.value)}
+                                      className="w-16 px-2 py-1.5 rounded-lg border border-gray-200 text-sm text-right"
+                                    />
+                                  </td>
+                                  <td className="px-2 py-2 text-right w-28">
+                                    <input
+                                      type="number"
+                                      min="0"
+                                      step="0.01"
+                                      value={duzenlemeBirimFiyat}
+                                      onChange={(e) => setDuzenlemeBirimFiyat(e.target.value)}
+                                      className="w-24 px-2 py-1.5 rounded-lg border border-gray-200 text-sm text-right"
+                                    />
+                                  </td>
+                                  <td className="px-4 py-2 text-right whitespace-nowrap">
+                                    <button
+                                      type="button"
+                                      disabled={kaydediliyor}
+                                      onClick={() => duzenlemeyiKaydet(a)}
+                                      className="text-blue text-xs font-semibold mr-3 disabled:opacity-50"
+                                    >
+                                      Kaydet
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => setDuzenlenenId(null)}
+                                      className="text-gray-400 text-xs font-semibold"
+                                    >
+                                      İptal
+                                    </button>
+                                  </td>
+                                </>
+                              ) : (
+                                <>
+                                  <td className="px-4 py-2">{a.urun_adi}</td>
+                                  <td className="px-2 py-2 text-right text-gray-500">{a.adet} adet</td>
+                                  <td className="px-2 py-2 text-right font-medium">{paraFormat(a.tutar)}</td>
+                                  <td className="px-4 py-2 text-right whitespace-nowrap">
+                                    <button
+                                      type="button"
+                                      onClick={() => duzenlemeyeBasla(a)}
+                                      className="text-navy text-xs font-semibold mr-3"
+                                    >
+                                      Düzenle
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => sil(a.id)}
+                                      className="text-red-600 text-xs font-semibold"
+                                    >
+                                      Sil
+                                    </button>
+                                  </td>
+                                </>
+                              )}
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    ) : (
+                      // Aylık/Tüm Zamanlar: aynı ürün birden fazla kez alınmışsa
+                      // tek satırda toplam adediyle gösteriliyor (bkz.
+                      // urunBazindaGrupla) — bu yüzden tek bir işleme
+                      // eşlenemediğinden Düzenle/Sil yok; o satırı düzeltmek
+                      // için Günlük'te ilgili günü bulup oradan yapılabilir.
+                      <table className="w-full text-sm">
+                        <tbody>
+                          {urunBazindaGrupla(g.kayitlar).map(([ad, v]) => (
+                            <tr key={ad} className="border-b border-gray-50 last:border-0">
+                              <td className="px-4 py-2">{ad}</td>
+                              <td className="px-2 py-2 text-right text-gray-500">{v.adet} adet</td>
+                              <td className="px-4 py-2 text-right font-medium">{paraFormat(v.tutar)}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    )}
+                  </div>
                 </div>
               ))}
             </div>
