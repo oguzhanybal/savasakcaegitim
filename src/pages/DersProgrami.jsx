@@ -1398,8 +1398,21 @@ export default function DersProgrami() {
   //    (geçmiş dahil, o satır hiç var olmasa bile) gösteriliyordu. Artık
   //    aktif bir ders, sadece created_at'i (oluşturulma tarihi) D'den sonra
   //    DEĞİLSE (yani D'de zaten var olduğu tarihte) gösteriliyor.
+  //
+  // 3) DÜZELTME: "D'nin kendisiyse gösterilir" kuralı, D=BUGÜN olduğunda
+  //    sorun çıkarıyordu — bugün bir dersi silip (ör. öğretmeni değiştirmek
+  //    için) hemen Günlük Müsaitlik'e bakınca, pasif_tarihi = bugün olduğu
+  //    için hücre hâlâ DOLU görünmeye devam ediyor, yerine başka öğretmen
+  //    atanamıyordu ("silinmiyor" şikâyeti). Bu "D'nin kendisi de sayılır"
+  //    kuralı asıl GEÇMİŞ bir güne (◀ ile geri dönülen, tamamen geride kalmış
+  //    bir tarihe) bakarken "o gün gerçekten oradaydı" göstermek içindi —
+  //    BUGÜN için silme her zaman ANINDA yansımalı. Bu yüzden artık D=BUGÜN
+  //    özel durumunda, viewed tarih de bugünse silinen ders hemen kayboluyor;
+  //    D bugünden ÖNCEki bir tarihse (gerçekten geçmiş bir gün) eskisi gibi
+  //    "o gün oradaydı" diye görünmeye devam ediyor.
   const musaitlikIcinProgram = useMemo(() => {
     if (!musaitlikTarihi) return program
+    const bugun = yerelBugunTarihi()
     return programTum.filter((d) => {
       if (d.aktif !== false) {
         // "baslangic_tarihi" elle girilmişse (bkz. DersEkleForm'daki opsiyonel
@@ -1410,7 +1423,9 @@ export default function DersProgrami() {
         const esasTarih = d.baslangic_tarihi || tarihStrYerel(d.created_at)
         return !esasTarih || esasTarih <= musaitlikTarihi
       }
-      return d.pasif_tarihi && musaitlikTarihi <= d.pasif_tarihi
+      if (!d.pasif_tarihi || musaitlikTarihi > d.pasif_tarihi) return false
+      if (musaitlikTarihi === d.pasif_tarihi && musaitlikTarihi === bugun) return false
+      return true
     })
   }, [programTum, program, musaitlikTarihi])
 
