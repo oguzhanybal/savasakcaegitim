@@ -3,6 +3,15 @@
 // (bir metin bağlaçla başlamaz zaten) her yerde küçük bırakılır.
 const BAGLAC_KUCUK_YAZILANLAR = new Set(['ve', 'ile', 'da', 'de', 'veya', 'ya', 'ki'])
 
+// Sınav türü / kurum kısaltmaları gibi "İlk Harf Büyük, Diğerleri Küçük"
+// kuralına tabi OLMAYIP her zaman TAMAMEN BÜYÜK yazılması gereken istisna
+// kelimeler (ör. "tyt sınavı" yazılınca "Tyt Sınavı" değil "TYT Sınavı"
+// olmalı). Anahtar küçük harfli hâli (karşılaştırma için), değer ekranda
+// gösterilecek asıl (büyük) hâli.
+const ISTISNA_BUYUK_YAZILANLAR = new Map(
+  ['TYT', 'YKS', 'AYT', 'MSÜ', 'TÖDER', 'ÖZDEBİR'].map((k) => [k.toLocaleLowerCase('tr-TR'), k])
+)
+
 // Ad-soyad alanlarını, kullanıcı ne şekilde yazarsa yazsın otomatik olarak
 // "İlk Harfler Büyük, Diğerleri Küçük" biçimine çevirir (bağlaçlar hariç,
 // onlar küçük kalır). Türkçe İ/ı harflerinin doğru davranması için
@@ -16,8 +25,12 @@ export function adSoyadDuzelt(metin) {
     .split(' ')
     .map((kelime, index) => {
       if (!kelime) return kelime
-      if (index > 0 && BAGLAC_KUCUK_YAZILANLAR.has(kelime.toLocaleLowerCase('tr-TR'))) {
-        return kelime.toLocaleLowerCase('tr-TR')
+      const kelimeKucuk = kelime.toLocaleLowerCase('tr-TR')
+      if (ISTISNA_BUYUK_YAZILANLAR.has(kelimeKucuk)) {
+        return ISTISNA_BUYUK_YAZILANLAR.get(kelimeKucuk)
+      }
+      if (index > 0 && BAGLAC_KUCUK_YAZILANLAR.has(kelimeKucuk)) {
+        return kelimeKucuk
       }
       // Kelimenin içinde tire ("11-sayısal", "Ali-Rıza") ya da eğik çizgi
       // ("Türkçe/edebiyat" gibi ders adlarında) varsa, sadece kelimenin ilk
