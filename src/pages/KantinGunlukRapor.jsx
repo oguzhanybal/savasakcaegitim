@@ -40,7 +40,12 @@ export default function KantinGunlukRapor() {
   const [hata, setHata] = useState('')
   const [kaydediliyor, setKaydediliyor] = useState(false)
 
-  const [duzenlenenId, setDuzenlenenId] = useState(null)
+  // Düzenlenen satır artık tek bir kantin_alislar id'si değil, aynı gün
+  // aynı öğrencinin aynı ürününe ait TÜM kayıtları temsil eden bir grup
+  // ({ anahtar, urun_adi, urun_id, adet, tutar, idler: [id, id, ...] }) —
+  // bkz. gunlukGrupla. Tek kayıt varsa idler tek elemanlı olur, davranış
+  // aynı kalır; birden fazla varsa Kaydet/Sil hepsine birden uygulanır.
+  const [duzenlenenGrup, setDuzenlenenGrup] = useState(null)
   const [duzenlemeUrunId, setDuzenlemeUrunId] = useState('')
   const [duzenlemeAdet, setDuzenlemeAdet] = useState('1')
   const [duzenlemeBirimFiyat, setDuzenlemeBirimFiyat] = useState('')
@@ -84,7 +89,7 @@ export default function KantinGunlukRapor() {
 
   useEffect(() => {
     veriyiYukle()
-    setDuzenlenenId(null)
+    setDuzenlenenGrup(null)
     setEkleHedefi(null)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [donem, seciliTarih, seciliAy])
@@ -131,8 +136,8 @@ export default function KantinGunlukRapor() {
   // Aylık/Tüm Zamanlar gibi BİRDEN FAZLA günü kapsayan görünümlerde, aynı
   // ürün birden çok kez alınmışsa (ör. bir öğrenci ayda 3 kere su almışsa)
   // her alışı ayrı satır olarak göstermek yerine ürün bazında TOPLAYIP tek
-  // satırda adediyle gösteriyoruz — Günlük'te (tek gün, az sayıda satır)
-  // bunun gereği yok, orada tek tek düzenlenebilir/silinebilir kalıyor.
+  // satırda adediyle gösteriyoruz. Salt görüntüleme amaçlı olduğundan (bu
+  // görünümlerde Düzenle/Sil yok) burada işlem id'lerini taşımaya gerek yok.
   function urunBazindaGrupla(kayitlar) {
     const map = new Map()
     for (const a of kayitlar) {
@@ -145,40 +150,76 @@ export default function KantinGunlukRapor() {
     return [...map.entries()].sort((a, b) => b[1].tutar - a[1].tutar)
   }
 
-  function duzenlemeyeBasla(a) {
-    setEkleHedefi(null)
-    setDuzenlenenId(a.id)
-    setDuzenlemeUrunId(a.urun_id || '')
-    setDuzenlemeAdet(String(a.adet))
-    setDuzenlemeBirimFiyat(String(a.birim_fiyat))
+  // Günlük görünümde de aynı öğrencinin aynı gün içinde aynı ürünü birden
+  // fazla kez alması durumunda (ör. 3 kere su) TEK satırda toplam adediyle
+  // gösteriliyor — ama burada (aylık/genelin aksine) satır hâlâ düzenlenebilir/
+  // silinebilir kalması gerektiğinden, her grup kendi altındaki kantin_alislar
+  // id'lerini (idler) de taşıyor: Kaydet o grubun TÜM kayıtlarını tek kayda
+  // indirger (fazlalıkları siler, kalanı yeni değerlerle günceller), Sil
+  // grubun tüm kayıtlarını birden siler.
+  function gunlukGrupla(ogrenciId, kayitlar) {
+    const map = new Map()
+    for (const a of kayitlar) {
+      const urunAdi = a.urun_adi || 'Belirtilmemiş'
+      const anahtar = `${ogrenciId}|${urunAdi}`
+      if (!map.has(anahtar)) {
+        map.set(anahtar, { anahtar, urun_adi: a.urun_adi, urun_id: a.urun_id, adet: 0, tutar: 0, idler: [] })
+      }
+      const g = map.get(anahtar)
+      g.adet += a.adet
+      g.tutar += Number(a.tutar)
+      g.idler.push(a.id)
+    }
+    return [...map.values()].sort((a, b) => b.tutar - a.tutar)
   }
 
-  async function duzenlemeyiKaydet(a) {
+  function duzenlemeyeBasla(g) {
+    setEkleHedefi(null)
+    setDuzenlenenGrup(g)
+    setDuzenlemeUrunId(g.urun_id || '')
+    setDuzenlemeAdet(String(g.adet))
+    // Birden fazla kayıt aynı ürünse fiyat da normalde aynıdır; olası bir
+    // farklılıkta (ör. üründe fiyat güncellemesi arada yapıldıysa) ortalama
+    // birim fiyat varsayılan olarak gösteriliyor, kullanıcı isterse düzeltir.
+    setDuzenlemeBirimFiyat(g.adet ? String(Math.round((g.tutar / g.adet) * 100) / 100) : '0')
+  }
+
+  async function duzenlemeyiKaydet(g) {
     const adet = Number(duzenlemeAdet)
     const birimFiyat = Number(duzenlemeBirimFiyat)
     if (!adet || adet <= 0) return alert('Adet 0\'dan büyük olmalı.')
     if (!(birimFiyat >= 0)) return alert('Birim fiyat geçersiz.')
     const secilenUrun = urunler.find((u) => u.id === duzenlemeUrunId)
     setKaydediliyor(true)
+    const [ilkId, ...digerIdler] = g.idler
+    if (digerIdler.length > 0) {
+      const { error: silmeHatasi } = await supabase.from('kantin_alislar').delete().in('id', digerIdler)
+      if (silmeHatasi) {
+        setKaydediliyor(false)
+        return alert('Güncellenemedi: ' + silmeHatasi.message)
+      }
+    }
     const { error } = await supabase
       .from('kantin_alislar')
       .update({
         urun_id: duzenlemeUrunId || null,
-        urun_adi: secilenUrun ? secilenUrun.ad : a.urun_adi,
+        urun_adi: secilenUrun ? secilenUrun.ad : g.urun_adi,
         adet,
         birim_fiyat: birimFiyat,
         tutar: adet * birimFiyat,
       })
-      .eq('id', a.id)
+      .eq('id', ilkId)
     setKaydediliyor(false)
     if (error) return alert('Güncellenemedi: ' + error.message)
-    setDuzenlenenId(null)
+    setDuzenlenenGrup(null)
     veriyiYukle()
   }
 
-  async function sil(id) {
-    if (!confirm('Bu alışı silmek istediğine emin misin?')) return
-    const { error } = await supabase.from('kantin_alislar').delete().eq('id', id)
+  async function sil(idler) {
+    const idListesi = Array.isArray(idler) ? idler : [idler]
+    const mesaj = idListesi.length > 1 ? 'Bu ürüne ait tüm alışları (aynı gün içindeki hepsini) silmek istediğine emin misin?' : 'Bu alışı silmek istediğine emin misin?'
+    if (!confirm(mesaj)) return
+    const { error } = await supabase.from('kantin_alislar').delete().in('id', idListesi)
     if (error) return alert('Silinemedi: ' + error.message)
     veriyiYukle()
   }
@@ -389,7 +430,7 @@ export default function KantinGunlukRapor() {
             <button
               type="button"
               onClick={() => {
-                setDuzenlenenId(null)
+                setDuzenlenenGrup(null)
                 setEkleHedefi((v) => {
                   if (v === 'yeni') return null
                   setYeniTarih(varsayilanYeniTarih())
@@ -498,7 +539,7 @@ export default function KantinGunlukRapor() {
                       <button
                         type="button"
                         onClick={() => {
-                          setDuzenlenenId(null)
+                          setDuzenlenenGrup(null)
                           setYeniUrunId('')
                           setYeniAdet('1')
                           setEkleHedefi((v) => {
@@ -563,9 +604,9 @@ export default function KantinGunlukRapor() {
                     {donem === 'gun' ? (
                       <table className="w-full text-sm">
                         <tbody>
-                          {g.kayitlar.map((a) => (
-                            <tr key={a.id} className="border-b border-gray-50 last:border-0">
-                              {duzenlenenId === a.id ? (
+                          {gunlukGrupla(g.id, g.kayitlar).map((grup) => (
+                            <tr key={grup.anahtar} className="border-b border-gray-50 last:border-0">
+                              {duzenlenenGrup?.anahtar === grup.anahtar ? (
                                 <>
                                   <td className="px-4 py-2">
                                     <select
@@ -577,7 +618,7 @@ export default function KantinGunlukRapor() {
                                       }}
                                       className="px-2 py-1.5 rounded-lg border border-gray-200 text-sm w-full"
                                     >
-                                      <option value="">{a.urun_adi}</option>
+                                      <option value="">{grup.urun_adi}</option>
                                       {urunler.map((u) => (
                                         <option key={u.id} value={u.id}>{u.ad}</option>
                                       ))}
@@ -606,14 +647,14 @@ export default function KantinGunlukRapor() {
                                     <button
                                       type="button"
                                       disabled={kaydediliyor}
-                                      onClick={() => duzenlemeyiKaydet(a)}
+                                      onClick={() => duzenlemeyiKaydet(grup)}
                                       className="text-blue text-xs font-semibold mr-3 disabled:opacity-50"
                                     >
                                       Kaydet
                                     </button>
                                     <button
                                       type="button"
-                                      onClick={() => setDuzenlenenId(null)}
+                                      onClick={() => setDuzenlenenGrup(null)}
                                       className="text-gray-400 text-xs font-semibold"
                                     >
                                       İptal
@@ -622,20 +663,20 @@ export default function KantinGunlukRapor() {
                                 </>
                               ) : (
                                 <>
-                                  <td className="px-4 py-2">{a.urun_adi}</td>
-                                  <td className="px-2 py-2 text-right text-gray-500">{a.adet} adet</td>
-                                  <td className="px-2 py-2 text-right font-medium">{paraFormat(a.tutar)}</td>
+                                  <td className="px-4 py-2">{grup.urun_adi}</td>
+                                  <td className="px-2 py-2 text-right text-gray-500">{grup.adet} adet</td>
+                                  <td className="px-2 py-2 text-right font-medium">{paraFormat(grup.tutar)}</td>
                                   <td className="px-4 py-2 text-right whitespace-nowrap">
                                     <button
                                       type="button"
-                                      onClick={() => duzenlemeyeBasla(a)}
+                                      onClick={() => duzenlemeyeBasla(grup)}
                                       className="text-navy text-xs font-semibold mr-3"
                                     >
                                       Düzenle
                                     </button>
                                     <button
                                       type="button"
-                                      onClick={() => sil(a.id)}
+                                      onClick={() => sil(grup.idler)}
                                       className="text-red-600 text-xs font-semibold"
                                     >
                                       Sil
