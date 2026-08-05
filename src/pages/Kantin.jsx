@@ -704,7 +704,20 @@ export default function Kantin() {
   }, [])
 
   useEffect(() => {
-    if (!loading) barkodInputRef.current?.focus()
+    if (loading) return
+    // Barkod kutusuna sayfa açılır açılmaz otomatik odaklanmak, USB barkod
+    // okuyucu kullanan masaüstü/kiosk kurulumunda faydalı (okuyucu klavye
+    // gibi davranıp direkt o kutuya yazar). Ama MOBİLDE bir input'a focus()
+    // çağrılınca tarayıcı otomatik olarak o kutuyu ekrana kaydırıyor VE
+    // klavyeyi açıyordu — sayfa ilk açıldığında en üstteki "Öğrenci" arama
+    // kutusu yerine sayfanın sonundaki "Barkod ile Ekle" bölümü görünüyordu.
+    // Bu yüzden sadece gerçek fare+klavye olan (dokunmatik olmayan)
+    // cihazlarda otomatik odaklanıyoruz.
+    const masaustuMu =
+      typeof window !== 'undefined' &&
+      window.matchMedia &&
+      window.matchMedia('(hover: hover) and (pointer: fine)').matches
+    if (masaustuMu) barkodInputRef.current?.focus()
   }, [loading])
 
   const ogrenciAdMap = useMemo(() => new Map(ogrenciler.map((o) => [o.id, o.ad_soyad])), [ogrenciler])
