@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { sinavSonucPdfIndenTumOgrencileriCikar } from '../lib/sinavPdfParse'
+import { buyukIstisnalariDuzelt } from '../lib/adSoyadFormat'
 
 // Bir sınavı giren TÜM öğrencilerin sonuç PDF'lerini TEK SEFERDE yükleyip
 // otomatik ayrıştırmayı sağlayan sayfa. Okulun tarama/analiz yazılımı "tüm
@@ -185,12 +186,14 @@ export default function SinavYukle() {
     if (seciliSinavId && seciliSinavId !== '__yeni__') return seciliSinavId
     if (yeniSinavOlusturmaRef.current) return yeniSinavOlusturmaRef.current
     const p = (async () => {
-      // Sınav adları BİLEREK otomatik büyük harf düzeltmesinden geçirilmiyor
-      // — admin bazen kısaltma/parantez/özel biçim kullanmak istiyor (ör.
-      // "1.TYT-A"), o yüzden tam olarak yazdığı gibi (baş/son boşluk
-      // temizlenmiş hâliyle) kaydediliyor. Öğrenci adı gibi diğer serbest
-      // metin alanlarında büyük harf düzeltmesi AYNEN devam ediyor.
-      const temizAd = yeniSinavAdi.trim()
+      // Sınav adları BİLEREK tam otomatik büyük harf düzeltmesinden
+      // geçirilmiyor — admin bazen kısaltma/parantez/özel biçim kullanmak
+      // istiyor (ör. "1.TYT-A"), o yüzden geri kalanı tam olarak yazdığı
+      // gibi kaydediliyor. Ama TYT/YKS/AYT gibi istisna kelimeler (bkz.
+      // buyukIstisnalariDuzelt) küçük harfle yazılsa bile büyütülüyor.
+      // Öğrenci adı gibi diğer serbest metin alanlarında tam büyük harf
+      // düzeltmesi AYNEN devam ediyor.
+      const temizAd = buyukIstisnalariDuzelt(yeniSinavAdi.trim())
       const { data, error } = await supabase
         .from('sinavlar')
         .insert({ sinav_adi: temizAd, sinav_tarihi: yeniSinavTarihi || null, tur: yeniSinavTuru })

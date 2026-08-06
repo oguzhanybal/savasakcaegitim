@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../lib/AuthContext'
-import { ilkHarfleriBuyukYap } from '../lib/adSoyadFormat'
+import { ilkHarfleriBuyukYap, buyukIstisnalariDuzelt } from '../lib/adSoyadFormat'
 import {
   pdfBelgesiAc,
   sayfayiGoruntuyeCevir,
@@ -594,10 +594,12 @@ export default function SinavKitapciklari() {
       const { error } = await supabase
         .from('sinavlar')
         .update({
-          // Sınav adı BİLEREK büyük harf düzeltmesinden geçirilmiyor — admin
-          // tam olarak yazdığı gibi kaydedilsin istiyor (öğrenci adı gibi
-          // diğer alanlarda bu düzeltme aynen devam ediyor).
-          sinav_adi: duzenlenenSinavAdi.trim(),
+          // Sınav adı BİLEREK tam büyük harf düzeltmesinden geçirilmiyor —
+          // admin geri kalanını tam olarak yazdığı gibi kaydedebilsin (öğrenci
+          // adı gibi diğer alanlarda bu düzeltme aynen devam ediyor), ama
+          // TYT/YKS/AYT gibi istisna kelimeler (bkz. buyukIstisnalariDuzelt)
+          // küçük yazılsa bile büyütülüyor.
+          sinav_adi: buyukIstisnalariDuzelt(duzenlenenSinavAdi.trim()),
           sinav_tarihi: duzenlenenSinavTarihi || null,
           tur: duzenlenenSinavTuru,
         })
@@ -1123,11 +1125,12 @@ export default function SinavKitapciklari() {
     try {
       let sinavId = seciliSinavId
       if (sinavId === '__yeni__') {
-        // Sınav adı BİLEREK büyük harf düzeltmesinden geçirilmiyor — admin
-        // tam olarak yazdığı gibi (manuel) kaydetmek istiyor.
+        // Sınav adı BİLEREK tam büyük harf düzeltmesinden geçirilmiyor —
+        // admin geri kalanını tam olarak yazdığı gibi (manuel) kaydetmek
+        // istiyor, ama TYT/YKS/AYT gibi istisna kelimeler yine büyütülüyor.
         const { data, error } = await supabase
           .from('sinavlar')
-          .insert({ sinav_adi: yeniSinavAdi.trim(), sinav_tarihi: yeniSinavTarihi || null, tur: yeniSinavTuru })
+          .insert({ sinav_adi: buyukIstisnalariDuzelt(yeniSinavAdi.trim()), sinav_tarihi: yeniSinavTarihi || null, tur: yeniSinavTuru })
           .select()
           .single()
         if (error && error.code === '23505') {
@@ -1139,7 +1142,7 @@ export default function SinavKitapciklari() {
           const { data: mevcutSinav, error: bulmaHatasi } = await supabase
             .from('sinavlar')
             .select('id')
-            .eq('sinav_adi', yeniSinavAdi.trim())
+            .eq('sinav_adi', buyukIstisnalariDuzelt(yeniSinavAdi.trim()))
             .single()
           if (bulmaHatasi || !mevcutSinav) throw error
           sinavId = mevcutSinav.id
