@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import { useAuth } from '../lib/AuthContext'
 import UygulamaYukleBanner from './UygulamaYukleBanner'
+import { bildirimAcikMi, bildirimleriAc, bildirimleriKapat, pushDestekleniyorMu } from '../lib/pushBildirim'
 
 const ROL_ETIKET = {
   yonetici: 'Yönetici',
@@ -141,6 +142,56 @@ function menuOlustur(rol) {
     ]
   }
   return []
+}
+
+// Şimdilik SADECE öğrenci rolü için: bire bir dersinden 10 dakika önce
+// gerçek push bildirimi almak isteyenler bu butona basıp izin veriyor.
+// Desteklenmeyen tarayıcılarda (ör. iPhone Safari'de ana ekrana eklenmeden)
+// buton yine görünür, basılınca açıklayıcı bir hata mesajı gösterir.
+function BildirimButonu({ profileId }) {
+  const [acik, setAcik] = useState(false)
+  const [yukleniyor, setYukleniyor] = useState(false)
+  const [kontrolEdildi, setKontrolEdildi] = useState(false)
+
+  useEffect(() => {
+    let iptal = false
+    bildirimAcikMi().then((deger) => {
+      if (!iptal) {
+        setAcik(deger)
+        setKontrolEdildi(true)
+      }
+    })
+    return () => { iptal = true }
+  }, [])
+
+  async function tikla() {
+    setYukleniyor(true)
+    try {
+      if (acik) {
+        await bildirimleriKapat()
+        setAcik(false)
+      } else {
+        await bildirimleriAc(profileId)
+        setAcik(true)
+        alert('Bildirimler açıldı. Bire bir dersinizden 10 dakika önce bildirim alacaksınız.')
+      }
+    } catch (err) {
+      alert(err.message)
+    }
+    setYukleniyor(false)
+  }
+
+  if (!pushDestekleniyorMu()) return null
+
+  return (
+    <button
+      onClick={tikla}
+      disabled={yukleniyor}
+      className="w-full text-left px-3 py-2 rounded-lg text-sm text-white/70 hover:bg-white/10 hover:text-white transition-colors disabled:opacity-50"
+    >
+      {yukleniyor ? 'İşleniyor...' : acik ? '🔔 Bildirimler Açık (kapatmak için tıkla)' : '🔕 Bildirimleri Aç'}
+    </button>
+  )
 }
 
 function OkGosterge({ acik }) {
@@ -339,6 +390,7 @@ export default function Layout() {
         </nav>
         <div className="p-3 border-t border-white/10 shrink-0">
           <p className="text-xs text-white/60 px-3 mb-2 truncate">{profile?.ad_soyad}</p>
+          {rol === 'ogrenci' && profile?.id && <BildirimButonu profileId={profile.id} />}
           <button
             onClick={signOut}
             className="w-full text-left px-3 py-2 rounded-lg text-sm text-white/70 hover:bg-white/10 hover:text-white transition-colors"
