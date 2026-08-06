@@ -58,6 +58,23 @@ export function adSoyadDuzelt(metin) {
 // bir isimle çağrılabilsin diye aynı fonksiyona ikinci bir isim veriyoruz.
 export const ilkHarfleriBuyukYap = adSoyadDuzelt
 
+// Sınav adı gibi bazı serbest metin alanlarında BİLEREK tam otomatik büyük/
+// küçük harf düzeltmesi uygulanmıyor (admin "1.TYT-A" gibi kendi özel
+// biçimini kullanabilsin diye — bkz. SinavYukle.jsx/SinavKitapciklari.jsx).
+// Ama bu, TYT/YKS/AYT/MSÜ/TÖDER/ÖZDEBİR gibi istisna kelimelerin küçük harfle
+// yazılıp öyle kalmasına da yol açıyordu. Bu fonksiyon metnin geri kalanına
+// HİÇ dokunmadan, içinde geçen istisna kelimeleri (küçük/karışık harfle
+// yazılmış olsalar bile) büyük hâllerine çevirir — "1.tyt-a deneme" ->
+// "1.TYT-a deneme".
+const TURKCE_HARF_SINIFI = 'A-Za-zÇĞİIıÖŞÜçğıöşü'
+export function buyukIstisnalariDuzelt(metin) {
+  if (!metin) return metin
+  return metin.replace(new RegExp(`[${TURKCE_HARF_SINIFI}]+`, 'g'), (parca) => {
+    const kucuk = parca.toLocaleLowerCase('tr-TR')
+    return ISTISNA_BUYUK_YAZILANLAR.has(kucuk) ? ISTISNA_BUYUK_YAZILANLAR.get(kucuk) : parca
+  })
+}
+
 // Türkçe harf -> ASCII karşılığı (kullanıcı adı/giriş adı öneri fonksiyonu için).
 const TURKCE_ASCII_HARITASI = {
   ç: 'c', Ç: 'c', ğ: 'g', Ğ: 'g', ı: 'i', I: 'i', İ: 'i',
