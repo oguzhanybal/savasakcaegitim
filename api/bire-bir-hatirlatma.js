@@ -247,6 +247,7 @@ export default async function handler(req, res) {
     }
 
     let gonderilen = 0
+    const hatalar = []
     for (const abn of abonelikler) {
       try {
         const yanit = await pushGonder(abn, payload, vapid)
@@ -256,12 +257,31 @@ export default async function handler(req, res) {
           // Abonelik artık geçersiz (kullanıcı bildirimleri kapattı/tarayıcı
           // verisini sildi) — kaydı temizliyoruz ki her seferinde tekrar denenmesin.
           await admin.from('push_abonelikleri').delete().eq('id', abn.id)
+          hatalar.push({ endpoint: abn.endpoint.slice(-24), status: yanit.status, mesaj: 'abonelik silindi (geçersiz)' })
+        } else {
+          // Önceden burası SESSİZCE atlanıyordu — artık gerçek durum kodunu
+          // ve push servisinin döndürdüğü hata metnini kaydediyoruz ki
+          // (ör. 401 = VAPID anahtarı uyuşmuyor) sebebi görebilelim.
+          let metin = ''
+          try {
+            metin = await yanit.text()
+          } catch {
+            metin = ''
+          }
+          hatalar.push({ endpoint: abn.endpoint.slice(-24), status: yanit.status, mesaj: metin.slice(0, 300) })
         }
       } catch (err) {
-        sonuclar.push({ ...aday, ogrenciAdi: ogrenci.ad_soyad, durum: 'gonderim_hatasi', hata: err.message })
+        hatalar.push({ endpoint: abn.endpoint?.slice(-24), status: 'exception', mesaj: err.message })
       }
     }
-    sonuclar.push({ ...aday, ogrenciAdi: ogrenci.ad_soyad, durum: 'gonderildi', abonelikSayisi: gonderilen })
+    sonuclar.push({
+      ...aday,
+      ogrenciAdi: ogrenci.ad_soyad,
+      durum: gonderilen > 0 ? 'gonderildi' : 'gonderilemedi',
+      abonelikSayisi: gonderilen,
+      toplamAbonelik: abonelikler.length,
+      hatalar: hatalar.length ? hatalar : undefined,
+    })
   }
 
   res.status(200).json({ ok: true, kontrolEdilenSaatAraligi: `${altSinir}-${ustSinir}`, sonuclar })
