@@ -4,7 +4,9 @@ import { supabase } from './supabase'
 // (build) sırasında buraya gömülür — VITE_SUPABASE_URL ile AYNI yöntem
 // (bkz. lib/supabase.js). Bu anahtar GİZLİ DEĞİL, tarayıcıya zaten gitmesi
 // gerekiyor (Web Push standardının bir parçası).
-const VAPID_PUBLIC_KEY = import.meta.env.VITE_VAPID_PUBLIC_KEY
+// .trim() ÖNEMLİ: Vercel panosuna yapıştırırken sona görünmez bir boşluk/
+// satır sonu karakteri eklenmiş olabilir, bu da anahtarı bozar.
+const VAPID_PUBLIC_KEY = (import.meta.env.VITE_VAPID_PUBLIC_KEY || '').trim()
 
 function urlBase64ToUint8Array(base64String) {
   const dolgu = '='.repeat((4 - (base64String.length % 4)) % 4)
