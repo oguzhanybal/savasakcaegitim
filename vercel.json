@@ -8,6 +8,7 @@
   ],
   "functions": {
     "api/odev-arsivle.js": { "maxDuration": 60 },
-    "api/gunluk-yedek.js": { "maxDuration": 60 }
+    "api/gunluk-yedek.js": { "maxDuration": 60 },
+    "api/bire-bir-hatirlatma.js": { "maxDuration": 30 }
   }
 }
