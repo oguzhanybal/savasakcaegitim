@@ -147,11 +147,14 @@ export default async function handler(req, res) {
     return
   }
 
-  const supabaseUrl = process.env.VITE_SUPABASE_URL
-  const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY
-  const vapidPublicKey = process.env.VAPID_PUBLIC_KEY
-  const vapidPrivateKey = process.env.VAPID_PRIVATE_KEY
-  const vapidSubject = process.env.VAPID_SUBJECT || 'mailto:admin@savasakcaportal.com'
+  const supabaseUrl = (process.env.VITE_SUPABASE_URL || '').trim()
+  const serviceKey = (process.env.SUPABASE_SERVICE_ROLE_KEY || '').trim()
+  // .trim() ÖNEMLİ: Vercel panosuna yapıştırırken sona görünmez bir boşluk/
+  // satır sonu karakteri eklenmiş olabilir. Bu, base64url anahtarını bozup
+  // push servisinin (FCM) "invalid JWT provided" hatası vermesine yol açar.
+  const vapidPublicKey = (process.env.VAPID_PUBLIC_KEY || '').trim()
+  const vapidPrivateKey = (process.env.VAPID_PRIVATE_KEY || '').trim()
+  const vapidSubject = (process.env.VAPID_SUBJECT || 'mailto:admin@savasakcaportal.com').trim()
 
   if (!supabaseUrl || !serviceKey || !vapidPublicKey || !vapidPrivateKey) {
     res.status(500).json({ error: 'Sunucu yapılandırması eksik (Supabase veya VAPID ortam değişkenleri).' })
@@ -160,6 +163,16 @@ export default async function handler(req, res) {
 
   const admin = createClient(supabaseUrl, serviceKey)
   const vapid = { publicKey: vapidPublicKey, privateKey: vapidPrivateKey, subject: vapidSubject }
+  // GEÇİCİ TEŞHİS BİLGİSİ: anahtarın kendisini göstermeden sadece uzunluğunu
+  // ve son 6 karakterini yanıta ekliyoruz — Vercel'e kaydedilenin, üretilen
+  // anahtarla birebir aynı olup olmadığını buradan doğrulayabiliriz. Sorun
+  // çözülünce bu bloğu kaldırabiliriz.
+  const teshis = {
+    vapidPublicKeyUzunluk: vapidPublicKey.length,
+    vapidPublicKeySon6: vapidPublicKey.slice(-6),
+    vapidPrivateKeyUzunluk: vapidPrivateKey.length,
+    vapidPrivateKeySon6: vapidPrivateKey.slice(-6),
+  }
 
   const suan = turkiyeSuAn()
   const bugun = tarihStr(suan)
@@ -199,7 +212,7 @@ export default async function handler(req, res) {
   ]
 
   if (adaylar.length === 0) {
-    res.status(200).json({ ok: true, mesaj: 'Yaklaşan ders yok.', kontrolEdilenSaatAraligi: `${altSinir}-${ustSinir}` })
+    res.status(200).json({ ok: true, mesaj: 'Yaklaşan ders yok.', kontrolEdilenSaatAraligi: `${altSinir}-${ustSinir}`, teshis })
     return
   }
 
@@ -284,5 +297,5 @@ export default async function handler(req, res) {
     })
   }
 
-  res.status(200).json({ ok: true, kontrolEdilenSaatAraligi: `${altSinir}-${ustSinir}`, sonuclar })
+  res.status(200).json({ ok: true, kontrolEdilenSaatAraligi: `${altSinir}-${ustSinir}`, sonuclar, teshis })
 }
