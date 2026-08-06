@@ -2006,7 +2006,7 @@ export default function DersProgrami() {
                     yüklenmedi" diye kafa karıştırıyordu. Artık her gün (boş olsa
                     da) kendi kartıyla görünüyor, boşsa içinde açık bir mesaj var. */}
                 {dersler.length === 0 ? (
-                  <p className="px-4 py-4 text-sm text-gray-400">Bu güne ait ders bulunmuyor.</p>
+                  <p className="px-4 py-4 text-sm text-gray-400">Bugüne ait ders bulunmuyor.</p>
                 ) : (
                 <div className="divide-y divide-gray-50">
                   {dersler.map((d) => {
