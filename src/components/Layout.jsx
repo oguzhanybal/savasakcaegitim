@@ -3,7 +3,7 @@ import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import { useAuth } from '../lib/AuthContext'
 import UygulamaYukleBanner from './UygulamaYukleBanner'
 import { bildirimAcikMi, bildirimleriAc, bildirimleriKapat, pushDestekleniyorMu } from '../lib/pushBildirim'
-import { usePwaYukleme, iosMu, zatenYukluMu, safariMasaustuMu } from '../lib/usePwaYukleme'
+import { usePwaYukleme, iosMu, zatenYukluMu, safariMasaustuMu, androidMu, gercektenYukluMu } from '../lib/usePwaYukleme'
 
 const ROL_ETIKET = {
   yonetici: 'Yönetici',
@@ -211,6 +211,22 @@ function UygulamaYukleButonu({ ertelemeOlayi, yukle }) {
     return () => window.removeEventListener('appinstalled', yuklendi)
   }, [])
 
+  // zatenYukluMu() SADECE "bu sekme şu an kurulu haliyle mi açık" sorusuna
+  // cevap veriyor — normal bir tarayıcı sekmesinde uygulama BAŞKA bir yerde
+  // (Dock, Başlat Menüsü, telefonun ana ekranı) kurulu olsa bile bunu
+  // YAKALAMIYOR, kullanıcının şikayet ettiği tam olarak buydu: buton kurulu
+  // olsa da görünmeye devam ediyor, tıklayınca da anlamsız bir uyarı
+  // veriyordu. gercektenYukluMu() ise tarayıcının kendi kurulu-uygulamalar
+  // kaydına bakan GERÇEK bir kontrol — sonuç kesin "kurulu" ise butonu
+  // tamamen kaldırıyoruz.
+  useEffect(() => {
+    let iptal = false
+    gercektenYukluMu().then((sonuc) => {
+      if (!iptal && sonuc === true) setYuklu(true)
+    })
+    return () => { iptal = true }
+  }, [])
+
   if (yuklu) return null
 
   async function tikla() {
@@ -228,11 +244,28 @@ function UygulamaYukleButonu({ ertelemeOlayi, yukle }) {
     }
     // Chrome/Edge burada iki nedenden biri yüzünden olabilir: (1) sayfa daha
     // yeni açıldı, tarayıcı teklifi henüz hazırlamadı — yenileyip biraz
-    // beklemek çözer; (2) BU BİLGİSAYARDA UYGULAMA ZATEN KURULU — Chrome, bir
+    // beklemek çözer; (2) BU CİHAZDA UYGULAMA ZATEN KURULU — Chrome, bir
     // siteyi bir kez kurduktan sonra AYNI TARAYICIDA bir daha kurulum teklifi
-    // ASLA göstermiyor (kullanıcının kendi gözlemiyle doğrulandı). İkinci
-    // durumu JS'ten güvenilir şekilde ayırt edebilecek bir API yok, o yüzden
-    // ikisini de tek mesajda anlatıyoruz.
+    // ASLA göstermiyor (kullanıcının kendi gözlemiyle hem masaüstünde hem
+    // Android'de doğrulandı). İkinci durumu JS'ten güvenilir şekilde ayırt
+    // edebilecek bir API yok, o yüzden ikisini de tek mesajda anlatıyoruz.
+    // Android ile masaüstü Chrome'un "zaten kurulu mu" kontrol yolu farklı
+    // olduğu için (adres çubuğu ikonu / chrome://apps masaüstünde var,
+    // Android'de yok) mesajı platforma göre ayırıyoruz.
+    if (androidMu()) {
+      alert(
+        'Tarayıcınız şu an yükleme teklifini hazırlamadı.\n\n' +
+          'Sayfayı yenileyip birkaç saniye sonra tekrar deneyebilirsiniz — ' +
+          'ama bu telefonda uygulama ZATEN kuruluysa (ana ekranınızda ya da ' +
+          'uygulama çekmecenizde "Savaş Akça Eğitim" simgesini arayın), ' +
+          'Chrome aynı tarayıcıda bir daha kurulum teklifi göstermez — bu ' +
+          'normaldir, kurulu olanı doğrudan oradan açabilirsiniz. Silip ' +
+          'yeniden kurmak isterseniz: Ayarlar > Uygulamalar içinden "Savaş ' +
+          'Akça Eğitim"i bulup kaldırabilir, ya da simgeye basılı tutup ' +
+          '"Kaldır" seçebilirsiniz.'
+      )
+      return
+    }
     alert(
       'Tarayıcınız şu an yükleme teklifini hazırlamadı.\n\n' +
         'Sayfayı yenileyip birkaç saniye sonra tekrar deneyebilirsiniz — ' +
