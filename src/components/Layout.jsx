@@ -3,6 +3,7 @@ import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import { useAuth } from '../lib/AuthContext'
 import UygulamaYukleBanner from './UygulamaYukleBanner'
 import { bildirimAcikMi, bildirimleriAc, bildirimleriKapat, pushDestekleniyorMu } from '../lib/pushBildirim'
+import { usePwaYukleme, iosMu, zatenYukluMu } from '../lib/usePwaYukleme'
 
 const ROL_ETIKET = {
   yonetici: 'Yönetici',
@@ -195,6 +196,46 @@ function BildirimButonu({ profileId }) {
   )
 }
 
+// Alttaki otomatik banner "Bir daha gösterme" ile kalıcı olarak kapatılmış
+// olsa bile (bkz. UygulamaYukleBanner.jsx), uygulamayı istediği an elle
+// kurabilsin diye TÜM rollere sol menünün altında sabit duran buton —
+// kullanıcı isteğiyle eklendi: telefondan uygulamayı silip tekrar kurmak
+// isteyen ama daha önce "bir daha gösterme" demiş biri, banner'ın geri
+// gelmesini beklemeden buradan kurabiliyor.
+function UygulamaYukleButonu({ ertelemeOlayi, yukle }) {
+  const [yuklu, setYuklu] = useState(zatenYukluMu())
+
+  useEffect(() => {
+    function yuklendi() { setYuklu(true) }
+    window.addEventListener('appinstalled', yuklendi)
+    return () => window.removeEventListener('appinstalled', yuklendi)
+  }, [])
+
+  if (yuklu) return null
+
+  async function tikla() {
+    if (ertelemeOlayi) {
+      await yukle()
+      return
+    }
+    if (iosMu()) {
+      alert('Bu uygulamayı telefonuna ekleyebilirsin: Paylaş simgesine dokun, "Ana Ekrana Ekle" seçeneğini seç.')
+      return
+    }
+    alert('Tarayıcınız şu an yükleme teklifini hazırlamadı. Sayfayı yenileyip birkaç saniye sonra tekrar deneyin.')
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={tikla}
+      className="w-full text-left px-3 py-2 rounded-lg text-sm text-white/70 hover:bg-white/10 hover:text-white transition-colors"
+    >
+      📲 Uygulamayı Yükle
+    </button>
+  )
+}
+
 function OkGosterge({ acik }) {
   return (
     <svg
@@ -260,6 +301,10 @@ export default function Layout() {
   const navigate = useNavigate()
 
   const menu = menuOlustur(rol)
+  // "beforeinstallprompt"/"appinstalled" olaylarını TEK bir yerde (burada)
+  // yakalayıp, hem alttaki banner'a hem sol menüdeki butona aynı sonucu
+  // veriyoruz — bkz. usePwaYukleme.js dosya başındaki genel not.
+  const { ertelemeOlayi, yukle: pwaYukle } = usePwaYukleme(profile?.id)
 
   // Giriş yapmadan doğrudan bir sayfaya (ör. /gunluk) girilirse, sistem önce
   // giriş ekranına atıyor. Giriş başarılı olunca Login sayfası kendi içinde
@@ -392,6 +437,7 @@ export default function Layout() {
         <div className="p-3 border-t border-white/10 shrink-0">
           <p className="text-xs text-white/60 px-3 mb-2 truncate">{profile?.ad_soyad}</p>
           {rol === 'ogrenci' && profile?.id && <BildirimButonu profileId={profile.id} />}
+          <UygulamaYukleButonu ertelemeOlayi={ertelemeOlayi} yukle={pwaYukle} />
           <button
             onClick={signOut}
             className="w-full text-left px-3 py-2 rounded-lg text-sm text-white/70 hover:bg-white/10 hover:text-white transition-colors"
@@ -408,7 +454,7 @@ export default function Layout() {
       {/* Tüm roller için ortak "Uygulama olarak yükle" teklifi — burada,
           Layout'ta tek bir yerde durduğu için her rolün her sayfasında
           otomatik olarak devreye girer. */}
-      <UygulamaYukleBanner />
+      <UygulamaYukleBanner ertelemeOlayi={ertelemeOlayi} yukle={pwaYukle} />
     </div>
   )
 }
