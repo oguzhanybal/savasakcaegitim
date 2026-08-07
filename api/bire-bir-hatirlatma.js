@@ -163,16 +163,6 @@ export default async function handler(req, res) {
 
   const admin = createClient(supabaseUrl, serviceKey)
   const vapid = { publicKey: vapidPublicKey, privateKey: vapidPrivateKey, subject: vapidSubject }
-  // GEÇİCİ TEŞHİS BİLGİSİ: anahtarın kendisini göstermeden sadece uzunluğunu
-  // ve son 6 karakterini yanıta ekliyoruz — Vercel'e kaydedilenin, üretilen
-  // anahtarla birebir aynı olup olmadığını buradan doğrulayabiliriz. Sorun
-  // çözülünce bu bloğu kaldırabiliriz.
-  const teshis = {
-    vapidPublicKeyUzunluk: vapidPublicKey.length,
-    vapidPublicKeySon6: vapidPublicKey.slice(-6),
-    vapidPrivateKeyUzunluk: vapidPrivateKey.length,
-    vapidPrivateKeySon6: vapidPrivateKey.slice(-6),
-  }
 
   const suan = turkiyeSuAn()
   const bugun = tarihStr(suan)
@@ -212,7 +202,7 @@ export default async function handler(req, res) {
   ]
 
   if (adaylar.length === 0) {
-    res.status(200).json({ ok: true, mesaj: 'Yaklaşan ders yok.', kontrolEdilenSaatAraligi: `${altSinir}-${ustSinir}`, teshis })
+    res.status(200).json({ ok: true, mesaj: 'Yaklaşan ders yok.', kontrolEdilenSaatAraligi: `${altSinir}-${ustSinir}` })
     return
   }
 
@@ -272,9 +262,8 @@ export default async function handler(req, res) {
           await admin.from('push_abonelikleri').delete().eq('id', abn.id)
           hatalar.push({ endpoint: abn.endpoint.slice(-24), status: yanit.status, mesaj: 'abonelik silindi (geçersiz)' })
         } else {
-          // Önceden burası SESSİZCE atlanıyordu — artık gerçek durum kodunu
-          // ve push servisinin döndürdüğü hata metnini kaydediyoruz ki
-          // (ör. 401 = VAPID anahtarı uyuşmuyor) sebebi görebilelim.
+          // Gerçek durum kodunu ve push servisinin döndürdüğü hata metnini
+          // kaydediyoruz ki (ör. 401 = VAPID anahtarı uyuşmuyor) sebebi görebilelim.
           let metin = ''
           try {
             metin = await yanit.text()
@@ -297,5 +286,5 @@ export default async function handler(req, res) {
     })
   }
 
-  res.status(200).json({ ok: true, kontrolEdilenSaatAraligi: `${altSinir}-${ustSinir}`, sonuclar, teshis })
+  res.status(200).json({ ok: true, kontrolEdilenSaatAraligi: `${altSinir}-${ustSinir}`, sonuclar })
 }
