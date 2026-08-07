@@ -34,13 +34,6 @@ function Card({ label, value, color = 'text-navy', to }) {
 // tıklayın" diyen bir kapak gösteriyor. Sayfaya her girişte (F5, başka
 // sayfadan dönüş vb.) yeniden gizli başlar — kalıcı bir "hep açık kalsın"
 // tercihi YOK, bilinçli olarak: yanında biri varken tekrar unutmasın diye.
-const HEDEF_RENKLERI = {
-  ogrenci: 'bg-purple-100 text-purple-700',
-  veli: 'bg-blue-100 text-blue-700',
-  ogretmen: 'bg-amber-100 text-amber-700',
-  herkes: 'bg-green-100 text-green-700',
-}
-
 // Yönetici > Duyurular sayfasında eklenen duyuruları Ana Sayfa'nın en üstünde
 // gösterir. İki hedefleme türü var (bkz. Duyurular.jsx / SQL migration):
 //   • hedef_tur === 'rol'  → ESKİ davranış: RLS zaten sadece kullanıcının
@@ -48,13 +41,22 @@ const HEDEF_RENKLERI = {
 //     istisna yönetici: yönetim sayfasında görebilsin diye RLS yöneticiye
 //     TÜM duyuruları açıyor, bu yüzden burada yönetici için ayrıca "herkes"e
 //     hedeflenmiş olanlarla sınırlıyoruz.
-//   • hedef_tur === 'ozel' → YENİ: belirli sınıf(lar)a ve/veya tek tek
-//     eklenen/çıkarılan öğrencilere hedeflenmiş. RLS bu satırların GÖRÜLEBİLİR
-//     olmasına izin veriyor (kaba filtre) ama "gerçekten bana mı hedefleniyor"
-//     sorusunun kesin cevabı burada, İSTEMCİ tarafında hesaplanıyor — kendi
-//     öğrenci kaydımız (öğrenciysem kendim, veliysem çocuğum/çocuklarım)
-//     seçilen sınıf(lar)dan birine kayıtlı mı (ve "haric" listesinde değil
-//     mi), ya da doğrudan "ekle" listesinde mi.
+//   • hedef_tur === 'ozel' → YENİ: belirli sınıf(lar)a / bire-bir
+//     öğretmeni(lerinin) öğrencilerine / tek tek eklenen-çıkarılan
+//     öğrencilere / doğrudan seçilen öğretmenlere hedeflenmiş. RLS bu
+//     satırların GÖRÜLEBİLİR olmasına izin veriyor (kaba filtre) ama
+//     "gerçekten bana mı hedefleniyor" sorusunun kesin cevabı burada,
+//     İSTEMCİ tarafında hesaplanıyor:
+//       - öğrenci/veli: kendi öğrenci kaydım(ız) (öğrenciysem kendim,
+//         veliysem çocuğum/çocuklarım) seçilen sınıf(lar)dan birine kayıtlı
+//         mı YA DA seçilen bire-bir öğretmen(ler)inden bire-bir dersi alıyor
+//         mu (ve "haric" listesinde değil mi), ya da doğrudan "ekle"
+//         listesinde mi.
+//       - öğretmen: doğrudan öğretmen alıcısı olarak seçilmiş miyim.
+function birlestirVeSirala(a, b) {
+  return [...a, ...b].sort((x, y) => new Date(y.created_at) - new Date(x.created_at))
+}
+
 function DuyurularBolumu({ profile }) {
   const [duyurular, setDuyurular] = useState([])
 
@@ -62,79 +64,129 @@ function DuyurularBolumu({ profile }) {
     if (!profile) return
     const bugun = new Date().toISOString().slice(0, 10)
 
-    Promise.all([
-      supabase.from('duyurular').select('*').order('created_at', { ascending: false }),
-      profile.rol === 'ogrenci' || profile.rol === 'veli'
-        ? supabase.from('ogrenciler').select('id, veli_profile_id, ogrenci_profile_id')
-        : Promise.resolve({ data: [] }),
-    ]).then(([duyuruSonuc, ogrenciSonuc]) => {
-      const tumDuyurular = (duyuruSonuc.data || []).filter((d) => !(d.bitis_tarihi && d.bitis_tarihi < bugun))
-      const rolDuyurular = tumDuyurular.filter((d) => d.hedef_tur !== 'ozel')
-      const ozelDuyurular = tumDuyurular.filter((d) => d.hedef_tur === 'ozel')
+    supabase
+      .from('duyurular')
+      .select('*')
+      .order('created_at', { ascending: false })
+      .then(({ data }) => {
+        const tumDuyurular = (data || []).filter((d) => !(d.bitis_tarihi && d.bitis_tarihi < bugun))
+        const rolDuyurular = tumDuyurular.filter((d) => d.hedef_tur !== 'ozel')
+        const ozelDuyurular = tumDuyurular.filter((d) => d.hedef_tur === 'ozel')
 
-      const rolGorunecekler = rolDuyurular.filter((d) => {
-        if (profile.rol === 'yonetici') return d.hedef_rol === 'herkes'
-        return d.hedef_rol === 'herkes' || d.hedef_rol === profile.rol
-      })
-
-      // "Özel" hedefli duyurular sadece öğrenci/veli için anlamlı (sınıf/kişi
-      // teması) — yönetici (kendi Duyurular sayfasından zaten yönetiyor) ve
-      // öğretmen için hiç gösterilmiyor, ekstra sorguya da gerek yok.
-      const kendiOgrenciIdleri = (ogrenciSonuc.data || [])
-        .filter((o) => o.veli_profile_id === profile.id || o.ogrenci_profile_id === profile.id)
-        .map((o) => o.id)
-
-      if (
-        ozelDuyurular.length === 0 ||
-        profile.rol === 'yonetici' ||
-        profile.rol === 'ogretmen' ||
-        kendiOgrenciIdleri.length === 0
-      ) {
-        setDuyurular(rolGorunecekler)
-        return
-      }
-
-      const ozelDuyuruIdleri = ozelDuyurular.map((d) => d.id)
-      Promise.all([
-        supabase.from('sinif_ogrenciler').select('ogrenci_id, sinif_id').in('ogrenci_id', kendiOgrenciIdleri),
-        supabase.from('duyuru_hedef_siniflar').select('duyuru_id, sinif_id').in('duyuru_id', ozelDuyuruIdleri),
-        supabase.from('duyuru_hedef_ogrenciler').select('duyuru_id, ogrenci_id, tur').in('duyuru_id', ozelDuyuruIdleri),
-      ]).then(([sinifOgrSonuc, hedefSinifSonuc, hedefOgrSonuc]) => {
-        // Kendi öğrenci(ler)imizin hangi sınıfta olduğu — bir öğrenci genelde
-        // tek sınıfa kayıtlı.
-        const ogrenciSinifMap = new Map((sinifOgrSonuc.data || []).map((so) => [so.ogrenci_id, so.sinif_id]))
-
-        const hedefSiniflarByDuyuru = {}
-        ;(hedefSinifSonuc.data || []).forEach((r) => {
-          ;(hedefSiniflarByDuyuru[r.duyuru_id] ||= new Set()).add(r.sinif_id)
-        })
-        const ekleByDuyuru = {}
-        const haricByDuyuru = {}
-        ;(hedefOgrSonuc.data || []).forEach((r) => {
-          const hedefMap = r.tur === 'ekle' ? ekleByDuyuru : haricByDuyuru
-          ;(hedefMap[r.duyuru_id] ||= new Set()).add(r.ogrenci_id)
+        const rolGorunecekler = rolDuyurular.filter((d) => {
+          if (profile.rol === 'yonetici') return d.hedef_rol === 'herkes'
+          return d.hedef_rol === 'herkes' || d.hedef_rol === profile.rol
         })
 
-        const ozelGorunecekler = ozelDuyurular.filter((d) => {
-          if (d.hedef_rol !== 'herkes' && d.hedef_rol !== profile.rol) return false
-          const haric = haricByDuyuru[d.id] || new Set()
-          const ekle = ekleByDuyuru[d.id] || new Set()
-          const siniflar = hedefSiniflarByDuyuru[d.id] || new Set()
-          return kendiOgrenciIdleri.some((oid) => {
-            if (haric.has(oid)) return false
-            if (ekle.has(oid)) return true
-            const sinifId = ogrenciSinifMap.get(oid)
-            return sinifId ? siniflar.has(sinifId) : false
+        if (ozelDuyurular.length === 0 || profile.rol === 'yonetici') {
+          setDuyurular(rolGorunecekler)
+          return
+        }
+
+        const ozelDuyuruIdleri = ozelDuyurular.map((d) => d.id)
+
+        // Öğretmen: "özel" duyurular sadece "Öğretmenlere Gönder" ile
+        // doğrudan kendisi seçilmişse görünür (sınıf/bire-bir havuzu
+        // öğrenci/veli tarafına özel, öğretmeni ilgilendirmiyor).
+        if (profile.rol === 'ogretmen') {
+          supabase
+            .from('duyuru_hedef_ogretmenler')
+            .select('duyuru_id')
+            .eq('ogretmen_profile_id', profile.id)
+            .in('duyuru_id', ozelDuyuruIdleri)
+            .then(({ data: hedefOgretmenSonuc }) => {
+              const hedeflenenIdler = new Set((hedefOgretmenSonuc || []).map((r) => r.duyuru_id))
+              const ozelGorunecekler = ozelDuyurular.filter((d) => hedeflenenIdler.has(d.id))
+              setDuyurular(birlestirVeSirala(rolGorunecekler, ozelGorunecekler))
+            })
+          return
+        }
+
+        // Öğrenci / veli
+        supabase
+          .from('ogrenciler')
+          .select('id, veli_profile_id, ogrenci_profile_id')
+          .then(({ data: ogrenciData }) => {
+            const kendiOgrenciIdleri = (ogrenciData || [])
+              .filter((o) => o.veli_profile_id === profile.id || o.ogrenci_profile_id === profile.id)
+              .map((o) => o.id)
+
+            if (kendiOgrenciIdleri.length === 0) {
+              setDuyurular(rolGorunecekler)
+              return
+            }
+
+            Promise.all([
+              supabase.from('sinif_ogrenciler').select('ogrenci_id, sinif_id').in('ogrenci_id', kendiOgrenciIdleri),
+              supabase.from('duyuru_hedef_siniflar').select('duyuru_id, sinif_id').in('duyuru_id', ozelDuyuruIdleri),
+              supabase.from('duyuru_hedef_ogrenciler').select('duyuru_id, ogrenci_id, tur').in('duyuru_id', ozelDuyuruIdleri),
+              supabase
+                .from('duyuru_hedef_bire_bir_ogretmenleri')
+                .select('duyuru_id, ogretmen_profile_id')
+                .in('duyuru_id', ozelDuyuruIdleri),
+              // Bire-bir öğretmeni hedeflemesi için: kendi öğrenci(ler)imizin
+              // hangi öğretmen(ler)den bire-bir dersi aldığı — hem sabit
+              // haftalık atamalar hem tek seferlik/geçmiş dersler (bu okulda
+              // bire-bir derslerin çoğu tek seferlik giriliyor).
+              supabase
+                .from('bire_bir_atamalari')
+                .select('ogrenci_id, ogretmen_profile_id')
+                .in('ogrenci_id', kendiOgrenciIdleri)
+                .eq('aktif', true),
+              supabase
+                .from('bire_bir_yoklama')
+                .select('ogrenci_id, ogretmen_profile_id')
+                .in('ogrenci_id', kendiOgrenciIdleri)
+                .eq('tur', 'ders'),
+            ]).then(([sinifOgrSonuc, hedefSinifSonuc, hedefOgrSonuc, hedefBbOgretmenSonuc, bbAtamaSonuc, bbYoklamaSonuc]) => {
+              // Kendi öğrenci(ler)imizin hangi sınıfta olduğu — bir öğrenci
+              // genelde tek sınıfa kayıtlı.
+              const ogrenciSinifMap = new Map((sinifOgrSonuc.data || []).map((so) => [so.ogrenci_id, so.sinif_id]))
+
+              // Kendi öğrenci(ler)imizin bire-bir aldığı öğretmen(ler)i.
+              const ogrenciBbOgretmenleri = new Map()
+              ;[...(bbAtamaSonuc.data || []), ...(bbYoklamaSonuc.data || [])].forEach((r) => {
+                if (!r.ogretmen_profile_id || !r.ogrenci_id) return
+                if (!ogrenciBbOgretmenleri.has(r.ogrenci_id)) ogrenciBbOgretmenleri.set(r.ogrenci_id, new Set())
+                ogrenciBbOgretmenleri.get(r.ogrenci_id).add(r.ogretmen_profile_id)
+              })
+
+              const hedefSiniflarByDuyuru = {}
+              ;(hedefSinifSonuc.data || []).forEach((r) => {
+                ;(hedefSiniflarByDuyuru[r.duyuru_id] ||= new Set()).add(r.sinif_id)
+              })
+              const hedefBbOgretmenByDuyuru = {}
+              ;(hedefBbOgretmenSonuc.data || []).forEach((r) => {
+                ;(hedefBbOgretmenByDuyuru[r.duyuru_id] ||= new Set()).add(r.ogretmen_profile_id)
+              })
+              const ekleByDuyuru = {}
+              const haricByDuyuru = {}
+              ;(hedefOgrSonuc.data || []).forEach((r) => {
+                const hedefMap = r.tur === 'ekle' ? ekleByDuyuru : haricByDuyuru
+                ;(hedefMap[r.duyuru_id] ||= new Set()).add(r.ogrenci_id)
+              })
+
+              const ozelGorunecekler = ozelDuyurular.filter((d) => {
+                if (d.hedef_rol !== 'herkes' && d.hedef_rol !== profile.rol) return false
+                const haric = haricByDuyuru[d.id] || new Set()
+                const ekle = ekleByDuyuru[d.id] || new Set()
+                const siniflar = hedefSiniflarByDuyuru[d.id] || new Set()
+                const bbOgretmenleri = hedefBbOgretmenByDuyuru[d.id] || new Set()
+                return kendiOgrenciIdleri.some((oid) => {
+                  if (haric.has(oid)) return false
+                  if (ekle.has(oid)) return true
+                  const sinifId = ogrenciSinifMap.get(oid)
+                  if (sinifId && siniflar.has(sinifId)) return true
+                  const bbSet = ogrenciBbOgretmenleri.get(oid)
+                  if (bbSet && [...bbSet].some((ogretmenId) => bbOgretmenleri.has(ogretmenId))) return true
+                  return false
+                })
+              })
+
+              setDuyurular(birlestirVeSirala(rolGorunecekler, ozelGorunecekler))
+            })
           })
-        })
-
-        setDuyurular(
-          [...rolGorunecekler, ...ozelGorunecekler].sort(
-            (a, b) => new Date(b.created_at) - new Date(a.created_at)
-          )
-        )
       })
-    })
   }, [profile])
 
   if (duyurular.length === 0) return null
@@ -146,13 +198,12 @@ function DuyurularBolumu({ profile }) {
           <span className="text-xl leading-none">📢</span>
           <div className="min-w-0">
             <div className="flex items-center gap-2 flex-wrap mb-0.5">
+              {/* Kullanıcı isteğiyle kaldırıldı: duyurunun yanında "Herkes" /
+                  "Size Özel" gibi hedefleme rozetleri artık gösterilmiyor —
+                  bu bilgiler yönetimin kendi Duyurular sayfasında (hedefOzeti)
+                  kalmaya devam ediyor, ama alıcıya gösterilen duyuru sade
+                  kalsın diye burada basılmıyor. */}
               {d.baslik && <p className="font-semibold text-gray-800">{d.baslik}</p>}
-              {d.hedef_rol === 'herkes' && d.hedef_tur !== 'ozel' && (
-                <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${HEDEF_RENKLERI.herkes}`}>Herkes</span>
-              )}
-              {d.hedef_tur === 'ozel' && (
-                <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-indigo-100 text-indigo-700">Size Özel</span>
-              )}
             </div>
             <p className="text-sm text-gray-600 whitespace-pre-wrap break-words">{d.icerik}</p>
           </div>
