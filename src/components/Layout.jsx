@@ -3,7 +3,7 @@ import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import { useAuth } from '../lib/AuthContext'
 import UygulamaYukleBanner from './UygulamaYukleBanner'
 import { bildirimAcikMi, bildirimleriAc, bildirimleriKapat, pushDestekleniyorMu } from '../lib/pushBildirim'
-import { usePwaYukleme, iosMu, zatenYukluMu } from '../lib/usePwaYukleme'
+import { usePwaYukleme, iosMu, zatenYukluMu, safariMasaustuMu } from '../lib/usePwaYukleme'
 
 const ROL_ETIKET = {
   yonetici: 'Yönetici',
@@ -222,7 +222,25 @@ function UygulamaYukleButonu({ ertelemeOlayi, yukle }) {
       alert('Bu uygulamayı telefonuna ekleyebilirsin: Paylaş simgesine dokun, "Ana Ekrana Ekle" seçeneğini seç.')
       return
     }
-    alert('Tarayıcınız şu an yükleme teklifini hazırlamadı. Sayfayı yenileyip birkaç saniye sonra tekrar deneyin.')
+    if (safariMasaustuMu()) {
+      alert('Safari bu otomatik yükleme penceresini desteklemiyor. Üstteki "Dosya" menüsünden "Dock\'a Ekle" seçeneğini kullanabilirsin — zaten Dock\'a eklediysen bu adımı tekrarlamana gerek yok, oradan açabilirsin.')
+      return
+    }
+    // Chrome/Edge burada iki nedenden biri yüzünden olabilir: (1) sayfa daha
+    // yeni açıldı, tarayıcı teklifi henüz hazırlamadı — yenileyip biraz
+    // beklemek çözer; (2) BU BİLGİSAYARDA UYGULAMA ZATEN KURULU — Chrome, bir
+    // siteyi bir kez kurduktan sonra AYNI TARAYICIDA bir daha kurulum teklifi
+    // ASLA göstermiyor (kullanıcının kendi gözlemiyle doğrulandı). İkinci
+    // durumu JS'ten güvenilir şekilde ayırt edebilecek bir API yok, o yüzden
+    // ikisini de tek mesajda anlatıyoruz.
+    alert(
+      'Tarayıcınız şu an yükleme teklifini hazırlamadı.\n\n' +
+        'Sayfayı yenileyip birkaç saniye sonra tekrar deneyebilirsiniz — ' +
+        'ama bu bilgisayarda uygulama ZATEN kuruluysa (adres çubuğunun ' +
+        'sağındaki bilgisayar ikonuna ya da chrome://apps sayfasına ' +
+        'bakabilirsiniz), Chrome aynı tarayıcıda bir daha kurulum teklifi ' +
+        'göstermez — bu normaldir, kurulu olanı doğrudan oradan açabilirsiniz.'
+    )
   }
 
   return (
