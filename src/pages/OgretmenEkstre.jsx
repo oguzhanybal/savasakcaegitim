@@ -192,16 +192,12 @@ export default function OgretmenEkstre() {
                 </span>
                 <span className="font-bold text-navy text-lg">{ozetDersSayisi} ders — {paraFormat(ozetTutar)}</span>
               </div>
-              {ozetSoruCozumuSayisi > 0 && (
-                <div className="px-4 py-2 bg-purple-50 border-t border-purple-100 text-xs text-purple-700">
-                  Bunların <b>{ozetSoruCozumuSayisi}</b> tanesi Soru Çözümü seansı (ücretsiz, tutara dahil değil).
-                </div>
-              )}
-              {ozetSinifDersSayisi > 0 && (
-                <div className="px-4 py-2 bg-blue-50 border-t border-blue-100 text-xs text-blue-700">
-                  Bunların <b>{ozetSinifDersSayisi}</b> tanesi sınıf dersi (ücretsiz, tutara dahil değil).
-                </div>
-              )}
+              <div className="px-4 py-2 bg-purple-50 border-t border-purple-100 text-xs text-purple-700">
+                Bunların <b>{ozetSoruCozumuSayisi}</b> tanesi Soru Çözümü seansı (ücretsiz, tutara dahil değil).
+              </div>
+              <div className="px-4 py-2 bg-blue-50 border-t border-blue-100 text-xs text-blue-700">
+                Bunların <b>{ozetSinifDersSayisi}</b> tanesi sınıf dersi (ücretsiz, tutara dahil değil).
+              </div>
             </div>
 
             {dersler.length === 0 ? (
