@@ -4,6 +4,17 @@ import { saatGoster } from '../lib/saatFormat'
 
 const GUNLER = ['', 'Pazartesi', 'Salı', 'Çarşamba', 'Perşembe', 'Cuma', 'Cumartesi', 'Pazar']
 
+// Bir dersin 'tur' alanına göre (bkz. ekstreHesap.js: bireBirDersDetaylariOlustur
+// 'ders'/'soru_cozumu', sinifDersDetaylariOlustur 'sinif' üretir) gösterilecek
+// rozet metnini ve rengini döner — Öğretmen Ekstresi gibi birden fazla ders
+// türünün AYNI tabloda karıştığı sayfalarda "bu satır hangi tür ders"
+// sorusunu tek bakışta cevaplasın diye (bkz. turGoster).
+function turBilgisi(tur) {
+  if (tur === 'sinif') return { text: 'Sınıf Dersi', className: 'bg-blue-100 text-blue-700' }
+  if (tur === 'soru_cozumu') return { text: 'Soru Çözümü', className: 'bg-purple-100 text-purple-700' }
+  return { text: 'Bire Bir', className: 'bg-gray-100 text-gray-600' }
+}
+
 function gunNumaraTarihten(tarihStr) {
   const g = new Date(tarihStr + 'T12:00:00').getDay()
   return g === 0 ? 7 : g
@@ -22,7 +33,7 @@ function yerelBugunTarihi() {
 // ekstresi) bu bileşeni ortak kullanıyor — aynı mantık, sadece "karşı taraf"ın
 // kim olduğu (öğretmen mi öğrenci mi) değişiyor.
 //
-// dersler: [{ id, tarih, baslangicSaat, bitisSaat, karsiTarafAdi, tutar }]
+// dersler: [{ id, tarih, baslangicSaat, bitisSaat, karsiTarafAdi, tutar, tur? }]
 // hedefDonem (opsiyonel): "YYYY-MM-01" formatında bir ay başlangıcı — verilirse
 // (ör. Ekstre.jsx'teki üstteki "Dönem" seçicisiyle senkron kalsın diye) bu
 // bileşen İLK AÇILIŞTA ve hedefDonem her değiştiğinde otomatik o aya atlar.
@@ -44,6 +55,15 @@ export default function BireBirDersDokumu({
 }) {
   const [periyot, setPeriyot] = useState(hedefDonem ? 'ay' : baslangicPeriyot) // 'hafta' | 'ay' | 'hepsi'
   const [gosterilenSayisi, setGosterilenSayisi] = useState(6)
+
+  // Dersler arasında Bire Bir dışında (Soru Çözümü / Sınıf Dersi gibi) FARKLI
+  // türler de varsa (ör. Öğretmen Ekstresi'nde hepsi aynı tabloda karışık
+  // görünüyor) tabloya ayrı bir "Tür" sütunu ekliyoruz — yoksa (ör. sade bir
+  // öğrenci ekstresinde hepsi zaten Bire Bir'se) gereksiz yere sütun eklemiyoruz.
+  const turGoster = useMemo(
+    () => (dersler || []).some((d) => d.tur === 'sinif' || d.tur === 'soru_cozumu'),
+    [dersler]
+  )
 
   // İçinde bulunduğumuz haftanın/ayın anahtarını döner — AMA sadece o dönemde
   // gerçekten ders varsa (yoksa boş döner, en yeni dönemlerden sayfalanmış
@@ -95,6 +115,15 @@ export default function BireBirDersDokumu({
     ? tumGruplar.filter(([anahtar]) => anahtar === seciliDonem)
     : tumGruplar.slice(0, gosterilenSayisi)
   const etiketUret = periyot === 'ay' ? ayEtiketi : periyot === 'hepsi' ? () => 'Tüm Zamanlar' : haftaEtiketi
+
+  // Şu an seçili gösterilen dönem, İÇİNDE BULUNDUĞUMUZ ay/hafta DEĞİLSE (ör.
+  // bu ay/hafta için henüz hiç ders kaydı yoksa, otomatik olarak kayıt
+  // bulunan EN SON döneme düşülür) — bunu sessizce yapmak kafa karıştırıcı
+  // oluyordu ("neden hep geçen ay görünüyor?"). Bu yüzden bu durumda üstte
+  // açıkça hangi dönemin neden gösterildiğini belirten kısa bir not veriyoruz.
+  const guncelDonemAnahtari = periyot === 'hepsi' ? null : (periyot === 'ay' ? ayBaslangici : haftaBaslangici)(yerelBugunTarihi())
+  const gosterilenDonemGuncelDegil =
+    periyot !== 'hepsi' && !!seciliDonem && !!guncelDonemAnahtari && seciliDonem !== guncelDonemAnahtari
 
   if (dersler.length === 0) {
     return <p className="text-sm text-gray-400">Kayıtlı ders bulunamadı.</p>
@@ -163,6 +192,14 @@ export default function BireBirDersDokumu({
         )}
       </div>
 
+      {gosterilenDonemGuncelDegil && (
+        <p className="no-print text-xs text-amber-700 bg-amber-50 border border-amber-100 rounded-lg px-3 py-2 mb-3">
+          İçinde bulunduğumuz {periyot === 'ay' ? 'ay' : 'hafta'} olan{' '}
+          <b className="capitalize">{etiketUret(guncelDonemAnahtari)}</b> için henüz kayıt yok — bu yüzden kayıt
+          bulunan en son dönem olan <b className="capitalize">{etiketUret(seciliDonem)}</b> gösteriliyor.
+        </p>
+      )}
+
       {gosterilenGruplar.map(([anahtar, grupDersleri]) => {
         const grupToplami = grupDersleri.reduce((t, d) => t + d.tutar, 0)
         // Belirli bir HAFTA seçiliyse, o haftayı tek tabloda değil gün gün
@@ -178,7 +215,7 @@ export default function BireBirDersDokumu({
             ).sort((a, b) => (a[0] < b[0] ? -1 : 1))
           : null
 
-        const sutunSayisi = ikinciTarafBasligi ? 5 : 4
+        const sutunSayisi = (ikinciTarafBasligi ? 5 : 4) + (turGoster ? 1 : 0)
 
         const tabloYaz = (dersListesi, toplam) => (
           <table className="w-full text-xs sm:text-sm border border-gray-200 rounded-lg overflow-hidden">
@@ -188,6 +225,7 @@ export default function BireBirDersDokumu({
                 <th className="px-2 sm:px-3 py-2 font-semibold">Saat</th>
                 <th className="px-2 sm:px-3 py-2 font-semibold">{karsiTarafBasligi}</th>
                 {ikinciTarafBasligi && <th className="px-2 sm:px-3 py-2 font-semibold">{ikinciTarafBasligi}</th>}
+                {turGoster && <th className="px-2 sm:px-3 py-2 font-semibold">Tür</th>}
                 <th className="px-2 sm:px-3 py-2 font-semibold text-right">Tutar</th>
               </tr>
             </thead>
@@ -206,6 +244,15 @@ export default function BireBirDersDokumu({
                     <td className="px-2 sm:px-3 py-2">
                       {d.ikinciTarafAdi || '—'}
                       {d.ikinciTarafBransi && <span className="text-gray-400"> ({d.ikinciTarafBransi})</span>}
+                    </td>
+                  )}
+                  {turGoster && (
+                    <td className="px-2 sm:px-3 py-2">
+                      <span
+                        className={`inline-block text-[11px] sm:text-xs font-semibold px-2 py-0.5 rounded-full whitespace-nowrap ${turBilgisi(d.tur).className}`}
+                      >
+                        {turBilgisi(d.tur).text}
+                      </span>
                     </td>
                   )}
                   <td className="px-2 sm:px-3 py-2 text-right font-medium">{paraFormat(d.tutar)}</td>
