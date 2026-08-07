@@ -621,7 +621,7 @@ export default function Kantin() {
   }
 
   // Ürün ızgarasındaki kartlara dokunulunca (kamera/barkod DIŞINDA) — mobilde
-  // sayfanın üstünde küçük bir kırmızı/yeşil yazı (hata/basari state'i)
+  // sayfanın üstünde küçük kırmızı/yeşil yazı (hata/basari state'i)
   // kolayca fark edilmiyordu, özellikle "önce öğrenci seçin" uyarısı: buton
   // aşağıdaydı ve kullanıcı yukarı kaydırmadan uyarıyı göremiyordu. Bunun
   // yerine TÜM EKRANI kaplayan, birkaç saniye görünüp kendiliğinden kapanan
@@ -662,11 +662,12 @@ export default function Kantin() {
     const efektifId = kendisi.fatura_sahibi_id || kendisi.id
     const grup = [...new Set([efektifId, ...ogrenciler.filter((o) => o.fatura_sahibi_id === efektifId).map((o) => o.id)])]
     setBorcYukleniyor(true)
-    const [kantin, o] = await Promise.all([
+    const [kantin, aylikBorclarRes, o] = await Promise.all([
       supabase.from('kantin_alislar').select('*').in('ogrenci_id', grup),
+      supabase.from('aylik_borclar').select('*').in('ogrenci_id', grup),
       supabase.from('odemeler').select('tarih, kalem, tutar').in('ogrenci_id', grup),
     ])
-    const kantinBorclar = kantinBorclariOlustur(kantin.data || [])
+    const kantinBorclar = [...(aylikBorclarRes.data || []), ...kantinBorclariOlustur(kantin.data || [])]
     const buAy = new Date().toISOString().slice(0, 7)
     const sonuc = aylikKalemHesapla('Kantin', kantinBorclar, o.data || [], buAy)
     setOgrenciBorcu({ kalanBakiye: sonuc ? sonuc.toplamOdenecek : 0 })
