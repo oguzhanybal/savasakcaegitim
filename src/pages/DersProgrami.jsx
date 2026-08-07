@@ -1042,6 +1042,13 @@ export default function DersProgrami() {
   const [bireBirDerslerim, setBireBirDerslerim] = useState([])
   const [tekSeferlikDerslerim, setTekSeferlikDerslerim] = useState([])
   const [birdenFazlaCocukMu, setBirdenFazlaCocukMu] = useState(false)
+  // Öğrencinin hangi sınıf(lar)a kayıtlı olduğu — Müsaitlik tablosundaki Hızlı
+  // Ekle ile bir öğrenciye bire bir ders eklenirken, o öğrencinin kendi sınıf
+  // dersiyle çakışıp çakışmadığını (uyarı olarak) gösterebilmek için (bkz.
+  // MusaitlikTablosu.jsx'teki ogrenciSinifDersiUyarisiBul — BireBir.jsx'te bu
+  // prop zaten geçiliyordu, burada unutulmuştu, bu yüzden bu sayfadan Hızlı
+  // Ekle ile eklenirken uyarı hiç çıkmıyordu).
+  const [sinifOgrencileri, setSinifOgrencileri] = useState([])
   const [taslaklar, setTaslaklar] = useState([])
   const [loading, setLoading] = useState(true)
   const [gorunum, setGorunum] = useState('tablo')
@@ -1140,6 +1147,9 @@ export default function DersProgrami() {
       isYonetici ? supabase.from('bire_bir_atamalari').select('*, ogrenciler(ad_soyad)') : Promise.resolve({ data: [] }),
       isYonetici ? supabase.from('bire_bir_yoklama').select('*') : Promise.resolve({ data: [] }),
       isYonetici ? supabase.from('ogrenciler').select('id, ad_soyad') : Promise.resolve({ data: [] }),
+      // Öğrencinin hangi sınıf(lar)a kayıtlı olduğu — bkz. yukarıdaki
+      // sinifOgrencileri state açıklaması.
+      isYonetici ? supabase.from('sinif_ogrenciler').select('ogrenci_id, sinif_id') : Promise.resolve({ data: [] }),
       // Veli/öğrenci için: kendi çocuğu/kendisi hangi öğrenci kaydına bağlı —
       // bire bir atamalarını bu öğrenci id'si üzerinden çekeceğiz. Muhasebe.jsx
       // ile AYNI, kanıtlanmış yöntem: filtreyi sunucu tarafında ".or()" ile
@@ -1155,8 +1165,9 @@ export default function DersProgrami() {
       // türler burada tutulmalı. "Taslaklarım" listesi (TaslaklarimDersProgrami)
       // yine de sadece 'sinif' olanları gösterir — aşağıda ayrıca filtrelenir.
       isYonetici ? supabase.from('taslaklar').select('*').order('created_at') : Promise.resolve({ data: [] }),
-    ]).then(([p, s, og, ba, by, o, kendiCocuklarSonuc, t]) => {
+    ]).then(([p, s, og, ba, by, o, so, kendiCocuklarSonuc, t]) => {
       setTaslaklar(t.data || [])
+      setSinifOgrencileri(so.data || [])
       const dersleriGenislet = (p.data || []).map((d) => ({
         ...d,
         sinif_adi: d.siniflar?.ad,
@@ -1753,6 +1764,7 @@ export default function DersProgrami() {
                 secili={seciliHucre}
                 ogrenciler={ogrenciler}
                 siniflar={siniflar}
+                sinifOgrencileri={sinifOgrencileri}
                 hizliEkleEtkin
                 onHizliEklendi={dersEklendiVeyaTaslaklandi}
                 taslakModuAcik={taslakModuAcik}
