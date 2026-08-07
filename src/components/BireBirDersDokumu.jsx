@@ -153,15 +153,6 @@ export default function BireBirDersDokumu({
     : tumGruplar.slice(0, gosterilenSayisi)
   const etiketUret = periyot === 'ay' ? ayEtiketi : periyot === 'hepsi' ? () => 'Tüm Zamanlar' : haftaEtiketi
 
-  // Şu an seçili gösterilen dönem, İÇİNDE BULUNDUĞUMUZ ay/hafta DEĞİLSE (ör.
-  // bu ay/hafta için henüz hiç ders kaydı yoksa, otomatik olarak kayıt
-  // bulunan EN SON döneme düşülür) — bunu sessizce yapmak kafa karıştırıcı
-  // oluyordu ("neden hep geçen ay görünüyor?"). Bu yüzden bu durumda üstte
-  // açıkça hangi dönemin neden gösterildiğini belirten kısa bir not veriyoruz.
-  const guncelDonemAnahtari = periyot === 'hepsi' ? null : (periyot === 'ay' ? ayBaslangici : haftaBaslangici)(yerelBugunTarihi())
-  const gosterilenDonemGuncelDegil =
-    periyot !== 'hepsi' && !!seciliDonem && !!guncelDonemAnahtari && seciliDonem !== guncelDonemAnahtari
-
   if (dersler.length === 0) {
     return <p className="text-sm text-gray-400">Kayıtlı ders bulunamadı.</p>
   }
@@ -228,14 +219,6 @@ export default function BireBirDersDokumu({
           </select>
         )}
       </div>
-
-      {gosterilenDonemGuncelDegil && (
-        <p className="no-print text-xs text-amber-700 bg-amber-50 border border-amber-100 rounded-lg px-3 py-2 mb-3">
-          İçinde bulunduğumuz {periyot === 'ay' ? 'ay' : 'hafta'} olan{' '}
-          <b className="capitalize">{etiketUret(guncelDonemAnahtari)}</b> için henüz kayıt yok — bu yüzden kayıt
-          bulunan en son dönem olan <b className="capitalize">{etiketUret(seciliDonem)}</b> gösteriliyor.
-        </p>
-      )}
 
       {gosterilenGruplar.map(([anahtar, grupDersleri]) => {
         const grupToplami = grupDersleri.reduce((t, d) => t + d.tutar, 0)
