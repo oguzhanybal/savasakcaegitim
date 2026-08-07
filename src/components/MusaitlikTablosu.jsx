@@ -196,6 +196,19 @@ export default function MusaitlikTablosu({
   // ogrenciSinifDersiUyarisiBul.
   const [hpSinifUyarisi, setHpSinifUyarisi] = useState('')
 
+  // Öğrenci/sınıf arama kutusu — sadece "autoFocus" prop'una güvenmiyoruz,
+  // çünkü hücreye tıklayınca aynı click event'i içinde yeni DOM'a eklenen
+  // input bazı tarayıcı/React sürümlerinde otomatik odaklanmıyor (kullanıcı
+  // ekstra bir kez daha tıklamak zorunda kalıyordu). Popup hangi hücrede
+  // açıksa (hizliPopup değiştiğinde) input'u elle odaklıyoruz — bu, mount
+  // zamanlamasından bağımsız çalıştığı için daha güvenilir.
+  const hizliInputRef = useRef(null)
+  useEffect(() => {
+    if (hizliPopup && !secilen) {
+      hizliInputRef.current?.focus()
+    }
+  }, [hizliPopup, secilen])
+
   function hizliPopupKapat() {
     setHizliPopup(null)
     setAramaMetni('')
@@ -914,6 +927,7 @@ export default function MusaitlikTablosu({
                                   🧠 Soru Çözümü olarak ekle
                                 </button>
                                 <input
+                                  ref={hizliInputRef}
                                   autoFocus
                                   type="text"
                                   value={aramaMetni}
