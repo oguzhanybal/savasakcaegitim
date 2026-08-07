@@ -46,12 +46,19 @@ function yerelBugunTarihi() {
 // görünsün diye — herkesin bir arada olduğu, kişiye göre AYRILMAMIŞ genel bir
 // dökümde ikisi de gerekiyor). O durumda her ders öğesinde ayrıca
 // ikinciTarafAdi (ve opsiyonel ikinciTarafBransi) alanları beklenir.
+// onDonemDegisti (opsiyonel): verilirse, bu bileşenin O AN ekranda GÖSTERDİĞİ
+// dönem (periyot + seçili anahtar) her değiştiğinde { periyot, anahtar }
+// şeklinde çağrılır — ör. OgretmenEkstre.jsx'teki "VERİLEN DERS" özet kutusu,
+// aşağıdaki tablo hangi ayı/haftayı gösteriyorsa AYNI dönemi göstersin diye
+// (eskiden kutu hep sabit "bugünün ayı"nı gösteriyordu, tablo farklı bir ay
+// gösterdiğinde ikisi TUTARSIZ görünüyordu).
 export default function BireBirDersDokumu({
   dersler,
   karsiTarafBasligi,
   baslangicPeriyot = 'ay',
   hedefDonem = null,
   ikinciTarafBasligi = null,
+  onDonemDegisti = null,
 }) {
   const [periyot, setPeriyot] = useState(hedefDonem ? 'ay' : baslangicPeriyot) // 'hafta' | 'ay' | 'hepsi'
   const [gosterilenSayisi, setGosterilenSayisi] = useState(6)
@@ -116,6 +123,13 @@ export default function BireBirDersDokumu({
     setSeciliDonem(icindeBulunulanDonem(periyot))
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dersler])
+
+  // Ekrandaki dönem değiştikçe (periyot ya da seciliDonem) dışarıya bildir —
+  // bkz. onDonemDegisti prop açıklaması.
+  useEffect(() => {
+    onDonemDegisti?.({ periyot, anahtar: seciliDonem })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [periyot, seciliDonem])
 
   // "Tüm Zamanlar" seçiliyse hafta/aya göre BÖLMEDEN, tüm dersleri tek bir
   // sahte grupta ("tumu") topluyoruz — böyle aynı tabloYaz/gosterilenGruplar
