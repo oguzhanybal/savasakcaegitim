@@ -38,6 +38,7 @@ function menuOlustur(rol) {
         label: 'Ödemeler',
         ogeler: [
           { to: '/muhasebe', label: 'Muhasebe' },
+          { to: '/ogretmen-ekstresi', label: 'Öğretmen Ekstresi' },
           { to: '/toplu-ekstre', label: 'Toplu Ekstre' },
           { to: '/gelir-raporu', label: 'Gelir Raporu' },
           { to: '/giderler', label: 'Giderler' },
