@@ -3,7 +3,15 @@ import { useParams, Link } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../lib/AuthContext'
 import BireBirDersDokumu from '../components/BireBirDersDokumu'
-import { paraFormat, bireBirDersDetaylariOlustur, sinifDersDetaylariOlustur, ayEtiketi } from '../lib/ekstreHesap'
+import {
+  paraFormat,
+  bireBirDersDetaylariOlustur,
+  sinifDersDetaylariOlustur,
+  ayEtiketi,
+  ayBaslangici,
+  haftaEtiketi,
+  haftaBaslangici,
+} from '../lib/ekstreHesap'
 
 // Ayı "YYYY-MM" olarak YEREL saate göre üretir (toISOString KULLANMIYORUZ —
 // Türkiye UTC+3 gece yarısına yakın saatlerde bir gün geriye kayabiliyor).
@@ -25,6 +33,12 @@ export default function OgretmenEkstre() {
   const [ogretmen, setOgretmen] = useState(null)
   const [dersler, setDersler] = useState([])
   const [loading, setLoading] = useState(true)
+  // Aşağıdaki BireBirDersDokumu bileşeni ekranda O AN hangi dönemi
+  // gösteriyorsa (Haftalık/Aylık/Tüm Zamanlar + hangi ay/hafta seçili) bu
+  // state onu takip eder — bkz. BireBirDersDokumu'nun onDonemDegisti prop
+  // açıklaması. Üstteki özet kutusu artık SABİT "bugünün ayı" değil, bu
+  // dönemi baz alıyor.
+  const [gosterilenDonem, setGosterilenDonem] = useState(null) // { periyot, anahtar } | null
 
   useEffect(() => {
     // Bu fonksiyon hem sayfa ilk açıldığında hem de aşağıdaki
@@ -98,22 +112,34 @@ export default function OgretmenEkstre() {
   if (loading) return <p className="p-6 text-gray-400">Yükleniyor...</p>
   if (!ogretmen) return <p className="p-6 text-gray-400">Öğretmen bulunamadı.</p>
 
-  // ÖNEMLİ: bu kutu eskiden "TÜM ZAMANLAR" toplamını gösteriyordu — ama
-  // aşağıdaki Haftalık/Aylık/Tüm Zamanlar seçiciyle birlikte kafa karıştırıcı
-  // hale geliyordu (biri "13 ders" derken diğeri farklı bir sayı gösterebiliyordu).
-  // Şimdi bu kutu SADECE İÇİNDE BULUNULAN AYI özetliyor; tüm zamanlar toplamı
-  // isteyen, aşağıdaki BireBirDersDokumu içindeki "Tüm Zamanlar" sekmesine geçebilir.
+  // ÖNEMLİ: bu kutu eskiden HEP "bugünün ayı"nı (suankiAy) özetliyordu — ama
+  // aşağıdaki Haftalık/Aylık/Tüm Zamanlar seçici FARKLI bir dönem
+  // gösterdiğinde (ör. bu ayda henüz kayıt yoksa otomatik geçen aya
+  // düşülüyordu) kutu ile tablo TUTARSIZ görünüyordu ("Ağustos 2026" yazan
+  // kutu, altta Temmuz'un derslerini gösteriyordu). Şimdi bu kutu aşağıdaki
+  // bileşenin O AN gösterdiği dönemi (gosterilenDonem) baz alıyor — hangi ay/
+  // hafta/"Tüm Zamanlar" seçiliyse kutu da onu özetliyor.
   const buAy = suankiAy()
-  const buAyDersler = dersler.filter((d) => d.tarih?.slice(0, 7) === buAy)
-  const buAyDersSayisi = buAyDersler.length
-  const buAyTutar = buAyDersler.reduce((t, d) => t + d.tutar, 0)
+  let ozetBaslik = ayEtiketi(buAy + '-01')
+  let ozetDersler = dersler.filter((d) => d.tarih?.slice(0, 7) === buAy)
+  if (gosterilenDonem?.periyot === 'hepsi') {
+    ozetBaslik = 'Tüm Zamanlar'
+    ozetDersler = dersler
+  } else if (gosterilenDonem?.anahtar) {
+    const haftaMi = gosterilenDonem.periyot === 'hafta'
+    const anahtarUret = haftaMi ? haftaBaslangici : ayBaslangici
+    ozetBaslik = (haftaMi ? haftaEtiketi : ayEtiketi)(gosterilenDonem.anahtar)
+    ozetDersler = dersler.filter((d) => anahtarUret(d.tarih) === gosterilenDonem.anahtar)
+  }
+  const ozetDersSayisi = ozetDersler.length
+  const ozetTutar = ozetDersler.reduce((t, d) => t + d.tutar, 0)
   // Soru Çözümü seansları ücretsiz olduğu için toplam tutara katkısı yok, ama
   // toplam ders SAYISINA dahil oluyor — kaç tanesinin ders, kaç tanesinin
   // soru çözümü olduğu ayrıca belirtilmezse yanıltıcı olabiliyor.
-  const buAySoruCozumuSayisi = buAyDersler.filter((d) => d.tur === 'soru_cozumu').length
+  const ozetSoruCozumuSayisi = ozetDersler.filter((d) => d.tur === 'soru_cozumu').length
   // Sınıf dersleri de aynı şekilde ücretsiz (tutara katkısı yok) ama ders
   // SAYISINA dahil — kaç tanesinin sınıf dersi olduğu ayrıca belirtiliyor.
-  const buAySinifDersSayisi = buAyDersler.filter((d) => d.tur === 'sinif').length
+  const ozetSinifDersSayisi = ozetDersler.filter((d) => d.tur === 'sinif').length
 
   return (
     <div className="min-h-screen bg-cream py-8 px-4">
@@ -162,18 +188,18 @@ export default function OgretmenEkstre() {
             <div className="mb-4 border border-gray-200 rounded-lg overflow-hidden">
               <div className="flex justify-between px-4 py-3 bg-navy/5">
                 <span className="font-bold text-navy">
-                  BU AY VERİLEN DERS <span className="font-normal text-gray-400 capitalize">({ayEtiketi(buAy + '-01')})</span>
+                  VERİLEN DERS <span className="font-normal text-gray-400 capitalize">({ozetBaslik})</span>
                 </span>
-                <span className="font-bold text-navy text-lg">{buAyDersSayisi} ders — {paraFormat(buAyTutar)}</span>
+                <span className="font-bold text-navy text-lg">{ozetDersSayisi} ders — {paraFormat(ozetTutar)}</span>
               </div>
-              {buAySoruCozumuSayisi > 0 && (
+              {ozetSoruCozumuSayisi > 0 && (
                 <div className="px-4 py-2 bg-purple-50 border-t border-purple-100 text-xs text-purple-700">
-                  Bunların <b>{buAySoruCozumuSayisi}</b> tanesi Soru Çözümü seansı (ücretsiz, tutara dahil değil).
+                  Bunların <b>{ozetSoruCozumuSayisi}</b> tanesi Soru Çözümü seansı (ücretsiz, tutara dahil değil).
                 </div>
               )}
-              {buAySinifDersSayisi > 0 && (
+              {ozetSinifDersSayisi > 0 && (
                 <div className="px-4 py-2 bg-blue-50 border-t border-blue-100 text-xs text-blue-700">
-                  Bunların <b>{buAySinifDersSayisi}</b> tanesi sınıf dersi (ücretsiz, tutara dahil değil).
+                  Bunların <b>{ozetSinifDersSayisi}</b> tanesi sınıf dersi (ücretsiz, tutara dahil değil).
                 </div>
               )}
             </div>
@@ -184,6 +210,7 @@ export default function OgretmenEkstre() {
               <BireBirDersDokumu
                 dersler={dersler.map((d) => ({ ...d, karsiTarafAdi: d.ogrenciAdi }))}
                 karsiTarafBasligi="Öğrenci"
+                onDonemDegisti={setGosterilenDonem}
               />
             )}
           </div>
