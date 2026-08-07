@@ -6,28 +6,50 @@ self.addEventListener('activate', (event) => {
 })
 self.addEventListener('fetch', () => {})
 
+// ---- GEÇİCİ TEŞHİS ALTYAPISI ----
+// push event'i tetiklendiğinde ne olduğunu iki şekilde kaydediyoruz:
+// 1) Cache Storage'a bir JSON kaydı yazıyoruz (kalıcı — SW yeniden
+//    başlasa/kapansa bile kalır, sayfa açıldığında okunabilir).
+// 2) O anda açık olan sekmelere postMessage ile bildiriyoruz (sayfanın
+//    NORMAL konsolunda görünür — DevTools'un service worker konsol
+//    seçiminin "yanlış/eski örneği izleme" ihtimalini bypass eder).
+async function kaydet(asama, detay) {
+  try {
+    const cache = await caches.open('push-teshis')
+    const onceki = await cache.match('/__push-log')
+    let liste = []
+    if (onceki) {
+      try {
+        liste = await onceki.json()
+      } catch {
+        liste = []
+      }
+    }
+    liste.push({ zaman: new Date().toISOString(), asama, detay: String(detay ?? '') })
+    if (liste.length > 20) liste = liste.slice(-20)
+    await cache.put('/__push-log', new Response(JSON.stringify(liste), { headers: { 'Content-Type': 'application/json' } }))
+  } catch (e) {
+    // yazamazsak sessizce geç, ana akışı bozmasın
+  }
+  try {
+    const clientList = await self.clients.matchAll({ type: 'window', includeUncontrolled: true })
+    for (const c of clientList) c.postMessage({ tur: 'push-teshis', asama, detay: String(detay ?? '') })
+  } catch (e) {}
+}
+
 // Gerçek push bildirimi: sunucudan (api/bire-bir-hatirlatma.js) bir bildirim
 // geldiğinde, cihaz kapalıyken/uygulama açık olmasa bile bu tetiklenir ve
 // ekranda bildirim gösterir. Veri JSON olarak geliyor: { baslik, govde, url }.
-//
-// GEÇİCİ TEŞHİS SÜRÜMÜ: mesaj ağdan geliyor ve şifresi başarıyla çözülüyor
-// ama hiçbir cihazda bildirim görünmüyor — bu, showNotification() çağrısının
-// kendisinde sessiz bir hata/reddedilme olabileceğini düşündürüyor. Bu sürüm:
-// 1) icon/badge OLMADAN minimal bir bildirimle dener (resim yüklenemsmesi
-//    ihtimalini eler),
-// 2) o da başarısız olursa hatayı bildirim BAŞLIĞINA yazarak gösterir ki
-//    gerçek sebebi ekranda görebilelim,
-// 3) her adımı konsola da loglar.
 self.addEventListener('push', (event) => {
   event.waitUntil(
     (async () => {
-      console.log('[push] event alındı')
+      await kaydet('event-alindi', '')
       let veri = {}
       try {
         veri = event.data ? event.data.json() : {}
-        console.log('[push] veri parse edildi:', veri)
+        await kaydet('veri-parse-edildi', JSON.stringify(veri))
       } catch (e) {
-        console.log('[push] veri parse HATASI:', e && e.message)
+        await kaydet('veri-parse-hatasi', e && e.message)
         veri = {}
       }
       const baslik = veri.baslik || 'Savaş Akça Eğitim'
@@ -35,21 +57,19 @@ self.addEventListener('push', (event) => {
       const url = veri.url || '/'
 
       try {
-        // Önce ikon/badge OLMADAN minimal bir deneme — resim kaynaklı bir
-        // sorunu elemek için.
         await self.registration.showNotification(baslik, {
           body: govde,
           data: { url },
         })
-        console.log('[push] showNotification BAŞARILI (minimal)')
+        await kaydet('showNotification-basarili', baslik)
       } catch (err) {
-        console.log('[push] showNotification HATASI:', err && err.message)
+        await kaydet('showNotification-hatasi', err && err.message)
         try {
           await self.registration.showNotification('HATA: ' + (err && err.message ? err.message : String(err)), {
-            body: 'showNotification başarısız oldu — bu bildirimi görüyorsan sorun ikon/veri ile ilgiliydi.',
+            body: 'showNotification başarısız oldu.',
           })
         } catch (err2) {
-          console.log('[push] YEDEK showNotification DA HATA VERDİ:', err2 && err2.message)
+          await kaydet('yedek-showNotification-de-hata', err2 && err2.message)
         }
       }
     })()
