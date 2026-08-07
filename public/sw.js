@@ -65,7 +65,7 @@ self.addEventListener('push', (event) => {
         await self.registration.showNotification(baslik, {
           body: govde,
           icon: '/logo.png',
-          badge: '/logo.png',
+          badge: '/badge.png',
           data: { url },
         })
         await kaydet('showNotification-basarili', baslik)
