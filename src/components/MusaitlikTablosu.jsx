@@ -31,6 +31,31 @@ function araliklarCakisiyorMu(b1, s1, b2, s2) {
   return saatKisalt(b1) < saatKisalt(s2) && saatKisalt(b2) < saatKisalt(s1)
 }
 
+// Bir öğrencinin KENDİ sınıfının, seçilen gün/saatte bir dersi olup olmadığını
+// kontrol eder — BireBir.jsx'teki (manuel form) aynı isimli fonksiyonun
+// buradaki karşılığı. SERT bir engel değil, sadece bir UYARI döndürür — admin
+// "Evet, yine de ekle" diyerek Hızlı Ekle ile devam edebilir. Daha önce Hızlı
+// Ekle akışı bu kontrolü hiç yapmıyordu (sadece manuel formda vardı) — bu
+// yüzden aynı çakışma manuel formda uyarı gösterirken Hızlı Ekle'de sessizce
+// atlanıyordu. sinifOgrencileri: öğrencinin hangi sınıf(lar)a kayıtlı
+// olduğunu tutan ara tablo ([{ ogrenci_id, sinif_id }]).
+function ogrenciSinifDersiUyarisiBul(ogrenciId, gun, baslangic, bitis, dersProgrami, sinifOgrencileri) {
+  if (!ogrenciId || !gun || !baslangic || !bitis) return null
+  const sinifIdleri = new Set(
+    (sinifOgrencileri || []).filter((so) => so.ogrenci_id === ogrenciId).map((so) => so.sinif_id)
+  )
+  if (sinifIdleri.size === 0) return null
+  for (const d of dersProgrami || []) {
+    if (!sinifIdleri.has(d.sinif_id)) continue
+    if (d.gun !== gun) continue
+    if (!araliklarCakisiyorMu(baslangic, bitis, d.baslangic_saat, d.bitis_saat)) continue
+    return {
+      aciklama: `bu öğrencinin ${GUNLER[d.gun]} günü ${saatGoster(d.baslangic_saat)}–${saatGoster(d.bitis_saat)} arası "${d.ders_adi || d.sinif_adi || 'sınıf'}" dersi var`,
+    }
+  }
+  return null
+}
+
 // Taslak Modu açıkken Hızlı Ekle ile oluşturulan taslakların BİRBİRİYLE
 // çakışıp çakışmadığını kontrol eder (DersProgrami.jsx/BireBir.jsx'teki
 // taslagaKaydet()'lerle aynı amaç) — 'sinif'/'bire_bir_haftalik' taslakları
@@ -103,6 +128,12 @@ export default function MusaitlikTablosu({
   siniflar = [],
   hizliEkleEtkin = false,
   onHizliEklendi,
+  // Opsiyonel — verilirse, Hızlı Ekle ile bir öğrenciye bire bir ders
+  // eklenirken, o öğrencinin kendi sınıfının aynı gün/saatte dersi olup
+  // olmadığı da kontrol edilir (manuel "Bire Bir Ders Ekle" formundaki sarı
+  // "⚠ Uyarı" ile aynı davranış — kullanıcı isteğiyle eklendi: bu uyarı daha
+  // önce sadece manuel formda çıkıyor, Hızlı Ekle'de hiç çıkmıyordu).
+  sinifOgrencileri = [],
   // Taslak Modu — sayfa üstündeki aç/kapa anahtarı açıkken (hem taslakModuAcik
   // hem aktifPlanAdi doluyken) "Hızlı Ekle" ile eklenen HER ders (soru çözümü,
   // sınıf, öğrenci) canlı tabloya değil, taslaklar tablosuna, aktifPlanAdi ile
@@ -160,6 +191,10 @@ export default function MusaitlikTablosu({
   const [ucret, setUcret] = useState('')
   const [hpHata, setHpHata] = useState('')
   const [hpGonderiliyor, setHpGonderiliyor] = useState(false)
+  // Sınıf dersi çakışması SERT bir hata değil (hpHata gibi engellemiyor),
+  // sadece "Evet, yine de ekle" ile geçilebilen bir uyarı — bkz.
+  // ogrenciSinifDersiUyarisiBul.
+  const [hpSinifUyarisi, setHpSinifUyarisi] = useState('')
 
   function hizliPopupKapat() {
     setHizliPopup(null)
@@ -167,6 +202,15 @@ export default function MusaitlikTablosu({
     setSecilen(null)
     setUcret('')
     setHpHata('')
+    setHpSinifUyarisi('')
+  }
+
+  // Sınıf dersi uyarısı gösterilirken "Evet, yine de ekle" — hard/çakışma
+  // kontrolleri hizliKaydet(true) içinde yine çalışır, sadece sınıf dersi
+  // uyarısı tekrar sorulmaz.
+  function hpSinifUyarisinaRagmenEkle() {
+    setHpSinifUyarisi('')
+    hizliKaydet(true)
   }
 
   // "Yönetim" popup'ı — dolu bir bire bir/soru çözümü hücresindeki ✏️ ikonuna
@@ -278,9 +322,15 @@ export default function MusaitlikTablosu({
     }
   }
 
-  async function hizliKaydet() {
+  // zorlaEkle=true, sınıf dersi uyarısı gösterildikten sonra kullanıcı "Evet,
+  // yine de ekle" derse geçilir — o durumda uyarı kontrolü tekrar
+  // ÇALIŞTIRILMAZ (aynı çakışma tekrar sorulup dursun istemiyoruz), ama
+  // yukarıdaki hard/sert kontroller (öğrencinin başka dersi var mı gibi) yine
+  // de tekrar çalışır — zararsız, veriler bu kısa süre içinde değişmemiştir.
+  async function hizliKaydet(zorlaEkle = false) {
     if (!hizliPopup || !secilen) return
     setHpHata('')
+    if (!zorlaEkle) setHpSinifUyarisi('')
 
     // Taslak Modu anahtarı AÇIKKEN plan adı boş bırakılırsa, eskiden burada
     // sessizce CANLI tabloya yazılıyordu (kullanıcı anahtarın açık göründüğünü
@@ -441,6 +491,23 @@ export default function MusaitlikTablosu({
       if (atamaCakisan || tekSeferlikCakisan) {
         setHpHata('Bu öğrencinin bu saatte başka bir dersi var.')
         return
+      }
+      // Sınıf dersiyle çakışma SERT bir engel değil, sadece uyarı — manuel
+      // "Bire Bir Ders Ekle" formundaki "Evet, yine de ekle" ile aynı davranış
+      // (bkz. dosya başındaki ogrenciSinifDersiUyarisiBul).
+      if (!zorlaEkle) {
+        const sinifUyari = ogrenciSinifDersiUyarisiBul(
+          secilen.id,
+          hizliPopup.gun,
+          hizliPopup.baslangic,
+          hizliPopup.bitis,
+          dersProgrami,
+          sinifOgrencileri
+        )
+        if (sinifUyari) {
+          setHpSinifUyarisi(sinifUyari.aciklama)
+          return
+        }
       }
       if (taslakModuEtkin) {
         const taslakCakisma = taslakCakismasiAciklamasi(buPlanaAitTaslaklar, {
@@ -890,26 +957,51 @@ export default function MusaitlikTablosu({
                                   />
                                 )}
                                 {hpHata && <p className="text-[11px] text-red-500 mb-1.5 font-normal">{hpHata}</p>}
-                                <div className="flex gap-1.5">
-                                  <button
-                                    type="button"
-                                    onClick={() => {
-                                      setSecilen(null)
-                                      setAramaMetni('')
-                                    }}
-                                    className="flex-1 px-2 py-1.5 rounded-lg text-xs text-gray-500 bg-gray-50 hover:bg-gray-100"
-                                  >
-                                    Geri
-                                  </button>
-                                  <button
-                                    type="button"
-                                    disabled={hpGonderiliyor || (secilen.tur === 'ogrenci' && !ucret)}
-                                    onClick={hizliKaydet}
-                                    className="flex-1 px-2 py-1.5 rounded-lg text-xs text-white bg-navy hover:bg-navy/90 disabled:opacity-50"
-                                  >
-                                    {hpGonderiliyor ? 'Ekleniyor...' : taslakModuAcik && aktifPlanAdi ? 'Plana Ekle' : 'Ekle'}
-                                  </button>
-                                </div>
+                                {hpSinifUyarisi ? (
+                                  <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-2 mb-1">
+                                    <p className="text-[11px] text-yellow-800 font-normal mb-1.5">
+                                      ⚠ {hpSinifUyarisi}. Yine de eklemek ister misiniz?
+                                    </p>
+                                    <div className="flex gap-1.5">
+                                      <button
+                                        type="button"
+                                        onClick={() => setHpSinifUyarisi('')}
+                                        className="flex-1 px-2 py-1.5 rounded-lg text-xs text-gray-500 bg-white border border-gray-200 hover:bg-gray-50"
+                                      >
+                                        Vazgeç
+                                      </button>
+                                      <button
+                                        type="button"
+                                        disabled={hpGonderiliyor}
+                                        onClick={hpSinifUyarisinaRagmenEkle}
+                                        className="flex-1 px-2 py-1.5 rounded-lg text-xs text-white bg-orange hover:opacity-90 disabled:opacity-50"
+                                      >
+                                        {hpGonderiliyor ? 'Ekleniyor...' : 'Evet, yine de ekle'}
+                                      </button>
+                                    </div>
+                                  </div>
+                                ) : (
+                                  <div className="flex gap-1.5">
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        setSecilen(null)
+                                        setAramaMetni('')
+                                      }}
+                                      className="flex-1 px-2 py-1.5 rounded-lg text-xs text-gray-500 bg-gray-50 hover:bg-gray-100"
+                                    >
+                                      Geri
+                                    </button>
+                                    <button
+                                      type="button"
+                                      disabled={hpGonderiliyor || (secilen.tur === 'ogrenci' && !ucret)}
+                                      onClick={() => hizliKaydet()}
+                                      className="flex-1 px-2 py-1.5 rounded-lg text-xs text-white bg-navy hover:bg-navy/90 disabled:opacity-50"
+                                    >
+                                      {hpGonderiliyor ? 'Ekleniyor...' : taslakModuAcik && aktifPlanAdi ? 'Plana Ekle' : 'Ekle'}
+                                    </button>
+                                  </div>
+                                )}
                               </>
                             )}
                           </div>
