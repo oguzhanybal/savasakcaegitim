@@ -2779,6 +2779,7 @@ export default function BireBir() {
             ogrenciler={ogrenciler}
             siniflar={[]}
             hizliEkleEtkin
+            sinifOgrencileri={sinifOgrencileri}
             onHizliEklendi={dersEklendiVeyaTaslaklandi}
             taslakModuAcik={taslakModuAcik}
             aktifPlanAdi={aktifPlanAdi.trim()}
