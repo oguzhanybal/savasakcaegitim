@@ -6,6 +6,7 @@ import { ilkHarfleriBuyukYap } from '../lib/adSoyadFormat'
 import BireBirDersDokumu from '../components/BireBirDersDokumu'
 import {
   taksitPlaniOlustur,
+  taksitPlaniDetayliOlustur,
   aylikBorcDurumHesapla,
   gunAnahtari,
   bireBirBorclariOlustur,
@@ -18,7 +19,7 @@ import {
   telefonNormallestir,
   makbuzWhatsappMesajiOlustur,
 } from '../lib/ekstreHesap'
-import { makbuzPdfOlustur } from '../lib/pdfOlustur'
+import { makbuzPdfOlustur, odemePlaniPdfOlustur } from '../lib/pdfOlustur'
 
 function paraFormat(n) {
   return new Intl.NumberFormat('tr-TR', { style: 'currency', currency: 'TRY' }).format(n || 0)
@@ -630,6 +631,9 @@ export default function Muhasebe() {
   // olan tek satırın anahtarını tutar (Toplu Ekstre'deki "gonderiliyor" ile
   // aynı desen).
   const [makbuzGonderiliyor, setMakbuzGonderiliyor] = useState(null)
+  // "Ödeme Planı PDF İndir" butonuna basılınca — PDF hazırlanana kadar
+  // butonu devre dışı bırakmak için.
+  const [odemePlaniIndiriliyor, setOdemePlaniIndiriliyor] = useState(false)
   const [loading, setLoading] = useState(true)
   // Herhangi bir öğrenci seçilmeden ÖNCE, giriş ekranında "en son kim ne
   // ödedi" görülsün diye tüm öğrencilerin son ödemelerini ayrıca tutuyoruz
@@ -878,6 +882,62 @@ export default function Muhasebe() {
     }
   }
 
+  // "Ödeme Planı PDF İndir" — bir velinin "bugüne kadar ne ödedim, ne kaldı"
+  // diye sorması üzerine eklendi. Eski (dersfit.com) sistemdeki "Cari
+  // Görüntüle" ekranındaki taksit taksit dökümün (# / Tutar / Vade / Durum)
+  // AYNISINI, bizim jsPDF tabanlı marka şablonumuzla (bkz. pdfOlustur.js —
+  // ekstrePdfOlustur/makbuzPdfOlustur ile aynı görsel dil) üretip doğrudan
+  // tarayıcıya indirir — WhatsApp'a gönderme/Storage'a yükleme YOK, sadece
+  // yerel indirme, bu yüzden ekstra bir tabloya/bucket'a ihtiyaç duymuyor.
+  async function odemePlaniIndir() {
+    if (!seciliOgrenci) return
+    setOdemePlaniIndiriliyor(true)
+    try {
+      const sozlesmePlanlari = sozlesmeler
+        .map((s) => ({ sozlesme: s, taksitler: taksitPlaniDetayliOlustur(s, odemeler) }))
+        .filter((x) => x.taksitler.length > 0)
+
+      const aylikKalemler = ['Bire Bir', 'Yemek', 'Kantin']
+      const aylikOzet = aylikKalemler
+        .map((k) => {
+          const kalemToplamBorc = aylikBorclar.filter((a) => a.kalem === k).reduce((t, a) => t + Number(a.tutar), 0)
+          if (kalemToplamBorc <= 0) return null
+          const kalemToplamOdenen = odemeler
+            .filter((o) => o.kalem && o.kalem.startsWith(k))
+            .reduce((t, o) => t + Number(o.tutar), 0)
+          return {
+            kalem: k,
+            toplamBorc: kalemToplamBorc,
+            toplamOdenen: kalemToplamOdenen,
+            kalan: Math.max(0, kalemToplamBorc - kalemToplamOdenen),
+          }
+        })
+        .filter(Boolean)
+
+      const blob = await odemePlaniPdfOlustur({
+        ogrenciAdi: seciliOgrenci.ad_soyad,
+        sozlesmePlanlari,
+        aylikOzet,
+        odemeler,
+        toplamBorc: toplamSozlesme + toplamAylikBorc,
+        toplamOdenen,
+        kalanBakiye,
+      })
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `${seciliOgrenci.ad_soyad} - Odeme Plani.pdf`
+      document.body.appendChild(a)
+      a.click()
+      a.remove()
+      URL.revokeObjectURL(url)
+    } catch (err) {
+      alert('PDF oluşturulurken bir hata oluştu: ' + (err.message || String(err)))
+    } finally {
+      setOdemePlaniIndiriliyor(false)
+    }
+  }
+
   async function sozlesmeSil(s) {
     if (!confirm(`"${s.kalem}" kalemi için ${paraFormat(s.toplam_tutar)} tutarındaki sözleşmeyi silmek istediğinize emin misiniz?\n\nBu işlem geri alınamaz. Öğrencinin kendisi SİLİNMEZ, sadece bu sözleşme kaydı ve ona bağlı ödeme planı kaldırılır.`)) return
     const { error } = await supabase.from('sozlesmeler').delete().eq('id', s.id)
@@ -969,14 +1029,26 @@ export default function Muhasebe() {
     <div>
       <div className="flex items-center justify-between mb-6 flex-wrap gap-3">
         <h1 className="text-2xl font-bold text-navy">{isYonetici ? 'Muhasebe' : 'Ödeme Durumu'}</h1>
-        {isYonetici && seciliId && (
-          <Link
-            to={`/ekstre/${seciliId}`}
-            target="_blank"
-            className="bg-navy text-white font-semibold px-4 py-2 rounded-lg hover:bg-blue transition-colors text-sm"
-          >
-            Aylık Ekstre Görüntüle / Yazdır
-          </Link>
+        {seciliId && (
+          <div className="flex flex-wrap gap-2">
+            {isYonetici && (
+              <Link
+                to={`/ekstre/${seciliId}`}
+                target="_blank"
+                className="bg-navy text-white font-semibold px-4 py-2 rounded-lg hover:bg-blue transition-colors text-sm"
+              >
+                Aylık Ekstre Görüntüle / Yazdır
+              </Link>
+            )}
+            <button
+              type="button"
+              onClick={odemePlaniIndir}
+              disabled={odemePlaniIndiriliyor}
+              className="bg-orange text-white font-semibold px-4 py-2 rounded-lg hover:opacity-90 transition-opacity text-sm disabled:opacity-50"
+            >
+              {odemePlaniIndiriliyor ? 'Hazırlanıyor...' : 'Ödeme Planı PDF İndir'}
+            </button>
+          </div>
         )}
       </div>
 

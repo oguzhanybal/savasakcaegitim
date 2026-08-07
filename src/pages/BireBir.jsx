@@ -1357,18 +1357,20 @@ function TaslaklarimBireBir({ taslaklar, ogrenciler, ogretmenler, dersProgrami, 
   )
 }
 
-// Yöneticinin belirli bir öğrenciyi ya da öğretmeni seçip, o kişiye özel
-// haftalık/aylık, yazdırılabilir/PDF alınabilir bire bir ders dökümünü yeni
-// sekmede açmasını sağlar — mevcut "Tüm Bire Bir Dersler" (herkes bir arada)
-// listesine EK olarak, onu değiştirmeden.
-function OgrenciOgretmenEkstreSecici({ ogrenciler, ogretmenler }) {
+// Yöneticinin belirli bir öğrenciyi seçip, o öğrenciye özel haftalık/aylık,
+// yazdırılabilir/PDF alınabilir bire bir ders dökümünü yeni sekmede açmasını
+// sağlar — mevcut "Tüm Bire Bir Dersler" (herkes bir arada) listesine EK
+// olarak, onu değiştirmeden. NOT: buradaki "Öğretmen Bazında Ekstre" seçici
+// artık burada DEĞİL — kullanıcı isteğiyle Muhasebe sayfasına, "Son Alınan
+// Ödemeler" panelinin altına taşındı (öğretmen ödeme/ekstre konularıyla
+// birlikte orada aranması daha mantıklı bulundu).
+function OgrenciOgretmenEkstreSecici({ ogrenciler }) {
   const [seciliOgrenci, setSeciliOgrenci] = useState('')
-  const [seciliOgretmen, setSeciliOgretmen] = useState('')
 
   return (
     <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5 mb-6">
       <div className="flex items-start justify-between gap-3 flex-wrap mb-1">
-        <p className="font-semibold text-gray-700">Öğrenci / Öğretmen Bazında Ekstre</p>
+        <p className="font-semibold text-gray-700">Öğrenci Bazında Ekstre</p>
         <Link
           to="/bire-bir-genel-ekstre"
           target="_blank"
@@ -1378,75 +1380,42 @@ function OgrenciOgretmenEkstreSecici({ ogrenciler, ogretmenler }) {
         </Link>
       </div>
       <p className="text-xs text-gray-400 mb-3">
-        Belirli bir öğrenci ya da öğretmen seçip, sadece ona ait haftalık/aylık dökümü yeni sekmede
-        görüntüleyin — buradan yazdırabilir ya da PDF olarak kaydedebilirsiniz. Öğrenci/öğretmene göre
-        AYIRMADAN, seçtiğiniz hafta/ayda okulda verilen TÜM bire bir dersleri tek listede görmek
-        isterseniz sağ üstteki "Genel Ekstre" linkini kullanın.
+        Belirli bir öğrenci seçip, sadece ona ait haftalık/aylık dökümü yeni sekmede görüntüleyin —
+        buradan yazdırabilir ya da PDF olarak kaydedebilirsiniz. Öğretmen bazında ekstre için Muhasebe
+        sayfasındaki "Öğretmen Bazında Ekstre" bölümünü kullanın. Öğrenci/öğretmene göre AYIRMADAN,
+        seçtiğiniz hafta/ayda okulda verilen TÜM bire bir dersleri tek listede görmek isterseniz sağ
+        üstteki "Genel Ekstre" linkini kullanın.
       </p>
-      <div className="flex flex-wrap gap-4">
-        <div className="flex-1 min-w-[220px]">
-          <label className="block text-sm font-medium text-gray-700 mb-1">Öğrenci</label>
-          <div className="flex flex-col sm:flex-row gap-2">
-            <select
-              value={seciliOgrenci}
-              onChange={(e) => setSeciliOgrenci(e.target.value)}
-              className="flex-1 min-w-0 w-full px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue bg-white"
+      <div className="max-w-sm">
+        <label className="block text-sm font-medium text-gray-700 mb-1">Öğrenci</label>
+        <div className="flex flex-col sm:flex-row gap-2">
+          <select
+            value={seciliOgrenci}
+            onChange={(e) => setSeciliOgrenci(e.target.value)}
+            className="flex-1 min-w-0 w-full px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue bg-white"
+          >
+            <option value="">Öğrenci seçiniz...</option>
+            {ogrenciler.map((o) => (
+              <option key={o.id} value={o.id}>{o.ad_soyad}</option>
+            ))}
+          </select>
+          {seciliOgrenci ? (
+            <Link
+              to={`/ekstre/${seciliOgrenci}`}
+              target="_blank"
+              className="bg-navy text-white text-sm font-semibold px-4 py-2 rounded-lg hover:opacity-90 transition-opacity whitespace-nowrap text-center"
             >
-              <option value="">Öğrenci seçiniz...</option>
-              {ogrenciler.map((o) => (
-                <option key={o.id} value={o.id}>{o.ad_soyad}</option>
-              ))}
-            </select>
-            {seciliOgrenci ? (
-              <Link
-                to={`/ekstre/${seciliOgrenci}`}
-                target="_blank"
-                className="bg-navy text-white text-sm font-semibold px-4 py-2 rounded-lg hover:opacity-90 transition-opacity whitespace-nowrap text-center"
-              >
-                Ekstre Görüntüle
-              </Link>
-            ) : (
-              <button
-                type="button"
-                disabled
-                className="bg-gray-200 text-gray-400 text-sm font-semibold px-4 py-2 rounded-lg whitespace-nowrap cursor-not-allowed"
-              >
-                Ekstre Görüntüle
-              </button>
-            )}
-          </div>
-        </div>
-        <div className="flex-1 min-w-[220px]">
-          <label className="block text-sm font-medium text-gray-700 mb-1">Öğretmen</label>
-          <div className="flex flex-col sm:flex-row gap-2">
-            <select
-              value={seciliOgretmen}
-              onChange={(e) => setSeciliOgretmen(e.target.value)}
-              className="flex-1 min-w-0 w-full px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue bg-white"
+              Ekstre Görüntüle
+            </Link>
+          ) : (
+            <button
+              type="button"
+              disabled
+              className="bg-gray-200 text-gray-400 text-sm font-semibold px-4 py-2 rounded-lg whitespace-nowrap cursor-not-allowed"
             >
-              <option value="">Öğretmen seçiniz...</option>
-              {ogretmenler.map((o) => (
-                <option key={o.id} value={o.id}>{o.brans ? `${o.ad_soyad} — ${o.brans}` : o.ad_soyad}</option>
-              ))}
-            </select>
-            {seciliOgretmen ? (
-              <Link
-                to={`/ogretmen-ekstre/${seciliOgretmen}`}
-                target="_blank"
-                className="bg-navy text-white text-sm font-semibold px-4 py-2 rounded-lg hover:opacity-90 transition-opacity whitespace-nowrap text-center"
-              >
-                Ekstre Görüntüle
-              </Link>
-            ) : (
-              <button
-                type="button"
-                disabled
-                className="bg-gray-200 text-gray-400 text-sm font-semibold px-4 py-2 rounded-lg whitespace-nowrap cursor-not-allowed"
-              >
-                Ekstre Görüntüle
-              </button>
-            )}
-          </div>
+              Ekstre Görüntüle
+            </button>
+          )}
         </div>
       </div>
     </div>
@@ -2822,7 +2791,7 @@ export default function BireBir() {
             dersProgrami={dersProgrami}
             onDegisti={veriyiYenile}
           />
-          <OgrenciOgretmenEkstreSecici ogrenciler={ogrenciler} ogretmenler={ogretmenler} />
+          <OgrenciOgretmenEkstreSecici ogrenciler={ogrenciler} />
         </>
       )}
 
