@@ -200,12 +200,26 @@ export default function MusaitlikTablosu({
   // çünkü hücreye tıklayınca aynı click event'i içinde yeni DOM'a eklenen
   // input bazı tarayıcı/React sürümlerinde otomatik odaklanmıyor (kullanıcı
   // ekstra bir kez daha tıklamak zorunda kalıyordu). Popup hangi hücrede
-  // açıksa (hizliPopup değiştiğinde) input'u elle odaklıyoruz — bu, mount
-  // zamanlamasından bağımsız çalıştığı için daha güvenilir.
+  // açıksa (hizliPopup değiştiğinde) input'u elle odaklıyoruz.
+  // GERÇEK KÖK NEDEN (bir öncekinden farklı, daha derin bir sorun): hücreye
+  // tıklanınca YUKARIDAKİ onHucreTikla de AYNI ANDA çağrılıyor — bu, alttaki
+  // "Yeni Ders Saati Ekle" / "Bire Bir Ders Ekle" formunu da dolduruyor ve o
+  // formun KENDİ useEffect'i (doldurBilgisi değişince) kendi "Sınıf" seçim
+  // kutusuna odaklanıyor (sinifSelectRef.current?.focus()). İki bileşenin
+  // effect'leri AYNI render turunda çalıştığı için, DersEkleForm/
+  // BireBirDersEkleForm ağaçta bizden SONRA render edildiğinden onun odak
+  // çağrısı bizimkini eziyor — biz odaklanır odaklanmaz hemen form çalıp
+  // alıyordu, kullanıcı ekstra tıklayana kadar hiçbir şey yazamıyordu. Çözüm:
+  // kendi odaklanmamızı bir sonraki "tick"e (setTimeout 0) erteleyip, diğer
+  // effect'lerin senkron aşaması bittikten SONRA çalışmasını, yani her zaman
+  // EN SON biz kazanacak şekilde garanti ediyoruz.
   const hizliInputRef = useRef(null)
   useEffect(() => {
     if (hizliPopup && !secilen) {
-      hizliInputRef.current?.focus()
+      const zamanlayici = setTimeout(() => {
+        hizliInputRef.current?.focus()
+      }, 0)
+      return () => clearTimeout(zamanlayici)
     }
   }, [hizliPopup, secilen])
 
@@ -935,7 +949,7 @@ export default function MusaitlikTablosu({
                                     setAramaMetni(e.target.value)
                                     setHpHata('')
                                   }}
-                                  placeholder="Öğrenci ya da sınıf adı yazın..."
+                                  placeholder="Öğrenci ya da sınıf adı yazın."
                                   className="w-full px-2 py-1.5 border border-gray-200 rounded-lg text-xs mb-1 font-normal"
                                 />
                                 {aramaMetni.trim().length > 0 && (
