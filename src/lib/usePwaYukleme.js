@@ -32,11 +32,60 @@ export function iosMu() {
   return window.navigator.platform === 'MacIntel' && window.navigator.maxTouchPoints > 1
 }
 
+// Android Chrome — burada da tıpkı masaüstü gibi, uygulama TELEFONDA zaten
+// kuruluysa beforeinstallprompt bir daha hiç gelmiyor. Ama masaüstündeki
+// "adres çubuğunun sağı / chrome://apps" talimatı Android'de anlamsız —
+// orada öyle bir simge yok ve chrome://apps sayfası da farklı çalışıyor.
+// Bu yüzden Android'e özel, telefonun kendi "Uygulamalar" listesinden
+// kaldırma talimatını gösteriyoruz.
+export function androidMu() {
+  const ua = window.navigator.userAgent || ''
+  return /android/i.test(ua)
+}
+
+// Chrome 140+ / Edge 140+ (masaüstü) ve Chrome 84+ (Android), uygulamanın bu
+// CİHAZA GERÇEKTEN kurulu olup olmadığını sorabildiğimiz resmi bir API
+// sunuyor: navigator.getInstalledRelatedApps(). Bunun çalışması için
+// manifest.json'da uygulamanın kendisini "related_applications" listesinde
+// platform: "webapp" ile göstermesi gerekiyor (bkz. manifest.json — bu satır
+// olmadan API her zaman boş dizi döner). Bu, UA sniffing gibi TAHMİN değil,
+// tarayıcının kendi kurulu-uygulamalar kaydına bakan gerçek bir kontrol —
+// canlı testte (Chrome 151, masaüstü) çalıştığı doğrulandı. Desteklemeyen
+// tarayıcılarda (Safari, Firefox, eski Chrome) fonksiyon hiç yoktur — o
+// durumda null dönüp "bilinmiyor" diyoruz, false DEMİYORUZ (yanlışlıkla
+// "kurulu değil" sanıp butonu gereksiz yere göstermeye devam edelim, en
+// azından kullanıcıyı yanlış bilgiyle yanıltmayalım diye).
+export async function gercektenYukluMu() {
+  try {
+    if (!navigator.getInstalledRelatedApps) return null
+    const sonuc = await navigator.getInstalledRelatedApps()
+    return Array.isArray(sonuc) && sonuc.length > 0
+  } catch {
+    return null
+  }
+}
+
 export function zatenYukluMu() {
   return (
     window.matchMedia?.('(display-mode: standalone)')?.matches === true ||
     window.navigator.standalone === true
   )
+}
+
+// macOS'ta masaüstü Safari (iPhone/iPad Safari'si DEĞİL — bkz. iosMu, o ayrı
+// ele alınıyor). Safari 17+ (macOS Sonoma) "beforeinstallprompt" olayını HİÇ
+// desteklemiyor — ama kendi "Dosya > Dock'a Ekle" özelliğiyle siteyi Dock'a
+// ekleyebiliyor, hatta bizim manifest linkimiz eksikken bile bu çalışıyordu
+// (Safari'nin kriterleri Chrome'unkinden daha gevşek). Bu yüzden "tarayıcınız
+// hazırlamadı, tekrar deneyin" mesajı Safari'de YANLIŞ — orada olay hiçbir
+// zaman gelmeyecek, sonsuza kadar aynı mesajı görür. Ayrıca ZATEN Dock'a
+// eklenmiş olabilir (normal sekmede display-mode hâlâ "browser" görünür, bu
+// o tabın kendisi Dock'tan AÇILMADIĞI için normal — kurulu olmadığı anlamına
+// gelmez).
+export function safariMasaustuMu() {
+  const ua = window.navigator.userAgent || ''
+  const safariMi = /^((?!chrome|android|crios|fxios|edg).)*safari/i.test(ua)
+  return safariMi && !iosMu()
 }
 
 export function usePwaYukleme(profileId) {
