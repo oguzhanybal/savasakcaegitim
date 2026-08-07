@@ -2,6 +2,7 @@
   "name": "Savaş Akça Eğitim Portalı",
   "short_name": "Savaş Akça Eğitim",
   "description": "Savaş Akça Eğitim yönetim portalı",
+  "id": "/",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",
@@ -26,6 +27,13 @@
       "sizes": "192x192",
       "type": "image/png",
       "purpose": "maskable"
+    }
+  ],
+  "related_applications": [
+    {
+      "platform": "webapp",
+      "url": "/manifest.json",
+      "id": "https://savasakcaportal.com/"
     }
   ]
 }
