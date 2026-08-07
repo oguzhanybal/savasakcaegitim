@@ -106,31 +106,16 @@ function OgrenciCoklSecici({ ogrenciler, ogrenciSinifAdi, secilenIdler, setSecil
 }
 
 // Öğretmen çoklu seçim (pill/toggle) — "Öğretmenlere Gönder" bölümünde
-// kullanılıyor. Sınıf seçimindeki pill deseniyle aynı. Başında ayrıca "Tüm
-// Öğretmenler" kısayol butonu var — hepsini teker teker işaretlemek yerine
-// tek tıkla hepsini seçip/kaldırabilsin diye (kullanıcı isteğiyle eklendi:
-// "tüm öğretmenler" seçeneği de olsun, öğrenci/veli tarafındaki "Herkes"e
-// benzer bir kısayol).
+// kullanılıyor. Sınıf seçimindeki pill deseniyle aynı. "Tüm Öğretmenler"
+// kısayolu burada DEĞİL, "Kime gösterilsin?" seçiminin hemen altında ayrı bir
+// buton olarak gösteriliyor (kullanıcı isteğiyle taşındı).
 function OgretmenPillSecici({ ogretmenler, secilenIdler, setSecilenIdler }) {
   function toggle(id) {
     setSecilenIdler((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]))
   }
-  const hepsiSecili = ogretmenler.length > 0 && secilenIdler.length === ogretmenler.length
-  function tumunuToggle() {
-    setSecilenIdler(hepsiSecili ? [] : ogretmenler.map((o) => o.id))
-  }
   if (ogretmenler.length === 0) return <p className="text-xs text-gray-400">Henüz öğretmen yok.</p>
   return (
     <div className="flex flex-wrap gap-1.5">
-      <button
-        type="button"
-        onClick={tumunuToggle}
-        className={`px-2.5 py-1.5 rounded-lg text-xs font-semibold border transition-colors ${
-          hepsiSecili ? 'bg-orange text-white border-orange' : 'bg-white text-orange border-orange/40 hover:border-orange'
-        }`}
-      >
-        Tüm Öğretmenler
-      </button>
       {ogretmenler.map((o) => {
         const secili = secilenIdler.includes(o.id)
         return (
@@ -455,6 +440,29 @@ export default function Duyurular() {
                   Gönder" listesinden seçildiği için burada gösterilmiyor. */}
               {hedefTur === 'rol' && <option value="ogretmen">Sadece Öğretmen</option>}
             </select>
+            {hedefTur === 'ozel' && (
+              <button
+                type="button"
+                onClick={() =>
+                  setDogrudanOgretmenler((prev) =>
+                    prev.length === ogretmenler.length ? [] : ogretmenler.map((o) => o.id)
+                  )
+                }
+                className={`mt-1.5 px-2.5 py-1.5 rounded-lg text-xs font-semibold border transition-colors ${
+                  dogrudanOgretmenler.length > 0 && dogrudanOgretmenler.length === ogretmenler.length
+                    ? 'bg-orange text-white border-orange'
+                    : 'bg-white text-orange border-orange/40 hover:border-orange'
+                }`}
+              >
+                Tüm Öğretmenler
+              </button>
+            )}
+            {hedefTur === 'ozel' && hedefRol === 'veli' && (
+              <p className="text-xs text-gray-400 mt-1.5">
+                Veli hesabı öğrenciye bağlı olduğundan ayrı bir "veli seç" listesi yok — aşağıdan öğrenciyi
+                seçin/çıkarın, o öğrencinin velisi otomatik hedeflenir.
+              </p>
+            )}
           </div>
         </div>
 
