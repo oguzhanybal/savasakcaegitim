@@ -52,6 +52,20 @@ function enYakinGunTarihi(gun) {
   return `${hedef.getFullYear()}-${String(hedef.getMonth() + 1).padStart(2, '0')}-${String(hedef.getDate()).padStart(2, '0')}`
 }
 
+// enYakinGunTarihi'nin TERSİ — GERİYE değil İLERİYE bakar: bu haftanın günü
+// bugünse bugün, geçtiyse GELECEK haftanın aynı günü (bugün dahil, en fazla 6
+// gün sonraki). "Alındı" rozetinin hangi TARİHE ait olduğunu belirlemek için
+// kullanılıyor — öğretmen "Pazartesi" bölümüne baktığında, o hafta içindeki
+// GEÇMİŞ bir Pazartesi'yi değil, önündeki/gelecek Pazartesi'yi kastediyor.
+function sonrakiGunTarihi(gun) {
+  const n = new Date()
+  const bugunGunNo = ((n.getDay() + 6) % 7) + 1
+  let fark = gun - bugunGunNo
+  if (fark < 0) fark += 7
+  const hedef = new Date(n.getFullYear(), n.getMonth(), n.getDate() + fark)
+  return `${hedef.getFullYear()}-${String(hedef.getMonth() + 1).padStart(2, '0')}-${String(hedef.getDate()).padStart(2, '0')}`
+}
+
 function araliklarCakisiyorMu(b1, s1, b2, s2) {
   return saatKisalt(b1) < saatKisalt(s2) && saatKisalt(b2) < saatKisalt(s1)
 }
@@ -1114,12 +1128,21 @@ export default function DersProgrami() {
   // tur='ders' kayıtlar) — Soru Çözümü ile aynı şekilde Ders Programı'na
   // karışık gösteriliyor, ama bunlarda ayrıca Geldi/Gelmedi (yoklama) alınabiliyor.
   const [bireBirTekilSeanslarim, setBireBirTekilSeanslarim] = useState([])
-  // Öğretmenin, bu haftaki sınıf derslerinden HANGİLERİNİN yoklaması zaten
-  // alınmış olduğunu tutar (ders_programi_id kümesi) — "Yoklama / Konu İşle"
-  // butonunun yanında/üstünde "Alındı" rozeti göstermek için kullanılıyor.
-  // "ders_programi" haftalık tekrar eden bir şablon olduğu için (belirli bir
-  // tarihe değil güne bağlı), bir id bu haftada EN FAZLA bir kez oluşur —
-  // bu yüzden sadece id'nin bu hafta yoklaması var mı yok mu bilmek yeterli.
+  // Öğretmenin, sınıf derslerinden HANGİLERİNİN yoklaması zaten alınmış
+  // olduğunu tutar — "Yoklama / Konu İşle" butonunun yanında "Alındı" rozeti
+  // göstermek için kullanılıyor. "ders_programi" haftalık tekrar eden bir
+  // şablon olduğu için (belirli bir tarihe değil güne bağlı), aşağıdaki
+  // "Pazartesi" gibi bölümler HER ZAMAN "gelecek/önümüzdeki Pazartesi"yi
+  // temsil ediyor (bkz. sonrakiGunTarihi). ÖNEMLİ HATA DÜZELTMESİ: bu Set
+  // ÖNCEDEN sadece "ders_programi_id" ile anahtarlanıyordu — sorgu penceresi
+  // (bu haftanın Pazartesi'sinden, en az bugünden +6 gün sonrasına kadar)
+  // AYNI haftalık slotun HEM bu haftaki (zaten geçmiş, yoklaması alınmış)
+  // HEM gelecek haftaki (henüz gelmemiş) örneğini kapsayabildiği için, id
+  // tek başına ikisini ayırt edemiyordu — geçmiş Pazartesi'nin yoklaması
+  // alınınca, henüz gelmemiş GELECEK Pazartesi de yanlışlıkla "Alındı"
+  // görünüyordu (kullanıcının fark ettiği hata). Artık "id|tarih" anahtarıyla
+  // tutuluyor, rozet kontrolü de o dersin GERÇEKTEN temsil ettiği tarihe
+  // (sonrakiGunTarihi) göre yapılıyor.
   const [buHaftaYoklamaAlinanlar, setBuHaftaYoklamaAlinanlar] = useState(new Set())
   // Öğretmen kendi ders programındaki bir derse tıklayınca (Tablo/Liste
   // görünümünde "Yoklama / Konu" butonu) burada o dersin ders_programi
@@ -1306,7 +1329,7 @@ export default function DersProgrami() {
             // önceden bilmemize gerek kalmıyor.
             supabase
               .from('yoklama')
-              .select('ders_programi_id, ders_programi!inner(ogretmen_profile_id)')
+              .select('ders_programi_id, tarih, ders_programi!inner(ogretmen_profile_id)')
               .eq('ders_programi.ogretmen_profile_id', profile.id)
               .gte('tarih', pazartesi)
               .lte('tarih', pazar),
@@ -1319,7 +1342,13 @@ export default function DersProgrami() {
           setBireBirTekilSeanslarim(
             (bbRes.data || []).map((y) => ({ ...y, ogrenci_adi: y.ogrenciler?.ad_soyad }))
           )
-          setBuHaftaYoklamaAlinanlar(new Set((yoklamaRes.data || []).map((y) => y.ders_programi_id).filter(Boolean)))
+          setBuHaftaYoklamaAlinanlar(
+            new Set(
+              (yoklamaRes.data || [])
+                .filter((y) => y.ders_programi_id && y.tarih)
+                .map((y) => `${y.ders_programi_id}|${y.tarih}`)
+            )
+          )
           ilkYuklemeTamamRef.current = true
           setLoading(false)
         })
@@ -1928,7 +1957,7 @@ export default function DersProgrami() {
                               </p>
                               {isOgretmen && d.sinif_id && (
                                 <div className="mt-1 flex items-center gap-1">
-                                  {buHaftaYoklamaAlinanlar.has(d.id) && (
+                                  {buHaftaYoklamaAlinanlar.has(`${d.id}|${sonrakiGunTarihi(d.gun)}`) && (
                                     <span className="text-[9px] font-semibold bg-green-100 text-green-700 px-1.5 py-0.5 rounded-full shrink-0">
                                       Alındı
                                     </span>
@@ -2071,7 +2100,7 @@ export default function DersProgrami() {
                       )}
                       {isOgretmen && d.sinif_id && (
                         <div className="flex items-center gap-2 flex-wrap shrink-0">
-                          {buHaftaYoklamaAlinanlar.has(d.id) && (
+                          {buHaftaYoklamaAlinanlar.has(`${d.id}|${sonrakiGunTarihi(d.gun)}`) && (
                             <span className="text-xs font-semibold bg-green-100 text-green-700 px-2 py-1 rounded-full">
                               Alındı
                             </span>
