@@ -27,42 +27,61 @@ export default function OgretmenEkstre() {
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    setLoading(true)
-    Promise.all([
-      supabase.from('profiles').select('*').eq('id', ogretmenId).single(),
-      // Bu öğretmenin haftalık atamaları (öğrenci adı için ogrenciler join'i dahil)
-      supabase
-        .from('bire_bir_atamalari')
-        .select('*, ogrenciler(ad_soyad)')
-        .eq('ogretmen_profile_id', ogretmenId),
-      // Bu öğretmenin verdiği "Ek Ders" (atamaya bağlı olmayan, tek seferlik) dersler
-      supabase
-        .from('bire_bir_yoklama')
-        .select('*, ogrenciler(ad_soyad)')
-        .eq('ogretmen_profile_id', ogretmenId)
-        .is('atama_id', null),
-      // Bu öğretmenin verdiği (yoklaması alınmış) SINIF dersleri — sadece kayıt
-      // için gösteriliyor, ücret hesabına dahil değil (tutar hep 0'dır).
-      supabase
-        .from('yoklama')
-        .select('*, ders_programi!inner(ders_adi, baslangic_saat, bitis_saat, siniflar(ad))')
-        .eq('ders_programi.ogretmen_profile_id', ogretmenId),
-    ]).then(([ogr, bba, ekDersler, sinifYoklamalari]) => {
-      const atamalar = bba.data || []
-      const atamaIdleri = atamalar.map((x) => x.id)
-      const yoklamaSorgusu =
-        atamaIdleri.length > 0
-          ? supabase.from('bire_bir_yoklama').select('*').in('atama_id', atamaIdleri)
-          : Promise.resolve({ data: [] })
-      yoklamaSorgusu.then((by) => {
-        const tumYoklamalar = [...(by.data || []), ...(ekDersler.data || [])]
-        const bireBirDersler = bireBirDersDetaylariOlustur(atamalar, tumYoklamalar)
-        const sinifDersler = sinifDersDetaylariOlustur(sinifYoklamalari.data || [])
-        setOgretmen(ogr.data)
-        setDersler([...bireBirDersler, ...sinifDersler].sort((a, b) => (a.tarih < b.tarih ? 1 : -1)))
-        setLoading(false)
+    // Bu fonksiyon hem sayfa ilk açıldığında hem de aşağıdaki
+    // görünürlük/odak dinleyicileri tetiklendiğinde çağrılıyor (bkz. altta).
+    function veriyiGetir(ilkYuklemeMi) {
+      if (ilkYuklemeMi) setLoading(true)
+      Promise.all([
+        supabase.from('profiles').select('*').eq('id', ogretmenId).single(),
+        // Bu öğretmenin haftalık atamaları (öğrenci adı için ogrenciler join'i dahil)
+        supabase
+          .from('bire_bir_atamalari')
+          .select('*, ogrenciler(ad_soyad)')
+          .eq('ogretmen_profile_id', ogretmenId),
+        // Bu öğretmenin verdiği "Ek Ders" (atamaya bağlı olmayan, tek seferlik) dersler
+        supabase
+          .from('bire_bir_yoklama')
+          .select('*, ogrenciler(ad_soyad)')
+          .eq('ogretmen_profile_id', ogretmenId)
+          .is('atama_id', null),
+        // Bu öğretmenin verdiği (yoklaması alınmış) SINIF dersleri — sadece kayıt
+        // için gösteriliyor, ücret hesabına dahil değil (tutar hep 0'dır).
+        supabase
+          .from('yoklama')
+          .select('*, ders_programi!inner(ders_adi, baslangic_saat, bitis_saat, siniflar(ad))')
+          .eq('ders_programi.ogretmen_profile_id', ogretmenId),
+      ]).then(([ogr, bba, ekDersler, sinifYoklamalari]) => {
+        const atamalar = bba.data || []
+        const atamaIdleri = atamalar.map((x) => x.id)
+        const yoklamaSorgusu =
+          atamaIdleri.length > 0
+            ? supabase.from('bire_bir_yoklama').select('*').in('atama_id', atamaIdleri)
+            : Promise.resolve({ data: [] })
+        yoklamaSorgusu.then((by) => {
+          const tumYoklamalar = [...(by.data || []), ...(ekDersler.data || [])]
+          const bireBirDersler = bireBirDersDetaylariOlustur(atamalar, tumYoklamalar)
+          const sinifDersler = sinifDersDetaylariOlustur(sinifYoklamalari.data || [])
+          setOgretmen(ogr.data)
+          setDersler([...bireBirDersler, ...sinifDersler].sort((a, b) => (a.tarih < b.tarih ? 1 : -1)))
+          setLoading(false)
+        })
       })
-    })
+    }
+
+    veriyiGetir(true)
+
+    // Bu sekme günlerce kapatılmadan açık bırakılabiliyor (ör. yönetici bir
+    // öğretmenin ekstresini bir kez açıp sekmeyi hiç kapatmıyor). O durumda
+    // veriler ilk açılıştaki hâliyle donuk kalıyor, "bu ay verilen ders"
+    // güncellenmiyor ve aşağıdaki BireBirDersDokumu bileşeni de eski veriye
+    // göre hesaplanmış bir dönemde takılı kalabiliyordu. Sekme tekrar
+    // görünür/odaklı hâle geldiğinde veriyi sessizce (loading ekranı
+    // göstermeden) tazeliyoruz.
+    function gorunurlukDegisti() {
+      if (document.visibilityState === 'visible') veriyiGetir(false)
+    }
+    document.addEventListener('visibilitychange', gorunurlukDegisti)
+    return () => document.removeEventListener('visibilitychange', gorunurlukDegisti)
   }, [ogretmenId])
 
   // İndirilen PDF/yazdırma çıktısının dosya adı (ve tarayıcı sekme başlığı)
