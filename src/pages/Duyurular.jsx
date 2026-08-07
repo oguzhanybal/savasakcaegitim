@@ -105,15 +105,32 @@ function OgrenciCoklSecici({ ogrenciler, ogrenciSinifAdi, secilenIdler, setSecil
   )
 }
 
-// Öğretmen çoklu seçim (pill/toggle) — "Bire Bir Öğretmeni" ve "Öğretmenlere
-// Gönder" bölümlerinde kullanılıyor. Sınıf seçimindeki pill deseniyle aynı.
+// Öğretmen çoklu seçim (pill/toggle) — "Öğretmenlere Gönder" bölümünde
+// kullanılıyor. Sınıf seçimindeki pill deseniyle aynı. Başında ayrıca "Tüm
+// Öğretmenler" kısayol butonu var — hepsini teker teker işaretlemek yerine
+// tek tıkla hepsini seçip/kaldırabilsin diye (kullanıcı isteğiyle eklendi:
+// "tüm öğretmenler" seçeneği de olsun, öğrenci/veli tarafındaki "Herkes"e
+// benzer bir kısayol).
 function OgretmenPillSecici({ ogretmenler, secilenIdler, setSecilenIdler }) {
   function toggle(id) {
     setSecilenIdler((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]))
   }
+  const hepsiSecili = ogretmenler.length > 0 && secilenIdler.length === ogretmenler.length
+  function tumunuToggle() {
+    setSecilenIdler(hepsiSecili ? [] : ogretmenler.map((o) => o.id))
+  }
   if (ogretmenler.length === 0) return <p className="text-xs text-gray-400">Henüz öğretmen yok.</p>
   return (
     <div className="flex flex-wrap gap-1.5">
+      <button
+        type="button"
+        onClick={tumunuToggle}
+        className={`px-2.5 py-1.5 rounded-lg text-xs font-semibold border transition-colors ${
+          hepsiSecili ? 'bg-orange text-white border-orange' : 'bg-white text-orange border-orange/40 hover:border-orange'
+        }`}
+      >
+        Tüm Öğretmenler
+      </button>
       {ogretmenler.map((o) => {
         const secili = secilenIdler.includes(o.id)
         return (
@@ -140,20 +157,13 @@ function OgretmenPillSecici({ ogretmenler, secilenIdler, setSecilenIdler }) {
 // isteyip istemediğine yönetici kendi karar versin diye.
 //
 // HEDEFLİ GÖNDERİM: yönetici "Role Göre" (eski davranış — hedef_rol'e göre
-// TÜM okula) yerine "Özel (Sınıf/Kişi Seç)" seçebilir. Özel modda ÜÇ ayrı
-// havuz kaynağı var, hepsi BİRLEŞİR (birleşim/union):
-//   1) Sınıf(lar) — o sınıflara kayıtlı öğrenciler
-//   2) Bire Bir Öğretmeni — sınıfa bağlı olmayıp sadece bire-bir dersi alan
-//      öğrenciler de hedeflenebilsin diye, seçilen öğretmenin bire-bir
-//      öğrencileri (kullanıcı isteğiyle eklendi: "12-Eşit Ağırlığın
-//      öğrencisi ya da bire bir öğrencisi gibi")
-//   3) Ekstra Kişi Ekle — yukarıdaki iki havuzun dışından, tek tek eklenen
-//      öğrenciler (hiç sınıf/öğretmen seçmeden "sadece bu kişi(ler)e" de bu
-//      şekilde yapılıyor)
-// "Havuzdan Kişi Çıkar" bu üç kaynaktan oluşan TOPLAM havuzdan kişi çıkarır.
-// AYRICA, öğrenci/veli tarafından TAMAMEN BAĞIMSIZ: "Öğretmenlere Gönder" ile
-// belirli öğretmen(ler) doğrudan alıcı olarak seçilebilir (kullanıcı isteğiyle
-// eklendi: "öğretmenler de ayrılabilsin istediğimi seçebileyim").
+// TÜM okula) yerine "Özel (Sınıf/Kişi/Öğretmen Seç)" seçebilir. Özel modda
+// İKİ ayrı, birbirinden BAĞIMSIZ alıcı grubu var:
+//   1) Öğrenci/veli havuzu: Sınıf(lar) ∪ Ekstra Kişi Ekle − Havuzdan Kişi
+//      Çıkar. "Kime gösterilsin?" (Herkes/Öğrenci/Veli) bu havuz için geçerli.
+//   2) Öğretmenlere Gönder: yukarıdaki öğrenci/veli havuzundan tamamen
+//      bağımsız, tek tek (ya da "Tüm Öğretmenler" ile hepsi) seçilen
+//      öğretmenler — seçilenler duyuruyu doğrudan görür.
 export default function Duyurular() {
   const { profile } = useAuth()
   const [duyurular, setDuyurular] = useState([])
@@ -161,11 +171,8 @@ export default function Duyurular() {
   const [ogrenciler, setOgrenciler] = useState([])
   const [ogretmenler, setOgretmenler] = useState([])
   const [sinifOgrenciler, setSinifOgrenciler] = useState([])
-  const [bireBirAtamalar, setBireBirAtamalar] = useState([])
-  const [bireBirYoklamalar, setBireBirYoklamalar] = useState([])
   const [hedefSiniflarTum, setHedefSiniflarTum] = useState([])
   const [hedefOgrencilerTum, setHedefOgrencilerTum] = useState([])
-  const [hedefBireBirOgretmenleriTum, setHedefBireBirOgretmenleriTum] = useState([])
   const [hedefOgretmenlerTum, setHedefOgretmenlerTum] = useState([])
   const [loading, setLoading] = useState(true)
   const [kaydediliyor, setKaydediliyor] = useState(false)
@@ -177,7 +184,6 @@ export default function Duyurular() {
   const [bitisTarihi, setBitisTarihi] = useState('')
   const [hedefTur, setHedefTur] = useState('rol')
   const [seciliSiniflar, setSeciliSiniflar] = useState([])
-  const [seciliBireBirOgretmenleri, setSeciliBireBirOgretmenleri] = useState([])
   const [ekstraOgrenciler, setEkstraOgrenciler] = useState([])
   const [haricOgrenciler, setHaricOgrenciler] = useState([])
   const [dogrudanOgretmenler, setDogrudanOgretmenler] = useState([])
@@ -195,29 +201,17 @@ export default function Duyurular() {
       supabase.from('ogrenciler').select('id, ad_soyad').or('durum.eq.aktif,durum.is.null').order('ad_soyad'),
       supabase.from('profiles').select('id, ad_soyad').eq('rol', 'ogretmen').order('ad_soyad'),
       supabase.from('sinif_ogrenciler').select('ogrenci_id, sinif_id'),
-      // Bir öğrencinin "bire-bir öğrencisi" sayılması için: sabit haftalık
-      // atamaları (aktif olanlar) VE tek seferlik/geçmiş bire-bir dersleri
-      // (tur='ders') — ikisi de "bu öğretmenle bire-bir ilişkisi var" anlamına
-      // geliyor, sadece atama_id dolu olanlara bakmak yetmezdi (bu okulda
-      // bire bir derslerin çoğu tek seferlik giriliyor — bkz. diğer sayfalardaki
-      // aynı not).
-      supabase.from('bire_bir_atamalari').select('ogrenci_id, ogretmen_profile_id').eq('aktif', true),
-      supabase.from('bire_bir_yoklama').select('ogrenci_id, ogretmen_profile_id').eq('tur', 'ders'),
       supabase.from('duyuru_hedef_siniflar').select('duyuru_id, sinif_id'),
       supabase.from('duyuru_hedef_ogrenciler').select('duyuru_id, ogrenci_id, tur'),
-      supabase.from('duyuru_hedef_bire_bir_ogretmenleri').select('duyuru_id, ogretmen_profile_id'),
       supabase.from('duyuru_hedef_ogretmenler').select('duyuru_id, ogretmen_profile_id'),
-    ]).then(([d, s, o, og, so, bba, bby, hs, ho, hbbo, hog]) => {
+    ]).then(([d, s, o, og, so, hs, ho, hog]) => {
       setDuyurular(d.data || [])
       setSiniflar(s.data || [])
       setOgrenciler(o.data || [])
       setOgretmenler(og.data || [])
       setSinifOgrenciler(so.data || [])
-      setBireBirAtamalar(bba.data || [])
-      setBireBirYoklamalar(bby.data || [])
       setHedefSiniflarTum(hs.data || [])
       setHedefOgrencilerTum(ho.data || [])
-      setHedefBireBirOgretmenleriTum(hbbo.data || [])
       setHedefOgretmenlerTum(hog.data || [])
       setLoading(false)
     })
@@ -238,23 +232,11 @@ export default function Duyurular() {
     return harita
   }, [siniflar, sinifOgrenciler])
 
-  // Öğretmen id'sinden bire-bir öğrencilerinin id kümesine harita.
-  const ogretmenOgrencileri = useMemo(() => {
-    const harita = new Map()
-    ;[...bireBirAtamalar, ...bireBirYoklamalar].forEach((r) => {
-      if (!r.ogretmen_profile_id || !r.ogrenci_id) return
-      if (!harita.has(r.ogretmen_profile_id)) harita.set(r.ogretmen_profile_id, new Set())
-      harita.get(r.ogretmen_profile_id).add(r.ogrenci_id)
-    })
-    return harita
-  }, [bireBirAtamalar, bireBirYoklamalar])
-
-  // Şu an seçili olan Sınıf(lar) + Bire Bir Öğretmeni/Öğretmenleri'nden
-  // oluşan TOPLAM öğrenci havuzu (id kümesi) — "Ekstra Kişi Ekle" bu
-  // kümedeki öğrencileri önerilerden HARİÇ TUTAR (zaten dahil oldukları için
-  // tekrar "ekstra" olarak eklenmeleri gereksiz/kafa karıştırıcı — kullanıcı
-  // isteğiyle düzeltildi), "Havuzdan Kişi Çıkar" ise SADECE bu kümedeki
-  // öğrencileri gösterir.
+  // Şu an seçili olan Sınıf(lar)dan oluşan öğrenci havuzu (id kümesi) —
+  // "Ekstra Kişi Ekle" bu kümedeki öğrencileri önerilerden HARİÇ TUTAR
+  // (zaten dahil oldukları için tekrar "ekstra" olarak eklenmeleri gereksiz/
+  // kafa karıştırıcı — kullanıcı isteğiyle düzeltildi), "Havuzdan Kişi Çıkar"
+  // ise SADECE bu kümedeki öğrencileri gösterir.
   const seciliHavuzIdSet = useMemo(() => {
     const set = new Set()
     if (seciliSiniflar.length > 0) {
@@ -263,11 +245,8 @@ export default function Duyurular() {
         if (sinifSet.has(so.sinif_id)) set.add(so.ogrenci_id)
       })
     }
-    seciliBireBirOgretmenleri.forEach((ogretmenId) => {
-      ;(ogretmenOgrencileri.get(ogretmenId) || []).forEach?.((oid) => set.add(oid))
-    })
     return set
-  }, [seciliSiniflar, sinifOgrenciler, seciliBireBirOgretmenleri, ogretmenOgrencileri])
+  }, [seciliSiniflar, sinifOgrenciler])
 
   const havuzdakiOgrenciler = useMemo(
     () => ogrenciler.filter((o) => seciliHavuzIdSet.has(o.id)),
@@ -290,7 +269,6 @@ export default function Duyurular() {
     setBitisTarihi('')
     setHedefTur('rol')
     setSeciliSiniflar([])
-    setSeciliBireBirOgretmenleri([])
     setEkstraOgrenciler([])
     setHaricOgrenciler([])
     setDogrudanOgretmenler([])
@@ -304,11 +282,10 @@ export default function Duyurular() {
     if (
       hedefTur === 'ozel' &&
       seciliSiniflar.length === 0 &&
-      seciliBireBirOgretmenleri.length === 0 &&
       ekstraOgrenciler.length === 0 &&
       dogrudanOgretmenler.length === 0
     ) {
-      setHata('Özel hedefleme için en az bir sınıf, bire bir öğretmeni, öğrenci ya da öğretmen seçin.')
+      setHata('Özel hedefleme için en az bir sınıf, öğrenci ya da öğretmen seçin.')
       return
     }
     setKaydediliyor(true)
@@ -351,7 +328,6 @@ export default function Duyurular() {
       await Promise.all([
         supabase.from('duyuru_hedef_siniflar').delete().eq('duyuru_id', duyuruId),
         supabase.from('duyuru_hedef_ogrenciler').delete().eq('duyuru_id', duyuruId),
-        supabase.from('duyuru_hedef_bire_bir_ogretmenleri').delete().eq('duyuru_id', duyuruId),
         supabase.from('duyuru_hedef_ogretmenler').delete().eq('duyuru_id', duyuruId),
       ])
       if (hedefTur === 'ozel') {
@@ -361,13 +337,6 @@ export default function Duyurular() {
             supabase
               .from('duyuru_hedef_siniflar')
               .insert(seciliSiniflar.map((sinif_id) => ({ duyuru_id: duyuruId, sinif_id })))
-          )
-        }
-        if (seciliBireBirOgretmenleri.length > 0) {
-          eklemeler.push(
-            supabase
-              .from('duyuru_hedef_bire_bir_ogretmenleri')
-              .insert(seciliBireBirOgretmenleri.map((ogretmen_profile_id) => ({ duyuru_id: duyuruId, ogretmen_profile_id })))
           )
         }
         const kisiKayitlari = [
@@ -401,9 +370,6 @@ export default function Duyurular() {
     setBitisTarihi(d.bitis_tarihi || '')
     setHedefTur(d.hedef_tur || 'rol')
     setSeciliSiniflar(hedefSiniflarTum.filter((r) => r.duyuru_id === d.id).map((r) => r.sinif_id))
-    setSeciliBireBirOgretmenleri(
-      hedefBireBirOgretmenleriTum.filter((r) => r.duyuru_id === d.id).map((r) => r.ogretmen_profile_id)
-    )
     setEkstraOgrenciler(
       hedefOgrencilerTum.filter((r) => r.duyuru_id === d.id && r.tur === 'ekle').map((r) => r.ogrenci_id)
     )
@@ -428,29 +394,23 @@ export default function Duyurular() {
     yukle()
   }
 
-  // Liste görünümünde "özel" duyurular için "9-A, 9-B · Bire Bir: Ayşe
-  // Öğretmen · +2 kişi · -1 kişi · 3 öğretmen" gibi kısa bir özet üretir.
+  // Liste görünümünde "özel" duyurular için "9-A, 9-B · +2 kişi · -1 kişi ·
+  // 3 öğretmen" gibi kısa bir özet üretir.
   function hedefOzeti(d) {
     if (d.hedef_tur !== 'ozel') return null
     const sinifAdMap = new Map(siniflar.map((s) => [s.id, s.ad]))
-    const ogretmenAdMap = new Map(ogretmenler.map((o) => [o.id, o.ad_soyad]))
     const sinifAdlari = hedefSiniflarTum
       .filter((r) => r.duyuru_id === d.id)
       .map((r) => sinifAdMap.get(r.sinif_id))
       .filter(Boolean)
-    const bbOgretmenAdlari = hedefBireBirOgretmenleriTum
-      .filter((r) => r.duyuru_id === d.id)
-      .map((r) => ogretmenAdMap.get(r.ogretmen_profile_id))
-      .filter(Boolean)
     const ekleSayisi = hedefOgrencilerTum.filter((r) => r.duyuru_id === d.id && r.tur === 'ekle').length
     const haricSayisi = hedefOgrencilerTum.filter((r) => r.duyuru_id === d.id && r.tur === 'haric').length
-    const dogrudanOgretmenSayisi = hedefOgretmenlerTum.filter((r) => r.duyuru_id === d.id).length
+    const ogretmenSayisi = hedefOgretmenlerTum.filter((r) => r.duyuru_id === d.id).length
     const parcalar = []
     if (sinifAdlari.length > 0) parcalar.push(sinifAdlari.join(', '))
-    if (bbOgretmenAdlari.length > 0) parcalar.push(`Bire Bir: ${bbOgretmenAdlari.join(', ')}`)
     if (ekleSayisi > 0) parcalar.push(`+${ekleSayisi} kişi`)
     if (haricSayisi > 0) parcalar.push(`-${haricSayisi} kişi`)
-    if (dogrudanOgretmenSayisi > 0) parcalar.push(`${dogrudanOgretmenSayisi} öğretmen`)
+    if (ogretmenSayisi > 0) parcalar.push(`${ogretmenSayisi} öğretmen`)
     return parcalar.length > 0 ? parcalar.join(' · ') : 'Kişi seçilmedi'
   }
 
@@ -490,10 +450,9 @@ export default function Duyurular() {
               <option value="herkes">Herkes</option>
               <option value="ogrenci">Sadece Öğrenci</option>
               <option value="veli">Sadece Veli</option>
-              {/* "Özel" hedeflemede bu alan sadece sınıf/bire-bir/ekstra
-                  ÖĞRENCİ havuzu için geçerli — öğretmenler artık ayrı
-                  "Öğretmenlere Gönder" listesinden seçildiği için burada
-                  gösterilmiyor. */}
+              {/* "Özel" hedeflemede bu alan sadece sınıf/ekstra ÖĞRENCİ
+                  havuzu için geçerli — öğretmenler artık ayrı "Öğretmenlere
+                  Gönder" listesinden seçildiği için burada gösterilmiyor. */}
               {hedefTur === 'rol' && <option value="ogretmen">Sadece Öğretmen</option>}
             </select>
           </div>
@@ -559,24 +518,9 @@ export default function Duyurular() {
 
             <div>
               <p className="block text-sm font-medium text-gray-700 mb-1.5">
-                Bire Bir Öğretmeni{' '}
-                <span className="text-gray-400 font-normal">
-                  (sınıfa kayıtlı olmayıp sadece bire-bir dersi alan öğrenciler de dahil olsun diye — seçilen öğretmenin
-                  bire-bir öğrencileri sınıf seçimiyle aynı havuza eklenir)
-                </span>
-              </p>
-              <OgretmenPillSecici
-                ogretmenler={ogretmenler}
-                secilenIdler={seciliBireBirOgretmenleri}
-                setSecilenIdler={setSeciliBireBirOgretmenleri}
-              />
-            </div>
-
-            <div>
-              <p className="block text-sm font-medium text-gray-700 mb-1.5">
                 Ekstra Kişi Ekle{' '}
                 <span className="text-gray-400 font-normal">
-                  (yukarıdaki havuzun dışından, ya da hiçbir şey seçmeden "sadece bu kişi(ler)e" göndermek için — havuzda
+                  (seçilen sınıf(lar)ın dışından, ya da hiçbir şey seçmeden "sadece bu kişi(ler)e" göndermek için — havuzda
                   zaten olanlar burada önerilmez)
                 </span>
               </p>
@@ -593,7 +537,7 @@ export default function Duyurular() {
               <div>
                 <p className="block text-sm font-medium text-gray-700 mb-1.5">
                   Havuzdan Kişi Çıkar{' '}
-                  <span className="text-gray-400 font-normal">(seçilen sınıf(lar)/bire-bir öğretmeni havuzundan bu öğrenci(ler)e gitmesin)</span>
+                  <span className="text-gray-400 font-normal">(seçilen sınıf(lar)dan bu öğrenci(ler)e gitmesin)</span>
                 </p>
                 <OgrenciCoklSecici
                   ogrenciler={havuzdakiOgrenciler}
