@@ -523,3 +523,214 @@ export async function makbuzPdfOlustur({ ogrenciAdi, tarihMetni, odemeler, topla
 
   return doc.output('blob')
 }
+
+// ============================================================================
+// ÖDEME PLANI PDF — bir velinin "bugüne kadar ödemelerim ve kalan borcum ne
+// kadar" sorusuna, eski sistemdeki ("Cari Görüntüle") taksit-taksit dökümün
+// aynısını verecek şekilde cevap üretir. Muhasebe.jsx'teki "Ödeme Planı PDF
+// İndir" butonu bunu kullanır. ekstrePdfOlustur/makbuzPdfOlustur ile AYNI
+// başlık/logo/tablo görsel kalıbını izler.
+// veri: {
+//   ogrenciAdi,
+//   sozlesmePlanlari: [{ sozlesme, taksitler }]  (taksitler: taksitPlaniDetayliOlustur çıktısı),
+//   aylikOzet: [{ kalem, toplamBorc, toplamOdenen, kalan }],
+//   odemeler: [{ tarih, kalem, tutar }],
+//   toplamBorc, toplamOdenen, kalanBakiye,
+// }
+// ============================================================================
+function taksitDurumMetni(t) {
+  if (t.durum === 'odendi') {
+    const tarihMetni = t.odemeTarihi ? new Date(t.odemeTarihi).toLocaleDateString('tr-TR') : ''
+    return tarihMetni ? `Ödendi (${tarihMetni})` : 'Ödendi'
+  }
+  if (t.durum === 'kismi') return `Kısmi Ödendi (Kalan: ${paraStr(t.kalanTutar)})`
+  if (t.durum === 'gecikti') return `Gecikti (Kalan: ${paraStr(t.kalanTutar)})`
+  return `Bekliyor (${paraStr(t.kalanTutar)})`
+}
+
+export async function odemePlaniPdfOlustur({ ogrenciAdi, sozlesmePlanlari, aylikOzet, odemeler, toplamBorc, toplamOdenen, kalanBakiye }) {
+  const jsPDF = await jspdfYukle()
+  const doc = new jsPDF({ unit: 'pt', format: 'a4' })
+  const sayfaGenisligi = doc.internal.pageSize.getWidth()
+  const sayfaYuksekligi = doc.internal.pageSize.getHeight()
+  const kenar = 32
+
+  let font = 'helvetica'
+  try {
+    await turkceFontHazirla(doc)
+    font = 'Roboto'
+  } catch (e) {
+    console.warn('Türkçe font yüklenemedi, temel fontla devam ediliyor:', e)
+  }
+
+  let logoDataUrl = null
+  try {
+    logoDataUrl = await logoHazirla()
+  } catch (e) {
+    // logosuz da devam edilebilir
+  }
+
+  const basligYuksekligi = 64
+  doc.setFillColor(...NAVY)
+  doc.rect(0, 0, sayfaGenisligi, basligYuksekligi, 'F')
+
+  let metinX = kenar
+  if (logoDataUrl) {
+    const kutu = 40
+    const kutuY = (basligYuksekligi - kutu) / 2
+    doc.setFillColor(255, 255, 255)
+    doc.roundedRect(kenar, kutuY, kutu, kutu, 5, 5, 'F')
+    try {
+      doc.addImage(logoDataUrl, 'PNG', kenar + 4, kutuY + 4, kutu - 8, kutu - 8)
+      metinX = kenar + kutu + 14
+    } catch (e) {
+      // görsel formatı algılanamazsa logosuz devam
+    }
+  }
+
+  doc.setTextColor(255, 255, 255)
+  doc.setFontSize(16)
+  doc.setFont(font, 'bold')
+  doc.text('SAVAŞ AKÇA EĞİTİM', metinX, basligYuksekligi / 2 - 4)
+  doc.setFontSize(10)
+  doc.setFont(font, 'normal')
+  doc.text('ÖDEME PLANI VE CARİ DÖKÜM', metinX, basligYuksekligi / 2 + 12)
+
+  let y = basligYuksekligi + 22
+  doc.setTextColor(30, 30, 30)
+  doc.setFontSize(11)
+  doc.setFont(font, 'bold')
+  doc.text('Öğrenci Adı:', kenar, y)
+  doc.setFont(font, 'normal')
+  doc.text(ogrenciAdi, kenar + 90, y)
+  y += 16
+  doc.setFont(font, 'bold')
+  doc.text('Rapor Tarihi:', kenar, y)
+  doc.setFont(font, 'normal')
+  doc.text(new Date().toLocaleDateString('tr-TR'), kenar + 90, y)
+  y += 20
+
+  // Özet kutuları (site: gri/turuncu/lacivert vurgulu satırlar — ekstrePdfOlustur ile aynı kalıp)
+  doc.autoTable({
+    startY: y,
+    margin: { left: kenar, right: kenar },
+    body: [
+      ['TOPLAM BORÇ', paraStr(toplamBorc)],
+      ['TOPLAM ÖDENEN', paraStr(toplamOdenen)],
+      ['KALAN BAKİYE', paraStr(kalanBakiye)],
+    ],
+    theme: 'plain',
+    styles: { fontSize: 10, fontStyle: 'bold', font, cellPadding: { top: 7, bottom: 7, left: 10, right: 10 } },
+    columnStyles: { 1: { halign: 'right' } },
+    didParseCell: (data) => {
+      if (data.row.index === 0) {
+        data.cell.styles.fillColor = GRI_ACIK
+      } else if (data.row.index === 1) {
+        data.cell.styles.fillColor = YESIL_ACIK
+        data.cell.styles.textColor = YESIL
+        data.cell.styles.fontSize = 11.5
+      } else if (data.row.index === 2) {
+        data.cell.styles.fillColor = kalanBakiye > 0.01 ? KIRMIZI_ACIK : NAVY_ACIK
+        data.cell.styles.textColor = kalanBakiye > 0.01 ? KIRMIZI : NAVY
+        data.cell.styles.fontSize = 11.5
+      }
+    },
+  })
+  y = doc.lastAutoTable.finalY + 16
+
+  function sayfaKontrol(gerekliYukseklik) {
+    if (y + gerekliYukseklik > sayfaYuksekligi - 40) {
+      doc.addPage()
+      y = 40
+    }
+  }
+
+  function bolumBasligi(metin) {
+    sayfaKontrol(50)
+    doc.setFontSize(11)
+    doc.setFont(font, 'bold')
+    doc.setTextColor(...NAVY)
+    doc.text(metin, kenar, y)
+    y += 8
+    doc.setTextColor(30, 30, 30)
+  }
+
+  // Her sözleşme (Okul/Kurs/Kitap) için ayrı bir taksit-taksit tablo —
+  // eski sistemdeki "Cari Görüntüle" (# | Tutar | Vade | Durum) tablosunun
+  // birebir karşılığı.
+  for (const plan of sozlesmePlanlari || []) {
+    bolumBasligi(`${plan.sozlesme.kalem} Taksit Planı`)
+    doc.autoTable({
+      startY: y,
+      margin: { left: kenar, right: kenar },
+      head: [['#', 'Tutar', 'Vade', 'Durum']],
+      body: plan.taksitler.map((t) => [
+        String(t.taksitNo),
+        paraStr(t.tutar),
+        t.vade.toLocaleDateString('tr-TR'),
+        taksitDurumMetni(t),
+      ]),
+      headStyles: { fillColor: NAVY, textColor: 255, fontSize: 9, font },
+      bodyStyles: { fontSize: 9, font },
+      didParseCell: (data) => {
+        if (data.section !== 'body' || !plan.taksitler[data.row.index]) return
+        const t = plan.taksitler[data.row.index]
+        if (t.durum === 'odendi') {
+          data.cell.styles.fillColor = YESIL_ACIK
+          data.cell.styles.textColor = YESIL
+        } else if (t.durum === 'gecikti') {
+          data.cell.styles.fillColor = KIRMIZI_ACIK
+          data.cell.styles.textColor = KIRMIZI
+        } else if (t.durum === 'kismi') {
+          data.cell.styles.fillColor = ORANGE_ACIK
+          data.cell.styles.textColor = ORANGE
+        }
+      },
+    })
+    y = doc.lastAutoTable.finalY + 16
+  }
+
+  // Aylık kalem borçları özeti (Bire Bir / Yemek / Kantin — taksit yapısı olmayan kalemler)
+  if (aylikOzet && aylikOzet.length > 0) {
+    bolumBasligi('Aylık Kalem Borçları Özeti')
+    doc.autoTable({
+      startY: y,
+      margin: { left: kenar, right: kenar },
+      head: [['Kalem', 'Toplam Borç', 'Toplam Ödenen', 'Kalan']],
+      body: aylikOzet.map((a) => [a.kalem, paraStr(a.toplamBorc), paraStr(a.toplamOdenen), paraStr(a.kalan)]),
+      headStyles: { fillColor: NAVY, textColor: 255, fontSize: 9, font },
+      bodyStyles: { fontSize: 9, font },
+      alternateRowStyles: { fillColor: GRI_ACIK },
+      didParseCell: (data) => {
+        if (data.section !== 'body' || !aylikOzet[data.row.index]) return
+        if (aylikOzet[data.row.index].kalan > 0.01) {
+          data.cell.styles.textColor = KIRMIZI
+        }
+      },
+    })
+    y = doc.lastAutoTable.finalY + 16
+  }
+
+  // Ödeme geçmişi — tüm ödemeler tek listede, tarih azalan sırada
+  bolumBasligi(`Ödeme Geçmişi (${(odemeler || []).length} Kayıt)`)
+  const toplamOdenenListe = (odemeler || []).reduce((t, o) => t + Number(o.tutar), 0)
+  doc.autoTable({
+    startY: y,
+    margin: { left: kenar, right: kenar },
+    head: [['Tarih', 'Kalem', 'Tutar']],
+    body:
+      (odemeler || []).length > 0
+        ? odemeler.map((o) => [new Date(o.tarih).toLocaleDateString('tr-TR'), o.kalem || '—', paraStr(o.tutar)])
+        : [[{ content: 'Ödeme kaydı yok.', colSpan: 3, styles: { halign: 'center', textColor: [156, 163, 175] } }]],
+    headStyles: { fillColor: NAVY, textColor: 255, fontSize: 9, font },
+    bodyStyles: { fontSize: 8.5, font },
+    alternateRowStyles: { fillColor: GRI_ACIK },
+    foot:
+      (odemeler || []).length > 0
+        ? [[{ content: 'TOPLAM ÖDENEN', colSpan: 2, styles: { halign: 'right', fontStyle: 'bold' } }, paraStr(toplamOdenenListe)]]
+        : undefined,
+    footStyles: { fillColor: GRI_ACIK, textColor: 30, fontStyle: 'bold', font },
+  })
+
+  return doc.output('blob')
+}

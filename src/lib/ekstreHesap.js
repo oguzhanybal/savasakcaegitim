@@ -471,6 +471,45 @@ export function taksitPlaniOlustur(sozlesme, odemeler) {
   return taksitler
 }
 
+// ============================================================================
+// TAKSİT PLANI (ÖDEME TARİHİ DAHİL) — taksitPlaniOlustur ile AYNI taksit
+// listesini üretir, ama her "ödendi" taksit için o taksitin hangi TARİHTE
+// tamamlandığını (odemeTarihi) da ekler. Bu kalem için yapılmış ödemeler
+// kronolojik sırayla kümülatif olarak taksitleri kapattığı için, bir taksitin
+// kümülatif eşiğini AŞAN ilk ödemenin tarihi, o taksitin "ödendi" sayıldığı
+// tarih olarak kabul edilir. "Ödeme Planı PDF İndir" (Muhasebe.jsx →
+// pdfOlustur.js odemePlaniPdfOlustur) eski sistemdeki "Ödendi (DD.MM.YYYY)"
+// görünümünü birebir vermek için bunu kullanır — taksitPlaniOlustur'un
+// kendisi diğer yerlerde (ör. Muhasebe.jsx'in ekrandaki taksit tablosu)
+// değişmeden çalışmaya devam etsin diye ayrı bir fonksiyon olarak tutuldu.
+// ============================================================================
+export function taksitPlaniDetayliOlustur(sozlesme, odemeler) {
+  const taksitler = taksitPlaniOlustur(sozlesme, odemeler)
+  if (taksitler.length === 0) return taksitler
+
+  const taksitSayisi = Number(sozlesme.taksit_sayisi) || 0
+  const toplamTutar = Number(sozlesme.toplam_tutar) || 0
+  const taksitTutari = toplamTutar / taksitSayisi
+
+  const kalemOdemeleri = (odemeler || [])
+    .filter((o) => o.kalem && o.kalem.startsWith(sozlesme.kalem))
+    .slice()
+    .sort((a, b) => new Date(a.tarih) - new Date(b.tarih))
+
+  let kumulatif = 0
+  let odemeIndex = 0
+  return taksitler.map((t) => {
+    const hedef = taksitTutari * t.taksitNo
+    let sonOdemeTarihi = null
+    while (odemeIndex < kalemOdemeleri.length && kumulatif < hedef - 0.01) {
+      kumulatif += Number(kalemOdemeleri[odemeIndex].tutar)
+      sonOdemeTarihi = kalemOdemeleri[odemeIndex].tarih
+      odemeIndex++
+    }
+    return { ...t, odemeTarihi: t.durum === 'odendi' ? sonOdemeTarihi : null }
+  })
+}
+
 // Aylık kalem borçları (Bire Bir / Yemek / Kantin) için tek tek satır bazında
 // durum hesaplar (ödendi / kısmi ödendi / gecikti / bekliyor) — taksit yapısı
 // olmadığı için kümülatif borç/ödeme karşılaştırması üzerinden gider. Ödemeler
