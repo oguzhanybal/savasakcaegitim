@@ -2,6 +2,15 @@
   "rewrites": [
     { "source": "/((?!api/).*)", "destination": "/index.html" }
   ],
+  "headers": [
+    {
+      "source": "/sw.js",
+      "headers": [
+        { "key": "Cache-Control", "value": "no-cache, no-store, must-revalidate" },
+        { "key": "Service-Worker-Allowed", "value": "/" }
+      ]
+    }
+  ],
   "crons": [
     { "path": "/api/odev-arsivle", "schedule": "0 3 * * *" },
     { "path": "/api/gunluk-yedek", "schedule": "0 1 * * *" }
