@@ -1,6 +1,7 @@
-import { useEffect, useRef, useState } from 'react'
+import { useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../lib/AuthContext'
+import { iosMu, zatenYukluMu } from '../lib/usePwaYukleme'
 
 // ============================================================================
 // UYGULAMA OLARAK YÜKLEME TEKLİFİ — Layout.jsx içinde, yani TÜM roller için
@@ -10,100 +11,24 @@ import { useAuth } from '../lib/AuthContext'
 // simgesine güvenmek yerine, kullanıcıya doğrudan alt kısımda "Yükle / Hayır
 // / Bir daha gösterme" seçeneği sunuyoruz.
 //
-// ÖNEMLİ SINIRLAMA: "beforeinstallprompt" olayı sadece Chromium tabanlı
-// tarayıcılarda (Chrome, Edge — Android ve masaüstü) çalışır. iPhone'da
-// Safari bu olayı HİÇ desteklemiyor (Apple'ın kendi kısıtı) — o yüzden
-// iPhone'da onun yerine basit "Paylaş > Ana Ekrana Ekle" talimatı
-// gösteriyoruz. Ama Safari'de gerçek bir "yüklendi" sinyali JavaScript'e HİÇ
-// bildirilmediği için, o kurulumlar "Uygulama İndirmeleri" listesine
-// YANSIMAZ — bu teknik bir platform kısıtı, uygulama tarafında düzeltilebilir
-// bir şey değil.
+// "beforeinstallprompt"/"appinstalled" olaylarını yakalama işi artık BURADA
+// değil, Layout.jsx'in kullandığı ortak usePwaYukleme() hook'unda —
+// ertelemeOlayi/yukle prop olarak geliyor (bkz. usePwaYukleme.js'teki genel
+// not: aynı anda iki ayrı yerde dinlenirse kurulum kaydı iki kez atılabiliyor,
+// o yüzden tek kaynak Layout).
 //
 // "Hayır" tıklanınca sadece BU oturum için (React state, kalıcı DEĞİL)
 // gizlenir — kullanıcı bir dahaki girişinde (sayfa yeniden yüklendiğinde)
 // teklif tekrar sorulur. "Bir daha gösterme" ise profildeki
-// pwa_bildirimi_kapali alanını true yapar, o kullanıcıya bir daha HİÇ
-// sorulmaz.
+// pwa_bildirimi_kapali alanını true yapar, o kullanıcıya bu OTOMATİK banner
+// bir daha HİÇ çıkmaz — ama Layout'un sol menüsündeki "📲 Uygulamayı Yükle"
+// butonu her zaman durur, istediği an oradan elle kurabilir (kullanıcı
+// isteğiyle eklendi).
 // ============================================================================
 
-function iosMu() {
-  const ua = window.navigator.userAgent || ''
-  if (/iphone|ipad|ipod/i.test(ua) && !window.MSStream) return true
-  // iPadOS 13+ VARSAYILAN olarak kendini masaüstü Mac Safari gibi tanıtıyor
-  // (Apple'ın kasıtlı kararı — "iPad" ibaresi user agent'ta hiç geçmiyor),
-  // bu yüzden yukarıdaki basit metin kontrolü iPad'leri KAÇIRIYORDU. Dokunmatik
-  // ekranlı bir "MacIntel" cihaz aslında iPad'dir, gerçek Mac'lerde
-  // maxTouchPoints 0'dır — bu şekilde ayırt ediyoruz.
-  return window.navigator.platform === 'MacIntel' && window.navigator.maxTouchPoints > 1
-}
-
-function zatenYukluMu() {
-  return (
-    window.matchMedia?.('(display-mode: standalone)')?.matches === true ||
-    window.navigator.standalone === true
-  )
-}
-
-export default function UygulamaYukleBanner() {
+export default function UygulamaYukleBanner({ ertelemeOlayi, yukle }) {
   const { profile } = useAuth()
-  const [ertelemeOlayi, setErtelemeOlayi] = useState(null)
   const [oturumdaGizlendi, setOturumdaGizlendi] = useState(false)
-  const kayitGonderildiRef = useRef(false)
-
-  // Chrome (Android/masaüstü), "beforeinstallprompt" olayını SADECE sayfanın
-  // aktif bir Service Worker'ı varsa tetikliyor — bu, PWA "yüklenebilir"
-  // sayılmasının önkoşullarından biri. Service Worker yoksa bu banner HİÇ
-  // görünmüyordu (kayıt gerçek hata sebebiydi). public/sw.js hiçbir şeyi
-  // önbelleğe almıyor, sadece bu kriteri karşılamak için var.
-  useEffect(() => {
-    if ('serviceWorker' in navigator) {
-      navigator.serviceWorker.register('/sw.js').catch(() => {})
-    }
-  }, [])
-
-  useEffect(() => {
-    function yakala(e) {
-      e.preventDefault()
-      setErtelemeOlayi(e)
-    }
-    window.addEventListener('beforeinstallprompt', yakala)
-    return () => window.removeEventListener('beforeinstallprompt', yakala)
-  }, [])
-
-  // Kurulum GERÇEKTEN tamamlanınca (kullanıcı "Yükle" deyip tarayıcının
-  // kendi onayını da geçtiğinde) tetiklenir — "Kimler İndirdi" listesi için
-  // güvenilir tek kaynak burası; "Yükle" butonuna tıklamak tek başına
-  // kurulumun tamamlandığını GARANTİ etmez, o yüzden kaydı burada, sadece BİR
-  // KEZ (kayitGonderildiRef) gönderiyoruz.
-  useEffect(() => {
-    function yuklendi() {
-      setErtelemeOlayi(null)
-      if (!kayitGonderildiRef.current && profile?.id) {
-        kayitGonderildiRef.current = true
-        supabase
-          .from('pwa_yuklemeleri')
-          .insert({
-            profile_id: profile.id,
-            cihaz_bilgisi: window.navigator.userAgent?.slice(0, 300) || null,
-          })
-          .then(() => {})
-      }
-    }
-    window.addEventListener('appinstalled', yuklendi)
-    return () => window.removeEventListener('appinstalled', yuklendi)
-  }, [profile?.id])
-
-  async function yukle() {
-    if (!ertelemeOlayi) return
-    ertelemeOlayi.prompt()
-    try {
-      await ertelemeOlayi.userChoice
-    } catch {}
-    // Tarayıcının kendi "prompt" nesnesi SADECE BİR KEZ kullanılabilir —
-    // sonucu ne olursa olsun temizliyoruz, gerçek kurulum takibini
-    // "appinstalled" olayına bırakıyoruz.
-    setErtelemeOlayi(null)
-  }
 
   function hayirDe() {
     setOturumdaGizlendi(true)
