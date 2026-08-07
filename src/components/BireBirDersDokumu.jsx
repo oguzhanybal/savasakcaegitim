@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { paraFormat, haftaBaslangici, haftaEtiketi, ayBaslangici, ayEtiketi } from '../lib/ekstreHesap'
 import { saatGoster } from '../lib/saatFormat'
 
@@ -84,6 +84,11 @@ export default function BireBirDersDokumu({
     return icindeBulunulanDonem(baslangicPeriyot)
   })
 
+  // Kullanıcı dönem seçiciden (aşağıdaki <select>) ya da "Tüm ayları/haftaları
+  // listele" ile ELİYLE belirli bir dönem seçtiyse burada true olur — bu
+  // durumda dersler prop'u sonradan değişse bile onun seçimini EZMİYORUZ.
+  const elleSeciliRef = useRef(!!hedefDonem)
+
   // hedefDonem sonradan değişirse (ör. Ekstre.jsx'te üstteki "Dönem" inputu
   // değiştirildiyse) aşağıdaki dökümü de otomatik o aya taşı.
   useEffect(() => {
@@ -93,6 +98,24 @@ export default function BireBirDersDokumu({
     setSeciliDonem(dersler.some((d) => ayBaslangici(d.tarih) === hedefDonem) ? hedefDonem : '')
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [hedefDonem])
+
+  // ÖNEMLİ DÜZELTME: seciliDonem eskiden SADECE bileşen ilk mount olduğunda
+  // (yukarıdaki useState başlatıcısı) hesaplanıyordu — bu değer bir daha asla
+  // yenilenmiyordu. Bu sayfa/bileşen aynı React ağacında kalıp (ör. bir sekme
+  // günlerce kapatılmadan açık bırakıldıysa, ya da aynı bileşen örneği farklı
+  // veriyle yeniden kullanıldıysa) "dersler" prop'u SONRADAN güncellenirse
+  // (ör. bugün yeni ders kayıtları eklendi), seçili dönem hep ESKİ, artık
+  // güncelliğini yitirmiş haliyle donuk kalıyordu — "her zaman geçen ay
+  // görünüyor" şikayetinin asıl kök nedeni buydu. Kullanıcı ELİYLE bir dönem
+  // seçmediyse (elleSeciliRef), dersler her değiştiğinde "içinde bulunduğumuz
+  // dönem" hesabını burada TAZELİYORUZ.
+  useEffect(() => {
+    if (hedefDonem) return
+    if (elleSeciliRef.current) return
+    if (periyot === 'hepsi') return
+    setSeciliDonem(icindeBulunulanDonem(periyot))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dersler])
 
   // "Tüm Zamanlar" seçiliyse hafta/aya göre BÖLMEDEN, tüm dersleri tek bir
   // sahte grupta ("tumu") topluyoruz — böyle aynı tabloYaz/gosterilenGruplar
@@ -150,7 +173,7 @@ export default function BireBirDersDokumu({
       <div className="no-print flex gap-1.5 mb-3 items-center flex-wrap">
         <button
           type="button"
-          onClick={() => { setPeriyot('hafta'); setGosterilenSayisi(6); setSeciliDonem(icindeBulunulanDonem('hafta')) }}
+          onClick={() => { elleSeciliRef.current = false; setPeriyot('hafta'); setGosterilenSayisi(6); setSeciliDonem(icindeBulunulanDonem('hafta')) }}
           className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors ${
             periyot === 'hafta' ? 'bg-navy text-white' : 'bg-white border border-gray-200 text-gray-600 hover:bg-gray-100'
           }`}
@@ -159,7 +182,7 @@ export default function BireBirDersDokumu({
         </button>
         <button
           type="button"
-          onClick={() => { setPeriyot('ay'); setGosterilenSayisi(6); setSeciliDonem(icindeBulunulanDonem('ay')) }}
+          onClick={() => { elleSeciliRef.current = false; setPeriyot('ay'); setGosterilenSayisi(6); setSeciliDonem(icindeBulunulanDonem('ay')) }}
           className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors ${
             periyot === 'ay' ? 'bg-navy text-white' : 'bg-white border border-gray-200 text-gray-600 hover:bg-gray-100'
           }`}
@@ -168,7 +191,7 @@ export default function BireBirDersDokumu({
         </button>
         <button
           type="button"
-          onClick={() => { setPeriyot('hepsi'); setGosterilenSayisi(6); setSeciliDonem('tumu') }}
+          onClick={() => { elleSeciliRef.current = false; setPeriyot('hepsi'); setGosterilenSayisi(6); setSeciliDonem('tumu') }}
           className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors ${
             periyot === 'hepsi' ? 'bg-navy text-white' : 'bg-white border border-gray-200 text-gray-600 hover:bg-gray-100'
           }`}
@@ -181,7 +204,7 @@ export default function BireBirDersDokumu({
         {periyot !== 'hepsi' && (
           <select
             value={seciliDonem}
-            onChange={(e) => setSeciliDonem(e.target.value)}
+            onChange={(e) => { elleSeciliRef.current = true; setSeciliDonem(e.target.value) }}
             className="px-2.5 py-1.5 rounded-lg text-xs font-semibold border border-gray-200 bg-white text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue"
           >
             <option value="">{periyot === 'ay' ? 'Bir ay seç...' : 'Bir hafta seç...'}</option>
@@ -295,7 +318,7 @@ export default function BireBirDersDokumu({
       {periyot !== 'hepsi' && seciliDonem && (
         <button
           type="button"
-          onClick={() => setSeciliDonem('')}
+          onClick={() => { elleSeciliRef.current = true; setSeciliDonem('') }}
           className="no-print text-navy text-sm font-semibold underline hover:no-underline"
         >
           ← Tüm {periyot === 'ay' ? 'ayları' : 'haftaları'} listele
