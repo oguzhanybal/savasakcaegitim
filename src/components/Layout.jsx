@@ -485,7 +485,15 @@ export default function Layout() {
             )
           )}
         </nav>
-        <div className="p-3 border-t border-white/10 shrink-0">
+        {/* PWA olarak (özellikle iPad/iPhone'da tarayıcı çubuğu olmadan)
+            yüklendiğinde, alt kısım cihazın home indicator / güvenli alan
+            şeridiyle çakışıp "Çıkış Yap" gibi son öğeler tam görünmüyordu —
+            üstteki safe-area-inset-top ile aynı mantıkla alta da boşluk
+            ekleniyor (masaüstünde env() zaten 0 olduğu için bir şey değişmez). */}
+        <div
+          className="p-3 border-t border-white/10 shrink-0"
+          style={{ paddingBottom: 'calc(0.75rem + env(safe-area-inset-bottom))' }}
+        >
           <p className="text-xs text-white/60 px-3 mb-2 truncate">{profile?.ad_soyad}</p>
           {rol === 'ogrenci' && profile?.id && <BildirimButonu profileId={profile.id} />}
           <UygulamaYukleButonu ertelemeOlayi={ertelemeOlayi} yukle={pwaYukle} />
