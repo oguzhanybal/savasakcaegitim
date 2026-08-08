@@ -32,18 +32,23 @@ export function adSoyadDuzelt(metin) {
       if (index > 0 && BAGLAC_KUCUK_YAZILANLAR.has(kelimeKucuk)) {
         return kelimeKucuk
       }
-      // Kelimenin içinde tire ("11-sayısal", "Ali-Rıza") ya da eğik çizgi
-      // ("Türkçe/edebiyat" gibi ders adlarında) varsa, sadece kelimenin ilk
-      // harfini değil, ayraçtan SONRAKİ harfi de büyütmemiz gerekiyor —
-      // yoksa "11-Eşit Ağırlık" "11-eşit Ağırlık" olarak, ya da
-      // "Türkçe/Edebiyat" "Türkçe/edebiyat" olarak (ayraca bitişik harf
-      // küçük kalarak) yanlış görünüyordu. split ile ayraçları (- ve /)
-      // yakalayıp (capturing group) aralarındaki her parçayı ayrı ayrı
-      // büyütüyoruz, ayraçların kendisini olduğu gibi koruyoruz.
+      // Kelimenin içinde tire ("11-sayısal", "Ali-Rıza"), eğik çizgi
+      // ("Türkçe/edebiyat" gibi ders adlarında), artı ("süt+bisküvi" gibi
+      // Kantin ürün adlarında) ya da parantez ("çikolata(sütlü)" gibi) varsa,
+      // sadece kelimenin ilk harfini değil, bu ayraçlardan SONRAKİ harfi de
+      // büyütmemiz gerekiyor — yoksa "11-Eşit Ağırlık" "11-eşit Ağırlık"
+      // olarak, "Türkçe/Edebiyat" "Türkçe/edebiyat" olarak, "Süt+Bisküvi"
+      // "Süt+bisküvi" olarak ya da "Çikolata(Sütlü)" "Çikolata(sütlü)" olarak
+      // (ayraca bitişik harf küçük kalarak) yanlış görünüyordu. split ile
+      // ayraçları (- / + ( )) yakalayıp (capturing group) aralarındaki her
+      // parçayı ayrı ayrı büyütüyoruz, ayraçların kendisini olduğu gibi
+      // koruyoruz.
       return kelime
-        .split(/([-/])/)
+        .split(/([-/+()])/)
         .map((parca) => {
-          if (parca === '-' || parca === '/' || !parca) return parca
+          if (parca === '-' || parca === '/' || parca === '+' || parca === '(' || parca === ')' || !parca) {
+            return parca
+          }
           const ilkHarf = parca.charAt(0).toLocaleUpperCase('tr-TR')
           const geriKalan = parca.slice(1).toLocaleLowerCase('tr-TR')
           return ilkHarf + geriKalan
