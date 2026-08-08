@@ -140,6 +140,10 @@ export default function OgretmenEkstre() {
   // Sınıf dersleri de aynı şekilde ücretsiz (tutara katkısı yok) ama ders
   // SAYISINA dahil — kaç tanesinin sınıf dersi olduğu ayrıca belirtiliyor.
   const ozetSinifDersSayisi = ozetDersler.filter((d) => d.tur === 'sinif').length
+  // Asıl ÜCRETLİ olan (tutara dahil) bire bir dersleri — kullanıcı isteğiyle
+  // eklendi: Soru Çözümü ve Sınıf Dersi sayıları ayrıca yazılıyordu ama kaç
+  // tanesinin gerçek (ücretli) bire bir dersi olduğu belirtilmiyordu.
+  const ozetBireBirDersSayisi = ozetDersler.filter((d) => d.tur === 'ders').length
 
   return (
     <div className="min-h-screen bg-cream py-8 px-4">
@@ -197,6 +201,9 @@ export default function OgretmenEkstre() {
               </div>
               <div className="px-4 py-2 bg-blue-50 border-t border-blue-100 text-xs text-blue-700">
                 Bunların <b>{ozetSinifDersSayisi}</b> tanesi sınıf dersi (ücretsiz, tutara dahil değil).
+              </div>
+              <div className="px-4 py-2 bg-green-50 border-t border-green-100 text-xs text-green-700">
+                Bunların <b>{ozetBireBirDersSayisi}</b> tanesi bire bir dersi (ücretli, tutara dahil).
               </div>
             </div>
 
