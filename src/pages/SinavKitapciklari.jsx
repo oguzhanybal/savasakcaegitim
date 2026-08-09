@@ -203,15 +203,20 @@ function NoktaIsaretlemeKatmani({ sayfaGoruntusu, buSayfadakiNoktalar, onNoktaEk
 // (yine de her satırı elle değiştirebilir/silebilir/ekleyebilir).
 // Türkçe Testi: Türkçe 40. Sosyal Bilimler Testi: Tarih 5, Coğrafya 5,
 // Felsefe 5, Din Kültürü 5 (grup içinde kesintisiz 1-20). Matematik Testi:
-// Matematik 40. Fen Bilimleri Testi: Fizik 7, Kimya 7, Biyoloji 6 (grup
-// içinde kesintisiz 1-20). Toplam 120 soru.
+// bu okulun karnelerinde Matematik ve Geometri AYRI ders olarak geçiyor
+// (Matematik 30, Geometri 10 — grup içinde kesintisiz, Geometri 31'den
+// başlıyor) — Matematik'i tek 40'lık blok yapmak, karnede "Geometri" diye
+// ayrı geçen soruların kitapçıkta bulunamamasına yol açıyordu. Fen Bilimleri
+// Testi: Fizik 7, Kimya 7, Biyoloji 6 (grup içinde kesintisiz 1-20).
+// Toplam 120 soru.
 const TYT_STANDART_BLOKLAR = [
   { id: 'tyt-1', ders: 'Türkçe', sayi: '40', baslangic: '1' },
   { id: 'tyt-2', ders: 'Tarih', sayi: '5', baslangic: '1' },
   { id: 'tyt-3', ders: 'Coğrafya', sayi: '5', baslangic: '6' },
   { id: 'tyt-4', ders: 'Felsefe', sayi: '5', baslangic: '11' },
   { id: 'tyt-5', ders: 'Din Kültürü', sayi: '5', baslangic: '16' },
-  { id: 'tyt-6', ders: 'Matematik', sayi: '40', baslangic: '1' },
+  { id: 'tyt-6', ders: 'Matematik', sayi: '30', baslangic: '1' },
+  { id: 'tyt-6b', ders: 'Geometri', sayi: '10', baslangic: '31' },
   { id: 'tyt-7', ders: 'Fizik', sayi: '7', baslangic: '1' },
   { id: 'tyt-8', ders: 'Kimya', sayi: '7', baslangic: '8' },
   { id: 'tyt-9', ders: 'Biyoloji', sayi: '6', baslangic: '15' },
