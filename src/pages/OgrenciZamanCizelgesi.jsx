@@ -30,6 +30,16 @@ function yerelTarihStrTimestamptan(ts) {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
 }
 
+// Ders Programı'nda "Bu bir sınav" işaretli ders saatleri (TYT/AYT Deneme,
+// Konu Analiz vb.) — bu öğrencinin normal sınıf dersi devamsızlığına
+// KARIŞMASIN diye ayrı bir "Sınav Katılımı" özetinde gösterilir.
+const SINAV_TURU_ETIKET = {
+  tyt_deneme: 'TYT Deneme Sınavı',
+  ayt_deneme: 'AYT Deneme Sınavı',
+  konu_analiz: 'Konu Analiz Sınavı',
+  diger: 'Diğer Sınav',
+}
+
 const TUR_STIL = {
   odeme: { renk: 'bg-green-500', etiket: 'Ödeme' },
   birebir: { renk: 'bg-orange-500', etiket: 'Bire Bir' },
@@ -73,13 +83,17 @@ function OlayKarti({ olay, sonMu }) {
 // dersinden 2'sine gelmemiş") — Yoklama Raporu'ndaki mantığın aynısı,
 // burada tek bir öğrenci için.
 function DevamsizlikOzeti({ yoklamaKayitlari }) {
-  if (!yoklamaKayitlari || yoklamaKayitlari.length === 0) return null
+  // "Bu bir sınav" işaretli ders saatlerine (TYT/AYT Deneme, Konu Analiz vb.)
+  // ait kayıtlar normal devamsızlık özetine KARIŞMASIN — ayrı bir "Sınav
+  // Katılımı" özetinde gösteriliyor (bkz. aşağıdaki SinavKatilimOzeti).
+  const normalKayitlar = (yoklamaKayitlari || []).filter((y) => !y.ders_programi?.sinav_mi)
+  if (normalKayitlar.length === 0) return null
 
-  const genelGeldi = yoklamaKayitlari.filter((y) => y.geldi).length
-  const genelGelmedi = yoklamaKayitlari.length - genelGeldi
+  const genelGeldi = normalKayitlar.filter((y) => y.geldi).length
+  const genelGelmedi = normalKayitlar.length - genelGeldi
 
   const ogretmenMap = new Map()
-  for (const y of yoklamaKayitlari) {
+  for (const y of normalKayitlar) {
     const ad = y.ders_programi?.profiles?.ad_soyad || 'Bilinmeyen öğretmen'
     if (!ogretmenMap.has(ad)) ogretmenMap.set(ad, { geldi: 0, gelmedi: 0 })
     const s = ogretmenMap.get(ad)
@@ -109,6 +123,51 @@ function DevamsizlikOzeti({ yoklamaKayitlari }) {
                 <span className="text-red-500 font-semibold">{s.gelmedi}</span>/{toplam} derse gelmedi
                 {' '}
                 <span className={`font-semibold ${oran > 20 ? 'text-red-500' : 'text-gray-400'}`}>(%{oran})</span>
+              </span>
+            </div>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
+
+// Sınav Katılımı özeti — bu öğrencinin "Bu bir sınav" işaretli ders
+// saatlerine (TYT/AYT Deneme, Konu Analiz vb.) kaç kez girdiği/girmediği,
+// sınav türü bazında. Normal devamsızlıktan tamamen bağımsız (kullanıcı
+// isteğiyle eklendi).
+function SinavKatilimOzeti({ yoklamaKayitlari }) {
+  const sinavKayitlari = (yoklamaKayitlari || []).filter((y) => y.ders_programi?.sinav_mi)
+  if (sinavKayitlari.length === 0) return null
+
+  const turMap = new Map()
+  for (const y of sinavKayitlari) {
+    const tur = y.ders_programi?.sinav_turu || 'diger'
+    if (!turMap.has(tur)) turMap.set(tur, { girdi: 0, girmedi: 0 })
+    const s = turMap.get(tur)
+    if (y.geldi) s.girdi += 1
+    else s.girmedi += 1
+  }
+  const turListesi = [...turMap.entries()]
+
+  return (
+    <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5 mb-6">
+      <h2 className="font-semibold text-gray-700 mb-1">Sınav Katılımı</h2>
+      <p className="text-xs text-gray-400 mb-3">Normal devamsızlıktan bağımsız — TYT/AYT Deneme, Konu Analiz vb. sınav günlerine katılım.</p>
+      <div className="divide-y divide-gray-50 border-t border-gray-100">
+        {turListesi.map(([tur, s]) => {
+          const toplam = s.girdi + s.girmedi
+          return (
+            <div key={tur} className="py-2.5 flex items-center justify-between gap-3 flex-wrap">
+              <span className="font-medium text-gray-800 text-sm">{SINAV_TURU_ETIKET[tur] || 'Diğer Sınav'}</span>
+              <span className="text-sm text-gray-500">
+                <span className="text-green-600 font-semibold">{s.girdi}</span> girdi
+                {s.girmedi > 0 && (
+                  <>
+                    {' '}/ <span className="text-red-500 font-semibold">{s.girmedi}</span> girmedi
+                  </>
+                )}
+                {' '}<span className="text-gray-400">({toplam} toplam)</span>
               </span>
             </div>
           )
@@ -149,7 +208,7 @@ export default function OgrenciZamanCizelgesi() {
       // ders adı ve öğretmen bilgisini de birlikte çekiyoruz.
       supabase
         .from('yoklama')
-        .select('*, ders_programi(ders_adi, profiles:ogretmen_profile_id(ad_soyad, brans))')
+        .select('*, ders_programi(ders_adi, sinav_mi, sinav_turu, profiles:ogretmen_profile_id(ad_soyad, brans))')
         .eq('ogrenci_id', ogrenciId)
         .order('tarih', { ascending: false }),
     ]).then(async ([o, odemelerRes, bbaRes, ekDersRes, odevRes, sinavRes, yoklamaRes]) => {
@@ -238,9 +297,11 @@ export default function OgrenciZamanCizelgesi() {
       // Devamsızlık için sadece "Gelmedi" kayıtlarını akışa ekliyoruz —
       // "Geldi" (yani her normal ders) her gün onlarca satır ekleyip
       // hikayeyi anlamsız kalabalıklaştırırdı; devamsızlık zaten dikkat
-      // çekmesi gereken, istisnai durum.
+      // çekmesi gereken, istisnai durum. "Bu bir sınav" işaretli ders
+      // saatleri (TYT/AYT Deneme vb.) burada DAHİL EDİLMİYOR — onlar normal
+      // devamsızlıktan bağımsız, yukarıdaki "Sınav Katılımı" özetinde.
       for (const y of yoklamaRes.data || []) {
-        if (y.geldi) continue
+        if (y.geldi || y.ders_programi?.sinav_mi) continue
         yeniOlaylar.push({
           tur: 'devamsizlik',
           tarih: y.tarih,
@@ -281,6 +342,7 @@ export default function OgrenciZamanCizelgesi() {
       </p>
 
       <DevamsizlikOzeti yoklamaKayitlari={yoklamaKayitlari} />
+      <SinavKatilimOzeti yoklamaKayitlari={yoklamaKayitlari} />
 
       <div className="flex flex-wrap gap-2 mb-6">
         {FILTRELER.map((f) => (

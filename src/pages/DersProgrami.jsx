@@ -15,6 +15,16 @@ const DERS_ONERILERI = [
   'Felsefe', 'İngilizce', 'Din Kültürü ve Ahlak Bilgisi', 'Beden Eğitimi', 'Fen Bilimleri', 'Sosyal Bilgiler',
 ]
 
+// "Bu bir sınav" işaretlenince seçilebilecek sınav türleri — Yoklama
+// Raporu'ndaki ayrı "Sınav Katılımı" özetinde bu etiketlerle gruplanır.
+const SINAV_TURLERI = [
+  { value: 'tyt_deneme', label: 'TYT Deneme Sınavı' },
+  { value: 'ayt_deneme', label: 'AYT Deneme Sınavı' },
+  { value: 'konu_analiz', label: 'Konu Analiz Sınavı' },
+  { value: 'diger', label: 'Diğer Sınav' },
+]
+const SINAV_TURU_ETIKET = Object.fromEntries(SINAV_TURLERI.map((s) => [s.value, s.label]))
+
 function saatKisalt(s) {
   return s ? s.slice(0, 5) : s
 }
@@ -150,6 +160,12 @@ function DersEkleForm({
   // istiyorsak, buraya o tarihi yazınca ders bugüne sızmaz, sadece o tarihten
   // itibaren her haftanın o gününde görünür.
   const [baslangicTarihi, setBaslangicTarihi] = useState('')
+  // "Bu bir sınav" — işaretlenirse bu ders saati (TYT/AYT Deneme, Konu Analiz
+  // vb.) normal devamsızlık istatistiklerinden AYRI tutulur, Yoklama
+  // Raporu'nda kendi "Sınav Katılımı" özetinde gösterilir (kullanıcı
+  // isteğiyle eklendi).
+  const [sinavMi, setSinavMi] = useState(false)
+  const [sinavTuru, setSinavTuru] = useState('tyt_deneme')
   const [hata, setHata] = useState('')
   const [basari, setBasari] = useState('')
   const [gonderiliyor, setGonderiliyor] = useState(false)
@@ -224,6 +240,8 @@ function DersEkleForm({
     setBaslangic(saatKisalt(duzenlenenDers.baslangic_saat) || '')
     setBitis(saatKisalt(duzenlenenDers.bitis_saat) || '')
     setBaslangicTarihi(duzenlenenDers.baslangic_tarihi || '')
+    setSinavMi(!!duzenlenenDers.sinav_mi)
+    setSinavTuru(duzenlenenDers.sinav_turu || 'tyt_deneme')
     setHata('')
     setBasari('')
     requestAnimationFrame(() => {
@@ -241,6 +259,8 @@ function DersEkleForm({
     setBaslangicTarihi('')
     setBirlesikSiniflar([])
     setSeciliGunler([])
+    setSinavMi(false)
+    setSinavTuru('tyt_deneme')
     setHata('')
     setBasari('')
     onDuzenlemeBitti()
@@ -326,6 +346,11 @@ function DersEkleForm({
       // tarihten itibaren geçerli" olarak bu tarih esas alınır (bkz. o
       // useMemo'daki güncellenmiş kural).
       baslangic_tarihi: baslangicTarihi || null,
+      // "Bu bir sınav" işaretliyse tür de kaydedilir — Yoklama Raporu ve
+      // Öğrenci Zaman Çizelgesi bu dersi normal devamsızlıktan ayrı, "Sınav
+      // Katılımı" özetinde gösterir.
+      sinav_mi: sinavMi,
+      sinav_turu: sinavMi ? sinavTuru : null,
     })
     const { error } = duzenleModu
       ? await supabase.from('ders_programi').update(veriUret(sinifId, gunler[0])).eq('id', duzenlenenDers.id)
@@ -342,6 +367,8 @@ function DersEkleForm({
         setBitis('')
         setBaslangicTarihi('')
         setSeciliGunler([])
+        setSinavMi(false)
+        setSinavTuru('tyt_deneme')
         onDuzenlemeBitti()
       } else {
         setBaslangic('')
@@ -350,6 +377,8 @@ function DersEkleForm({
         setDersAdi('')
         setBirlesikSiniflar([])
         setSeciliGunler([])
+        setSinavMi(false)
+        setSinavTuru('tyt_deneme')
       }
       onEklendi()
     }
@@ -433,6 +462,8 @@ function DersEkleForm({
         ders_adi: dersAdi.trim() ? ilkHarfleriBuyukYap(dersAdi.trim()) : null,
         ogretmen_profile_id: ogretmenId || null,
         baslangic_tarihi: baslangicTarihi || null,
+        sinav_mi: sinavMi,
+        sinav_turu: sinavMi ? sinavTuru : null,
       },
       olusturan_profile_id: profile?.id,
       // Taslak Modu açıksa (bkz. yukarıdaki ekle() içindeki yönlendirme), her
@@ -563,6 +594,32 @@ function DersEkleForm({
             className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue"
           />
         </div>
+        <div className="min-w-[200px]">
+          <label className="flex items-center gap-1.5 text-sm font-medium text-gray-700 mb-1 select-none cursor-pointer">
+            <input
+              type="checkbox"
+              checked={sinavMi}
+              onChange={(e) => setSinavMi(e.target.checked)}
+              className="rounded border-gray-300 text-orange focus:ring-orange"
+            />
+            Bu bir sınav
+          </label>
+          {sinavMi ? (
+            <select
+              value={sinavTuru}
+              onChange={(e) => setSinavTuru(e.target.value)}
+              className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue bg-white"
+            >
+              {SINAV_TURLERI.map((s) => (
+                <option key={s.value} value={s.value}>{s.label}</option>
+              ))}
+            </select>
+          ) : (
+            <p className="text-xs text-gray-400 leading-tight">
+              İşaretlerseniz bu ders saati normal devamsızlıktan ayrı, "Sınav Katılımı" olarak sayılır.
+            </p>
+          )}
+        </div>
         <button
           type="submit"
           disabled={gonderiliyor}
@@ -677,6 +734,8 @@ function TaslaklarimDersProgrami({ taslaklar, siniflar, ogretmenler, program, on
       ders_adi: v.ders_adi,
       ogretmen_profile_id: v.ogretmen_profile_id,
       baslangic_tarihi: v.baslangic_tarihi || null,
+      sinav_mi: !!v.sinav_mi,
+      sinav_turu: v.sinav_mi ? v.sinav_turu : null,
     })
     if (error) {
       setHataMap((h) => ({ ...h, [t.id]: 'Hata: ' + error.message }))
@@ -815,6 +874,11 @@ function TaslaklarimDersProgrami({ taslaklar, siniflar, ogretmenler, program, on
                           <p className="text-xs font-semibold text-navy leading-tight">
                             {t.veri.ders_adi || sinifAdi(t.veri.sinif_id)}
                           </p>
+                          {t.veri.sinav_mi && (
+                            <p className="text-[10px] font-semibold text-orange-600 leading-tight">
+                              📝 {SINAV_TURU_ETIKET[t.veri.sinav_turu] || 'Sınav'}
+                            </p>
+                          )}
                           <p className="text-[11px] text-gray-500 leading-tight">{sinifAdi(t.veri.sinif_id)}</p>
                           <p className="text-[11px] text-gray-400 leading-tight">
                             {saatGoster(t.veri.baslangic_saat)}–{saatGoster(t.veri.bitis_saat)}

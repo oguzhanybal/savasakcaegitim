@@ -5,6 +5,17 @@ import { saatGoster } from '../lib/saatFormat'
 
 const GUNLER = ['', 'Pazartesi', 'Salı', 'Çarşamba', 'Perşembe', 'Cuma', 'Cumartesi', 'Pazar']
 
+// Ders Programı'nda "Bu bir sınav" işaretlenmiş ders saatleri (TYT/AYT Deneme,
+// Konu Analiz vb.) — bunlara ait yoklama kayıtları normal devamsızlık
+// istatistiklerine KARIŞMASIN diye ayrı tutulur, aşağıda kendi "Sınav
+// Katılımı" özetinde gösterilir (kullanıcı isteğiyle eklendi).
+const SINAV_TURU_ETIKET = {
+  tyt_deneme: 'TYT Deneme Sınavı',
+  ayt_deneme: 'AYT Deneme Sınavı',
+  konu_analiz: 'Konu Analiz Sınavı',
+  diger: 'Diğer Sınav',
+}
+
 function saatKisalt(s) {
   return s ? s.slice(0, 5) : s
 }
@@ -272,7 +283,7 @@ export default function YoklamaRaporu() {
     setSeciliOgretmen('')
     supabase
       .from('yoklama')
-      .select('*, ogrenciler(ad_soyad), ders_programi(id, ders_adi, ogretmen_profile_id, profiles:ogretmen_profile_id(ad_soyad, brans))')
+      .select('*, ogrenciler(ad_soyad), ders_programi(id, ders_adi, ogretmen_profile_id, sinav_mi, sinav_turu, profiles:ogretmen_profile_id(ad_soyad, brans))')
       .eq('sinif_id', seciliSinif)
       .order('tarih', { ascending: false })
       .then(({ data }) => {
@@ -295,14 +306,35 @@ export default function YoklamaRaporu() {
     ? kayitlar.filter((k) => k.ders_programi?.ogretmen_profile_id === seciliOgretmen)
     : kayitlar
 
+  // "Bu bir sınav" işaretli ders saatlerine ait kayıtlar normal devamsızlık
+  // özetine (Öğrenci Bazlı Özet) KARIŞMASIN — TYT/AYT Deneme, Konu Analiz gibi
+  // sınav günleri ayrı bir "Sınav Katılımı" özetinde gösterilir (aşağıda).
+  const normalKayitlar = kayitlarGosterilen.filter((k) => !k.ders_programi?.sinav_mi)
+  const sinavKayitlari = kayitlarGosterilen.filter((k) => k.ders_programi?.sinav_mi)
+
   const ozet = {}
-  kayitlarGosterilen.forEach((k) => {
+  normalKayitlar.forEach((k) => {
     const ad = k.ogrenciler?.ad_soyad || 'Bilinmeyen'
     if (!ozet[ad]) ozet[ad] = { geldi: 0, gelmedi: 0 }
     if (k.geldi) ozet[ad].geldi += 1
     else ozet[ad].gelmedi += 1
   })
   const ozetListesi = Object.entries(ozet).sort((a, b) => a[0].localeCompare(b[0], 'tr'))
+
+  // Sınav Katılımı özeti — öğrenci × sınav türü bazında kaç sınava girmiş
+  // (Geldi) / girmemiş (Gelmedi). Bir öğrencinin girdiği sınav türleri
+  // sütun sütun ayrı ayrı gösterilir.
+  const sinavTurleri = [...new Set(sinavKayitlari.map((k) => k.ders_programi?.sinav_turu).filter(Boolean))]
+  const sinavOzet = {}
+  sinavKayitlari.forEach((k) => {
+    const ad = k.ogrenciler?.ad_soyad || 'Bilinmeyen'
+    const tur = k.ders_programi?.sinav_turu || 'diger'
+    if (!sinavOzet[ad]) sinavOzet[ad] = {}
+    if (!sinavOzet[ad][tur]) sinavOzet[ad][tur] = { girdi: 0, girmedi: 0 }
+    if (k.geldi) sinavOzet[ad][tur].girdi += 1
+    else sinavOzet[ad][tur].girmedi += 1
+  })
+  const sinavOzetListesi = Object.entries(sinavOzet).sort((a, b) => a[0].localeCompare(b[0], 'tr'))
 
   return (
     <div>
@@ -385,6 +417,51 @@ export default function YoklamaRaporu() {
             </table>
           </div>
 
+          {sinavOzetListesi.length > 0 && (
+            <>
+              <h2 className="font-semibold text-gray-700 mb-3">
+                Sınav Katılımı
+                <span className="font-normal text-gray-400"> — normal devamsızlıktan bağımsız, ayrı sayılır</span>
+              </h2>
+              <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-x-auto overscroll-x-contain mb-8" style={{ touchAction: 'pan-x pan-y' }}>
+                <table className="text-sm min-w-[480px] w-full">
+                  <thead>
+                    <tr className="bg-navy text-white text-left">
+                      <th className="px-4 py-3 font-semibold whitespace-nowrap">Öğrenci</th>
+                      {sinavTurleri.map((tur) => (
+                        <th key={tur} className="px-4 py-3 font-semibold text-center whitespace-nowrap">
+                          {SINAV_TURU_ETIKET[tur] || 'Sınav'}
+                        </th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {sinavOzetListesi.map(([ad, turler], i) => (
+                      <tr key={ad} className={i % 2 ? 'bg-gray-50' : ''}>
+                        <td className="px-4 py-3 font-medium text-gray-800 whitespace-nowrap">{ad}</td>
+                        {sinavTurleri.map((tur) => {
+                          const s = turler[tur]
+                          return (
+                            <td key={tur} className="px-4 py-3 text-center whitespace-nowrap">
+                              {s ? (
+                                <span>
+                                  <span className="text-green-600 font-semibold">{s.girdi} girdi</span>
+                                  {s.girmedi > 0 && <span className="text-red-500 font-semibold"> / {s.girmedi} girmedi</span>}
+                                </span>
+                              ) : (
+                                <span className="text-gray-300">—</span>
+                              )}
+                            </td>
+                          )
+                        })}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </>
+          )}
+
           <h2 className="font-semibold text-gray-700 mb-3">Detaylı Geçmiş (Son Kayıtlar)</h2>
           <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-x-auto overscroll-x-contain" style={{ touchAction: 'pan-x pan-y' }}>
             <table className="text-sm min-w-[640px] w-full">
@@ -411,6 +488,11 @@ export default function YoklamaRaporu() {
                           {k.ders_programi?.ders_adi || '—'}
                           {k.ders_programi?.profiles?.ad_soyad && (
                             <span className="text-gray-400"> — {k.ders_programi.profiles.ad_soyad}</span>
+                          )}
+                          {k.ders_programi?.sinav_mi && (
+                            <span className="ml-1.5 px-1.5 py-0.5 rounded-full text-[10px] font-semibold bg-orange-100 text-orange-700">
+                              {SINAV_TURU_ETIKET[k.ders_programi.sinav_turu] || 'Sınav'}
+                            </span>
                           )}
                         </td>
                       )}
