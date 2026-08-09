@@ -14,6 +14,17 @@ const DERS_ONERILERI = [
   'Felsefe', 'İngilizce', 'Din Kültürü ve Ahlak Bilgisi', 'Beden Eğitimi', 'Fen Bilimleri', 'Sosyal Bilgiler',
 ]
 
+// "Bu bir sınav" işaretlenince seçilebilecek sınav türleri — DersProgrami.jsx'teki
+// AYNI liste, buradan da eklenebilsin diye (Sınıf Detay sayfasının kendi
+// bağımsız "Ders Saatleri" formu var, DersProgrami.jsx'teki formdan ayrı).
+const SINAV_TURLERI = [
+  { value: 'tyt_deneme', label: 'TYT Deneme Sınavı' },
+  { value: 'ayt_deneme', label: 'AYT Deneme Sınavı' },
+  { value: 'konu_analiz', label: 'Konu Analiz Sınavı' },
+  { value: 'diger', label: 'Diğer Sınav' },
+]
+const SINAV_TURU_ETIKET = Object.fromEntries(SINAV_TURLERI.map((s) => [s.value, s.label]))
+
 // Bugünün tarihini "YYYY-MM-DD" olarak YEREL saate göre üretir (toISOString
 // KULLANMIYORUZ — Türkiye UTC+3 gece yarısına yakın saatlerde bir gün geriye
 // kayabiliyor). DersProgrami.jsx'teki aynı isimli fonksiyonla aynı desen.
@@ -61,6 +72,15 @@ export default function SinifDetay() {
   const [seciliGunler, setSeciliGunler] = useState([])
   const [baslangic, setBaslangic] = useState('09:00')
   const [bitis, setBitis] = useState('10:00')
+  // Opsiyonel: DersProgrami.jsx'teki aynı isimli alanla AYNI amaç — "bu ders
+  // hangi tarihten itibaren geçerli olsun" (bkz. oradaki uzun yorum). Boşsa
+  // mevcut davranış (eklendiği andan itibaren).
+  const [baslangicTarihi, setBaslangicTarihi] = useState('')
+  // "Bu bir sınav" — DersProgrami.jsx'teki aynı özellik, buradan (Sınıf
+  // Detay'ın kendi formundan) da işaretlenebilsin diye (kullanıcı isteğiyle
+  // eklendi — bu sayfa DersProgrami.jsx'ten bağımsız kendi formunu kullanıyor).
+  const [sinavMi, setSinavMi] = useState(false)
+  const [sinavTuru, setSinavTuru] = useState('tyt_deneme')
   const [dersAdi, setDersAdi] = useState('')
   const [dersOgretmen, setDersOgretmen] = useState('')
   const [hata, setHata] = useState('')
@@ -180,6 +200,9 @@ export default function SinifDetay() {
     setSeciliGunler([p.gun])
     setBaslangic(saatKisalt(p.baslangic_saat))
     setBitis(saatKisalt(p.bitis_saat))
+    setBaslangicTarihi(p.baslangic_tarihi || '')
+    setSinavMi(!!p.sinav_mi)
+    setSinavTuru(p.sinav_turu || 'tyt_deneme')
     setBirlesikSiniflar([]) // düzenleme modunda birleşik sınıf seçimi desteklenmiyor
     setHata('')
     requestAnimationFrame(() => {
@@ -194,6 +217,9 @@ export default function SinifDetay() {
     setDersOgretmen('')
     setBaslangic('09:00')
     setBitis('10:00')
+    setBaslangicTarihi('')
+    setSinavMi(false)
+    setSinavTuru('tyt_deneme')
     setBirlesikSiniflar([])
     setHata('')
   }
@@ -264,6 +290,9 @@ export default function SinifDetay() {
           bitis_saat: bitis,
           ders_adi: dersAdi.trim() ? ilkHarfleriBuyukYap(dersAdi.trim()) : null,
           ogretmen_profile_id: dersOgretmen || null,
+          baslangic_tarihi: baslangicTarihi || null,
+          sinav_mi: sinavMi,
+          sinav_turu: sinavMi ? sinavTuru : null,
         })
         .eq('id', duzenlenenId)
       setEkleniyor(false)
@@ -312,6 +341,9 @@ export default function SinifDetay() {
         ders_adi: dersAdi.trim() ? ilkHarfleriBuyukYap(dersAdi.trim()) : null,
         ogretmen_profile_id: dersOgretmen || null,
         birlesik_grup_id: grupId,
+        baslangic_tarihi: baslangicTarihi || null,
+        sinav_mi: sinavMi,
+        sinav_turu: sinavMi ? sinavTuru : null,
       }))
     )
     const { error } = await supabase.from('ders_programi').insert(kayitlar)
@@ -325,6 +357,11 @@ export default function SinifDetay() {
       const sonrakiBaslangic = saateDakikaEkle(bitis, 10)
       setBaslangic(sonrakiBaslangic)
       setBitis(saateDakikaEkle(sonrakiBaslangic, 45))
+      setSinavMi(false)
+      setSinavTuru('tyt_deneme')
+      // Başlangıç tarihi elle girildiyse, art arda eklenen bir sonraki ders
+      // için otomatik SIFIRLAMIYORUZ — art arda aynı özel tarihe birkaç ders
+      // ekleniyor olma ihtimali yüksek (tek tek tekrar yazmasın diye).
       yukle()
     } else {
       setHata('Hata: ' + error.message)
@@ -568,6 +605,44 @@ export default function SinifDetay() {
                 />
               </div>
             </div>
+            <div>
+              <label className="block text-xs font-medium text-gray-500 mb-1">
+                Başlangıç Tarihi <span className="text-gray-400">(opsiyonel)</span>
+              </label>
+              <input
+                type="date"
+                value={baslangicTarihi}
+                onChange={(e) => setBaslangicTarihi(e.target.value)}
+                title="Boş bırakırsanız ders bugünden itibaren geçerli olur. Doldurursanız, o tarihten önceki günlerde (bugün dahil) bu ders görünmez — ör. bugün Cumartesiyse ve 'gelecek Cumartesi'ye özel bir ders eklemek istiyorsanız buraya o tarihi yazın."
+                className="w-full px-2 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue text-sm"
+              />
+            </div>
+            <div>
+              <label className="flex items-center gap-1.5 text-xs font-medium text-gray-500 mb-1 select-none cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={sinavMi}
+                  onChange={(e) => setSinavMi(e.target.checked)}
+                  className="rounded border-gray-300 text-orange focus:ring-orange"
+                />
+                Bu bir sınav
+              </label>
+              {sinavMi ? (
+                <select
+                  value={sinavTuru}
+                  onChange={(e) => setSinavTuru(e.target.value)}
+                  className="w-full px-2 py-2 border border-gray-200 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-blue text-sm"
+                >
+                  {SINAV_TURLERI.map((s) => (
+                    <option key={s.value} value={s.value}>{s.label}</option>
+                  ))}
+                </select>
+              ) : (
+                <p className="text-[11px] text-gray-400 leading-tight">
+                  İşaretlerseniz bu ders saati normal devamsızlıktan ayrı, "Sınav Katılımı" olarak sayılır.
+                </p>
+              )}
+            </div>
             {hata && <p className="text-red-600 text-sm">{hata}</p>}
             <div className="flex gap-2">
               <button
@@ -622,6 +697,11 @@ export default function SinifDetay() {
                       {p.ders_adi || 'Ders'} <span className="font-normal text-gray-400">— {GUNLER[p.gun]} · {saatGoster(p.baslangic_saat)}–{saatGoster(p.bitis_saat)}</span>
                     </p>
                     {p.profiles?.ad_soyad && <p className="text-xs text-gray-400">{p.profiles.ad_soyad}</p>}
+                    {p.sinav_mi && (
+                      <p className="text-[11px] font-semibold text-orange-600 mt-0.5">
+                        📝 {SINAV_TURU_ETIKET[p.sinav_turu] || 'Sınav'}
+                      </p>
+                    )}
                     {digerSiniflar.length > 0 && (
                       <p className="text-xs text-blue mt-0.5">🔗 Birleşik: {digerSiniflar.join(', ')} ile</p>
                     )}
