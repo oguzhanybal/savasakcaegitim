@@ -11,12 +11,16 @@ const GUN_PENCERESI = 21
 // ============================================================================
 // GEÇMİŞ YOKLAMA — bir öğretmen (ya da yönetici) geçmişte unutulan/eksik
 // kalan bir yoklamayı buradan tamamlayabilir. Üç aşamalı akış:
-//   1) GÜN LİSTESİ — son GUN_PENCERESI gündeki, en az bir dersi olan günler.
+//   1) GÜN LİSTESİ — son GUN_PENCERESI gündeki, en az bir dersi olan günler
+//      (varsayılan: TÜM sınıflar bir arada; istenirse tek sınıfa daraltılır).
 //   2) O GÜNÜN DERSLERİ — seçilen güne ait ders saatleri, Alındı/Alınmadı.
 //   3) YOKLAMA ALMA — seçilen dersin öğrenci Geldi/Gelmedi listesi.
-// Aynı gün+saat için birden fazla satır üretilmesin diye (ör. ders saati
-// sonradan düzenlenmiş/yeniden eklenmişse) saat bazında tekilleştirme
-// yapılıyor; gerçekten yoklaması alınmış olan her zaman öncelikli gösterilir.
+// Aynı gün+saat+sınıf için birden fazla satır üretilmesin diye (ör. ders
+// saati sonradan düzenlenmiş/yeniden eklenmişse) tekilleştirme yapılıyor;
+// gerçekten yoklaması alınmış olan her zaman öncelikli gösterilir.
+// Öğretmen sadece KENDİ derslerini görür (hem gereksiz kalabalık olmasın
+// diye, hem de yoklama tablosunun RLS kuralı zaten başka öğretmenin
+// kaydını göstermiyor — bu da yanlış "Alınmadı" görünümüne yol açıyordu).
 // ============================================================================
 
 function yerelTarih(d) {
@@ -38,8 +42,8 @@ function tarihUzunFormat(tarihStr) {
 export default function GecmisYoklama() {
   const { profile } = useAuth()
   const [siniflar, setSiniflar] = useState([])
-  const [seciliSinif, setSeciliSinif] = useState('')
-  const [gunListesi, setGunListesi] = useState([]) // [{tarih, dersler: [...]}]
+  const [seciliSinif, setSeciliSinif] = useState('') // '' = Tümü
+  const [gunListesi, setGunListesi] = useState([]) // [{tarih, gun, dersler: [...]}]
   const [yukleniyorListe, setYukleniyorListe] = useState(true)
   const [seciliGun, setSeciliGun] = useState(null) // tarih string, null ise gün listesi görünümü
   // Bir günün derslerinden tıklanan öge — {tarih, ders} şeklinde, null ise
@@ -51,106 +55,102 @@ export default function GecmisYoklama() {
   const [kaydediliyor, setKaydediliyor] = useState(false)
 
   useEffect(() => {
-    supabase.from('siniflar').select('*').then(({ data }) => {
-      setSiniflar(data || [])
-      if (data && data.length > 0) setSeciliSinif(data[0].id)
-      else setYukleniyorListe(false)
-    })
+    supabase.from('siniflar').select('*').then(({ data }) => setSiniflar(data || []))
   }, [])
 
-  // Sınıf değişince: son GUN_PENCERESI gündeki dersleri güne göre gruplayarak
-  // üretir. Her gün için: o gün gerçekten yoklaması alınmış dersler (asla
-  // filtrelenmez) + sınıfın şu anki aktif programına göre henüz yoklaması
-  // alınmamış dersler — aynı saat için ikisi de varsa alınmış olan kazanır.
+  function sinifAdi(sinifId) {
+    return siniflar.find((s) => s.id === sinifId)?.ad || ''
+  }
+
+  // Sınıf seçimi (ya da "Tümü") değişince: son GUN_PENCERESI gündeki dersleri
+  // güne göre gruplayarak üretir. Her gün için: o gün gerçekten yoklaması
+  // alınmış dersler (asla filtrelenmez) + şu anki aktif programa göre henüz
+  // yoklaması alınmamış dersler — aynı saat+sınıf için ikisi de varsa alınmış
+  // olan kazanır.
   useEffect(() => {
-    if (!seciliSinif) return
     setSeciliGun(null)
     setSeciliOge(null)
     setYukleniyorListe(true)
-    supabase
-      .from('ders_programi')
-      .select('*')
-      .eq('sinif_id', seciliSinif)
-      .then(async ({ data }) => {
-        const tumSatirlar = data || []
-        // Öğretmen sadece KENDİ derslerini görür. Bunun iki sebebi var:
-        // 1) Bir sınıfın günde birden çok (farklı öğretmenlerin girdiği)
-        //    dersi olabiliyor — öğretmen sadece kendi dersini görmek ister.
-        // 2) yoklama tablosunun RLS kuralı zaten öğretmenin SADECE kendi
-        //    dersine ait yoklama kayıtlarını görmesine izin veriyor; başka
-        //    öğretmenin aldığı yoklama sorguda hiç dönmüyor ve bu da o dersi
-        //    "Alınmadı" gibi YANLIŞ gösteriyordu. Baştan sadece kendi
-        //    derslerine bakınca bu sorun da ortadan kalkıyor.
-        const satirlar =
-          profile?.rol === 'ogretmen' ? tumSatirlar.filter((s) => s.ogretmen_profile_id === profile.id) : tumSatirlar
-        const satirMap = new Map(satirlar.map((s) => [s.id, s]))
-        const aktifSatirlar = satirlar.filter((s) => s.aktif !== false)
-        const bugun = yerelTarih(new Date())
-        const dEski = new Date(bugun + 'T12:00:00')
-        dEski.setDate(dEski.getDate() - GUN_PENCERESI)
-        const enEskiTarih = yerelTarih(dEski)
-        const dDun = new Date(bugun + 'T12:00:00')
-        dDun.setDate(dDun.getDate() - 1)
-        const dun = yerelTarih(dDun)
+    let sorgu = supabase.from('ders_programi').select('*')
+    if (seciliSinif) sorgu = sorgu.eq('sinif_id', seciliSinif)
+    sorgu.then(async ({ data }) => {
+      const tumSatirlar = data || []
+      const satirlar =
+        profile?.rol === 'ogretmen' ? tumSatirlar.filter((s) => s.ogretmen_profile_id === profile.id) : tumSatirlar
+      const satirMap = new Map(satirlar.map((s) => [s.id, s]))
+      const aktifSatirlar = satirlar.filter((s) => s.aktif !== false)
+      const bugun = yerelTarih(new Date())
+      const dEski = new Date(bugun + 'T12:00:00')
+      dEski.setDate(dEski.getDate() - GUN_PENCERESI)
+      const enEskiTarih = yerelTarih(dEski)
+      const dDun = new Date(bugun + 'T12:00:00')
+      dDun.setDate(dDun.getDate() - 1)
+      const dun = yerelTarih(dDun)
 
-        // GERÇEKTEN yoklaması alınmış dersler — doğrudan yoklama
-        // tablosundan, ders_programi'nin aktif/pasif durumuna bakılmadan.
-        const tumIdler = satirlar.map((s) => s.id)
-        const { data: yoklamaSatirlari } = tumIdler.length
-          ? await supabase
-              .from('yoklama')
-              .select('ders_programi_id, tarih')
-              .in('ders_programi_id', tumIdler)
-              .gte('tarih', enEskiTarih)
-              .lte('tarih', dun)
-          : { data: [] }
-        const alinanByTarih = new Map() // tarih -> Map(saatAnahtari -> ders)
-        for (const y of yoklamaSatirlari || []) {
-          const ders = satirMap.get(y.ders_programi_id)
-          if (!ders) continue
-          if (!alinanByTarih.has(y.tarih)) alinanByTarih.set(y.tarih, new Map())
-          const saatAnahtari = `${ders.baslangic_saat}-${ders.bitis_saat}`
-          alinanByTarih.get(y.tarih).set(saatAnahtari, ders)
+      // GERÇEKTEN yoklaması alınmış dersler — doğrudan yoklama tablosundan,
+      // ders_programi'nin aktif/pasif durumuna bakılmadan.
+      const tumIdler = satirlar.map((s) => s.id)
+      const { data: yoklamaSatirlari } = tumIdler.length
+        ? await supabase
+            .from('yoklama')
+            .select('ders_programi_id, tarih')
+            .in('ders_programi_id', tumIdler)
+            .gte('tarih', enEskiTarih)
+            .lte('tarih', dun)
+        : { data: [] }
+      const alinanByTarih = new Map() // tarih -> Map(anahtar -> ders)
+      for (const y of yoklamaSatirlari || []) {
+        const ders = satirMap.get(y.ders_programi_id)
+        if (!ders) continue
+        if (!alinanByTarih.has(y.tarih)) alinanByTarih.set(y.tarih, new Map())
+        const anahtar = `${ders.sinif_id}|${ders.baslangic_saat}-${ders.bitis_saat}`
+        alinanByTarih.get(y.tarih).set(anahtar, ders)
+      }
+
+      // Güne göre ders listesi üret.
+      const gunler = []
+      for (let i = 1; i <= GUN_PENCERESI; i++) {
+        const d = new Date(bugun + 'T12:00:00')
+        d.setDate(d.getDate() - i)
+        const tarih = yerelTarih(d)
+        const gunNo = gunNumarasi(tarih)
+        const alinanAnahtarlar = alinanByTarih.get(tarih) || new Map()
+        const dersMap = new Map() // anahtar -> {ders, alindiMi}
+
+        // Önce gerçekten alınmış olanlar (öncelikli, asla ezilmez).
+        for (const [anahtar, ders] of alinanAnahtarlar) {
+          dersMap.set(anahtar, { ders, alindiMi: true })
+        }
+        // Sonra şu anki aktif programa göre o gün olması gereken dersler —
+        // aynı saat+sınıfta zaten alınmış bir ders varsa eklenmez. Ders
+        // hangi tarihten itibaren geçerliyse (elle girilmiş "Başlangıç
+        // Tarihi", yoksa satırın oluşturulduğu tarih) ondan ÖNCEKİ günler
+        // için hiç üretilmez.
+        for (const s of aktifSatirlar) {
+          if (s.gun !== gunNo) continue
+          const gecerliBaslangic = s.baslangic_tarihi || (s.created_at ? s.created_at.slice(0, 10) : null)
+          if (gecerliBaslangic && gecerliBaslangic > tarih) continue
+          const anahtar = `${s.sinif_id}|${s.baslangic_saat}-${s.bitis_saat}`
+          if (dersMap.has(anahtar)) continue
+          dersMap.set(anahtar, { ders: s, alindiMi: false })
         }
 
-        // Güne göre ders listesi üret.
-        const gunler = []
-        for (let i = 1; i <= GUN_PENCERESI; i++) {
-          const d = new Date(bugun + 'T12:00:00')
-          d.setDate(d.getDate() - i)
-          const tarih = yerelTarih(d)
-          const gunNo = gunNumarasi(tarih)
-          const alinanSaatler = alinanByTarih.get(tarih) || new Map()
-          const dersMap = new Map() // saatAnahtari -> {ders, alindiMi}
+        if (dersMap.size === 0) continue
+        const dersler = [...dersMap.values()].sort((a, b) =>
+          (a.ders.baslangic_saat || '').localeCompare(b.ders.baslangic_saat || '')
+        )
+        gunler.push({ tarih, gun: gunNo, dersler })
+      }
 
-          // Önce gerçekten alınmış olanlar (öncelikli, asla ezilmez).
-          for (const [saatAnahtari, ders] of alinanSaatler) {
-            dersMap.set(saatAnahtari, { ders, alindiMi: true })
-          }
-          // Sonra şu anki aktif programa göre o gün olması gereken dersler —
-          // aynı saatte zaten alınmış bir ders varsa eklenmez.
-          for (const s of aktifSatirlar) {
-            if (s.gun !== gunNo) continue
-            if (s.baslangic_tarihi && s.baslangic_tarihi > tarih) continue
-            const saatAnahtari = `${s.baslangic_saat}-${s.bitis_saat}`
-            if (dersMap.has(saatAnahtari)) continue
-            dersMap.set(saatAnahtari, { ders: s, alindiMi: false })
-          }
-
-          if (dersMap.size === 0) continue
-          const dersler = [...dersMap.values()].sort((a, b) =>
-            (a.ders.baslangic_saat || '').localeCompare(b.ders.baslangic_saat || '')
-          )
-          gunler.push({ tarih, gun: gunNo, dersler })
-        }
-
-        setGunListesi(gunler)
-        setYukleniyorListe(false)
-      })
-  }, [seciliSinif])
+      setGunListesi(gunler)
+      setYukleniyorListe(false)
+    })
+  }, [seciliSinif, profile?.id, profile?.rol])
 
   // Bir öge seçilince o dersin öğrencilerini + (varsa) o tarihe ait yoklama
-  // kayıtlarını getirir.
+  // kayıtlarını getirir. Sınıf, seçili filtreden değil DOĞRUDAN dersin
+  // kendisinden (ders.sinif_id) alınır — "Tümü" modunda farklı sınıfların
+  // dersleri aynı listede görünebildiği için bu önemli.
   useEffect(() => {
     if (!seciliOge) {
       setOgrenciler([])
@@ -159,7 +159,7 @@ export default function GecmisYoklama() {
     }
     setYukleniyorOgrenci(true)
     Promise.all([
-      supabase.from('sinif_ogrenciler').select('ogrenciler(id, ad_soyad)').eq('sinif_id', seciliSinif),
+      supabase.from('sinif_ogrenciler').select('ogrenciler(id, ad_soyad)').eq('sinif_id', seciliOge.ders.sinif_id),
       supabase.from('yoklama').select('*').eq('ders_programi_id', seciliOge.ders.id).eq('tarih', seciliOge.tarih),
     ]).then(([so, y]) => {
       const liste = (so.data || []).map((r) => r.ogrenciler).filter(Boolean)
@@ -171,7 +171,7 @@ export default function GecmisYoklama() {
       setYoklamaKayitlari(mevcut)
       setYukleniyorOgrenci(false)
     })
-  }, [seciliOge, seciliSinif])
+  }, [seciliOge])
 
   function isaretle(ogrenciId, geldi) {
     setYoklamaKayitlari((prev) => ({ ...prev, [ogrenciId]: geldi }))
@@ -182,14 +182,13 @@ export default function GecmisYoklama() {
   // etiketlemeye gerek yok. Bu isteğin başarısız olması yoklama kaydını asla
   // etkilemez.
   function bildirimGonder(kayitlar) {
-    const sinifAdi = siniflar.find((s) => s.id === seciliSinif)?.ad
     const saatMetni = `${seciliOge.ders.baslangic_saat?.slice(0, 5)}–${seciliOge.ders.bitis_saat?.slice(0, 5)}`
     const gelmeyenIsimler = ogrenciler.filter((o) => !kayitlar.find((k) => k.ogrenci_id === o.id)?.geldi).map((o) => o.ad_soyad)
     fetch('/api/yoklama-bildirim', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        sinifAdi,
+        sinifAdi: sinifAdi(seciliOge.ders.sinif_id),
         saatMetni,
         tarih: seciliOge.tarih,
         ogretmenAdi: profile?.ad_soyad,
@@ -204,7 +203,7 @@ export default function GecmisYoklama() {
     if (!seciliOge) return
     setKaydediliyor(true)
     const kayitlar = ogrenciler.map((o) => ({
-      sinif_id: seciliSinif,
+      sinif_id: seciliOge.ders.sinif_id,
       ders_programi_id: seciliOge.ders.id,
       ogrenci_id: o.id,
       tarih: seciliOge.tarih,
@@ -252,6 +251,7 @@ export default function GecmisYoklama() {
             onChange={(e) => setSeciliSinif(e.target.value)}
             className="w-full max-w-xs px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue bg-white"
           >
+            <option value="">Tümü</option>
             {siniflar.map((s) => (
               <option key={s.id} value={s.id}>{s.ad}</option>
             ))}
@@ -263,8 +263,8 @@ export default function GecmisYoklama() {
       {!seciliGun && (
         <>
           {yukleniyorListe && <p className="text-gray-400">Yükleniyor...</p>}
-          {!yukleniyorListe && gunListesi.length === 0 && seciliSinif && (
-            <p className="text-gray-400">Son {GUN_PENCERESI} günde bu sınıfın programlı bir ders günü bulunamadı.</p>
+          {!yukleniyorListe && gunListesi.length === 0 && (
+            <p className="text-gray-400">Son {GUN_PENCERESI} günde programlı bir ders günü bulunamadı.</p>
           )}
           {!yukleniyorListe && gunListesi.length > 0 && (
             <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
@@ -328,6 +328,8 @@ export default function GecmisYoklama() {
                 <p className="font-medium text-gray-800 truncate">
                   {saatGoster(o.ders.baslangic_saat)}–{saatGoster(o.ders.bitis_saat)}
                   {o.ders.ders_adi ? ` — ${o.ders.ders_adi}` : ''}
+                  {' — '}
+                  <span className="text-gray-500">{sinifAdi(o.ders.sinif_id)}</span>
                 </p>
                 <span
                   className={`shrink-0 px-2.5 py-1 rounded-full text-xs font-semibold ${
@@ -359,6 +361,8 @@ export default function GecmisYoklama() {
             <p className="text-sm text-gray-500">
               {saatGoster(seciliOge.ders.baslangic_saat)}–{saatGoster(seciliOge.ders.bitis_saat)}
               {seciliOge.ders.ders_adi ? ` — ${seciliOge.ders.ders_adi}` : ''}
+              {' — '}
+              {sinifAdi(seciliOge.ders.sinif_id)}
             </p>
           </div>
 
