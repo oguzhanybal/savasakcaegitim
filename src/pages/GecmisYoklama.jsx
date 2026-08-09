@@ -110,9 +110,13 @@ export default function GecmisYoklama() {
           alinanOlaylar.push({ tarih, ders, alindiMi: true })
         }
 
-        // 2) Henüz yoklaması alınmamış, ama programa göre olması gereken
-        //    dersler — ders_programi'nin haftalık desenine göre üretilir.
-        //    Yukarıda zaten "alındı" olarak bulunanlar tekrar üretilmez.
+        // 2) Henüz yoklaması alınmamış dersler — basitçe sınıfın ŞU ANKİ
+        //    (aktif) haftalık ders programı geriye doğru izdüşürülerek
+        //    üretilir: "8 Ağustos Cumartesi 9:00 → bu saatte hâlâ aktif
+        //    olan ders" gibi. Pasif/silinmiş satırlar ve created_at gibi
+        //    ekstra kurallar burada KASITLI olarak yok — sadece programın
+        //    şu anki hâli baz alınıyor. Yukarıda zaten "alındı" bulunanlar
+        //    tekrar üretilmez.
         const adaylar = []
         for (let i = 1; i <= GUN_PENCERESI; i++) {
           const d = new Date(bugun + 'T12:00:00')
@@ -120,34 +124,17 @@ export default function GecmisYoklama() {
           const tarih = yerelTarih(d)
           const gunNo = gunNumarasi(tarih)
           for (const s of satirlar) {
+            if (s.aktif === false) continue
             if (s.gun !== gunNo) continue
             if (alinanAnahtarlar.has(`${s.id}|${tarih}`)) continue
             // Elle girilmiş "Başlangıç Tarihi" varsa ve o tarihten önceyse,
-            // bu ders o gün henüz yoktu. Elle girilmemişse, satırın gerçekten
-            // OLUŞTURULDUĞU tarihi (created_at) alt sınır olarak kullan.
-            const gecerliBaslangic = s.baslangic_tarihi || (s.created_at ? s.created_at.slice(0, 10) : null)
-            if (gecerliBaslangic && gecerliBaslangic > tarih) continue
-            // Pasife alınmış (silinmiş/düzenlenmiş) bir satırsa, sadece
-            // pasife alınmadan ÖNCEKİ günler için geçerli sayılır.
-            if (s.aktif === false && (!s.pasif_tarihi || s.pasif_tarihi < tarih)) continue
+            // bu ders o gün henüz yoktu.
+            if (s.baslangic_tarihi && s.baslangic_tarihi > tarih) continue
             adaylar.push({ tarih, ders: s, alindiMi: false })
           }
         }
-        // Bir ders saati sonradan düzenlenip eski satırı pasife alınmış
-        // olabilir — henüz yoklaması OLMAYAN adaylar arasında aynı
-        // tarih+saat için birden fazla satır üretilmesin diye tek satıra
-        // indiriliyor (gerçekten alınmış olanlara bu dedup UYGULANMIYOR,
-        // çünkü onlar zaten kendi ders_programi_id'siyle benzersiz).
-        const adayGrup = new Map()
-        for (const a of adaylar) {
-          const anahtar = `${a.tarih}|${a.ders.baslangic_saat}|${a.ders.bitis_saat}`
-          const mevcut = adayGrup.get(anahtar)
-          if (!mevcut || (a.ders.aktif !== false && mevcut.ders.aktif === false)) {
-            adayGrup.set(anahtar, a)
-          }
-        }
 
-        const tumOlaylar = [...alinanOlaylar, ...adayGrup.values()].sort((a, b) => {
+        const tumOlaylar = [...alinanOlaylar, ...adaylar].sort((a, b) => {
           if (a.tarih !== b.tarih) return a.tarih < b.tarih ? 1 : -1
           return (a.ders.baslangic_saat || '').localeCompare(b.ders.baslangic_saat || '')
         })
