@@ -34,18 +34,28 @@ function KutuKatmani({ sayfaGoruntusu, sorularBuSayfada, seciliGeciciId, cizimMo
     return { x: (clientX - rect.left) * oranX, y: (clientY - rect.top) * oranY }
   }
 
-  function mouseDown(e) {
+  // NOT: Sadece mouse (onMouseDown/Move/Up) olayları kullanılıyordu — bu,
+  // masaüstünde çalışır ama tabletlerde kalemle (stylus/S-Pen/Apple Pencil)
+  // çizim yapılamamasına sebep oluyordu, çünkü dokunma/kalem girişleri
+  // tarayıcıda mouse olayı olarak DAVRANMAYABİLİR. Pointer Events API
+  // (onPointerDown/Move/Up) fare, dokunma VE kalemi tek bir olay modelinde
+  // birleştirir — üçü için de aynı şekilde çalışır.
+  function pointerDown(e) {
     if (!cizimModu) return
+    e.preventDefault()
+    containerRef.current?.setPointerCapture?.(e.pointerId)
     const p = ekrandanDogalKoordinata(e.clientX, e.clientY)
     setCizilen({ x0: p.x, y0: p.y, x1: p.x, y1: p.y })
   }
-  function mouseMove(e) {
+  function pointerMove(e) {
     if (!cizimModu || !cizilen) return
+    e.preventDefault()
     const p = ekrandanDogalKoordinata(e.clientX, e.clientY)
-    setCizilen((c) => ({ ...c, x1: p.x, y1: p.y }))
+    setCizilen((c) => (c ? { ...c, x1: p.x, y1: p.y } : c))
   }
-  function mouseUp() {
+  function pointerUp(e) {
     if (!cizimModu || !cizilen) return
+    containerRef.current?.releasePointerCapture?.(e.pointerId)
     const x = Math.min(cizilen.x0, cizilen.x1)
     const y = Math.min(cizilen.y0, cizilen.y1)
     const genislik = Math.abs(cizilen.x1 - cizilen.x0)
@@ -59,11 +69,18 @@ function KutuKatmani({ sayfaGoruntusu, sorularBuSayfada, seciliGeciciId, cizimMo
     <div
       ref={containerRef}
       className="relative inline-block select-none"
-      style={{ cursor: cizimModu ? 'crosshair' : 'default' }}
-      onMouseDown={mouseDown}
-      onMouseMove={mouseMove}
-      onMouseUp={mouseUp}
-      onMouseLeave={() => setCizilen(null)}
+      style={{
+        cursor: cizimModu ? 'crosshair' : 'default',
+        // Çizim modundayken tarayıcının dokunma/kalem hareketini kaydırma
+        // veya yakınlaştırma jesti olarak yorumlamasını engeller — aksi
+        // halde tablette çizmeye çalışırken sayfa kayar.
+        touchAction: cizimModu ? 'none' : 'auto',
+      }}
+      onPointerDown={pointerDown}
+      onPointerMove={pointerMove}
+      onPointerUp={pointerUp}
+      onPointerLeave={() => setCizilen(null)}
+      onPointerCancel={() => setCizilen(null)}
     >
       {cizimModu && (
         <div className="absolute inset-x-0 -top-11 z-10 bg-orange text-white text-sm font-semibold text-center py-2 rounded-lg shadow-md animate-pulse">
