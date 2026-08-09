@@ -27,6 +27,33 @@ function birGunOnce(tarihStr) {
   return yerelTarih(d)
 }
 
+// Bir ders saati sonradan düzenlenip eski satırı pasife alınmış, yenisi
+// eklenmiş olabilir (ders_programi'nin "aktif=false + pasif_tarihi" soft-
+// delete deseni) — bu durumda AYNI başlangıç/bitiş saatine sahip birden
+// fazla satır o günün listesine girip "Ders Saati" açılır listesinde aynı
+// saat aralığı iki kez görünüyordu (kullanıcı bildirdi). Aynı saat aralığına
+// sahip satırları TEK satıra indiriyoruz — o tarihe ait GERÇEKTEN yoklaması
+// kayıtlı olan satır varsa onu, yoksa aktif olanı tercih ederek.
+function saatleriBirlestir(saatler, yoklamasiOlanIdler) {
+  const gruplar = new Map()
+  for (const d of saatler) {
+    const anahtar = `${d.baslangic_saat}-${d.bitis_saat}`
+    const mevcut = gruplar.get(anahtar)
+    if (!mevcut) {
+      gruplar.set(anahtar, d)
+      continue
+    }
+    const mevcutYoklamasiVar = yoklamasiOlanIdler.has(mevcut.id)
+    const yeniYoklamasiVar = yoklamasiOlanIdler.has(d.id)
+    if (yeniYoklamasiVar && !mevcutYoklamasiVar) {
+      gruplar.set(anahtar, d)
+    } else if (yeniYoklamasiVar === mevcutYoklamasiVar && d.aktif !== false && mevcut.aktif === false) {
+      gruplar.set(anahtar, d)
+    }
+  }
+  return [...gruplar.values()].sort((a, b) => (a.baslangic_saat || '').localeCompare(b.baslangic_saat || ''))
+}
+
 export default function GecmisYoklama() {
   const { profile } = useAuth()
   const bugun = yerelTarih(new Date())
@@ -67,21 +94,26 @@ export default function GecmisYoklama() {
         const tumSaatler = (data || []).filter(
           (d) => !d.baslangic_tarihi || d.baslangic_tarihi <= seciliTarih
         )
-        const pasifIdler = tumSaatler.filter((d) => d.aktif === false).map((d) => d.id)
-        let yoklamasiOlanPasifIdler = new Set()
-        if (pasifIdler.length > 0) {
+        // Sadece pasif satırlar için değil, TÜMÜ için yoklama var mı bakıyoruz
+        // — aşağıdaki saatleriBirlestir() aynı saat aralığındaki satırlardan
+        // hangisinin GERÇEKTEN yoklaması kayıtlı olduğunu bilmeli (aktif olan
+        // da olabilir, pasif olan da).
+        const tumIdler = tumSaatler.map((d) => d.id)
+        let yoklamasiOlanIdler = new Set()
+        if (tumIdler.length > 0) {
           const { data: yoklamaVarMi } = await supabase
             .from('yoklama')
             .select('ders_programi_id')
-            .in('ders_programi_id', pasifIdler)
+            .in('ders_programi_id', tumIdler)
             .eq('tarih', seciliTarih)
-          yoklamasiOlanPasifIdler = new Set((yoklamaVarMi || []).map((y) => y.ders_programi_id))
+          yoklamasiOlanIdler = new Set((yoklamaVarMi || []).map((y) => y.ders_programi_id))
         }
         const gosterilecekSaatler = tumSaatler.filter(
-          (d) => d.aktif !== false || yoklamasiOlanPasifIdler.has(d.id)
+          (d) => d.aktif !== false || yoklamasiOlanIdler.has(d.id)
         )
-        setGununSaatleri(gosterilecekSaatler)
-        setSeciliSaat(gosterilecekSaatler.length > 0 ? gosterilecekSaatler[0].id : '')
+        const benzersizSaatler = saatleriBirlestir(gosterilecekSaatler, yoklamasiOlanIdler)
+        setGununSaatleri(benzersizSaatler)
+        setSeciliSaat(benzersizSaatler.length > 0 ? benzersizSaatler[0].id : '')
       })
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [seciliSinif, seciliTarih])
