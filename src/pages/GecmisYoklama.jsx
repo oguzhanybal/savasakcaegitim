@@ -80,8 +80,12 @@ export default function GecmisYoklama() {
           for (const s of satirlar) {
             if (s.gun !== gunNo) continue
             // Elle girilmiş "Başlangıç Tarihi" varsa ve o tarihten önceyse,
-            // bu ders o gün henüz yoktu.
-            if (s.baslangic_tarihi && s.baslangic_tarihi > tarih) continue
+            // bu ders o gün henüz yoktu. Elle girilmemişse, satırın gerçekten
+            // OLUŞTURULDUĞU tarihi (created_at) alt sınır olarak kullan —
+            // yoksa bu hafta yeni eklenen bir ders saati, henüz var olmadığı
+            // geçmiş haftalarda da "ders var" gibi görünüyordu.
+            const gecerliBaslangic = s.baslangic_tarihi || (s.created_at ? s.created_at.slice(0, 10) : null)
+            if (gecerliBaslangic && gecerliBaslangic > tarih) continue
             // Pasife alınmış (silinmiş/düzenlenmiş) bir satırsa, sadece
             // pasife alınmadan ÖNCEKİ günler için geçerli sayılır.
             if (s.aktif === false && (!s.pasif_tarihi || s.pasif_tarihi < tarih)) continue
