@@ -85,12 +85,20 @@ export default function GecmisYoklama() {
         //    dersi (paralel grup) olabildiği görüldü — bu yüzden artık aynı
         //    saatteki satırlar "tek ders" sanılıp birleştirilmiyor; gerçekten
         //    alınmış bir yoklama ASLA filtrelenip listeden düşmüyor.
-        const { data: yoklamaSatirlari } = await supabase
-          .from('yoklama')
-          .select('ders_programi_id, tarih')
-          .eq('sinif_id', seciliSinif)
-          .gte('tarih', enEskiTarih)
-          .lte('tarih', dun)
+        //    NOT: yoklama.sinif_id yerine ders_programi_id üzerinden
+        //    filtreleniyor — eski kayıtlarda sinif_id boş/yanlış olsa bile
+        //    bu sınıfın kendi ders_programi satırlarına bağlı HER yoklama
+        //    kaydı (satirlar'daki tüm id'ler, aktif/pasif fark etmeksizin)
+        //    garanti şekilde bulunur.
+        const tumIdler = satirlar.map((s) => s.id)
+        const { data: yoklamaSatirlari } = tumIdler.length
+          ? await supabase
+              .from('yoklama')
+              .select('ders_programi_id, tarih')
+              .in('ders_programi_id', tumIdler)
+              .gte('tarih', enEskiTarih)
+              .lte('tarih', dun)
+          : { data: [] }
         const alinanAnahtarlar = new Set(
           (yoklamaSatirlari || []).map((y) => `${y.ders_programi_id}|${y.tarih}`)
         )
