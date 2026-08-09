@@ -197,6 +197,26 @@ function NoktaIsaretlemeKatmani({ sayfaGoruntusu, buSayfadakiNoktalar, onNoktaEk
   )
 }
 
+// TYT'nin standart 120 soruluk ders/sayı/başlangıç no dağılımı — kullanıcı
+// isteğiyle eklendi: sınav türü "TYT" ise Toplu Ders Ataması paneli bomboş
+// gelmek yerine bu dağılımla dolu gelir, admin sadece istisnaları düzeltir
+// (yine de her satırı elle değiştirebilir/silebilir/ekleyebilir).
+// Türkçe Testi: Türkçe 40. Sosyal Bilimler Testi: Tarih 5, Coğrafya 5,
+// Felsefe 5, Din Kültürü 5 (grup içinde kesintisiz 1-20). Matematik Testi:
+// Matematik 40. Fen Bilimleri Testi: Fizik 7, Kimya 7, Biyoloji 6 (grup
+// içinde kesintisiz 1-20). Toplam 120 soru.
+const TYT_STANDART_BLOKLAR = [
+  { id: 'tyt-1', ders: 'Türkçe', sayi: '40', baslangic: '1' },
+  { id: 'tyt-2', ders: 'Tarih', sayi: '5', baslangic: '1' },
+  { id: 'tyt-3', ders: 'Coğrafya', sayi: '5', baslangic: '6' },
+  { id: 'tyt-4', ders: 'Felsefe', sayi: '5', baslangic: '11' },
+  { id: 'tyt-5', ders: 'Din Kültürü', sayi: '5', baslangic: '16' },
+  { id: 'tyt-6', ders: 'Matematik', sayi: '40', baslangic: '1' },
+  { id: 'tyt-7', ders: 'Fizik', sayi: '7', baslangic: '1' },
+  { id: 'tyt-8', ders: 'Kimya', sayi: '7', baslangic: '8' },
+  { id: 'tyt-9', ders: 'Biyoloji', sayi: '6', baslangic: '15' },
+]
+
 // ============================================================================
 // TOPLU DERS ATAMA — OCR'ın bulduğu soru kutuları (doğru sırada) hazır olunca,
 // admin'in her birine TEK TEK ders adı + soru no yazması (100+ soru için
@@ -1069,6 +1089,31 @@ export default function SinavKitapciklari() {
     return bloklar.map((b) => ({ ...b, sayi: String(b.sayi) }))
   }
 
+  // Bu kitapçığın bağlı olduğu sınavın türü TYT mi — hem yeni oluşturulan
+  // bir sınav (seciliSinavId === '__yeni__', o an seçili yeniSinavTuru) hem
+  // de listeden seçilmiş MEVCUT bir sınav (sinavlar dizisindeki tur alanı)
+  // için çalışır.
+  function buSinavTytMi() {
+    if (seciliSinavId === '__yeni__') return yeniSinavTuru === 'TYT'
+    return sinavlar.find((s) => s.id === seciliSinavId)?.tur === 'TYT'
+  }
+
+  // Toplu Ders Ataması paneline gidecek başlangıç blokları: sorularda zaten
+  // ders_adi işaretlenmişse (ör. Düzenle ile açılmış bir kitapçık) o tahmin
+  // kullanılır — mevcut çalışma asla ezilmez. Hiçbiri işaretlenmemişse VE
+  // sınav TYT ise, admin'in her seferinde elle yazmasın diye standart TYT
+  // dağılımıyla (Türkçe 40, Tarih/Coğrafya/Felsefe/Din Kültürü 5'er,
+  // Matematik 40, Fizik/Kimya/Biyoloji) hazır gelir — admin isterse yine de
+  // her satırı değiştirebilir.
+  function baslangicBloklariHesapla() {
+    const tahmin = dersBloklariniTahminEt(sorular)
+    const bosMu = tahmin.length === 1 && !tahmin[0].ders
+    if (bosMu && buSinavTytMi()) {
+      return TYT_STANDART_BLOKLAR.map((b) => ({ ...b }))
+    }
+    return tahmin
+  }
+
   // TopluDersAtamaPaneli'nden gelen [{ders, sayi}, ...] blok listesini,
   // `sorular` dizisindeki (zaten okuma sırasında olan) kutulara sırayla
   // dağıtır. Örn. [{ders:'Türkçe', sayi:40}, {ders:'Matematik', sayi:40}]
@@ -1686,7 +1731,7 @@ export default function SinavKitapciklari() {
           onUygula={topluAta}
           onVazgec={() => setBlokPaneliGoster(false)}
           onGeriDon={elleNoktalar.length > 0 ? elleIsaretlemeyeGeriDon : null}
-          baslangicBloklari={dersBloklariniTahminEt(sorular)}
+          baslangicBloklari={baslangicBloklariHesapla()}
         />
       )}
 
