@@ -72,7 +72,17 @@ export default function GecmisYoklama() {
       .select('*')
       .eq('sinif_id', seciliSinif)
       .then(async ({ data }) => {
-        const satirlar = data || []
+        const tumSatirlar = data || []
+        // Öğretmen sadece KENDİ derslerini görür. Bunun iki sebebi var:
+        // 1) Bir sınıfın günde birden çok (farklı öğretmenlerin girdiği)
+        //    dersi olabiliyor — öğretmen sadece kendi dersini görmek ister.
+        // 2) yoklama tablosunun RLS kuralı zaten öğretmenin SADECE kendi
+        //    dersine ait yoklama kayıtlarını görmesine izin veriyor; başka
+        //    öğretmenin aldığı yoklama sorguda hiç dönmüyor ve bu da o dersi
+        //    "Alınmadı" gibi YANLIŞ gösteriyordu. Baştan sadece kendi
+        //    derslerine bakınca bu sorun da ortadan kalkıyor.
+        const satirlar =
+          profile?.rol === 'ogretmen' ? tumSatirlar.filter((s) => s.ogretmen_profile_id === profile.id) : tumSatirlar
         const satirMap = new Map(satirlar.map((s) => [s.id, s]))
         const aktifSatirlar = satirlar.filter((s) => s.aktif !== false)
         const bugun = yerelTarih(new Date())
