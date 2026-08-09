@@ -71,6 +71,7 @@ function menuOlustur(rol) {
         label: 'Yoklama',
         ogeler: [
           { to: '/yoklama', label: 'Yoklama Al' },
+          { to: '/gecmis-yoklama', label: 'Geçmiş Yoklama' },
           { to: '/yoklama-raporu', label: 'Yoklama Raporu' },
         ],
       },
@@ -119,6 +120,10 @@ function menuOlustur(rol) {
       // linkine dokunulmadı — yönetici istediği sınıfı seçip kendisi de
       // yoklama alabilsin diye orada duruyor.
       { tur: 'link', to: '/yoklama-raporu', label: 'Yoklama Raporu' },
+      // Unutulan/eksik kalan bir günün yoklamasını sonradan girebilsin diye
+      // (kullanıcı isteğiyle eklendi) — "Yoklama Al"dan farklı olarak burada
+      // geçmiş bir tarih seçilebiliyor.
+      { tur: 'link', to: '/gecmis-yoklama', label: 'Geçmiş Yoklama' },
       { tur: 'link', to: '/sifremi-degistir', label: 'Şifremi Değiştir' },
     ]
   }
