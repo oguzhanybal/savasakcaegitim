@@ -1,134 +1,150 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../lib/AuthContext'
+import { saatGoster } from '../lib/saatFormat'
 
 const GUNLER = ['', 'Pazartesi', 'Salı', 'Çarşamba', 'Perşembe', 'Cuma', 'Cumartesi', 'Pazar']
 
+// Geriye doğru kaç GÜN (takvim günü, ders günü değil) taranacağı — "geçmiş
+// dersler" listesi bu pencere içindeki, sınıfın programına göre gerçekten
+// olması gereken ders saatlerini gösterir.
+const GUN_PENCERESI = 21
+
 // ============================================================================
-// GEÇMİŞ YOKLAMA — Yoklama.jsx'in "sadece bugün" kısıtlaması olmayan hâli.
-// Bir öğretmen (ya da yönetici) o gün yoklama almayı unuttuysa, buradan
-// GEÇMİŞ bir tarih seçip o güne ait yoklamayı sonradan alabilir/düzenleyebilir
-// (kullanıcı isteğiyle eklendi — Yoklama.jsx bilerek "bugün"e kilitli
-// bırakıldı, günlük akışta yanlışlıkla geçmiş bir tarihe yoklama girilmesin
-// diye; bu sayfa ayrı, bilinçli bir "unutulanı tamamla" aracı).
+// GEÇMİŞ YOKLAMA — bir öğretmen (ya da yönetici) geçmişte unutulan/eksik
+// kalan bir yoklamayı buradan tamamlayabilir. Yoklama.jsx'in "sadece bugün"
+// kısıtlaması burada bilerek yok. Kullanıcı isteğiyle, tarih/saat elle
+// seçilen bir form yerine artık DOĞRUDAN bir liste gösteriliyor: sınıfın son
+// birkaç haftadaki her ders saati, "Alındı"/"Alınmadı" etiketiyle listelenir,
+// tıklanınca o dersin yoklaması açılır.
 // ============================================================================
 
-// Bugünün tarihini "YYYY-MM-DD" olarak YEREL saate göre üretir — projedeki
-// diğer sayfalarla (DersProgrami.jsx, YoklamaRaporu.jsx vb.) aynı desen,
-// toISOString KULLANILMIYOR çünkü UTC+3'te gece yarısına yakın saatlerde bir
-// gün geriye kayabiliyor.
 function yerelTarih(d) {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
 }
 
-function birGunOnce(tarihStr) {
-  const d = new Date(tarihStr + 'T12:00:00')
-  d.setDate(d.getDate() - 1)
-  return yerelTarih(d)
+function gunNumarasi(tarihStr) {
+  return ((new Date(tarihStr + 'T12:00:00').getDay() + 6) % 7) + 1
 }
 
-// Bir ders saati sonradan düzenlenip eski satırı pasife alınmış, yenisi
-// eklenmiş olabilir (ders_programi'nin "aktif=false + pasif_tarihi" soft-
-// delete deseni) — bu durumda AYNI başlangıç/bitiş saatine sahip birden
-// fazla satır o günün listesine girip "Ders Saati" açılır listesinde aynı
-// saat aralığı iki kez görünüyordu (kullanıcı bildirdi). Aynı saat aralığına
-// sahip satırları TEK satıra indiriyoruz — o tarihe ait GERÇEKTEN yoklaması
-// kayıtlı olan satır varsa onu, yoksa aktif olanı tercih ederek.
-function saatleriBirlestir(saatler, yoklamasiOlanIdler) {
-  const gruplar = new Map()
-  for (const d of saatler) {
-    const anahtar = `${d.baslangic_saat}-${d.bitis_saat}`
-    const mevcut = gruplar.get(anahtar)
-    if (!mevcut) {
-      gruplar.set(anahtar, d)
-      continue
-    }
-    const mevcutYoklamasiVar = yoklamasiOlanIdler.has(mevcut.id)
-    const yeniYoklamasiVar = yoklamasiOlanIdler.has(d.id)
-    if (yeniYoklamasiVar && !mevcutYoklamasiVar) {
-      gruplar.set(anahtar, d)
-    } else if (yeniYoklamasiVar === mevcutYoklamasiVar && d.aktif !== false && mevcut.aktif === false) {
-      gruplar.set(anahtar, d)
-    }
-  }
-  return [...gruplar.values()].sort((a, b) => (a.baslangic_saat || '').localeCompare(b.baslangic_saat || ''))
+function tarihUzunFormat(tarihStr) {
+  return new Date(tarihStr + 'T12:00:00').toLocaleDateString('tr-TR', {
+    day: '2-digit',
+    month: 'long',
+    year: 'numeric',
+  })
 }
 
 export default function GecmisYoklama() {
   const { profile } = useAuth()
-  const bugun = yerelTarih(new Date())
   const [siniflar, setSiniflar] = useState([])
   const [seciliSinif, setSeciliSinif] = useState('')
-  // Varsayılan olarak DÜN açılıyor — bu sayfanın amacı zaten "geçmişte
-  // unutulan bir günü tamamlamak", bugünün yoklaması normal "Yoklama Al"
-  // akışından (ya da Ders Programım'daki popup'tan) alınmaya devam ediyor.
-  const [seciliTarih, setSeciliTarih] = useState(birGunOnce(bugun))
-  const seciliGunNo = ((new Date(seciliTarih + 'T12:00:00').getDay() + 6) % 7) + 1
-  const [gununSaatleri, setGununSaatleri] = useState([])
-  const [seciliSaat, setSeciliSaat] = useState('')
+  const [gecmisListe, setGecmisListe] = useState([])
+  const [yukleniyorListe, setYukleniyorListe] = useState(true)
+  // Listeden tıklanan öge — {tarih, ders} şeklinde, null ise liste görünümü,
+  // doluysa o dersin yoklama alma ekranı gösterilir.
+  const [seciliOge, setSeciliOge] = useState(null)
   const [ogrenciler, setOgrenciler] = useState([])
   const [yoklamaKayitlari, setYoklamaKayitlari] = useState({})
-  const [loading, setLoading] = useState(true)
+  const [yukleniyorOgrenci, setYukleniyorOgrenci] = useState(false)
   const [kaydediliyor, setKaydediliyor] = useState(false)
 
   useEffect(() => {
     supabase.from('siniflar').select('*').then(({ data }) => {
       setSiniflar(data || [])
       if (data && data.length > 0) setSeciliSinif(data[0].id)
-      else setLoading(false)
+      else setYukleniyorListe(false)
     })
   }, [])
 
-  // Seçili sınıfın, seçili TARİHTEKİ ders saatlerini getir — Yoklama.jsx'teki
-  // AYNI mantık, tek fark "bugun" yerine "seciliTarih" kullanılması.
+  // Sınıf değişince: son GUN_PENCERESI gündeki, sınıfın programına göre
+  // GERÇEKTEN olması gereken ders saatlerini üretir, sonra hangilerinin
+  // yoklaması zaten alınmış olduğunu tek seferde sorgular.
   useEffect(() => {
     if (!seciliSinif) return
+    setSeciliOge(null)
+    setYukleniyorListe(true)
     supabase
       .from('ders_programi')
       .select('*')
       .eq('sinif_id', seciliSinif)
-      .eq('gun', seciliGunNo)
-      .or(`aktif.eq.true,pasif_tarihi.gte.${seciliTarih}`)
-      .order('baslangic_saat')
       .then(async ({ data }) => {
-        const tumSaatler = (data || []).filter(
-          (d) => !d.baslangic_tarihi || d.baslangic_tarihi <= seciliTarih
-        )
-        // Sadece pasif satırlar için değil, TÜMÜ için yoklama var mı bakıyoruz
-        // — aşağıdaki saatleriBirlestir() aynı saat aralığındaki satırlardan
-        // hangisinin GERÇEKTEN yoklaması kayıtlı olduğunu bilmeli (aktif olan
-        // da olabilir, pasif olan da).
-        const tumIdler = tumSaatler.map((d) => d.id)
-        let yoklamasiOlanIdler = new Set()
-        if (tumIdler.length > 0) {
-          const { data: yoklamaVarMi } = await supabase
-            .from('yoklama')
-            .select('ders_programi_id')
-            .in('ders_programi_id', tumIdler)
-            .eq('tarih', seciliTarih)
-          yoklamasiOlanIdler = new Set((yoklamaVarMi || []).map((y) => y.ders_programi_id))
+        const satirlar = data || []
+        const bugun = yerelTarih(new Date())
+        const olaylar = []
+        for (let i = 1; i <= GUN_PENCERESI; i++) {
+          const d = new Date(bugun + 'T12:00:00')
+          d.setDate(d.getDate() - i)
+          const tarih = yerelTarih(d)
+          const gunNo = gunNumarasi(tarih)
+          for (const s of satirlar) {
+            if (s.gun !== gunNo) continue
+            // Elle girilmiş "Başlangıç Tarihi" varsa ve o tarihten önceyse,
+            // bu ders o gün henüz yoktu.
+            if (s.baslangic_tarihi && s.baslangic_tarihi > tarih) continue
+            // Pasife alınmış (silinmiş/düzenlenmiş) bir satırsa, sadece
+            // pasife alınmadan ÖNCEKİ günler için geçerli sayılır.
+            if (s.aktif === false && (!s.pasif_tarihi || s.pasif_tarihi < tarih)) continue
+            olaylar.push({ tarih, ders: s })
+          }
         }
-        const gosterilecekSaatler = tumSaatler.filter(
-          (d) => d.aktif !== false || yoklamasiOlanIdler.has(d.id)
-        )
-        const benzersizSaatler = saatleriBirlestir(gosterilecekSaatler, yoklamasiOlanIdler)
-        setGununSaatleri(benzersizSaatler)
-        setSeciliSaat(benzersizSaatler.length > 0 ? benzersizSaatler[0].id : '')
+        if (olaylar.length === 0) {
+          setGecmisListe([])
+          setYukleniyorListe(false)
+          return
+        }
+        const idler = [...new Set(olaylar.map((o) => o.ders.id))]
+        const enEskiTarih = olaylar.reduce((min, o) => (o.tarih < min ? o.tarih : min), olaylar[0].tarih)
+        const { data: yoklamaVarMi } = await supabase
+          .from('yoklama')
+          .select('ders_programi_id, tarih')
+          .in('ders_programi_id', idler)
+          .gte('tarih', enEskiTarih)
+          .lte('tarih', bugun)
+        const varOlanSet = new Set((yoklamaVarMi || []).map((y) => `${y.ders_programi_id}|${y.tarih}`))
+        const zenginOlaylar = olaylar.map((o) => ({
+          ...o,
+          alindiMi: varOlanSet.has(`${o.ders.id}|${o.tarih}`),
+        }))
+        // Bir ders saati sonradan düzenlenip eski satırı pasife alınmış
+        // olabilir — aynı tarih + aynı saat aralığı için birden fazla satır
+        // üretilmesin diye, GERÇEKTEN yoklaması olan (varsa) tercih edilerek
+        // tek satıra indiriliyor (Yoklama.jsx/GecmisYoklama'nın önceki
+        // sürümündeki aynı düzeltme, burada tarih bazında).
+        const grupMap = new Map()
+        for (const o of zenginOlaylar) {
+          const anahtar = `${o.tarih}|${o.ders.baslangic_saat}|${o.ders.bitis_saat}`
+          const mevcut = grupMap.get(anahtar)
+          if (!mevcut) {
+            grupMap.set(anahtar, o)
+            continue
+          }
+          if (o.alindiMi && !mevcut.alindiMi) grupMap.set(anahtar, o)
+          else if (o.alindiMi === mevcut.alindiMi && o.ders.aktif !== false && mevcut.ders.aktif === false) {
+            grupMap.set(anahtar, o)
+          }
+        }
+        const benzersizOlaylar = [...grupMap.values()].sort((a, b) => {
+          if (a.tarih !== b.tarih) return a.tarih < b.tarih ? 1 : -1
+          return (a.ders.baslangic_saat || '').localeCompare(b.ders.baslangic_saat || '')
+        })
+        setGecmisListe(benzersizOlaylar)
+        setYukleniyorListe(false)
       })
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [seciliSinif, seciliTarih])
+  }, [seciliSinif])
 
+  // Listeden bir öge seçilince o dersin öğrencilerini + (varsa) o tarihe ait
+  // yoklama kayıtlarını getirir.
   useEffect(() => {
-    if (!seciliSinif) return
-    setLoading(true)
+    if (!seciliOge) {
+      setOgrenciler([])
+      setYoklamaKayitlari({})
+      return
+    }
+    setYukleniyorOgrenci(true)
     Promise.all([
-      supabase
-        .from('sinif_ogrenciler')
-        .select('ogrenciler(id, ad_soyad)')
-        .eq('sinif_id', seciliSinif),
-      seciliSaat
-        ? supabase.from('yoklama').select('*').eq('ders_programi_id', seciliSaat).eq('tarih', seciliTarih)
-        : supabase.from('yoklama').select('*').eq('sinif_id', seciliSinif).eq('tarih', seciliTarih).is('ders_programi_id', null),
+      supabase.from('sinif_ogrenciler').select('ogrenciler(id, ad_soyad)').eq('sinif_id', seciliSinif),
+      supabase.from('yoklama').select('*').eq('ders_programi_id', seciliOge.ders.id).eq('tarih', seciliOge.tarih),
     ]).then(([so, y]) => {
       const liste = (so.data || []).map((r) => r.ogrenciler).filter(Boolean)
       setOgrenciler(liste)
@@ -137,24 +153,21 @@ export default function GecmisYoklama() {
         mevcut[k.ogrenci_id] = k.geldi
       })
       setYoklamaKayitlari(mevcut)
-      setLoading(false)
+      setYukleniyorOgrenci(false)
     })
-  }, [seciliSinif, seciliSaat, seciliTarih])
+  }, [seciliOge, seciliSinif])
 
   function isaretle(ogrenciId, geldi) {
     setYoklamaKayitlari((prev) => ({ ...prev, [ogrenciId]: geldi }))
   }
 
   // Yoklama.jsx'teki AYNI bildirim mekanizması — yöneticiye e-posta gider,
-  // sadece tarih artık "bugün" değil seçilen geçmiş tarih olabilir, e-postada
-  // zaten tarih ayrıca belirtildiği için ek bir "geçmişe dönük" etiketine
-  // gerek yok. Bu isteğin başarısız olması yoklama kaydını asla etkilemez.
+  // tarih zaten ayrıca belirtildiği için geçmişe dönük olduğunu ekstra
+  // etiketlemeye gerek yok. Bu isteğin başarısız olması yoklama kaydını asla
+  // etkilemez.
   function bildirimGonder(kayitlar) {
     const sinifAdi = siniflar.find((s) => s.id === seciliSinif)?.ad
-    const seciliSaatBilgi = gununSaatleri.find((s) => s.id === seciliSaat)
-    const saatMetni = seciliSaatBilgi
-      ? `${seciliSaatBilgi.baslangic_saat?.slice(0, 5)}–${seciliSaatBilgi.bitis_saat?.slice(0, 5)}`
-      : 'Genel yoklama'
+    const saatMetni = `${seciliOge.ders.baslangic_saat?.slice(0, 5)}–${seciliOge.ders.bitis_saat?.slice(0, 5)}`
     const gelmeyenIsimler = ogrenciler.filter((o) => !kayitlar.find((k) => k.ogrenci_id === o.id)?.geldi).map((o) => o.ad_soyad)
     fetch('/api/yoklama-bildirim', {
       method: 'POST',
@@ -162,7 +175,7 @@ export default function GecmisYoklama() {
       body: JSON.stringify({
         sinifAdi,
         saatMetni,
-        tarih: seciliTarih,
+        tarih: seciliOge.tarih,
         ogretmenAdi: profile?.ad_soyad,
         gelenSayisi: kayitlar.length - gelmeyenIsimler.length,
         gelmeyenSayisi: gelmeyenIsimler.length,
@@ -172,152 +185,164 @@ export default function GecmisYoklama() {
   }
 
   async function kaydet() {
+    if (!seciliOge) return
     setKaydediliyor(true)
     const kayitlar = ogrenciler.map((o) => ({
       sinif_id: seciliSinif,
-      ders_programi_id: seciliSaat || null,
+      ders_programi_id: seciliOge.ders.id,
       ogrenci_id: o.id,
-      tarih: seciliTarih,
+      tarih: seciliOge.tarih,
       geldi: yoklamaKayitlari[o.id] ?? true,
     }))
     const { error } = await supabase
       .from('yoklama')
-      .upsert(kayitlar, { onConflict: seciliSaat ? 'ders_programi_id,ogrenci_id,tarih' : 'sinif_id,ogrenci_id,tarih' })
+      .upsert(kayitlar, { onConflict: 'ders_programi_id,ogrenci_id,tarih' })
     setKaydediliyor(false)
-    if (error) alert('Hata: ' + error.message)
-    else {
-      alert('Yoklama kaydedildi.')
-      bildirimGonder(kayitlar)
+    if (error) {
+      alert('Hata: ' + error.message)
+      return
     }
+    alert('Yoklama kaydedildi.')
+    bildirimGonder(kayitlar)
+    // Yeniden sorgu atmadan, listedeki ilgili satırı hemen "Alındı" yap.
+    setGecmisListe((prev) =>
+      prev.map((o) => (o.tarih === seciliOge.tarih && o.ders.id === seciliOge.ders.id ? { ...o, alindiMi: true } : o))
+    )
+    setSeciliOge(null)
   }
-
-  const seciliTarihBasligi = new Date(seciliTarih + 'T12:00:00').toLocaleDateString('tr-TR', {
-    weekday: 'long',
-    day: 'numeric',
-    month: 'long',
-    year: 'numeric',
-  })
 
   return (
     <div>
       <h1 className="text-2xl font-bold text-navy mb-1">Geçmiş Yoklama</h1>
       <p className="text-gray-500 mb-6">
-        O gün unutulan ya da eksik kalan bir yoklamayı buradan sonradan girebilirsiniz.
+        Son {GUN_PENCERESI} gündeki ders saatleri aşağıda — "Alınmadı" yazanlara tıklayıp o günün yoklamasını
+        sonradan girebilirsiniz.
       </p>
 
-      <div className="mb-4 flex flex-wrap gap-4 items-end">
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">Tarih</label>
-          <input
-            type="date"
-            value={seciliTarih}
-            max={bugun}
-            onChange={(e) => setSeciliTarih(e.target.value)}
-            className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue"
-          />
-        </div>
-
-        {siniflar.length > 0 && (
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Sınıf</label>
-            <select
-              value={seciliSinif}
-              onChange={(e) => setSeciliSinif(e.target.value)}
-              className="w-full min-w-[220px] px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue bg-white"
-            >
-              {siniflar.map((s) => (
-                <option key={s.id} value={s.id}>{s.ad}</option>
-              ))}
-            </select>
-          </div>
-        )}
-
-        {gununSaatleri.length > 1 && (
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Ders Saati</label>
-            <select
-              value={seciliSaat}
-              onChange={(e) => setSeciliSaat(e.target.value)}
-              className="w-full min-w-[180px] px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue bg-white"
-            >
-              {gununSaatleri.map((s) => (
-                <option key={s.id} value={s.id}>
-                  {s.baslangic_saat?.slice(0, 5)} – {s.bitis_saat?.slice(0, 5)}
-                  {s.ders_adi ? ` — ${s.ders_adi}` : ''}
-                </option>
-              ))}
-            </select>
-          </div>
-        )}
-
-        {gununSaatleri.length === 1 && (
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Ders Saati</label>
-            <p className="px-3 py-2 bg-gray-50 rounded-lg text-gray-700 font-medium">
-              {gununSaatleri[0].baslangic_saat?.slice(0, 5)} – {gununSaatleri[0].bitis_saat?.slice(0, 5)}
-              {gununSaatleri[0].ders_adi ? ` — ${gununSaatleri[0].ders_adi}` : ''}
-            </p>
-          </div>
-        )}
-
-        {gununSaatleri.length === 0 && seciliSinif && !loading && (
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Ders Saati</label>
-            <p className="px-3 py-2 bg-yellow-50 rounded-lg text-yellow-700 text-sm">
-              Bu sınıfın seçilen tarihte ({GUNLER[seciliGunNo]}) programlı dersi yok, yine de genel yoklama girebilirsiniz.
-            </p>
-          </div>
-        )}
-      </div>
-
-      <p className="text-xs text-gray-400 mb-3">{seciliTarihBasligi} için yoklama.</p>
-
-      {loading && <p className="text-gray-400">Yükleniyor...</p>}
-
-      {!loading && ogrenciler.length > 0 && (
-        <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
-          <div className="divide-y divide-gray-50">
-            {ogrenciler.map((o) => {
-              const geldi = yoklamaKayitlari[o.id] ?? true
-              return (
-                <div key={o.id} className="px-4 py-3 flex items-center justify-between">
-                  <p className="font-medium text-gray-800">{o.ad_soyad}</p>
-                  <div className="flex gap-2">
-                    <button
-                      onClick={() => isaretle(o.id, true)}
-                      className={`px-4 py-1.5 rounded-lg text-sm font-medium transition-colors ${
-                        geldi ? 'bg-green-600 text-white' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
-                      }`}
-                    >
-                      Geldi
-                    </button>
-                    <button
-                      onClick={() => isaretle(o.id, false)}
-                      className={`px-4 py-1.5 rounded-lg text-sm font-medium transition-colors ${
-                        !geldi ? 'bg-red-600 text-white' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
-                      }`}
-                    >
-                      Gelmedi
-                    </button>
-                  </div>
-                </div>
-              )
-            })}
-          </div>
-          <div className="px-4 py-4 bg-gray-50 border-t border-gray-100">
-            <button
-              onClick={kaydet}
-              disabled={kaydediliyor}
-              className="bg-navy text-white font-semibold px-6 py-2.5 rounded-lg hover:bg-blue transition-colors disabled:opacity-50"
-            >
-              {kaydediliyor ? 'Kaydediliyor...' : 'Yoklamayı Kaydet'}
-            </button>
-          </div>
+      {siniflar.length > 0 && (
+        <div className="mb-4">
+          <label className="block text-sm font-medium text-gray-700 mb-1">Sınıf</label>
+          <select
+            value={seciliSinif}
+            onChange={(e) => setSeciliSinif(e.target.value)}
+            className="w-full max-w-xs px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue bg-white"
+          >
+            {siniflar.map((s) => (
+              <option key={s.id} value={s.id}>{s.ad}</option>
+            ))}
+          </select>
         </div>
       )}
 
-      {!loading && ogrenciler.length === 0 && seciliSinif && (
-        <p className="text-gray-400">Bu sınıfa henüz öğrenci eklenmemiş.</p>
+      {/* LİSTE GÖRÜNÜMÜ */}
+      {!seciliOge && (
+        <>
+          {yukleniyorListe && <p className="text-gray-400">Yükleniyor...</p>}
+          {!yukleniyorListe && gecmisListe.length === 0 && seciliSinif && (
+            <p className="text-gray-400">Son {GUN_PENCERESI} günde bu sınıfın programlı bir ders saati bulunamadı.</p>
+          )}
+          {!yukleniyorListe && gecmisListe.length > 0 && (
+            <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+              {gecmisListe.map((o, i) => (
+                <button
+                  key={`${o.ders.id}-${o.tarih}`}
+                  type="button"
+                  onClick={() => setSeciliOge(o)}
+                  className={`w-full text-left px-4 py-3 flex items-center justify-between gap-3 hover:bg-gray-50 transition-colors ${
+                    i % 2 ? 'bg-gray-50/60' : ''
+                  } ${i !== 0 ? 'border-t border-gray-50' : ''}`}
+                >
+                  <div className="min-w-0">
+                    <p className="font-medium text-gray-800 truncate">
+                      {tarihUzunFormat(o.tarih)} <span className="text-gray-400 font-normal">— {GUNLER[o.ders.gun]}</span>
+                    </p>
+                    <p className="text-sm text-gray-500 truncate">
+                      {saatGoster(o.ders.baslangic_saat)}–{saatGoster(o.ders.bitis_saat)}
+                      {o.ders.ders_adi ? ` — ${o.ders.ders_adi}` : ''}
+                    </p>
+                  </div>
+                  <span
+                    className={`shrink-0 px-2.5 py-1 rounded-full text-xs font-semibold ${
+                      o.alindiMi ? 'bg-green-100 text-green-700' : 'bg-orange-100 text-orange-700'
+                    }`}
+                  >
+                    {o.alindiMi ? 'Alındı' : 'Alınmadı'}
+                  </span>
+                </button>
+              ))}
+            </div>
+          )}
+        </>
+      )}
+
+      {/* SEÇİLİ DERSİN YOKLAMA ALMA EKRANI */}
+      {seciliOge && (
+        <div>
+          <button
+            type="button"
+            onClick={() => setSeciliOge(null)}
+            className="text-sm text-blue hover:underline mb-3"
+          >
+            ← Listeye dön
+          </button>
+          <div className="mb-3">
+            <p className="font-semibold text-gray-800">
+              {tarihUzunFormat(seciliOge.tarih)} <span className="text-gray-400 font-normal">— {GUNLER[seciliOge.ders.gun]}</span>
+            </p>
+            <p className="text-sm text-gray-500">
+              {saatGoster(seciliOge.ders.baslangic_saat)}–{saatGoster(seciliOge.ders.bitis_saat)}
+              {seciliOge.ders.ders_adi ? ` — ${seciliOge.ders.ders_adi}` : ''}
+            </p>
+          </div>
+
+          {yukleniyorOgrenci && <p className="text-gray-400">Yükleniyor...</p>}
+
+          {!yukleniyorOgrenci && ogrenciler.length > 0 && (
+            <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+              <div className="divide-y divide-gray-50">
+                {ogrenciler.map((o) => {
+                  const geldi = yoklamaKayitlari[o.id] ?? true
+                  return (
+                    <div key={o.id} className="px-4 py-3 flex items-center justify-between">
+                      <p className="font-medium text-gray-800">{o.ad_soyad}</p>
+                      <div className="flex gap-2">
+                        <button
+                          onClick={() => isaretle(o.id, true)}
+                          className={`px-4 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+                            geldi ? 'bg-green-600 text-white' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
+                          }`}
+                        >
+                          Geldi
+                        </button>
+                        <button
+                          onClick={() => isaretle(o.id, false)}
+                          className={`px-4 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+                            !geldi ? 'bg-red-600 text-white' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
+                          }`}
+                        >
+                          Gelmedi
+                        </button>
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+              <div className="px-4 py-4 bg-gray-50 border-t border-gray-100">
+                <button
+                  onClick={kaydet}
+                  disabled={kaydediliyor}
+                  className="bg-navy text-white font-semibold px-6 py-2.5 rounded-lg hover:bg-blue transition-colors disabled:opacity-50"
+                >
+                  {kaydediliyor ? 'Kaydediliyor...' : 'Yoklamayı Kaydet'}
+                </button>
+              </div>
+            </div>
+          )}
+
+          {!yukleniyorOgrenci && ogrenciler.length === 0 && (
+            <p className="text-gray-400">Bu sınıfa henüz öğrenci eklenmemiş.</p>
+          )}
+        </div>
       )}
     </div>
   )
