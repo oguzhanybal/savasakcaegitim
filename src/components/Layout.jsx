@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import { useAuth } from '../lib/AuthContext'
 import UygulamaYukleBanner from './UygulamaYukleBanner'
+import PullToRefresh from './PullToRefresh'
 import { bildirimAcikMi, bildirimleriAc, bildirimleriKapat, pushDestekleniyorMu } from '../lib/pushBildirim'
 import { usePwaYukleme, iosMu, zatenYukluMu, safariMasaustuMu, androidMu, gercektenYukluMu } from '../lib/usePwaYukleme'
 
@@ -404,6 +405,12 @@ export default function Layout() {
 
   return (
     <div className="min-h-screen bg-cream">
+      {/* iOS'ta "Ana Ekrana Ekle" ile kurulan sürümde tarayıcının kendi
+          "aşağı çek → yenile" jesti çalışmadığı için (kullanıcı şikayeti —
+          yenilemek için uygulamayı komple kapatıp açmak zorunda kalıyorlardı),
+          bu jesti elle taklit eden bileşen — sadece standalone modda devreye
+          girer, normal tarayıcı sekmesinde hiçbir şey yapmaz. */}
+      <PullToRefresh />
       {/* Mobil üst çubuk — sadece küçük ekranlarda görünür. iPhone'da
           "uygulama olarak yükle"nen (Ana Ekrana Ekle) sürümde, status bar
           stilimiz "black-translucent" olduğu için saat/pil/sinyal simgeleri
