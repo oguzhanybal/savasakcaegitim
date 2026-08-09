@@ -11,6 +11,7 @@ import SinifDetay from './pages/SinifDetay'
 import DersProgrami from './pages/DersProgrami'
 import GunlukProgram from './pages/GunlukProgram'
 import Yoklama from './pages/Yoklama'
+import GecmisYoklama from './pages/GecmisYoklama'
 import YoklamaRaporu from './pages/YoklamaRaporu'
 import Makbuz from './pages/Makbuz'
 import MakbuzGunluk from './pages/MakbuzGunluk'
@@ -389,6 +390,14 @@ function AnaUygulama() {
             element={
               <Korumali izinliRoller={['yonetici', 'ogretmen']}>
                 <Yoklama />
+              </Korumali>
+            }
+          />
+          <Route
+            path="gecmis-yoklama"
+            element={
+              <Korumali izinliRoller={['yonetici', 'ogretmen']}>
+                <GecmisYoklama />
               </Korumali>
             }
           />
