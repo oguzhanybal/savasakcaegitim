@@ -70,8 +70,42 @@ export default function GecmisYoklama() {
       .eq('sinif_id', seciliSinif)
       .then(async ({ data }) => {
         const satirlar = data || []
+        const satirMap = new Map(satirlar.map((s) => [s.id, s]))
         const bugun = yerelTarih(new Date())
-        const olaylar = []
+        const dEski = new Date(bugun + 'T12:00:00')
+        dEski.setDate(dEski.getDate() - GUN_PENCERESI)
+        const enEskiTarih = yerelTarih(dEski)
+        const dDun = new Date(bugun + 'T12:00:00')
+        dDun.setDate(dDun.getDate() - 1)
+        const dun = yerelTarih(dDun)
+
+        // 1) GERÇEKTEN yoklaması alınmış dersler — doğrudan yoklama
+        //    tablosundan, ders_programi'nin o an aktif/pasif durumuna hiç
+        //    bakılmadan çekilir. Bir sınıfın aynı saatte BİRDEN FAZLA farklı
+        //    dersi (paralel grup) olabildiği görüldü — bu yüzden artık aynı
+        //    saatteki satırlar "tek ders" sanılıp birleştirilmiyor; gerçekten
+        //    alınmış bir yoklama ASLA filtrelenip listeden düşmüyor.
+        const { data: yoklamaSatirlari } = await supabase
+          .from('yoklama')
+          .select('ders_programi_id, tarih')
+          .eq('sinif_id', seciliSinif)
+          .gte('tarih', enEskiTarih)
+          .lte('tarih', dun)
+        const alinanAnahtarlar = new Set(
+          (yoklamaSatirlari || []).map((y) => `${y.ders_programi_id}|${y.tarih}`)
+        )
+        const alinanOlaylar = []
+        for (const anahtar of alinanAnahtarlar) {
+          const [id, tarih] = anahtar.split('|')
+          const ders = satirMap.get(id)
+          if (!ders) continue
+          alinanOlaylar.push({ tarih, ders, alindiMi: true })
+        }
+
+        // 2) Henüz yoklaması alınmamış, ama programa göre olması gereken
+        //    dersler — ders_programi'nin haftalık desenine göre üretilir.
+        //    Yukarıda zaten "alındı" olarak bulunanlar tekrar üretilmez.
+        const adaylar = []
         for (let i = 1; i <= GUN_PENCERESI; i++) {
           const d = new Date(bugun + 'T12:00:00')
           d.setDate(d.getDate() - i)
@@ -79,60 +113,37 @@ export default function GecmisYoklama() {
           const gunNo = gunNumarasi(tarih)
           for (const s of satirlar) {
             if (s.gun !== gunNo) continue
+            if (alinanAnahtarlar.has(`${s.id}|${tarih}`)) continue
             // Elle girilmiş "Başlangıç Tarihi" varsa ve o tarihten önceyse,
             // bu ders o gün henüz yoktu. Elle girilmemişse, satırın gerçekten
-            // OLUŞTURULDUĞU tarihi (created_at) alt sınır olarak kullan —
-            // yoksa bu hafta yeni eklenen bir ders saati, henüz var olmadığı
-            // geçmiş haftalarda da "ders var" gibi görünüyordu.
+            // OLUŞTURULDUĞU tarihi (created_at) alt sınır olarak kullan.
             const gecerliBaslangic = s.baslangic_tarihi || (s.created_at ? s.created_at.slice(0, 10) : null)
             if (gecerliBaslangic && gecerliBaslangic > tarih) continue
             // Pasife alınmış (silinmiş/düzenlenmiş) bir satırsa, sadece
             // pasife alınmadan ÖNCEKİ günler için geçerli sayılır.
             if (s.aktif === false && (!s.pasif_tarihi || s.pasif_tarihi < tarih)) continue
-            olaylar.push({ tarih, ders: s })
+            adaylar.push({ tarih, ders: s, alindiMi: false })
           }
         }
-        if (olaylar.length === 0) {
-          setGecmisListe([])
-          setYukleniyorListe(false)
-          return
-        }
-        const idler = [...new Set(olaylar.map((o) => o.ders.id))]
-        const enEskiTarih = olaylar.reduce((min, o) => (o.tarih < min ? o.tarih : min), olaylar[0].tarih)
-        const { data: yoklamaVarMi } = await supabase
-          .from('yoklama')
-          .select('ders_programi_id, tarih')
-          .in('ders_programi_id', idler)
-          .gte('tarih', enEskiTarih)
-          .lte('tarih', bugun)
-        const varOlanSet = new Set((yoklamaVarMi || []).map((y) => `${y.ders_programi_id}|${y.tarih}`))
-        const zenginOlaylar = olaylar.map((o) => ({
-          ...o,
-          alindiMi: varOlanSet.has(`${o.ders.id}|${o.tarih}`),
-        }))
         // Bir ders saati sonradan düzenlenip eski satırı pasife alınmış
-        // olabilir — aynı tarih + aynı saat aralığı için birden fazla satır
-        // üretilmesin diye, GERÇEKTEN yoklaması olan (varsa) tercih edilerek
-        // tek satıra indiriliyor (Yoklama.jsx/GecmisYoklama'nın önceki
-        // sürümündeki aynı düzeltme, burada tarih bazında).
-        const grupMap = new Map()
-        for (const o of zenginOlaylar) {
-          const anahtar = `${o.tarih}|${o.ders.baslangic_saat}|${o.ders.bitis_saat}`
-          const mevcut = grupMap.get(anahtar)
-          if (!mevcut) {
-            grupMap.set(anahtar, o)
-            continue
-          }
-          if (o.alindiMi && !mevcut.alindiMi) grupMap.set(anahtar, o)
-          else if (o.alindiMi === mevcut.alindiMi && o.ders.aktif !== false && mevcut.ders.aktif === false) {
-            grupMap.set(anahtar, o)
+        // olabilir — henüz yoklaması OLMAYAN adaylar arasında aynı
+        // tarih+saat için birden fazla satır üretilmesin diye tek satıra
+        // indiriliyor (gerçekten alınmış olanlara bu dedup UYGULANMIYOR,
+        // çünkü onlar zaten kendi ders_programi_id'siyle benzersiz).
+        const adayGrup = new Map()
+        for (const a of adaylar) {
+          const anahtar = `${a.tarih}|${a.ders.baslangic_saat}|${a.ders.bitis_saat}`
+          const mevcut = adayGrup.get(anahtar)
+          if (!mevcut || (a.ders.aktif !== false && mevcut.ders.aktif === false)) {
+            adayGrup.set(anahtar, a)
           }
         }
-        const benzersizOlaylar = [...grupMap.values()].sort((a, b) => {
+
+        const tumOlaylar = [...alinanOlaylar, ...adayGrup.values()].sort((a, b) => {
           if (a.tarih !== b.tarih) return a.tarih < b.tarih ? 1 : -1
           return (a.ders.baslangic_saat || '').localeCompare(b.ders.baslangic_saat || '')
         })
-        setGecmisListe(benzersizOlaylar)
+        setGecmisListe(tumOlaylar)
         setYukleniyorListe(false)
       })
   }, [seciliSinif])
