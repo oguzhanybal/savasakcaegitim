@@ -33,6 +33,7 @@ import SinavKitapciklari from './pages/SinavKitapciklari'
 import SinavYukle from './pages/SinavYukle'
 import SinavSonuclari from './pages/SinavSonuclari'
 import HataKitapcigi from './pages/HataKitapcigi'
+import DersBazliHataKitapcigi from './pages/DersBazliHataKitapcigi'
 import Karnem from './pages/Karnem'
 import Yoklamalarim from './pages/Yoklamalarim'
 import Sozlesme from './pages/Sozlesme'
@@ -170,6 +171,14 @@ function AnaUygulama() {
           element={
             <Korumali izinliRoller={['yonetici', 'veli', 'ogrenci']}>
               <HataKitapcigi />
+            </Korumali>
+          }
+        />
+        <Route
+          path="/ders-hata-kitapcigi/:ogrenciId/:ders"
+          element={
+            <Korumali izinliRoller={['yonetici', 'veli', 'ogrenci']}>
+              <DersBazliHataKitapcigi />
             </Korumali>
           }
         />
