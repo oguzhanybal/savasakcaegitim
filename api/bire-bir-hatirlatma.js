@@ -206,6 +206,16 @@ export default async function handler(req, res) {
     return
   }
 
+  // Yöneticilere de HER bire bir ders için — öğrencinin kendi bildirimi
+  // açık/abone olsun olmasın, BAĞIMSIZ olarak — "şu öğrenci şu öğretmenle
+  // X'te dersi var" bilgilendirmesi gönderiyoruz. Bu liste bütün adaylar
+  // için ortak olduğundan döngü DIŞINDA, bir kere çekiliyor.
+  const { data: yoneticiProfilleri } = await admin.from('profiles').select('id').eq('rol', 'yonetici')
+  const yoneticiIdleri = (yoneticiProfilleri || []).map((p) => p.id)
+  const { data: yoneticiAbonelikleri } = yoneticiIdleri.length
+    ? await admin.from('push_abonelikleri').select('id, profile_id, endpoint, p256dh, auth').in('profile_id', yoneticiIdleri)
+    : { data: [] }
+
   const sonuclar = []
   for (const aday of adaylar) {
     // Aynı dersin hatırlatması bugün DAHA ÖNCE gönderilmiş mi? push_hatirlatma_log'a
@@ -220,69 +230,111 @@ export default async function handler(req, res) {
       continue
     }
 
-    // Öğrencinin kendi girişi (ogrenci_profile_id) var mı? (Şimdilik SADECE
-    // öğrencilere gönderiliyor — veliye değil, kullanıcının istediği kapsam.)
+    // Öğrencinin kendi girişi (ogrenci_profile_id) var mı? (Öğrenci bildirimi
+    // hâlâ SADECE öğrenciye gönderiliyor — veliye değil, aynı kapsam. Yönetici
+    // bildirimi ise aşağıda, öğrencinin durumundan TAMAMEN bağımsız.)
     const { data: ogrenci } = await admin
       .from('ogrenciler')
       .select('ad_soyad, ogrenci_profile_id')
       .eq('id', aday.ogrenciId)
       .maybeSingle()
+    const ogrenciAdi = ogrenci?.ad_soyad || 'Öğrenci'
 
-    if (!ogrenci?.ogrenci_profile_id) {
-      sonuclar.push({ ...aday, durum: 'ogrenci_girisi_yok' })
-      continue
-    }
+    // --- 1) Öğrenciye bildirim (mevcut davranış) ---
+    let ogrenciDurumu = 'ogrenci_girisi_yok'
+    let ogrenciGonderilen = 0
+    let ogrenciToplamAbonelik = 0
+    let ogrenciHatalar
+    if (ogrenci?.ogrenci_profile_id) {
+      const { data: abonelikler } = await admin
+        .from('push_abonelikleri')
+        .select('id, endpoint, p256dh, auth')
+        .eq('profile_id', ogrenci.ogrenci_profile_id)
+      ogrenciToplamAbonelik = abonelikler?.length || 0
 
-    const { data: abonelikler } = await admin
-      .from('push_abonelikleri')
-      .select('id, endpoint, p256dh, auth')
-      .eq('profile_id', ogrenci.ogrenci_profile_id)
-
-    if (!abonelikler || abonelikler.length === 0) {
-      sonuclar.push({ ...aday, ogrenciAdi: ogrenci.ad_soyad, durum: 'abonelik_yok' })
-      continue
-    }
-
-    const payload = {
-      baslik: 'Dersiniz Yaklaşıyor',
-      govde: `${aday.ogretmenAdi ? aday.ogretmenAdi + ' ile ' : ''}bire bir dersiniz ${aday.saat}'te başlıyor.`,
-      url: '/program',
-    }
-
-    let gonderilen = 0
-    const hatalar = []
-    for (const abn of abonelikler) {
-      try {
-        const yanit = await pushGonder(abn, payload, vapid)
-        if (yanit.ok) {
-          gonderilen++
-        } else if (yanit.status === 404 || yanit.status === 410) {
-          // Abonelik artık geçersiz (kullanıcı bildirimleri kapattı/tarayıcı
-          // verisini sildi) — kaydı temizliyoruz ki her seferinde tekrar denenmesin.
-          await admin.from('push_abonelikleri').delete().eq('id', abn.id)
-          hatalar.push({ endpoint: abn.endpoint.slice(-24), status: yanit.status, mesaj: 'abonelik silindi (geçersiz)' })
-        } else {
-          // Gerçek durum kodunu ve push servisinin döndürdüğü hata metnini
-          // kaydediyoruz ki (ör. 401 = VAPID anahtarı uyuşmuyor) sebebi görebilelim.
-          let metin = ''
-          try {
-            metin = await yanit.text()
-          } catch {
-            metin = ''
-          }
-          hatalar.push({ endpoint: abn.endpoint.slice(-24), status: yanit.status, mesaj: metin.slice(0, 300) })
+      if (!abonelikler || abonelikler.length === 0) {
+        ogrenciDurumu = 'abonelik_yok'
+      } else {
+        const ogrenciPayload = {
+          baslik: 'Dersiniz Yaklaşıyor',
+          govde: `${aday.ogretmenAdi ? aday.ogretmenAdi + ' ile ' : ''}bire bir dersiniz ${aday.saat}'te başlıyor.`,
+          url: '/program',
         }
-      } catch (err) {
-        hatalar.push({ endpoint: abn.endpoint?.slice(-24), status: 'exception', mesaj: err.message })
+        const hatalar = []
+        for (const abn of abonelikler) {
+          try {
+            const yanit = await pushGonder(abn, ogrenciPayload, vapid)
+            if (yanit.ok) {
+              ogrenciGonderilen++
+            } else if (yanit.status === 404 || yanit.status === 410) {
+              // Abonelik artık geçersiz (kullanıcı bildirimleri kapattı/tarayıcı
+              // verisini sildi) — kaydı temizliyoruz ki her seferinde tekrar denenmesin.
+              await admin.from('push_abonelikleri').delete().eq('id', abn.id)
+              hatalar.push({ endpoint: abn.endpoint.slice(-24), status: yanit.status, mesaj: 'abonelik silindi (geçersiz)' })
+            } else {
+              // Gerçek durum kodunu ve push servisinin döndürdüğü hata metnini
+              // kaydediyoruz ki (ör. 401 = VAPID anahtarı uyuşmuyor) sebebi görebilelim.
+              let metin = ''
+              try {
+                metin = await yanit.text()
+              } catch {
+                metin = ''
+              }
+              hatalar.push({ endpoint: abn.endpoint.slice(-24), status: yanit.status, mesaj: metin.slice(0, 300) })
+            }
+          } catch (err) {
+            hatalar.push({ endpoint: abn.endpoint?.slice(-24), status: 'exception', mesaj: err.message })
+          }
+        }
+        ogrenciDurumu = ogrenciGonderilen > 0 ? 'gonderildi' : 'gonderilemedi'
+        ogrenciHatalar = hatalar.length ? hatalar : undefined
       }
     }
+
+    // --- 2) Yöneticilere bildirim (YENİ) — öğrencinin bildirimi gitsin
+    // gitmesin, her bire bir ders için ayrıca gönderilir. "Bu öğrenci bu
+    // öğretmenle saat X'te dersi var" bilgisi. ---
+    let yoneticiGonderilen = 0
+    const yoneticiHatalar = []
+    if (yoneticiAbonelikleri && yoneticiAbonelikleri.length > 0) {
+      const yoneticiPayload = {
+        baslik: 'Bire Bir Ders Yaklaşıyor',
+        govde: `${ogrenciAdi}${aday.ogretmenAdi ? ' — ' + aday.ogretmenAdi + ' ile' : ''} ${aday.saat}'te dersi var.`,
+        url: '/bire-bir',
+      }
+      for (const abn of yoneticiAbonelikleri) {
+        try {
+          const yanit = await pushGonder(abn, yoneticiPayload, vapid)
+          if (yanit.ok) {
+            yoneticiGonderilen++
+          } else if (yanit.status === 404 || yanit.status === 410) {
+            await admin.from('push_abonelikleri').delete().eq('id', abn.id)
+            yoneticiHatalar.push({ endpoint: abn.endpoint.slice(-24), status: yanit.status, mesaj: 'abonelik silindi (geçersiz)' })
+          } else {
+            let metin = ''
+            try {
+              metin = await yanit.text()
+            } catch {
+              metin = ''
+            }
+            yoneticiHatalar.push({ endpoint: abn.endpoint.slice(-24), status: yanit.status, mesaj: metin.slice(0, 300) })
+          }
+        } catch (err) {
+          yoneticiHatalar.push({ endpoint: abn.endpoint?.slice(-24), status: 'exception', mesaj: err.message })
+        }
+      }
+    }
+
     sonuclar.push({
       ...aday,
-      ogrenciAdi: ogrenci.ad_soyad,
-      durum: gonderilen > 0 ? 'gonderildi' : 'gonderilemedi',
-      abonelikSayisi: gonderilen,
-      toplamAbonelik: abonelikler.length,
-      hatalar: hatalar.length ? hatalar : undefined,
+      ogrenciAdi,
+      ogrenciDurumu,
+      ogrenciGonderilen,
+      ogrenciToplamAbonelik,
+      ogrenciHatalar,
+      yoneticiGonderilen,
+      yoneticiToplamAbonelik: yoneticiAbonelikleri?.length || 0,
+      yoneticiHatalar: yoneticiHatalar.length ? yoneticiHatalar : undefined,
     })
   }
 
