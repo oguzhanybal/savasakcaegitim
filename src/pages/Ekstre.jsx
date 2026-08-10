@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useParams, Link } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../lib/AuthContext'
@@ -12,8 +12,130 @@ import {
   bireBirDersDetaylariOlustur,
 } from '../lib/ekstreHesap'
 
+// Bir velinin BİRDEN FAZLA öğrencisi (çocuğu) varsa, "tek sayfada önce
+// birinin tüm ödemelerini sonra diğerininkini" görmek istedi (kullanıcı
+// isteği) — önceden bu sayfa TEK bir :ogrenciId'ye kilitliydi, veli her
+// çocuğu için Muhasebe'den ayrı ayrı "Ekstre" linkine tıklamak zorundaydı.
+// Artık: yönetici hâlâ (Muhasebe/Toplu Ekstre/WhatsApp linklerinden geldiği
+// gibi) SADECE route'taki tek ogrenciId'yi görür — davranış değişmedi. Ama
+// bir VELİ bu sayfaya geldiğinde, kendisine bağlı TÜM çocukları (Fatura
+// Ortağı ile zaten birleşik faturalanan kardeşler tekrar etmeyecek şekilde
+// tekilleştirilmiş) alt alta, aynı "Dönem" seçimiyle, tek "Yazdır" ile
+// gösteriyoruz.
 export default function Ekstre() {
   const { ogrenciId } = useParams()
+  const { profile } = useAuth()
+  const isVeli = profile?.rol === 'veli'
+
+  const [seciliAy, setSeciliAy] = useState(() => new Date().toISOString().slice(0, 7))
+  const [veliCocuklari, setVeliCocuklari] = useState(null) // null = henüz çekilmedi
+
+  useEffect(() => {
+    if (!isVeli || !profile?.id) return
+    supabase
+      .from('ogrenciler')
+      .select('id, ad_soyad, fatura_sahibi_id, veli_profile_id')
+      .order('ad_soyad')
+      .then(({ data }) => {
+        // GÜVENLİK: diğer sayfalardaki (Karnem/Yoklamalarim/Odev) AYNI
+        // kanıtlanmış yöntem — istemci tarafında da sadece kendi çocuk(lar)ını filtrele.
+        setVeliCocuklari((data || []).filter((o) => o.veli_profile_id === profile.id))
+      })
+  }, [isVeli, profile?.id])
+
+  // Fatura Ortağı (ör. ikiz kardeşler) zaten TEK bir birleşik ekstrede
+  // gösteriliyor (bkz. OgrenciEkstreBolumu içindeki grup mantığı) — aynı
+  // fatura grubundaki iki çocuk burada İKİ AYRI kart olarak tekrar
+  // etmesin diye "efektif fatura id"ye göre tekilleştiriyoruz.
+  const gosterilecekListe = useMemo(() => {
+    if (isVeli && veliCocuklari && veliCocuklari.length > 0) {
+      const gorulenler = new Set()
+      const sonuc = []
+      for (const o of veliCocuklari) {
+        const efektif = o.fatura_sahibi_id || o.id
+        if (gorulenler.has(efektif)) continue
+        gorulenler.add(efektif)
+        sonuc.push(o)
+      }
+      return sonuc
+    }
+    // Yönetici (Muhasebe/Toplu Ekstre/WhatsApp linkinden gelen tek öğrenci
+    // görünümü) veya veli çocukları henüz yüklenmediyse — eski davranış:
+    // sadece route'taki tek ogrenciId.
+    return [{ id: ogrenciId, ad_soyad: null }]
+  }, [isVeli, veliCocuklari, ogrenciId])
+
+  const birdenFazla = gosterilecekListe.length > 1
+
+  // Birleşik görünümde başlığı (sekme başlığı) burada, tek görünümde ise
+  // OgrenciEkstreBolumu kendi içinde ayarlıyor (bkz. baslikPaylasili prop'u).
+  useEffect(() => {
+    if (!birdenFazla) return
+    const ayMetni = new Date(seciliAy + '-01').toLocaleDateString('tr-TR', { month: 'long', year: 'numeric' })
+    const isimler = gosterilecekListe.map((o) => o.ad_soyad).filter(Boolean).join(' ve ')
+    document.title = `${isimler || 'Ailem'} — Aylık Muhasebe - ${ayMetni}`
+    return () => {
+      document.title = 'Savaş Akça Eğitim Portalı'
+    }
+  }, [birdenFazla, seciliAy, gosterilecekListe])
+
+  return (
+    <div className="min-h-screen bg-cream py-8 px-4">
+      <style>{`
+        @media print {
+          .no-print { display: none !important; }
+          body { background: white !important; }
+          tr { break-inside: avoid; page-break-inside: avoid; }
+          .bire-bir-baslik-metni { break-after: avoid; page-break-after: avoid; }
+          .ekstre-cocuk-blok { break-before: page; page-break-before: always; }
+        }
+      `}</style>
+      <div className="max-w-2xl mx-auto">
+        <div className="no-print flex items-center justify-between mb-4 flex-wrap gap-3">
+          <Link to="/muhasebe" className="text-sm text-blue hover:underline">← Muhasebe'ye Dön</Link>
+          <div className="flex items-center gap-3">
+            <label className="text-sm font-medium text-gray-600">Dönem:</label>
+            <input
+              type="month"
+              value={seciliAy}
+              onChange={(e) => setSeciliAy(e.target.value)}
+              className="px-3 py-1.5 border border-gray-200 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-blue"
+            />
+            <button
+              onClick={() => window.print()}
+              className="bg-orange text-white font-semibold px-5 py-2 rounded-lg hover:opacity-90 transition-opacity"
+            >
+              Yazdır / PDF Kaydet
+            </button>
+          </div>
+        </div>
+
+        {birdenFazla && (
+          <div className="no-print bg-blue/5 border border-blue/20 rounded-xl p-3 mb-4 text-sm text-navy">
+            Size bağlı <strong>{gosterilecekListe.length} öğrenci</strong> için birleşik ekstre gösteriliyor —
+            aşağıda her öğrencinin tam dökümü ayrı ayrı sıralanıyor.
+          </div>
+        )}
+
+        {gosterilecekListe.map((o, i) => (
+          <div key={o.id} className={i > 0 ? 'ekstre-cocuk-blok' : undefined}>
+            {birdenFazla && (
+              <p className="text-sm font-bold text-gray-500 mb-2 mt-8 first:mt-0">
+                {i + 1}. Öğrenci: {o.ad_soyad || '—'}
+              </p>
+            )}
+            <OgrenciEkstreBolumu ogrenciId={o.id} seciliAy={seciliAy} baslikPaylasili={birdenFazla} />
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+// Tek bir öğrencinin (ve varsa Fatura Ortağı grubunun) tam ekstre kartı —
+// önceden Ekstre.jsx'in TAMAMI buydu, artık üstteki Ekstre() bunu bir ya da
+// (veli birden fazla çocuklu ise) birden fazla kez art arda render edebiliyor.
+function OgrenciEkstreBolumu({ ogrenciId, seciliAy, baslikPaylasili }) {
   const { profile } = useAuth()
   const isVeli = profile?.rol === 'veli'
 
@@ -23,7 +145,6 @@ export default function Ekstre() {
   const [odemeler, setOdemeler] = useState([])
   const [bireBirDersleri, setBireBirDersleri] = useState([])
   const [kantinAlislari, setKantinAlislari] = useState([])
-  const [seciliAy, setSeciliAy] = useState(() => new Date().toISOString().slice(0, 7))
   const [loading, setLoading] = useState(true)
   // Fatura Ortağı (ör. ikiz kardeşler): bu öğrenci başka birine bağlıysa
   // (ya da başka biri buna bağlıysa) hepsinin borç/ödemesi burada BİRLEŞİK
@@ -113,14 +234,17 @@ export default function Ekstre() {
   // İndirilen PDF/yazdırma çıktısının dosya adı (ve tarayıcı sekme başlığı)
   // öğrenci adı ve dönemi göstersin diye — "Savaş Akça Eğitim Portalı" gibi
   // genel bir isimle kaydedilmesin. Sayfadan ayrılınca eski başlığa dönüyoruz.
+  // Veli birden fazla çocuklu birleşik görünümdeyse (baslikPaylasili) başlığı
+  // üst bileşen (Ekstre) tek seferde ayarlıyor, burada tekrar ayarlamıyoruz.
   useEffect(() => {
+    if (baslikPaylasili) return
     if (!ogrenci) return
     const ayMetni = new Date(seciliAy + '-01').toLocaleDateString('tr-TR', { month: 'long', year: 'numeric' })
     document.title = `${ogrenci.ad_soyad} Aylık Muhasebe - ${ayMetni}`
     return () => {
       document.title = 'Savaş Akça Eğitim Portalı'
     }
-  }, [ogrenci, seciliAy])
+  }, [ogrenci, seciliAy, baslikPaylasili])
 
   if (loading) return <p className="p-6 text-gray-400">Yükleniyor...</p>
   if (!ogrenci) return <p className="p-6 text-gray-400">Öğrenci bulunamadı.</p>
@@ -151,53 +275,15 @@ export default function Ekstre() {
   const gosterilenOdemeToplami = gosterilecekOdemeler.reduce((t, o) => t + Number(o.tutar), 0)
 
   return (
-    <div className="min-h-screen bg-cream py-8 px-4">
-      {/* Yazdırma/PDF: "Bire Bir Ders Dökümü" / "Kantin Alış Dökümü" başlıklarını
-          altındaki koca tabloyla (onlarca satır olabilir, tek sayfaya sığmaz)
-          birlikte "break-inside: avoid" ile bölünmez işaretlemek hataydı —
-          tarayıcı koca bloğu bir sonraki sayfaya itiyor, o da sığmayınca
-          başlığı yalnız bırakıp tabloyu bir sayfa daha sonraya itiyordu;
-          sonuç 1-2 neredeyse bomboş sayfa. Artık sadece başlığın hemen
-          altındaki içerikten KOPMASINI (break-after: avoid) engelliyoruz —
-          başlık tek başına sayfa sonunda kalmıyor, koca tablo ise gerektiği
-          yerde sayfalar arasında doğal olarak bölünebiliyor. Satırların
-          (tr) kendi içinde bölünmesini engellemek yeterli ve zaten oradaydı. */}
-      <style>{`
-        @media print {
-          .no-print { display: none !important; }
-          body { background: white !important; }
-          tr { break-inside: avoid; page-break-inside: avoid; }
-          .bire-bir-baslik-metni { break-after: avoid; page-break-after: avoid; }
-        }
-      `}</style>
-      <div className="max-w-2xl mx-auto">
-        <div className="no-print flex items-center justify-between mb-4 flex-wrap gap-3">
-          <Link to="/muhasebe" className="text-sm text-blue hover:underline">← Muhasebe'ye Dön</Link>
-          <div className="flex items-center gap-3">
-            <label className="text-sm font-medium text-gray-600">Dönem:</label>
-            <input
-              type="month"
-              value={seciliAy}
-              onChange={(e) => setSeciliAy(e.target.value)}
-              className="px-3 py-1.5 border border-gray-200 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-blue"
-            />
-            <button
-              onClick={() => window.print()}
-              className="bg-orange text-white font-semibold px-5 py-2 rounded-lg hover:opacity-90 transition-opacity"
-            >
-              Yazdır / PDF Kaydet
-            </button>
-          </div>
+    <>
+      {faturaDigerleri.length > 0 && (
+        <div className="no-print bg-purple-50 border border-purple-200 rounded-xl p-3 mb-4 text-sm text-purple-800">
+          Birleşik ekstre: aşağıdaki tutarlar <strong>{faturaDigerleri.map((o) => o.ad_soyad).join(', ')}</strong> ile
+          ortak tutuluyor (Fatura Ortağı bağlantısı). Bire bir ders dökümünde her satırın kime ait olduğu ayrıca gösterilir.
         </div>
+      )}
 
-        {faturaDigerleri.length > 0 && (
-          <div className="no-print bg-purple-50 border border-purple-200 rounded-xl p-3 mb-4 text-sm text-purple-800">
-            Birleşik ekstre: aşağıdaki tutarlar <strong>{faturaDigerleri.map((o) => o.ad_soyad).join(', ')}</strong> ile
-            ortak tutuluyor (Fatura Ortağı bağlantısı). Bire bir ders dökümünde her satırın kime ait olduğu ayrıca gösterilir.
-          </div>
-        )}
-
-        <div className="bg-white rounded-2xl shadow-sm overflow-hidden border border-gray-100">
+      <div className="bg-white rounded-2xl shadow-sm overflow-hidden border border-gray-100">
           <div className="bg-navy text-white py-5 px-6 flex items-center gap-4">
             <div className="bg-white rounded-xl p-1.5 shrink-0">
               <img src="/logo.png" alt="Savaş Akça Eğitim" className="w-12 h-12 object-contain" />
@@ -355,8 +441,7 @@ export default function Ekstre() {
               </table>
             </div>
           </div>
-        </div>
       </div>
-    </div>
+    </>
   )
 }
