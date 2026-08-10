@@ -397,8 +397,11 @@ export async function ekstrePdfOlustur(veri) {
 // TEK bir gerçek PDF dosyasında toplar — "WhatsApp'tan Gönder" butonu bunu
 // kullanır (Toplu Ekstre'deki "PDF ile Gönder" ile birebir aynı desen: PDF
 // üretilir, Storage'a yüklenir, kısa link ile WhatsApp mesajına eklenir).
-// veli: { ogrenciAdi, tarihMetni, odemeler: [{kalem, tutar, ogrenci_id}],
-//         toplam, ogrenciSutunuGoster, adBul(ogrenciId) }
+// veli: { ogrenciAdi, tarihMetni, odemeler: [{kalem, tutar, ogrenci_id,
+//         taksitBilgisi?: {odenenSayisi, toplamSayisi}}], toplam,
+//         ogrenciSutunuGoster, adBul(ogrenciId) }
+// taksitBilgisi (opsiyonel, bkz. ekstreHesap.js -> makbuzTaksitBilgisiBul):
+// varsa "Taksit" sütununda "X/Y" olarak, yoksa "—" olarak basılır.
 // ============================================================================
 export async function makbuzPdfOlustur({ ogrenciAdi, tarihMetni, odemeler, toplam, ogrenciSutunuGoster, adBul }) {
   const jsPDF = await jspdfYukle()
@@ -481,14 +484,21 @@ export async function makbuzPdfOlustur({ ogrenciAdi, tarihMetni, odemeler, topla
   })
   y = doc.lastAutoTable.finalY + 10
 
-  const sutunSayisi = 1 + (ogrenciSutunuGoster ? 1 : 0)
+  // Her satırda (varsa) "Taksit" sütunu — o kalemin bağlı olduğu sözleşmenin
+  // toplamda kaç taksitinin şu ana kadar ödendiğini gösterir (bkz.
+  // ekstreHesap.js -> makbuzTaksitBilgisiBul). Aylık kalemler (Bire Bir/
+  // Yemek/Kantin) veya eşleşen sözleşmesi olmayan kalemler için "—" basılır.
+  // Kullanıcı isteğiyle eklendi: veli makbuzu görünce kaç taksitten kaçının
+  // ödendiğini bilemiyordu.
+  const sutunSayisi = 1 + (ogrenciSutunuGoster ? 1 : 0) + 1
   doc.autoTable({
     startY: y,
     margin: { left: kenar, right: kenar },
-    head: [['Kalem', ...(ogrenciSutunuGoster ? ['Öğrenci'] : []), 'Tutar']],
+    head: [['Kalem', ...(ogrenciSutunuGoster ? ['Öğrenci'] : []), 'Taksit', 'Tutar']],
     body: odemeler.map((o) => [
       o.kalem || '—',
       ...(ogrenciSutunuGoster ? [adBul ? adBul(o.ogrenci_id) : '—'] : []),
+      o.taksitBilgisi ? `${o.taksitBilgisi.odenenSayisi}/${o.taksitBilgisi.toplamSayisi}` : '—',
       paraStrSembol(o.tutar),
     ]),
     foot: [

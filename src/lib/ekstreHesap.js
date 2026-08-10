@@ -252,14 +252,50 @@ export function whatsappMesajiOlustur({ ogrenciAdi, ayYil, buAyTutar, kalanTutar
 }
 
 // ============================================================================
+// MAKBUZ TAKSİT BİLGİSİ — bir ödeme satırının (varsa) hangi sözleşmeye
+// (Okul/Kurs/Kitap gibi taksitli bir kaleme) ait olduğunu bulup, o sözleşmenin
+// toplamda kaç taksitinin şu ana kadar ödendiğini hesaplar. Makbuzda (hem
+// WhatsApp metninde hem PDF'te) her kalemin yanında "3/8. taksit ödendi" gibi
+// gösterebilmek için — kullanıcı isteğiyle eklendi: veli makbuzu görünce kaç
+// taksitten kaçının ödendiğini bilemiyordu. Aylık kalemler (Bire Bir/Yemek/
+// Kantin) veya eşleşen bir sözleşmesi olmayan kalemler için null döner
+// (makbuzda o satırda "—" gösterilir).
+//
+// ÖNEMLİ (Fatura Ortağı için doğruluk): taksit durumu SADECE bu sözleşmenin
+// sahibi öğrencinin KENDİ ödemeleriyle hesaplanır (tumOdemeler, ogrenci_id'ye
+// göre burada süzülür) — grup genelindeki (kardeş/ikiz) TÜM ödemelerle
+// hesaplanırsa, aynı isimde ("Okul" gibi) iki farklı öğrencinin sözleşmesi
+// birbirine karışıp yanlış taksit sayısı gösterebilirdi.
+// ============================================================================
+export function makbuzTaksitBilgisiBul(odeme, sozlesmeler, tumOdemeler) {
+  if (!odeme.kalem) return null
+  const sozlesme = (sozlesmeler || []).find(
+    (s) => s.ogrenci_id === odeme.ogrenci_id && odeme.kalem.startsWith(s.kalem)
+  )
+  if (!sozlesme) return null
+  const kendiOdemeleri = (tumOdemeler || []).filter((o) => o.ogrenci_id === sozlesme.ogrenci_id)
+  const taksitler = taksitPlaniOlustur(sozlesme, kendiOdemeleri)
+  if (taksitler.length === 0) return null
+  const odenenSayisi = taksitler.filter((t) => t.durum === 'odendi').length
+  return { odenenSayisi, toplamSayisi: taksitler.length }
+}
+
+// ============================================================================
 // MAKBUZ WHATSAPP MESAJI — Muhasebe.jsx'teki "WhatsApp'tan Gönder" butonu
 // için. "Makbuz Yazdır" (MakbuzGunluk.jsx) ile AYNI gün-birleştirme mantığı:
 // o günün TÜM kalemleri (kalemler dizisi) burada tek bir mesajda özetlenir,
-// tek tek her kalem için ayrı mesaj gitmez.
+// tek tek her kalem için ayrı mesaj gitmez. Her kalemin (varsa) taksitBilgisi
+// alanı (bkz. makbuzTaksitBilgisiBul) satırın sonuna "(X/Y. taksit ödendi)"
+// olarak ekleniyor.
 // ============================================================================
 export function makbuzWhatsappMesajiOlustur({ ogrenciAdi, tarihMetni, kalemler, toplam, pdfLink }) {
   const kalemSatirlari = kalemler
-    .map((k) => `• ${k.kalem || 'Ödeme'}: ₺${Number(k.tutar || 0).toLocaleString('tr-TR', { minimumFractionDigits: 2 })}`)
+    .map((k) => {
+      const taksitMetni = k.taksitBilgisi
+        ? ` (${k.taksitBilgisi.odenenSayisi}/${k.taksitBilgisi.toplamSayisi}. taksit ödendi)`
+        : ''
+      return `• ${k.kalem || 'Ödeme'}: ₺${Number(k.tutar || 0).toLocaleString('tr-TR', { minimumFractionDigits: 2 })}${taksitMetni}`
+    })
     .join('\n')
   return (
     `Değerli Velimiz, \n${ogrenciAdi} için ${tarihMetni} tarihli ödemeniz alınmıştır.\n\n` +
