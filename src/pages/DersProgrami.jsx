@@ -80,6 +80,7 @@ function araliklarCakisiyorMu(b1, s1, b2, s2) {
   return saatKisalt(b1) < saatKisalt(s2) && saatKisalt(b2) < saatKisalt(s1)
 }
 
+
 // "HH:MM" formatındaki bir saate dakika ekler — başlangıç saati girilince/
 // doldurulunca bitiş saatini otomatik +45 dakika önermek için kullanılır.
 function saateDakikaEkle(saat, dakika) {
@@ -1127,6 +1128,11 @@ export default function DersProgrami() {
   // prop zaten geçiliyordu, burada unutulmuştu, bu yüzden bu sayfadan Hızlı
   // Ekle ile eklenirken uyarı hiç çıkmıyordu).
   const [sinifOgrencileri, setSinifOgrencileri] = useState([])
+  // Birden fazla çocuğu olan veli için: "Ders Programı" (sınıf programı)
+  // sekmesinde her dersin HANGİ çocuğuna ait olduğunu küçük bir etiketle
+  // gösterebilmek amacıyla sinif_id -> [çocuk adı, ...] eşlemesi. Sadece
+  // veli/öğrenci + birden fazla çocuk durumunda doldurulur (bkz. veriyiYenile).
+  const [sinifIdCocukAdlari, setSinifIdCocukAdlari] = useState(new Map())
   const [taslaklar, setTaslaklar] = useState([])
   const [loading, setLoading] = useState(true)
   const [gorunum, setGorunum] = useState('tablo')
@@ -1235,8 +1241,16 @@ export default function DersProgrami() {
       isYonetici ? supabase.from('bire_bir_yoklama').select('*') : Promise.resolve({ data: [] }),
       isYonetici ? supabase.from('ogrenciler').select('id, ad_soyad') : Promise.resolve({ data: [] }),
       // Öğrencinin hangi sınıf(lar)a kayıtlı olduğu — bkz. yukarıdaki
-      // sinifOgrencileri state açıklaması.
-      isYonetici ? supabase.from('sinif_ogrenciler').select('ogrenci_id, sinif_id') : Promise.resolve({ data: [] }),
+      // sinifOgrencileri state açıklaması. ÖNCEDEN sadece yönetici için
+      // çekiliyordu; artık veli/öğrenci için de çekiliyor çünkü iki (veya
+      // daha fazla) çocuğu olan bir velinin "Ders Programı" sekmesinde hangi
+      // dersin hangi çocuğuna ait olduğunu etiketleyebilmek için gerekiyor
+      // (bkz. aşağıdaki sinifIdCocukAdlari). RLS zaten bu tabloda satırları
+      // kısıtlıyor (yönetici/öğretmen: hepsi, veli/öğrenci: sadece kendi
+      // çocuğu/çocukları) — bu yüzden veli/öğrenci için ayrıca güvenlik
+      // riski yok, sadece istemci tarafında da AYNI kanıtlanmış yöntemle
+      // (id eşleşmesi) süzülüyor.
+      supabase.from('sinif_ogrenciler').select('ogrenci_id, sinif_id'),
       // Veli/öğrenci için: kendi çocuğu/kendisi hangi öğrenci kaydına bağlı —
       // bire bir atamalarını bu öğrenci id'si üzerinden çekeceğiz. Muhasebe.jsx
       // ile AYNI, kanıtlanmış yöntem: filtreyi sunucu tarafında ".or()" ile
@@ -1279,6 +1293,22 @@ export default function DersProgrami() {
       if (isVeliYaDaOgrenci && cocukIdleri.length > 0) {
         setBirdenFazlaCocukMu(cocukIdleri.length > 1)
         const cocukAdMap = new Map(cocukListesi.map((c) => [c.id, c.ad_soyad]))
+        // sinif_id -> [çocuk adı, ...] eşlemesi — "Ders Programı" sekmesinde
+        // birden fazla çocuğu olan veliye hangi sınıf dersinin hangi
+        // çocuğuna ait olduğunu göstermek için. "so" (sinif_ogrencileri)
+        // zaten RLS tarafından sadece kendi çocuklarının kayıtlarına
+        // kısıtlanmış geliyor — burada da AYNI kanıtlanmış yöntemle
+        // (id eşleşmesi) istemci tarafında ayrıca süzülüyor.
+        const yeniSinifIdCocukAdlari = new Map()
+        for (const kayit of so.data || []) {
+          if (!cocukIdleri.includes(kayit.ogrenci_id)) continue
+          const ad = cocukAdMap.get(kayit.ogrenci_id)
+          if (!ad) continue
+          const mevcut = yeniSinifIdCocukAdlari.get(kayit.sinif_id) || []
+          if (!mevcut.includes(ad)) mevcut.push(ad)
+          yeniSinifIdCocukAdlari.set(kayit.sinif_id, mevcut)
+        }
+        setSinifIdCocukAdlari(yeniSinifIdCocukAdlari)
         Promise.all([
           supabase
             .from('bire_bir_atamalari')
@@ -2016,6 +2046,11 @@ export default function DersProgrami() {
                                 <p className="text-[11px] text-gray-500 leading-tight">{d.sinif_adi}</p>
                               )}
                               {d.ogretmen_adi && <p className="text-[11px] text-gray-400 leading-tight">{d.ogretmen_adi}</p>}
+                              {birdenFazlaCocukMu && d.sinif_id && sinifIdCocukAdlari.get(d.sinif_id) && (
+                                <p className="text-[11px] text-blue-500 font-medium leading-tight">
+                                  {sinifIdCocukAdlari.get(d.sinif_id).join(', ')}
+                                </p>
+                              )}
                               <p className="text-[10px] text-gray-400 leading-tight">
                                 {saatGoster(d.baslangic_saat)}–{saatGoster(d.bitis_saat)}
                               </p>
@@ -2142,6 +2177,11 @@ export default function DersProgrami() {
                           {sinifAdiGoster ? d.sinif_adi : ''}
                           {d.ogretmen_adi ? `${sinifAdiGoster ? ' · ' : ''}${d.ogretmen_adi}` : ''}
                         </p>
+                        {birdenFazlaCocukMu && d.sinif_id && sinifIdCocukAdlari.get(d.sinif_id) && (
+                          <p className="text-xs text-blue-500 font-medium">
+                            {sinifIdCocukAdlari.get(d.sinif_id).join(', ')}
+                          </p>
+                        )}
                         <p className="text-sm text-gray-500">
                           {saatGoster(d.baslangic_saat)} – {saatGoster(d.bitis_saat)}
                         </p>
