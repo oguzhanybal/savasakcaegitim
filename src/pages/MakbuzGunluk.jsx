@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { useParams, Link } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { tutarYaziyla } from '../lib/sayiYaziyla'
-import { gunAnahtari } from '../lib/ekstreHesap'
+import { gunAnahtari, makbuzTaksitBilgisiBul } from '../lib/ekstreHesap'
 
 function paraFormat(n) {
   return new Intl.NumberFormat('tr-TR', { style: 'currency', currency: 'TRY' }).format(n || 0)
@@ -41,6 +41,7 @@ function MakbuzGovdesi({ nusha, odemeler, ogrenciAdi, tarihMetni, toplam, ogrenc
             <tr className="bg-gray-50 text-left text-gray-600">
               <th className="px-3 py-1.5 font-semibold">Kalem</th>
               {ogrenciSutunuGoster && <th className="px-3 py-1.5 font-semibold">Öğrenci</th>}
+              <th className="px-3 py-1.5 font-semibold">Taksit</th>
               <th className="px-3 py-1.5 font-semibold text-right">Tutar</th>
             </tr>
           </thead>
@@ -49,11 +50,17 @@ function MakbuzGovdesi({ nusha, odemeler, ogrenciAdi, tarihMetni, toplam, ogrenc
               <tr key={o.id} className="border-t border-gray-100">
                 <td className="px-3 py-1.5">{o.kalem || '—'}</td>
                 {ogrenciSutunuGoster && <td className="px-3 py-1.5">{adBul(o.ogrenci_id)}</td>}
+                {/* Bu kalemin bağlı olduğu sözleşmenin (varsa) toplamda kaç
+                    taksitinin şu ana kadar ödendiği — veli makbuza bakınca
+                    "kaçıncı taksitim, kaç kaldı" görebilsin diye eklendi. */}
+                <td className="px-3 py-1.5 text-gray-500">
+                  {o.taksitBilgisi ? `${o.taksitBilgisi.odenenSayisi}/${o.taksitBilgisi.toplamSayisi}` : '—'}
+                </td>
                 <td className="px-3 py-1.5 text-right">{paraFormat(o.tutar)}</td>
               </tr>
             ))}
             <tr className="border-t border-gray-200 bg-orange/10">
-              <td className="px-3 py-1.5 font-bold text-orange" colSpan={ogrenciSutunuGoster ? 2 : 1}>TOPLAM</td>
+              <td className="px-3 py-1.5 font-bold text-orange" colSpan={1 + (ogrenciSutunuGoster ? 1 : 0) + 1}>TOPLAM</td>
               <td className="px-3 py-1.5 font-bold text-orange text-right">{paraFormat(toplam)}</td>
             </tr>
           </tbody>
@@ -98,18 +105,22 @@ export default function MakbuzGunluk() {
           .then(({ data: grup }) => {
             const grupListesi = grup || [kendisi]
             const grupIdleri = grupListesi.map((g) => g.id)
-            supabase
-              .from('odemeler')
-              .select('*')
-              .in('ogrenci_id', grupIdleri)
-              .order('tarih')
-              .then(({ data }) => {
-                const gununOdemeleri = (data || []).filter((odm) => gunAnahtari(odm.tarih) === tarih)
-                setOdemeler(gununOdemeleri)
-                setGrupOgrencileri(grupListesi)
-                setOgrenciAdi(grupListesi.map((g) => g.ad_soyad).join(' ve '))
-                setLoading(false)
-              })
+            Promise.all([
+              supabase.from('odemeler').select('*').in('ogrenci_id', grupIdleri).order('tarih'),
+              // Kalemin (varsa) hangi sözleşmeye bağlı olduğunu bulup taksit
+              // durumu hesaplayabilmek için — bkz. aşağıdaki taksitBilgisi.
+              supabase.from('sozlesmeler').select('*').in('ogrenci_id', grupIdleri),
+            ]).then(([odemeSonuc, sozlesmeSonuc]) => {
+              const tumOdemeler = odemeSonuc.data || []
+              const sozlesmeler = sozlesmeSonuc.data || []
+              const gununOdemeleri = tumOdemeler
+                .filter((odm) => gunAnahtari(odm.tarih) === tarih)
+                .map((odm) => ({ ...odm, taksitBilgisi: makbuzTaksitBilgisiBul(odm, sozlesmeler, tumOdemeler) }))
+              setOdemeler(gununOdemeleri)
+              setGrupOgrencileri(grupListesi)
+              setOgrenciAdi(grupListesi.map((g) => g.ad_soyad).join(' ve '))
+              setLoading(false)
+            })
           })
       })
   }, [ogrenciId, tarih])

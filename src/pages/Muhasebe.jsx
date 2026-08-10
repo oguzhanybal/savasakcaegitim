@@ -18,6 +18,7 @@ import {
   sonOdemeleriGrupSiniriylaKes,
   telefonNormallestir,
   makbuzWhatsappMesajiOlustur,
+  makbuzTaksitBilgisiBul,
 } from '../lib/ekstreHesap'
 import { makbuzPdfOlustur, odemePlaniPdfOlustur } from '../lib/pdfOlustur'
 
@@ -835,8 +836,18 @@ export default function Muhasebe() {
     }
     setMakbuzGonderiliyor(anahtar)
     try {
-      const gununKalemleri = odemeler.filter((x) => grupIdleri.includes(x.ogrenci_id) && gunAnahtari(x.tarih) === gun)
-      if (gununKalemleri.length === 0) throw new Error('Bu tarihte ödeme kaydı bulunamadı.')
+      const gununKalemleriHam = odemeler.filter((x) => grupIdleri.includes(x.ogrenci_id) && gunAnahtari(x.tarih) === gun)
+      if (gununKalemleriHam.length === 0) throw new Error('Bu tarihte ödeme kaydı bulunamadı.')
+      // Her kaleme (varsa) taksit bilgisini ekliyoruz — "kaç taksitten kaçı
+      // ödendi" makbuzda (hem PDF'te hem WhatsApp metninde) görünsün diye
+      // (kullanıcı isteğiyle eklendi). "odemeler" burada TÜM fatura grubunun
+      // (Fatura Ortağı varsa kardeşin de) geçmişini içeriyor — taksit
+      // hesabının doğru öğrenciye ait ödemelerle yapılması makbuzTaksitBilgisiBul
+      // içinde zaten garanti ediliyor.
+      const gununKalemleri = gununKalemleriHam.map((x) => ({
+        ...x,
+        taksitBilgisi: makbuzTaksitBilgisiBul(x, sozlesmeler, odemeler),
+      }))
       const ogrenciSutunuGoster = grupIdleri.length > 1
       const toplam = gununKalemleri.reduce((t, x) => t + Number(x.tutar), 0)
       const tarihMetni = new Date(`${gun}T12:00:00`).toLocaleDateString('tr-TR', {
