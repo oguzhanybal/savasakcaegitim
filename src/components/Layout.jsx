@@ -152,11 +152,18 @@ function menuOlustur(rol) {
   return []
 }
 
-// Şimdilik SADECE öğrenci rolü için: bire bir dersinden 10 dakika önce
-// gerçek push bildirimi almak isteyenler bu butona basıp izin veriyor.
+// Bire bir dersinden 10 dakika önce gerçek push bildirimi almak isteyenler bu
+// butona basıp izin veriyor. ÖNCEDEN sadece öğrenci rolünde gösteriliyordu —
+// ama yöneticiye de (bkz. api/bire-bir-hatirlatma.js) her bire bir dersten 10
+// dakika önce "kim kiminle dersi var" bildirimi gönderilmeye başlandığında,
+// yöneticinin buna abone olabileceği bir buton hiç eklenmemişti — yönetici
+// hiçbir zaman push_abonelikleri'ne kaydolamadığı için bildirim de hiç
+// gitmiyordu (kullanıcının fark ettiği hata). Artık yönetici için de gösteriliyor,
+// mesaj metni role göre değişiyor (öğrenci "kendi dersi", yönetici "bir
+// öğrencinin dersi" diye bildirim alacağını anlasın diye).
 // Desteklenmeyen tarayıcılarda (ör. iPhone Safari'de ana ekrana eklenmeden)
 // buton yine görünür, basılınca açıklayıcı bir hata mesajı gösterir.
-function BildirimButonu({ profileId }) {
+function BildirimButonu({ profileId, rol }) {
   const [acik, setAcik] = useState(false)
   const [yukleniyor, setYukleniyor] = useState(false)
   const [kontrolEdildi, setKontrolEdildi] = useState(false)
@@ -181,7 +188,11 @@ function BildirimButonu({ profileId }) {
       } else {
         await bildirimleriAc(profileId)
         setAcik(true)
-        alert('Bildirimler açıldı. Bire bir dersinizden 10 dakika önce bildirim alacaksınız.')
+        alert(
+          rol === 'yonetici'
+            ? 'Bildirimler açıldı. Bir öğrencinin bire bir dersinden 10 dakika önce bildirim alacaksınız.'
+            : 'Bildirimler açıldı. Bire bir dersinizden 10 dakika önce bildirim alacaksınız.'
+        )
       }
     } catch (err) {
       alert(err.message)
@@ -507,7 +518,9 @@ export default function Layout() {
           style={{ paddingBottom: 'calc(0.75rem + env(safe-area-inset-bottom))' }}
         >
           <p className="text-xs text-white/60 px-3 mb-2 truncate">{profile?.ad_soyad}</p>
-          {rol === 'ogrenci' && profile?.id && <BildirimButonu profileId={profile.id} />}
+          {(rol === 'ogrenci' || rol === 'yonetici') && profile?.id && (
+            <BildirimButonu profileId={profile.id} rol={rol} />
+          )}
           <UygulamaYukleButonu ertelemeOlayi={ertelemeOlayi} yukle={pwaYukle} />
           <button
             onClick={signOut}
