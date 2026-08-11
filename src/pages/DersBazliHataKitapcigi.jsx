@@ -475,9 +475,15 @@ export default function DersBazliHataKitapcigi() {
                   )}
                   {grup.kitapcik && <span className="text-gray-400 font-normal"> · Kitapçık {grup.kitapcik}</span>}
                 </p>
-                <div className="grid grid-cols-2 gap-3">
+                {/* NOT: "grid grid-cols-2" değil "flex flex-wrap" kullanılıyor —
+                    Chrome'un yazdırma motoru, CSS grid çocuklarında
+                    break-inside:avoid kuralını güvenilir uygulamıyor (bilinen
+                    Chromium hatası), bu yüzden uzun bir soru (ör. paragraf
+                    okuma sorusu) sayfa sonuna denk gelince ortadan bölünüyordu.
+                    Flexbox'ta aynı kural doğru çalışıyor. */}
+                <div className="flex flex-wrap gap-3">
                   {grup.sorular.map((s) => (
-                    <div key={s.id} className="soru-karti bg-white rounded-lg border border-gray-200 p-2">
+                    <div key={s.id} className="soru-karti bg-white rounded-lg border border-gray-200 p-2 w-[calc(50%-6px)]">
                       <p className="text-[11px] font-semibold text-navy leading-tight">
                         Soru {s.soru_no}
                         {s.konu && <span className="text-gray-400 font-normal"> · {s.konu}</span>}

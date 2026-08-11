@@ -380,11 +380,18 @@ export default function HataKitapcigi() {
                 (bir öğrenci için onlarca sayfa çıkıyordu). Ders değişince
                 başlık tam genişlikte (col-span-full) araya giriyor, sorular
                 onun altında 2'şerli sıralanıyor. */}
-            <div className="grid grid-cols-2 gap-3">
+            {/* NOT: "grid grid-cols-2" değil "flex flex-wrap" kullanılıyor —
+                Chrome'un yazdırma motoru, CSS grid çocuklarında
+                break-inside:avoid kuralını güvenilir uygulamıyor (bilinen
+                Chromium hatası), bu yüzden uzun bir soru (ör. paragraf okuma
+                sorusu) sayfa sonuna denk gelince ortadan bölünüyordu.
+                Flexbox'ta aynı kural doğru çalışıyor. Ders başlığı da
+                col-span-2 yerine w-full ile kendi satırına alınıyor. */}
+            <div className="flex flex-wrap gap-3">
               {sorular.flatMap((s, i) => {
                 const dersBasligiGoster = i === 0 || sorular[i - 1].ders_adi !== s.ders_adi
                 const kart = (
-                  <div key={s.id} className="soru-karti bg-white rounded-lg border border-gray-200 p-2">
+                  <div key={s.id} className="soru-karti bg-white rounded-lg border border-gray-200 p-2 w-[calc(50%-6px)]">
                     <p className="text-[11px] font-semibold text-navy leading-tight">
                       Soru {s.soru_no}
                       {s.konu && <span className="text-gray-400 font-normal"> · {s.konu}</span>}
@@ -406,7 +413,7 @@ export default function HataKitapcigi() {
                 const baslik = (
                   <p
                     key={`baslik-${s.id}`}
-                    className="col-span-2 text-sm font-bold text-navy border-b border-navy/20 pb-1 mt-1 first:mt-0"
+                    className="w-full text-sm font-bold text-navy border-b border-navy/20 pb-1 mt-1 first:mt-0"
                   >
                     {s.ders_adi}
                   </p>
