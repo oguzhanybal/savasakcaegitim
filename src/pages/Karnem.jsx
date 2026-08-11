@@ -136,6 +136,11 @@ export default function Karnem() {
   // giden seçim kutuları.
   const [dersHKDers, setDersHKDers] = useState(DERS_SIRASI[0])
   const [dersHKTur, setDersHKTur] = useState('TYT')
+  // Tekli sınav Hata Kitapçığı: varsayılan "Tümü" (o sınavın bütün dersleri
+  // birlikte) ama veli/öğrenci isterse sadece TEK bir dersi seçip onun
+  // kitapçığını indirebilsin diye (ör. sadece Türkçe). Sonuç (sınav)
+  // bazında ayrı seçim tutuluyor — id -> seçilen ders adı ('' = Tümü).
+  const [tekliHKDersSecim, setTekliHKDersSecim] = useState({})
 
   async function karnePdfIndir(s) {
     if (!s.karne_pdf_yolu) return
@@ -409,15 +414,40 @@ export default function Karnem() {
                     </button>
                   )}
                   {(s.toplam_yanlis || 0) + (s.toplam_bos || 0) > 0 && s.kitapcikHazirMi && (
-                    <Link
-                      to={`/hata-kitapcigi/${s.id}`}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      onClick={(e) => e.stopPropagation()}
-                      className="text-xs font-semibold bg-orange text-white px-3 py-1.5 rounded-full hover:opacity-90"
-                    >
-                      Hata Kitapçığını Görüntüle
-                    </Link>
+                    <>
+                      {/* Varsayılan "Tümü" — bu sınavdaki tüm dersler birlikte.
+                          Seçilirse tek bir ders (ör. sadece Türkçe) için ayrı
+                          kitapçık indirilebiliyor; bkz. HataKitapcigi.jsx'teki
+                          ?ders= filtresi. */}
+                      {s.dersler && s.dersler.length > 1 && (
+                        <select
+                          value={tekliHKDersSecim[s.id] || ''}
+                          onClick={(e) => e.stopPropagation()}
+                          onChange={(e) =>
+                            setTekliHKDersSecim((onceki) => ({ ...onceki, [s.id]: e.target.value }))
+                          }
+                          className="text-xs border border-gray-200 rounded-full px-2.5 py-1.5 bg-white text-gray-600"
+                        >
+                          <option value="">Tümü</option>
+                          {s.dersler.map((d) => (
+                            <option key={d.id} value={d.ders_adi}>{d.ders_adi}</option>
+                          ))}
+                        </select>
+                      )}
+                      <Link
+                        to={
+                          tekliHKDersSecim[s.id]
+                            ? `/hata-kitapcigi/${s.id}?ders=${encodeURIComponent(tekliHKDersSecim[s.id])}`
+                            : `/hata-kitapcigi/${s.id}`
+                        }
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        onClick={(e) => e.stopPropagation()}
+                        className="text-xs font-semibold bg-orange text-white px-3 py-1.5 rounded-full hover:opacity-90"
+                      >
+                        Hata Kitapçığını Görüntüle
+                      </Link>
+                    </>
                   )}
                 </div>
               </div>

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { useParams, Link } from 'react-router-dom'
+import { useParams, useSearchParams, Link } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { pdfBelgesiAc, sayfayiGoruntuyeCevir } from '../lib/kitapcikOcr'
 
@@ -21,6 +21,12 @@ import { pdfBelgesiAc, sayfayiGoruntuyeCevir } from '../lib/kitapcikOcr'
 // PNG'ye çevrilir ve <img> olarak sayfaya basılır.
 export default function HataKitapcigi() {
   const { sonucId } = useParams()
+  // ?ders=Türkçe gibi bir sorgu parametresi verilirse, o tek sınavın TÜM
+  // derslerini değil, sadece SEÇİLEN dersin yanlış/boş sorularını kesip
+  // gösteriyoruz — Karnem.jsx'teki ders seçicisi bu parametreyi ekliyor.
+  // Parametre yoksa (eski davranış) tüm dersler birlikte çıkıyor.
+  const [searchParams] = useSearchParams()
+  const dersFiltresi = searchParams.get('ders') || ''
 
   const [durum, setDurum] = useState('yukleniyor') // yukleniyor | hazir | bos | hata
   const [ilerlemeMetni, setIlerlemeMetni] = useState('Hazırlanıyor...')
@@ -65,12 +71,20 @@ export default function HataKitapcigi() {
         }
 
         setIlerlemeMetni('Yanlış/boş sorular listeleniyor...')
-        const { data: soruSonuclari, error: soruHatasi } = await supabase
+        const { data: soruSonuclariHam, error: soruHatasi } = await supabase
           .from('sinav_soru_sonuclari')
           .select('*')
           .eq('sonuc_id', sonucId)
           .in('sonuc', ['yanlis', 'bos'])
         if (soruHatasi) throw soruHatasi
+
+        // Ders adları farklı yazım/boşluk içerebildiği için (bkz. dosya
+        // başındaki not) .eq() ile veritabanında değil, burada normalize
+        // edilmiş karşılaştırmayla filtreliyoruz.
+        const normalizeErken = (s) => (s || '').toLocaleLowerCase('tr-TR').trim()
+        const soruSonuclari = dersFiltresi
+          ? (soruSonuclariHam || []).filter((s) => normalizeErken(s.ders_adi) === normalizeErken(dersFiltresi))
+          : soruSonuclariHam
 
         if (!soruSonuclari || soruSonuclari.length === 0) {
           setDurum('bos')
@@ -246,18 +260,19 @@ export default function HataKitapcigi() {
     return () => {
       iptalEdildi = true
     }
-  }, [sonucId])
+  }, [sonucId, dersFiltresi])
 
   // İndirilen PDF/yazdırma çıktısının dosya adı (ve tarayıcı sekme başlığı)
   // öğrenci ve sınav adını göstersin diye — "Savaş Akça Eğitim Portalı" gibi
   // genel bir isimle kaydedilmesin.
   useEffect(() => {
     if (!ogrenciAdi) return
-    document.title = `${ogrenciAdi} — Hata Kitapçığı${sinavAdi ? ` (${sinavAdi})` : ''}`
+    const dersEki = dersFiltresi ? ` — ${dersFiltresi}` : ''
+    document.title = `${ogrenciAdi} — Hata Kitapçığı${dersEki}${sinavAdi ? ` (${sinavAdi})` : ''}`
     return () => {
       document.title = 'Savaş Akça Eğitim Portalı'
     }
-  }, [ogrenciAdi, sinavAdi])
+  }, [ogrenciAdi, sinavAdi, dersFiltresi])
 
   return (
     <div className="min-h-screen bg-cream py-8 px-4">
@@ -302,7 +317,9 @@ export default function HataKitapcigi() {
           <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-8 text-center">
             <p className="font-semibold text-navy mb-1">Hata kitapçığı gerekmiyor</p>
             <p className="text-sm text-gray-500">
-              {ogrenciAdi} bu sınavdaki tüm soruları doğru cevaplamış — kesilecek bir soru yok.
+              {dersFiltresi
+                ? `${ogrenciAdi} bu sınavda "${dersFiltresi}" dersindeki tüm soruları doğru cevaplamış — kesilecek bir soru yok.`
+                : `${ogrenciAdi} bu sınavdaki tüm soruları doğru cevaplamış — kesilecek bir soru yok.`}
             </p>
           </div>
         )}
@@ -331,7 +348,9 @@ export default function HataKitapcigi() {
                   <img src="/logo.png" alt="Savaş Akça Eğitim" className="w-10 h-10 object-contain" />
                 </div>
                 <div>
-                  <p className="font-bold text-lg text-navy">HATA KİTAPÇIĞI</p>
+                  <p className="font-bold text-lg text-navy">
+                    HATA KİTAPÇIĞI{dersFiltresi && <span className="text-orange"> — {dersFiltresi}</span>}
+                  </p>
                   <p className="text-sm text-gray-500">{sinavAdi} {kitapcikTuru && `· Kitapçık ${kitapcikTuru}`}</p>
                 </div>
               </div>
