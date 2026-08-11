@@ -142,20 +142,31 @@ export default function Karnem() {
   // bazında ayrı seçim tutuluyor — id -> seçilen ders adı ('' = Tümü).
   const [tekliHKDersSecim, setTekliHKDersSecim] = useState({})
 
-  async function karnePdfIndir(s) {
+  function karnePdfIndir(s) {
     if (!s.karne_pdf_yolu) return
+    // iOS Safari, window.open() bir await'ten SONRA (kullanıcı tıklamasıyla
+    // aynı senkron çağrı zinciri dışında) çağrılırsa bunu sessizce
+    // engelliyor — hata da vermiyor, buton basılmış gibi görünüp hiçbir şey
+    // olmuyor. Çözüm: sekmeyi tıklama anında senkron olarak boş açıp,
+    // imzalı URL geldiğinde o sekmenin adresini değiştirmek.
+    const yeniSekme = window.open('', '_blank', 'noopener,noreferrer')
     setPdfIndiriliyorId(s.id)
-    try {
-      const { data, error } = await supabase.storage
-        .from('sinav-sonuc-pdfleri')
-        .createSignedUrl(s.karne_pdf_yolu, 60)
-      if (error) throw error
-      window.open(data.signedUrl, '_blank', 'noopener,noreferrer')
-    } catch (e) {
-      alert('PDF indirilemedi: ' + e.message)
-    } finally {
-      setPdfIndiriliyorId(null)
-    }
+    supabase.storage
+      .from('sinav-sonuc-pdfleri')
+      .createSignedUrl(s.karne_pdf_yolu, 60)
+      .then(({ data, error }) => {
+        if (error) throw error
+        if (yeniSekme) {
+          yeniSekme.location.href = data.signedUrl
+        } else {
+          window.open(data.signedUrl, '_blank', 'noopener,noreferrer')
+        }
+      })
+      .catch((e) => {
+        if (yeniSekme) yeniSekme.close()
+        alert('PDF indirilemedi: ' + e.message)
+      })
+      .finally(() => setPdfIndiriliyorId(null))
   }
 
   useEffect(() => {

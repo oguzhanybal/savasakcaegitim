@@ -151,18 +151,42 @@ export default function HataKitapcigi() {
             .forEach((k, i) => siraMap.set(`${normalize(k.ders_adi)}|${k.soru_no}`, i))
         }
 
-        const sayfaCanvasOnbellek = new Map()
+        // BELLEK: her sayfanın canvas'ını (scale=3'te tam bir A4 canvas'ı
+        // onlarca MB tutabiliyor) aynı anda bellekte tutmak, iPhone/iPad
+        // Safari'de sekmenin "bir sorun oluştu" diyip tekrar tekrar
+        // çökmesine yol açıyordu — özellikle çok sayfalı kitapçıklarda.
+        // Bunu önlemek için aynı anda EN FAZLA TEK sayfanın canvas'ı
+        // bellekte tutuluyor (LRU-1); bir sonraki sayfaya geçilince
+        // önceki canvas hemen serbest bırakılıyor (width/height=0).
+        // Bunun işe yaraması için soruları da rastgele değil, KENDİ sayfa
+        // numarasına göre gruplu işliyoruz — nihai gösterim sırası zaten
+        // aşağıda siraMap'e göre yeniden diziliyor, bu sadece işleme sırası.
+        let aktifSayfaNo = null
+        let aktifSayfaCanvas = null
         async function sayfaCanvasGetir(sayfaNo) {
-          if (sayfaCanvasOnbellek.has(sayfaNo)) return sayfaCanvasOnbellek.get(sayfaNo)
+          if (aktifSayfaNo === sayfaNo && aktifSayfaCanvas) return aktifSayfaCanvas
+          if (aktifSayfaCanvas) {
+            aktifSayfaCanvas.width = 0
+            aktifSayfaCanvas.height = 0
+          }
           const { canvas } = await sayfayiGoruntuyeCevir(belge, sayfaNo, olcek)
-          sayfaCanvasOnbellek.set(sayfaNo, canvas)
+          aktifSayfaNo = sayfaNo
+          aktifSayfaCanvas = canvas
           return canvas
         }
 
+        const soruSonuclariSirali = soruSonuclari.slice().sort((a, b) => {
+          const ka = kutuMap.get(`${normalize(a.ders_adi)}|${a.soru_no}`)
+          const kb = kutuMap.get(`${normalize(b.ders_adi)}|${b.soru_no}`)
+          const sa = ka ? ka.sayfa_no : Infinity
+          const sb = kb ? kb.sayfa_no : Infinity
+          return sa - sb
+        })
+
         const hazirSorular = []
         const bulunamayanlar = []
-        for (let i = 0; i < soruSonuclari.length; i++) {
-          const s = soruSonuclari[i]
+        for (let i = 0; i < soruSonuclariSirali.length; i++) {
+          const s = soruSonuclariSirali[i]
           setIlerlemeMetni(`Sorular kesiliyor (${i + 1}/${soruSonuclari.length})...`)
           const anahtar = `${normalize(s.ders_adi)}|${s.soru_no}`
           const kutu = kutuMap.get(anahtar)

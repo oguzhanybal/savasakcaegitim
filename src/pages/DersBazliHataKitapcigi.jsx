@@ -187,7 +187,15 @@ export default function DersBazliHataKitapcigi() {
         // tekrar tekrar indirip açmamak için (HataKitapcigi'deki aynı mantık,
         // burada birden fazla kitapçık için tekrarlanıyor).
         const belgeCache = new Map() // kitapcik_id -> { belge, olcek }
-        const sayfaCanvasOnbellek = new Map() // `${kitapcik_id}:${sayfa_no}` -> canvas
+        // BELLEK: her sayfanın canvas'ını (scale=3'te tam bir A4 canvas'ı
+        // onlarca MB) aynı anda bellekte tutmak — özellikle burada BİRDEN
+        // FAZLA SINAVIN kitapçıkları arka arkaya işlendiği için — iPhone/
+        // iPad Safari'de sekmenin "bir sorun oluştu" diyip çökmesine yol
+        // açıyordu. Aynı anda EN FAZLA TEK sayfanın canvas'ı bellekte
+        // tutuluyor (LRU-1); bir sonraki sayfaya/kitapçığa geçilince
+        // öncekini hemen serbest bırakıyoruz (width/height=0).
+        let aktifSayfaAnahtari = null
+        let aktifSayfaCanvas = null
         async function belgeGetir(kitapcikVerisi) {
           if (belgeCache.has(kitapcikVerisi.id)) return belgeCache.get(kitapcikVerisi.id)
           const { data: pdfBlobu, error: indirmeHatasi } = await supabase.storage
@@ -202,10 +210,15 @@ export default function DersBazliHataKitapcigi() {
         }
         async function sayfaCanvasGetir(kitapcikVerisi, sayfaNo) {
           const anahtar = `${kitapcikVerisi.id}:${sayfaNo}`
-          if (sayfaCanvasOnbellek.has(anahtar)) return sayfaCanvasOnbellek.get(anahtar)
+          if (aktifSayfaAnahtari === anahtar && aktifSayfaCanvas) return aktifSayfaCanvas
+          if (aktifSayfaCanvas) {
+            aktifSayfaCanvas.width = 0
+            aktifSayfaCanvas.height = 0
+          }
           const { belge, olcek } = await belgeGetir(kitapcikVerisi)
           const { canvas } = await sayfayiGoruntuyeCevir(belge, sayfaNo, olcek)
-          sayfaCanvasOnbellek.set(anahtar, canvas)
+          aktifSayfaAnahtari = anahtar
+          aktifSayfaCanvas = canvas
           return canvas
         }
 
@@ -244,8 +257,20 @@ export default function DersBazliHataKitapcigi() {
               .forEach((k, i) => siraMap.set(`${normalizeYerel(k.ders_adi)}|${k.soru_no}`, i))
           }
 
+          // LRU-1 sayfa önbelleğinin işe yaraması için sorular rastgele
+          // değil, KENDİ sayfa numarasına göre gruplu işleniyor — nihai
+          // gösterim sırası zaten aşağıda siraMap'e göre yeniden diziliyor,
+          // bu sadece işleme sırası (bkz. sayfaCanvasGetir'deki not).
+          const soruSonuclariSirali = g.soruSonuclari.slice().sort((a, b) => {
+            const ka = kutuMap.get(`${normalizeYerel(a.ders_adi)}|${a.soru_no}`)
+            const kb = kutuMap.get(`${normalizeYerel(b.ders_adi)}|${b.soru_no}`)
+            const sa = ka ? ka.sayfa_no : Infinity
+            const sb = kb ? kb.sayfa_no : Infinity
+            return sa - sb
+          })
+
           const hazirSorular = []
-          for (const s of g.soruSonuclari) {
+          for (const s of soruSonuclariSirali) {
             islenenSoru++
             setIlerlemeMetni(`Sorular kesiliyor (${islenenSoru}/${toplamSoruBeklenen})...`)
             const anahtar = `${normalizeYerel(s.ders_adi)}|${s.soru_no}`
