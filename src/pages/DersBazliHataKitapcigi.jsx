@@ -361,8 +361,11 @@ export default function DersBazliHataKitapcigi() {
         @media print {
           .no-print { display: none !important; }
           body { background: white !important; }
-          .soru-karti { break-inside: avoid; }
-          .sinav-baslik { break-after: avoid; }
+          /* break-inside hem de eski takma adı page-break-inside — Safari/iOS
+             (iPhone/iPad) hâlâ eski adı kullanıyor, sadece break-inside
+             yazınca orada hiç etkisi olmuyordu. */
+          .soru-karti { break-inside: avoid; page-break-inside: avoid; }
+          .sinav-baslik { break-after: avoid; page-break-after: avoid; }
         }
       `}</style>
 
@@ -475,15 +478,20 @@ export default function DersBazliHataKitapcigi() {
                   )}
                   {grup.kitapcik && <span className="text-gray-400 font-normal"> · Kitapçık {grup.kitapcik}</span>}
                 </p>
-                {/* NOT: "grid grid-cols-2" değil "flex flex-wrap" kullanılıyor —
-                    Chrome'un yazdırma motoru, CSS grid çocuklarında
-                    break-inside:avoid kuralını güvenilir uygulamıyor (bilinen
-                    Chromium hatası), bu yüzden uzun bir soru (ör. paragraf
-                    okuma sorusu) sayfa sonuna denk gelince ortadan bölünüyordu.
-                    Flexbox'ta aynı kural doğru çalışıyor. */}
-                <div className="flex flex-wrap gap-3">
+                {/* NOT: ne "grid" ne "flex" — ikisinde de Chrome/Safari'nin
+                    yazdırma motorları break-inside:avoid'i çocuklarda güvenilir
+                    uygulamıyor (Chrome'da grid'de, Safari/iOS'ta hem grid hem
+                    flex'te bozuk çıktı — iPhone/iPad'de aynı soru yine
+                    bölünüyordu). En eski ve en yaygın desteklenen yöntem olan
+                    inline-block + simetrik margin kullanılıyor; break-inside
+                    orada tüm tarayıcılarda güvenilir çalışıyor. */}
+                <div style={{ margin: '0 -6px' }}>
                   {grup.sorular.map((s) => (
-                    <div key={s.id} className="soru-karti bg-white rounded-lg border border-gray-200 p-2 w-[calc(50%-6px)]">
+                    <div
+                      key={s.id}
+                      className="soru-karti bg-white rounded-lg border border-gray-200 p-2"
+                      style={{ display: 'inline-block', verticalAlign: 'top', width: 'calc(50% - 12px)', margin: '0 6px 12px 6px' }}
+                    >
                       <p className="text-[11px] font-semibold text-navy leading-tight">
                         Soru {s.soru_no}
                         {s.konu && <span className="text-gray-400 font-normal"> · {s.konu}</span>}

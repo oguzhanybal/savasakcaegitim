@@ -265,7 +265,10 @@ export default function HataKitapcigi() {
         @media print {
           .no-print { display: none !important; }
           body { background: white !important; }
-          .soru-karti { break-inside: avoid; }
+          /* break-inside hem de eski takma adı page-break-inside — Safari/iOS
+             (iPhone/iPad) hâlâ eski adı kullanıyor, sadece break-inside
+             yazınca orada hiç etkisi olmuyordu. */
+          .soru-karti { break-inside: avoid; page-break-inside: avoid; }
         }
       `}</style>
 
@@ -380,18 +383,24 @@ export default function HataKitapcigi() {
                 (bir öğrenci için onlarca sayfa çıkıyordu). Ders değişince
                 başlık tam genişlikte (col-span-full) araya giriyor, sorular
                 onun altında 2'şerli sıralanıyor. */}
-            {/* NOT: "grid grid-cols-2" değil "flex flex-wrap" kullanılıyor —
-                Chrome'un yazdırma motoru, CSS grid çocuklarında
-                break-inside:avoid kuralını güvenilir uygulamıyor (bilinen
-                Chromium hatası), bu yüzden uzun bir soru (ör. paragraf okuma
-                sorusu) sayfa sonuna denk gelince ortadan bölünüyordu.
-                Flexbox'ta aynı kural doğru çalışıyor. Ders başlığı da
-                col-span-2 yerine w-full ile kendi satırına alınıyor. */}
-            <div className="flex flex-wrap gap-3">
+            {/* NOT: ne "grid" ne "flex" — ikisinde de Chrome/Safari'nin
+                yazdırma motorları break-inside:avoid'i çocuklarda güvenilir
+                uygulamıyor (Chrome'da grid'de, Safari/iOS'ta hem grid hem
+                flex'te bozuk çıktı — iPhone/iPad'de aynı soru yine
+                bölünüyordu). En eski ve en yaygın desteklenen yöntem olan
+                inline-block + simetrik margin kullanılıyor; break-inside
+                orada tüm tarayıcılarda güvenilir çalışıyor. Ders başlığı da
+                tam genişlik (calc(100%-12px)) vererek kendi satırına
+                alınıyor. */}
+            <div style={{ margin: '0 -6px' }}>
               {sorular.flatMap((s, i) => {
                 const dersBasligiGoster = i === 0 || sorular[i - 1].ders_adi !== s.ders_adi
                 const kart = (
-                  <div key={s.id} className="soru-karti bg-white rounded-lg border border-gray-200 p-2 w-[calc(50%-6px)]">
+                  <div
+                    key={s.id}
+                    className="soru-karti bg-white rounded-lg border border-gray-200 p-2"
+                    style={{ display: 'inline-block', verticalAlign: 'top', width: 'calc(50% - 12px)', margin: '0 6px 12px 6px' }}
+                  >
                     <p className="text-[11px] font-semibold text-navy leading-tight">
                       Soru {s.soru_no}
                       {s.konu && <span className="text-gray-400 font-normal"> · {s.konu}</span>}
@@ -413,7 +422,8 @@ export default function HataKitapcigi() {
                 const baslik = (
                   <p
                     key={`baslik-${s.id}`}
-                    className="w-full text-sm font-bold text-navy border-b border-navy/20 pb-1 mt-1 first:mt-0"
+                    className="text-sm font-bold text-navy border-b border-navy/20 pb-1 mt-1 first:mt-0"
+                    style={{ display: 'inline-block', width: 'calc(100% - 12px)', margin: '4px 6px' }}
                   >
                     {s.ders_adi}
                   </p>
