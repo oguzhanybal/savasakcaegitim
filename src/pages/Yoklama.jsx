@@ -36,6 +36,7 @@ function saatleriBirlestir(saatler, yoklamasiOlanIdler) {
 export default function Yoklama() {
   const { profile } = useAuth()
   const [siniflar, setSiniflar] = useState([])
+  const [ogretmenler, setOgretmenler] = useState([])
   const [seciliSinif, setSeciliSinif] = useState('')
   const [gununSaatleri, setGununSaatleri] = useState([])
   const [seciliSaat, setSeciliSaat] = useState('')
@@ -53,7 +54,21 @@ export default function Yoklama() {
       if (data && data.length > 0) setSeciliSinif(data[0].id)
       else setLoading(false)
     })
+    // Aynı sınıfın farklı ders saatleri farklı öğretmenlere ait olabiliyor
+    // (ör. 09.00 Matematik başka hocada, 09.55 Fizik başka hocada) —
+    // yönetici "Bugünkü Ders Saati" seçerken hangi saatin kime ait olduğunu
+    // görebilsin diye. Öğretmen zaten kendi dersine baktığı için ona
+    // tekrar gösterilmiyor.
+    supabase
+      .from('profiles')
+      .select('id, ad_soyad')
+      .eq('rol', 'ogretmen')
+      .then(({ data }) => setOgretmenler(data || []))
   }, [])
+
+  function ogretmenAdi(ogretmenId) {
+    return ogretmenler.find((o) => o.id === ogretmenId)?.ad_soyad || ''
+  }
 
   // Seçili sınıfın BUGÜNKÜ ders saatlerini getir
   useEffect(() => {
@@ -221,6 +236,9 @@ export default function Yoklama() {
                 {gununSaatleri.map((s) => (
                   <option key={s.id} value={s.id}>
                     {s.baslangic_saat?.slice(0, 5)} – {s.bitis_saat?.slice(0, 5)}
+                    {profile?.rol !== 'ogretmen' && ogretmenAdi(s.ogretmen_profile_id)
+                      ? ` — ${ogretmenAdi(s.ogretmen_profile_id)}`
+                      : ''}
                   </option>
                 ))}
               </select>
@@ -232,6 +250,9 @@ export default function Yoklama() {
               <label className="block text-sm font-medium text-gray-700 mb-1">Bugünkü Ders Saati</label>
               <p className="px-3 py-2 bg-gray-50 rounded-lg text-gray-700 font-medium">
                 {gununSaatleri[0].baslangic_saat?.slice(0, 5)} – {gununSaatleri[0].bitis_saat?.slice(0, 5)}
+                {profile?.rol !== 'ogretmen' && ogretmenAdi(gununSaatleri[0].ogretmen_profile_id) && (
+                  <span className="text-gray-500 font-normal"> — {ogretmenAdi(gununSaatleri[0].ogretmen_profile_id)}</span>
+                )}
               </p>
             </div>
           )}
