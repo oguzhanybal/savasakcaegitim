@@ -42,6 +42,7 @@ function tarihUzunFormat(tarihStr) {
 export default function GecmisYoklama() {
   const { profile } = useAuth()
   const [siniflar, setSiniflar] = useState([])
+  const [ogretmenler, setOgretmenler] = useState([])
   const [seciliSinif, setSeciliSinif] = useState('') // '' = Tümü
   const [gunListesi, setGunListesi] = useState([]) // [{tarih, gun, dersler: [...]}]
   const [yukleniyorListe, setYukleniyorListe] = useState(true)
@@ -56,10 +57,22 @@ export default function GecmisYoklama() {
 
   useEffect(() => {
     supabase.from('siniflar').select('*').then(({ data }) => setSiniflar(data || []))
+    // Sınıf dersi hangi öğretmene ait, yönetici "Tümü" modunda listeye
+    // bakınca görebilsin diye — öğretmen kendi derslerini zaten filtreyle
+    // gördüğü için adını tekrar görmesine gerek yok, sadece yöneticiye gösterilir.
+    supabase
+      .from('profiles')
+      .select('id, ad_soyad')
+      .eq('rol', 'ogretmen')
+      .then(({ data }) => setOgretmenler(data || []))
   }, [])
 
   function sinifAdi(sinifId) {
     return siniflar.find((s) => s.id === sinifId)?.ad || ''
+  }
+
+  function ogretmenAdi(ogretmenId) {
+    return ogretmenler.find((o) => o.id === ogretmenId)?.ad_soyad || ''
   }
 
   // Sınıf seçimi (ya da "Tümü") değişince: son GUN_PENCERESI gündeki dersleri
@@ -330,6 +343,9 @@ export default function GecmisYoklama() {
                   {o.ders.ders_adi ? ` — ${o.ders.ders_adi}` : ''}
                   {' — '}
                   <span className="text-gray-500">{sinifAdi(o.ders.sinif_id)}</span>
+                  {profile?.rol !== 'ogretmen' && ogretmenAdi(o.ders.ogretmen_profile_id) && (
+                    <span className="text-gray-400"> — {ogretmenAdi(o.ders.ogretmen_profile_id)}</span>
+                  )}
                 </p>
                 <span
                   className={`shrink-0 px-2.5 py-1 rounded-full text-xs font-semibold ${
@@ -363,6 +379,9 @@ export default function GecmisYoklama() {
               {seciliOge.ders.ders_adi ? ` — ${seciliOge.ders.ders_adi}` : ''}
               {' — '}
               {sinifAdi(seciliOge.ders.sinif_id)}
+              {profile?.rol !== 'ogretmen' && ogretmenAdi(seciliOge.ders.ogretmen_profile_id) && (
+                <> — {ogretmenAdi(seciliOge.ders.ogretmen_profile_id)}</>
+              )}
             </p>
           </div>
 
