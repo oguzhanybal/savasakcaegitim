@@ -169,7 +169,7 @@ function AnaUygulama() {
         <Route
           path="/hata-kitapcigi/:sonucId"
           element={
-            <Korumali izinliRoller={['yonetici', 'veli', 'ogrenci']}>
+            <Korumali izinliRoller={['yonetici', 'veli', 'ogrenci', 'ogretmen']}>
               <HataKitapcigi />
             </Korumali>
           }
@@ -177,7 +177,7 @@ function AnaUygulama() {
         <Route
           path="/ders-hata-kitapcigi/:ogrenciId/:ders"
           element={
-            <Korumali izinliRoller={['yonetici', 'veli', 'ogrenci']}>
+            <Korumali izinliRoller={['yonetici', 'veli', 'ogrenci', 'ogretmen']}>
               <DersBazliHataKitapcigi />
             </Korumali>
           }
@@ -445,7 +445,7 @@ function AnaUygulama() {
           <Route
             path="karnem"
             element={
-              <Korumali izinliRoller={['veli', 'ogrenci', 'yonetici']}>
+              <Korumali izinliRoller={['veli', 'ogrenci', 'yonetici', 'ogretmen']}>
                 <Karnem />
               </Korumali>
             }
