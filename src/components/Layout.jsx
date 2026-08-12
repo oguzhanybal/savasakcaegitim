@@ -523,7 +523,9 @@ export default function Layout() {
           )}
           <UygulamaYukleButonu ertelemeOlayi={ertelemeOlayi} yukle={pwaYukle} />
           <button
-            onClick={signOut}
+            onClick={() => {
+              if (window.confirm('Çıkış yapmak istediğinize emin misiniz?')) signOut()
+            }}
             className="w-full text-left px-3 py-2 rounded-lg text-sm text-white/70 hover:bg-white/10 hover:text-white transition-colors"
           >
             Çıkış Yap
