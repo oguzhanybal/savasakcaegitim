@@ -125,6 +125,10 @@ function menuOlustur(rol) {
       // (kullanıcı isteğiyle eklendi) — "Yoklama Al"dan farklı olarak burada
       // geçmiş bir tarih seçilebiliyor.
       { tur: 'link', to: '/gecmis-yoklama', label: 'Geçmiş Yoklama' },
+      // Öğretmen artık öğrencilerin hata raporuna erişebiliyor — ama SADECE
+      // kendi branşına ait ders(ler)in sonuçlarını/hata kitapçığını görüyor
+      // (bkz. Karnem.jsx'teki BRANS_DERS_ESLEME, kullanıcı isteğiyle eklendi).
+      { tur: 'link', to: '/karnem', label: 'Hata Raporu' },
       { tur: 'link', to: '/sifremi-degistir', label: 'Şifremi Değiştir' },
     ]
   }
