@@ -54,6 +54,7 @@ export default function DersBazliHataKitapcigi() {
         // veya bu öğrencinin kendisine/velisine bağlı profil bu sayfayı görebilsin.
         const erisimVar =
           profile.rol === 'yonetici' ||
+          profile.rol === 'ogretmen' ||
           ogrenci.veli_profile_id === profile.id ||
           ogrenci.ogrenci_profile_id === profile.id
         if (!erisimVar) throw new Error('Bu öğrenciye erişim yetkiniz yok.')

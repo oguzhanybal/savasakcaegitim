@@ -19,6 +19,30 @@ function dersSiraPuani(dersAdi) {
   return i === -1 ? 999 : i
 }
 
+// Öğretmenler de artık öğrencilerin hata raporuna ulaşabiliyor — ama SADECE
+// KENDİ BRANŞLARINA ait ders(ler)i görebiliyorlar (kullanıcı isteğiyle:
+// "matematikçiler matematik ve geometri, türkçeciler türkçe ve edebiyat,
+// diğer hocalar kendi alanlarına"). KullaniciOlustur.jsx/Ogretmenler.jsx'teki
+// BRANSLAR listesindeki her branş adı buradaki anahtarlarla eşleşiyor —
+// eşlemede olmayan bir branş (ör. "Diğer") varsayılan olarak SADECE kendi
+// adıyla birebir aynı ders_adi'na sahip sınavları görür.
+const BRANS_DERS_ESLEME = {
+  'Matematik': ['Matematik', 'Geometri'],
+  'Geometri': ['Matematik', 'Geometri'],
+  'Türkçe': ['Türkçe', 'Edebiyat'],
+  'Türkçe/Edebiyat': ['Türkçe', 'Edebiyat'],
+  'Fen Bilimleri': ['Fizik', 'Kimya', 'Biyoloji', 'Fen Bilimleri'],
+  'Sosyal Bilgiler': ['Tarih', 'Coğrafya', 'Felsefe', 'Din Kültürü', 'Sosyal Bilimler'],
+}
+function ogretmenDersListesiGetir(brans) {
+  if (!brans) return []
+  if (BRANS_DERS_ESLEME[brans]) return BRANS_DERS_ESLEME[brans]
+  return [brans]
+}
+function normalizeDers(s) {
+  return (s || '').toLocaleLowerCase('tr-TR').trim()
+}
+
 // Net/puan gibi ondalıklı değerler PDF'te HER ZAMAN 2 basamaklı gösterilir
 // (ör. "58,50") — JS'te bu tür sayıları olduğu gibi tutarsak sondaki sıfır
 // otomatik düşer (58.50 → 58.5) ve karne ile ekrandaki sayı görsel olarak
@@ -120,6 +144,19 @@ export default function Karnem() {
   // olduğu öğrenci(ler)i görürken, yönetici İSTEDİĞİ HERHANGİ BİR öğrenciyi
   // seçebilmeli — aşağıdaki öğrenci sorgusu buna göre dallanıyor.
   const isYonetici = profile?.rol === 'yonetici'
+  // Öğretmen: yönetici gibi HERHANGİ bir öğrenciyi seçebilir ama sadece
+  // kendi branşına ait ders(ler)in sonuçlarını/hata kitapçığını görür —
+  // aşağıdaki sonuç işleme adımında (dersler filtrelenir, hiç eşleşmeyen
+  // sınavlar listeden tamamen çıkarılır).
+  const isOgretmen = profile?.rol === 'ogretmen'
+  const ogretmenDersleri = useMemo(
+    () => (isOgretmen ? ogretmenDersListesiGetir(profile?.brans) : []),
+    [isOgretmen, profile?.brans]
+  )
+  function dersGorebilir(dersAdi) {
+    if (!isOgretmen) return true
+    return ogretmenDersleri.some((d) => normalizeDers(d) === normalizeDers(dersAdi))
+  }
   const [ogrenciler, setOgrenciler] = useState([])
   const [seciliId, setSeciliId] = useState('')
   const [sonuclar, setSonuclar] = useState([])
@@ -136,6 +173,17 @@ export default function Karnem() {
   // giden seçim kutuları.
   const [dersHKDers, setDersHKDers] = useState(DERS_SIRASI[0])
   const [dersHKTur, setDersHKTur] = useState('TYT')
+  // Öğretmen için varsayılan seçim (DERS_SIRASI[0] = 'Türkçe') kendi
+  // branşında olmayabilir — profil yüklendiğinde, izin verilen ilk derse
+  // otomatik geçiyoruz.
+  useEffect(() => {
+    if (!isOgretmen || ogretmenDersleri.length === 0) return
+    if (!dersGorebilir(dersHKDers)) {
+      const ilkIzinli = DERS_SIRASI.find((d) => dersGorebilir(d)) || ogretmenDersleri[0]
+      setDersHKDers(ilkIzinli)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOgretmen, ogretmenDersleri.join('|')])
   // Tekli sınav Hata Kitapçığı: varsayılan "Tümü" (o sınavın bütün dersleri
   // birlikte) ama veli/öğrenci isterse sadece TEK bir dersi seçip onun
   // kitapçığını indirebilsin diye (ör. sadece Türkçe). Sonuç (sınav)
@@ -177,10 +225,12 @@ export default function Karnem() {
       .order('ad_soyad')
       .then(({ data }) => {
         const tumu = data || []
-        if (isYonetici) {
-          // Yönetici okuldaki HERHANGİ BİR öğrenciyi seçebilmeli — otomatik
-          // seçim yapmıyoruz (100'e yakın öğrenci arasından "ilk" öğrenciyi
-          // göstermenin bir anlamı yok), aşağıdaki dropdown'dan kendisi seçer.
+        if (isYonetici || isOgretmen) {
+          // Yönetici (ve artık öğretmen de) okuldaki HERHANGİ BİR öğrenciyi
+          // seçebilmeli — otomatik seçim yapmıyoruz (100'e yakın öğrenci
+          // arasından "ilk" öğrenciyi göstermenin bir anlamı yok), aşağıdaki
+          // dropdown'dan kendisi seçer. Öğretmen SADECE kendi branşına ait
+          // ders(ler)i görecek — bu filtre aşağıdaki sonuç işleme adımında.
           setOgrenciler(tumu)
           setLoading(false)
           return
@@ -246,24 +296,31 @@ export default function Karnem() {
         const hazirKitapcikSeti = new Set(
           (kitapciklarData || []).filter((k) => k.onaylandi).map((k) => `${k.sinav_id}|${k.kitapcik}`)
         )
-        setSonuclar(
-          liste.map((s) => ({
-            ...s,
-            dersler: (dersMap.get(s.id) || [])
-              .slice()
-              .sort((a, b) => dersSiraPuani(a.ders_adi) - dersSiraPuani(b.ders_adi)),
-            puanlar: puanMap.get(s.id) || [],
-            kitapcikHazirMi: hazirKitapcikSeti.has(`${s.sinav_id}|${s.kitapcik}`),
-          }))
-        )
+        const tumSonuclar = liste.map((s) => ({
+          ...s,
+          dersler: (dersMap.get(s.id) || [])
+            .slice()
+            .sort((a, b) => dersSiraPuani(a.ders_adi) - dersSiraPuani(b.ders_adi))
+            // Öğretmen SADECE kendi branşının ders(ler)ini görsün — Matematik
+            // branşı hem Matematik hem Geometri, Türkçe branşı hem Türkçe hem
+            // Edebiyat vb. (bkz. BRANS_DERS_ESLEME).
+            .filter((d) => dersGorebilir(d.ders_adi)),
+          puanlar: puanMap.get(s.id) || [],
+          kitapcikHazirMi: hazirKitapcikSeti.has(`${s.sinav_id}|${s.kitapcik}`),
+        }))
+        // Öğretmen için, kendi branşıyla HİÇ ilgisi olmayan (dersler filtreden
+        // sonra boş kalan) sınavları listeden tamamen çıkarıyoruz — aksi halde
+        // içi boş, tıklanamaz bir kart gibi görünüp kafa karıştırırdı.
+        const gosterilecekSonuclar = isOgretmen ? tumSonuclar.filter((s) => s.dersler.length > 0) : tumSonuclar
+        setSonuclar(gosterilecekSonuclar)
         // En son sınav (liste zaten en yeniden en eskiye sıralı) varsayılan
         // olarak açık gelsin, geri kalanlar kapalı.
-        setAcikId(liste.length > 0 ? liste[0].id : null)
+        setAcikId(gosterilecekSonuclar.length > 0 ? gosterilecekSonuclar[0].id : null)
         setLoading(false)
       })
   }, [seciliId])
 
-  const seciciGoster = isYonetici || ogrenciler.length > 1
+  const seciciGoster = isYonetici || isOgretmen || ogrenciler.length > 1
   const seciliOgrenci = ogrenciler.find((o) => o.id === seciliId)
 
   // Gelişim grafiği için sonuçları TÜRE göre ayırıyoruz — TYT'nin neti ile
@@ -331,20 +388,22 @@ export default function Karnem() {
       <p className="text-sm text-gray-500 mb-6">
         {isYonetici
           ? 'Bir öğrenci seçin — sınav sonuçları ve türe göre (TYT/AYT/Konu Analiz) gelişim grafiği görünsün.'
+          : isOgretmen
+          ? `Bir öğrenci seçin — sadece ${ogretmenDersleri.join(', ') || 'branşınız'} dersi(ler)indeki sonuçlar ve hata kitapçığı görünür.`
           : 'Girdiğiniz sınavların sonuçları ve ders bazında doğru/yanlış/boş dökümü.'}
       </p>
 
       {seciciGoster && (
         <div className="mb-6">
           <label className="block text-sm font-medium text-gray-700 mb-1">
-            {isYonetici ? 'Öğrenci Seçin' : 'Çocuğunuzu Seçin'}
+            {isYonetici || isOgretmen ? 'Öğrenci Seçin' : 'Çocuğunuzu Seçin'}
           </label>
           <select
             value={seciliId}
             onChange={(e) => setSeciliId(e.target.value)}
             className="w-full max-w-sm px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue bg-white"
           >
-            {isYonetici && <option value="">Seçiniz...</option>}
+            {(isYonetici || isOgretmen) && <option value="">Seçiniz...</option>}
             {ogrenciler.map((o) => (
               <option key={o.id} value={o.id}>{o.ad_soyad}</option>
             ))}
@@ -352,11 +411,11 @@ export default function Karnem() {
         </div>
       )}
 
-      {isYonetici && !seciliId && !loading && (
+      {(isYonetici || isOgretmen) && !seciliId && !loading && (
         <p className="text-gray-400">Sonuçlarını görmek istediğiniz öğrenciyi yukarıdan seçin.</p>
       )}
 
-      {!isYonetici && ogrenciler.length === 0 && !loading && (
+      {!isYonetici && !isOgretmen && ogrenciler.length === 0 && !loading && (
         <p className="text-gray-400">
           Size bağlı bir öğrenci kaydı bulunamadı. Lütfen okul yönetimiyle iletişime geçin.
         </p>
@@ -411,7 +470,11 @@ export default function Karnem() {
                       Net: <b className="text-navy">{netFormat(s.toplam_net)}</b>
                     </span>
                   </div>
-                  {s.karne_pdf_yolu && (
+                  {/* Detaylı Karne İndir: sınavdaki TÜM derslerin (branş
+                      farkı gözetmeksizin) puan/net bilgisini içeren orijinal
+                      PDF — öğretmene branş dışı bilgi sızdırmamak için bu
+                      buton öğretmenlere hiç gösterilmiyor. */}
+                  {s.karne_pdf_yolu && !isOgretmen && (
                     <button
                       type="button"
                       onClick={(e) => { e.stopPropagation(); karnePdfIndir(s) }}
@@ -424,45 +487,57 @@ export default function Karnem() {
                       {pdfIndiriliyorId === s.id ? 'Açılıyor...' : 'Detaylı Karne İndir'}
                     </button>
                   )}
-                  {(s.toplam_yanlis || 0) + (s.toplam_bos || 0) > 0 && s.kitapcikHazirMi && (
-                    <>
-                      {/* Varsayılan "Tümü" — bu sınavdaki tüm dersler birlikte.
-                          Seçilirse tek bir ders (ör. sadece Türkçe) için ayrı
-                          kitapçık indirilebiliyor; bkz. HataKitapcigi.jsx'teki
-                          ?ders= filtresi. */}
-                      {s.dersler && s.dersler.length > 1 && (
-                        <select
-                          value={tekliHKDersSecim[s.id] || ''}
-                          onClick={(e) => e.stopPropagation()}
-                          onChange={(e) =>
-                            setTekliHKDersSecim((onceki) => ({ ...onceki, [s.id]: e.target.value }))
+                  {(s.toplam_yanlis || 0) + (s.toplam_bos || 0) > 0 && s.kitapcikHazirMi && (() => {
+                    // Öğretmen için "Tümü" seçeneği YOK — s.dersler zaten
+                    // sadece kendi branşının ders(ler)ine indirgenmiş, ama
+                    // yine de linke MUTLAKA bir ?ders= filtresi eklenmeli
+                    // (boşsa HataKitapcigi.jsx sınavın TÜM derslerini basar,
+                    // bu da branş dışı soruları sızdırır). Bu yüzden öğretmen
+                    // için seçim boşsa ilk (tek) ders otomatik kullanılıyor.
+                    const dersFiltreDeger = isOgretmen
+                      ? tekliHKDersSecim[s.id] || s.dersler[0]?.ders_adi || ''
+                      : tekliHKDersSecim[s.id]
+                    return (
+                      <>
+                        {/* Yönetici/veli/öğrenci için varsayılan "Tümü" — bu
+                            sınavdaki tüm dersler birlikte. Seçilirse tek bir
+                            ders (ör. sadece Türkçe) için ayrı kitapçık
+                            indirilebiliyor; bkz. HataKitapcigi.jsx'teki
+                            ?ders= filtresi. */}
+                        {s.dersler && s.dersler.length > 1 && (
+                          <select
+                            value={tekliHKDersSecim[s.id] || (isOgretmen ? dersFiltreDeger : '')}
+                            onClick={(e) => e.stopPropagation()}
+                            onChange={(e) =>
+                              setTekliHKDersSecim((onceki) => ({ ...onceki, [s.id]: e.target.value }))
+                            }
+                            className="text-xs border border-gray-200 rounded-full px-2.5 py-1.5 bg-white text-gray-600"
+                          >
+                            {!isOgretmen && <option value="">Tümü</option>}
+                            {s.dersler.map((d) => (
+                              <option key={d.id} value={d.ders_adi}>{d.ders_adi}</option>
+                            ))}
+                          </select>
+                        )}
+                        <Link
+                          to={
+                            dersFiltreDeger
+                              ? `/hata-kitapcigi/${s.id}?ders=${encodeURIComponent(dersFiltreDeger)}`
+                              : `/hata-kitapcigi/${s.id}`
                           }
-                          className="text-xs border border-gray-200 rounded-full px-2.5 py-1.5 bg-white text-gray-600"
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          onClick={(e) => e.stopPropagation()}
+                          className="text-xs font-semibold bg-orange text-white px-3 py-1.5 rounded-full hover:opacity-90"
                         >
-                          <option value="">Tümü</option>
-                          {s.dersler.map((d) => (
-                            <option key={d.id} value={d.ders_adi}>{d.ders_adi}</option>
-                          ))}
-                        </select>
-                      )}
-                      <Link
-                        to={
-                          tekliHKDersSecim[s.id]
-                            ? `/hata-kitapcigi/${s.id}?ders=${encodeURIComponent(tekliHKDersSecim[s.id])}`
-                            : `/hata-kitapcigi/${s.id}`
-                        }
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        onClick={(e) => e.stopPropagation()}
-                        className="text-xs font-semibold bg-orange text-white px-3 py-1.5 rounded-full hover:opacity-90"
-                      >
-                        Hata Kitapçığını Görüntüle
-                      </Link>
-                    </>
-                  )}
+                          Hata Kitapçığını Görüntüle
+                        </Link>
+                      </>
+                    )
+                  })()}
                 </div>
               </div>
-              {s.puanlar && s.puanlar.length > 0 && (
+              {s.puanlar && s.puanlar.length > 0 && !isOgretmen && (
                 <div className="px-5 py-3 bg-orange/5 border-b border-orange/10 flex flex-wrap gap-x-6 gap-y-1">
                   {s.puanlar.map((p) => (
                     <div key={p.id} className="text-sm">
@@ -526,7 +601,10 @@ export default function Karnem() {
                 onChange={(e) => setDersHKDers(e.target.value)}
                 className="px-3 py-2 border border-gray-200 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue"
               >
-                {DERS_SIRASI.map((d) => (
+                {/* Öğretmen sadece kendi branşının ders(ler)ini seçebilsin —
+                    aksi halde bu bulk indirici branş dışı derslerin de
+                    kitapçığını üretebilirdi. */}
+                {(isOgretmen ? DERS_SIRASI.filter((d) => dersGorebilir(d)) : DERS_SIRASI).map((d) => (
                   <option key={d} value={d}>{d}</option>
                 ))}
               </select>
