@@ -441,12 +441,12 @@ export default function YoklamaRaporu() {
                         <td className="px-4 py-3 font-medium text-gray-800 whitespace-nowrap">{ad}</td>
                         {sinavTurleri.map((tur) => {
                           const s = turler[tur]
+                          const toplam = s ? s.girdi + s.girmedi : 0
                           return (
                             <td key={tur} className="px-4 py-3 text-center whitespace-nowrap">
                               {s ? (
-                                <span>
-                                  <span className="text-green-600 font-semibold">{s.girdi} girdi</span>
-                                  {s.girmedi > 0 && <span className="text-red-500 font-semibold"> / {s.girmedi} girmedi</span>}
+                                <span className={`font-semibold ${s.girmedi > 0 ? 'text-red-500' : 'text-green-600'}`}>
+                                  {s.girdi}/{toplam}
                                 </span>
                               ) : (
                                 <span className="text-gray-300">—</span>
