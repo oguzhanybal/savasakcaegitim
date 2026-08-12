@@ -43,6 +43,43 @@ function normalizeDers(s) {
   return (s || '').toLocaleLowerCase('tr-TR').trim()
 }
 
+// Öğretmenin "Öğrenci Seçin" listesinde, sınavı hiç olmayan/kendi branşıyla
+// hiç ilgisi olmayan öğrenciler kalabalık yapmasın diye (kullanıcı isteğiyle:
+// "sadece hata raporları olanlar görünsün, listede aktif pasif her öğrenci
+// var") — sadece GERÇEKTEN kendi branşında yanlış/boş sorusu olan VE
+// kitapçığı onaylanmış (yani hata kitapçığı gerçekten indirilebilir) bir
+// sınav sonucuna sahip öğrencilerin id'lerini döner.
+async function ogretmenIcinUygunOgrenciIdleriGetir(izinliDersler) {
+  const izinliSet = new Set((izinliDersler || []).map((d) => normalizeDers(d)))
+  if (izinliSet.size === 0) return new Set()
+  const { data: sonuclarHam } = await supabase
+    .from('ogrenci_sinav_sonuclari')
+    .select('id, ogrenci_id, sinav_id, kitapcik, toplam_yanlis, toplam_bos')
+  const adaylar = (sonuclarHam || []).filter((s) => (s.toplam_yanlis || 0) + (s.toplam_bos || 0) > 0)
+  if (adaylar.length === 0) return new Set()
+
+  const sinavIdleri = [...new Set(adaylar.map((s) => s.sinav_id).filter(Boolean))]
+  const { data: kitapciklarData } =
+    sinavIdleri.length > 0
+      ? await supabase.from('sinav_kitapciklari').select('sinav_id, kitapcik, onaylandi').in('sinav_id', sinavIdleri)
+      : { data: [] }
+  const hazirSet = new Set(
+    (kitapciklarData || []).filter((k) => k.onaylandi).map((k) => `${k.sinav_id}|${k.kitapcik}`)
+  )
+  const hazirSonuclar = adaylar.filter((s) => hazirSet.has(`${s.sinav_id}|${s.kitapcik}`))
+  if (hazirSonuclar.length === 0) return new Set()
+
+  const sonucIdleri = hazirSonuclar.map((s) => s.id)
+  const { data: dersVerileri } = await supabase
+    .from('sinav_ders_sonuclari')
+    .select('sonuc_id, ders_adi')
+    .in('sonuc_id', sonucIdleri)
+  const uygunSonucIdleri = new Set(
+    (dersVerileri || []).filter((d) => izinliSet.has(normalizeDers(d.ders_adi))).map((d) => d.sonuc_id)
+  )
+  return new Set(hazirSonuclar.filter((s) => uygunSonucIdleri.has(s.id)).map((s) => s.ogrenci_id))
+}
+
 // Net/puan gibi ondalıklı değerler PDF'te HER ZAMAN 2 basamaklı gösterilir
 // (ör. "58,50") — JS'te bu tür sayıları olduğu gibi tutarsak sondaki sıfır
 // otomatik düşer (58.50 → 58.5) ve karne ile ekrandaki sayı görsel olarak
@@ -223,14 +260,23 @@ export default function Karnem() {
       .from('ogrenciler')
       .select('id, ad_soyad, veli_profile_id, ogrenci_profile_id')
       .order('ad_soyad')
-      .then(({ data }) => {
+      .then(async ({ data }) => {
         const tumu = data || []
-        if (isYonetici || isOgretmen) {
-          // Yönetici (ve artık öğretmen de) okuldaki HERHANGİ BİR öğrenciyi
-          // seçebilmeli — otomatik seçim yapmıyoruz (100'e yakın öğrenci
-          // arasından "ilk" öğrenciyi göstermenin bir anlamı yok), aşağıdaki
-          // dropdown'dan kendisi seçer. Öğretmen SADECE kendi branşına ait
-          // ders(ler)i görecek — bu filtre aşağıdaki sonuç işleme adımında.
+        if (isOgretmen) {
+          // Öğretmen listede SADECE gerçekten hata raporu olan öğrencileri
+          // görsün (yanlış/boş sorusu olan + kitapçığı onaylı + kendi
+          // branşına ait ders) — kullanıcı isteği: "sadece hata raporları
+          // olanlar görünsün, listede aktif pasif her öğrenci var".
+          const uygunIdSeti = await ogretmenIcinUygunOgrenciIdleriGetir(ogretmenDersleri)
+          setOgrenciler(tumu.filter((o) => uygunIdSeti.has(o.id)))
+          setLoading(false)
+          return
+        }
+        if (isYonetici) {
+          // Yönetici okuldaki HERHANGİ BİR öğrenciyi seçebilmeli —
+          // otomatik seçim yapmıyoruz (100'e yakın öğrenci arasından "ilk"
+          // öğrenciyi göstermenin bir anlamı yok), aşağıdaki dropdown'dan
+          // kendisi seçer.
           setOgrenciler(tumu)
           setLoading(false)
           return
