@@ -715,6 +715,28 @@ function TaslaklarimDersProgrami({ taslaklar, siniflar, ogretmenler, program, on
 
   async function yayinla(t) {
     const v = t.veri
+    // "sinif_kaldir" türü: bu bir EKLEME değil, KALDIRMA taslağı — sil()
+    // fonksiyonunda (Taslak Modu açıkken ✕ ikonuna basılınca) oluşturulur.
+    // Yayınlamak burada "ders_programi"ye yeni satır eklemek değil, işaretli
+    // dersi GERÇEKTEN soft-delete etmek (aktif=false) anlamına gelir — yani
+    // silme işlemi ancak bu noktada, plan yayınlanınca gerçekleşir.
+    if (t.tur === 'sinif_kaldir') {
+      const { error } = await supabase
+        .from('ders_programi')
+        .update({ aktif: false, pasif_tarihi: yerelBugunTarihi() })
+        .eq('id', v.ders_programi_id)
+      if (error) {
+        setHataMap((h) => ({ ...h, [t.id]: 'Hata: ' + error.message }))
+        return false
+      }
+      await supabase.from('taslaklar').delete().eq('id', t.id)
+      setHataMap((h) => {
+        const yeni = { ...h }
+        delete yeni[t.id]
+        return yeni
+      })
+      return true
+    }
     const cakisma = cakismaBul(
       { sinifId: v.sinif_id, gun: v.gun, baslangic: v.baslangic_saat, bitis: v.bitis_saat, ogretmenId: v.ogretmen_profile_id },
       program
@@ -870,9 +892,21 @@ function TaslaklarimDersProgrami({ taslaklar, siniflar, ogretmenler, program, on
                     {gunTaslaklari.length === 0 ? (
                       <p className="text-[11px] text-gray-300 text-center py-3">—</p>
                     ) : (
-                      gunTaslaklari.map((t) => (
-                        <div key={t.id} className="bg-blue-50 border border-blue-100 rounded-lg px-2 py-1.5">
-                          <p className="text-xs font-semibold text-navy leading-tight">
+                      gunTaslaklari.map((t) => {
+                        const kaldirma = t.tur === 'sinif_kaldir'
+                        return (
+                        <div
+                          key={t.id}
+                          className={
+                            kaldirma
+                              ? 'bg-red-50 border border-red-200 rounded-lg px-2 py-1.5'
+                              : 'bg-blue-50 border border-blue-100 rounded-lg px-2 py-1.5'
+                          }
+                        >
+                          {kaldirma && (
+                            <p className="text-[10px] font-bold text-red-600 leading-tight mb-0.5">❌ Kaldırılacak</p>
+                          )}
+                          <p className={kaldirma ? 'text-xs font-semibold text-red-700 leading-tight line-through' : 'text-xs font-semibold text-navy leading-tight'}>
                             {t.veri.ders_adi || sinifAdi(t.veri.sinif_id)}
                           </p>
                           {t.veri.sinav_mi && (
@@ -893,20 +927,25 @@ function TaslaklarimDersProgrami({ taslaklar, siniflar, ogretmenler, program, on
                               type="button"
                               onClick={() => tekYayinla(t)}
                               disabled={gonderiliyorId === t.id || tumuGonderiliyor}
-                              className="text-[11px] text-navy font-semibold hover:underline disabled:opacity-50"
+                              className={
+                                kaldirma
+                                  ? 'text-[11px] text-red-600 font-semibold hover:underline disabled:opacity-50'
+                                  : 'text-[11px] text-navy font-semibold hover:underline disabled:opacity-50'
+                              }
                             >
-                              {gonderiliyorId === t.id ? '...' : 'Yayınla'}
+                              {gonderiliyorId === t.id ? '...' : kaldirma ? 'Şimdi Kaldır' : 'Yayınla'}
                             </button>
                             <button
                               type="button"
                               onClick={() => sil(t.id)}
                               className="text-[11px] text-gray-400 hover:underline"
                             >
-                              Sil
+                              {kaldirma ? 'Vazgeç' : 'Sil'}
                             </button>
                           </div>
                         </div>
-                      ))
+                        )
+                      })
                     )}
                   </div>
                 </div>
@@ -1593,6 +1632,45 @@ export default function DersProgrami() {
   })
 
   async function sil(id) {
+    // Taslak Modu açıkken (ve bir plan adı girilmişse), bu dersi ARTIK ANINDA
+    // canlı programdan düşürmüyoruz — kullanıcı isteğiyle: "taslak modunda
+    // dersleri silersem [canlı] dersleri silmeyi etkilemesin, ama taslak
+    // modunu yayınlarsam taslak modundaki dersler geçerli olsun". Bunun
+    // yerine "sinif_kaldir" türünde bir taslak oluşturuyoruz — bu taslak
+    // Taslaklarım listesinde "Kaldırılacak" olarak görünür, gerçek silme
+    // (ders_programi.aktif = false) SADECE o taslak yayınlanınca çalışır
+    // (bkz. TaslaklarimDersProgrami'deki yayinla()). Taslak Modu kapalıyken
+    // davranış eskisi gibi: onay + ANINDA soft-delete.
+    if (taslakModuAcik && aktifPlanAdi.trim()) {
+      const ders = program.find((p) => p.id === id)
+      if (!ders) return
+      const dersEtiket = ders.ders_adi || ders.sinif_adi || 'bu ders'
+      if (
+        !confirm(
+          `"${dersEtiket}" (${GUNLER[ders.gun]} ${saatGoster(ders.baslangic_saat)}–${saatGoster(ders.bitis_saat)}) dersini "${aktifPlanAdi.trim()}" planında KALDIRILACAK olarak işaretlemek istediğinize emin misiniz? Ders şimdi silinmeyecek — gerçek silme işlemi ancak bu planı yayınladığınızda gerçekleşecek. "Taslaklarım" listesinden istediğiniz an vazgeçebilirsiniz.`
+        )
+      )
+        return
+      const { error } = await supabase.from('taslaklar').insert({
+        tur: 'sinif_kaldir',
+        veri: {
+          ders_programi_id: id,
+          ders_adi: ders.ders_adi,
+          sinif_adi: ders.sinif_adi,
+          sinif_id: ders.sinif_id,
+          gun: ders.gun,
+          baslangic_saat: ders.baslangic_saat,
+          bitis_saat: ders.bitis_saat,
+          ogretmen_profile_id: ders.ogretmen_profile_id,
+        },
+        olusturan_profile_id: profile?.id,
+        plan_adi: aktifPlanAdi.trim(),
+      })
+      if (error) alert('Hata: ' + error.message)
+      else veriyiYenile()
+      return
+    }
+
     if (!confirm('Bu ders saatini silmek istediğinize emin misiniz? Ders artık programdan (bu hafta dahil bundan sonraki tüm haftalardan) kalkacak. Geçmiş yoklama kayıtları SİLİNMEZ, korunur ve ileride geçmişe dönük raporlarda (Yoklama Raporu vb.) hangi derse ait olduğuyla birlikte görünmeye devam eder.')) return
     // ÖNEMLİ MİMARİ DÜZELTME (üç ayrı hatalı deneme sonrası): "ders_programi"
     // satırı belirli bir TARİHE değil, haftanın GÜNÜNE bağlı tekrarlayan bir
@@ -1911,7 +1989,7 @@ export default function DersProgrami() {
                 aktifPlanAdi={aktifPlanAdi}
               />
               <TaslaklarimDersProgrami
-                taslaklar={taslaklar.filter((t) => t.tur === 'sinif')}
+                taslaklar={taslaklar.filter((t) => t.tur === 'sinif' || t.tur === 'sinif_kaldir')}
                 siniflar={siniflar}
                 ogretmenler={ogretmenler}
                 program={program}
