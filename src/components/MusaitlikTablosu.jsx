@@ -605,8 +605,22 @@ export default function MusaitlikTablosu({
     const harita = new Map()
     for (const o of ogretmenler) harita.set(o.id, [])
 
+    // Taslak Modu açıkken, aktif plana ait "sinif_kaldir" (kaldırma) taslağı
+    // olan ders_programi satırları — bunlar henüz GERÇEKTEN silinmedi (o
+    // ancak taslak yayınlanınca olur) ama kullanıcı bu hücrenin üzerine hemen
+    // yeni bir ders/taslak ekleyebilsin istiyor. Bu yüzden bu satırları normal
+    // "dolu" gibi bloke etmek yerine ayrı bir görünüm+tıklanabilir hâle
+    // getiriyoruz (bkz. aşağıdaki push ve JSX'teki kaldirilacak kontrolü).
+    const kaldirilacakDersIdleri = new Set(
+      (taslakModuAcik && aktifPlanAdi ? taslaklar || [] : [])
+        .filter((t) => t.tur === 'sinif_kaldir' && t.plan_adi === aktifPlanAdi)
+        .map((t) => t.veri?.ders_programi_id)
+        .filter(Boolean)
+    )
+
     for (const d of dersProgrami) {
       if (d.gun !== gun || !harita.has(d.ogretmen_profile_id)) continue
+      const kaldirilacakMi = kaldirilacakDersIdleri.has(d.id)
       harita.get(d.ogretmen_profile_id).push({
         baslangic: d.baslangic_saat,
         bitis: d.bitis_saat,
@@ -614,10 +628,13 @@ export default function MusaitlikTablosu({
         // belli oluyor — burada asıl bilinmek istenen HANGİ SINIFA girdiği,
         // o yüzden önce sınıf adı, o yoksa (bire bir ya da isimsiz kayıt) ders
         // adı gösteriliyor.
-        etiket: d.sinif_adi || d.ders_adi || 'Sınıf dersi',
-        renk: 'bg-blue-200 text-blue-900 border-l-4 border-l-blue-600',
+        etiket: (kaldirilacakMi ? '❌ ' : '') + (d.sinif_adi || d.ders_adi || 'Sınıf dersi'),
+        renk: kaldirilacakMi
+          ? 'bg-red-100 text-red-700 border-l-4 border-l-red-500 border-dashed line-through'
+          : 'bg-blue-200 text-blue-900 border-l-4 border-l-blue-600',
         id: d.id,
         kaynak: 'ders_programi',
+        kaldirilacak: kaldirilacakMi,
       })
     }
     for (const a of atamalar || []) {
@@ -667,8 +684,13 @@ export default function MusaitlikTablosu({
     // taslaklar, siz "fafa" planı üzerinde çalışırken hiç görünmez/karışmaz.
     // Aktif bir plan yoksa (Taslak Modu kapalı ya da plan adı henüz
     // yazılmamışsa) hiç taslak overlay'i gösterilmez.
+    // "sinif_kaldir" taslakları burada hariç tutuluyor — onlar bir EKLEME
+    // değil, yukarıda ayrıca işlenen bir KALDIRMA taslağı, bu overlay
+    // döngüsüne dahil edilirse yanlışlıkla "Bire bir" gibi görünürlerdi.
     const aktifPlanaAitTaslaklar =
-      taslakModuAcik && aktifPlanAdi ? (taslaklar || []).filter((t) => t.plan_adi === aktifPlanAdi) : []
+      taslakModuAcik && aktifPlanAdi
+        ? (taslaklar || []).filter((t) => t.plan_adi === aktifPlanAdi && t.tur !== 'sinif_kaldir')
+        : []
     for (const t of aktifPlanaAitTaslaklar) {
       const v = t.veri || {}
       if (!v.baslangic_saat || !v.bitis_saat || !v.ogretmen_profile_id) continue
@@ -779,9 +801,12 @@ export default function MusaitlikTablosu({
                     {o.ad_soyad}
                   </td>
                   {hucreler.map((h) => {
-                    const tiklanabilir = !h.dolu && !!onHucreTikla
+                    // "kaldirilacak" = taslak modunda kaldırılmak üzere işaretlenmiş
+                    // ama henüz gerçekten silinmemiş bir ders_programi hücresi —
+                    // normal dolu hücrelerin aksine bu hâlâ tıklanabilir/eklenebilir.
+                    const tiklanabilir = (!h.dolu || h.dolu.kaldirilacak) && !!onHucreTikla
                     const seciliMi =
-                      !h.dolu &&
+                      (!h.dolu || h.dolu.kaldirilacak) &&
                       secili &&
                       secili.ogretmenId === o.id &&
                       secili.tarih === tarih &&
@@ -802,7 +827,9 @@ export default function MusaitlikTablosu({
                         key={h.baslangic}
                         colSpan={h.span}
                         title={
-                          h.dolu
+                          h.dolu && h.dolu.kaldirilacak
+                            ? `${h.dolu.etiket} (${saatGoster(h.dolu.baslangic)}–${saatGoster(h.dolu.bitis)}) — plan yayınlanınca kaldırılacak, üzerine tıklayarak yeni ders/taslak ekleyebilirsiniz`
+                            : h.dolu
                             ? `${h.dolu.etiket} (${saatGoster(h.dolu.baslangic)}–${saatGoster(h.dolu.bitis)})`
                             : seciliMi
                             ? 'Şu an bunu ekliyorsunuz'
@@ -826,7 +853,7 @@ export default function MusaitlikTablosu({
                         }
                         className={`group relative border-t border-l border-gray-100 text-center align-middle py-1 ${
                           h.dolu
-                            ? h.dolu.renk
+                            ? `${h.dolu.renk}${h.dolu.kaldirilacak ? ' cursor-pointer hover:brightness-95 transition' : ''}`
                             : seciliMi
                             ? 'bg-navy text-white h-8 cursor-pointer ring-2 ring-inset ring-orange-400'
                             : tiklanabilir
@@ -836,7 +863,7 @@ export default function MusaitlikTablosu({
                       >
                         {h.dolu ? (
                           <span className="leading-none block px-0.5">
-                            {h.dolu.kaynak === 'ders_programi' && onSinifDersiSil && (
+                            {h.dolu.kaynak === 'ders_programi' && onSinifDersiSil && !h.dolu.kaldirilacak && (
                               <div className="absolute top-0 right-0 flex opacity-0 group-hover:opacity-100 transition-opacity">
                                 {onSinifDersiGuncelle && (
                                   <button
