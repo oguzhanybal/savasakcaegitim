@@ -846,9 +846,7 @@ export default function MusaitlikTablosu({
                         key={h.baslangic}
                         colSpan={h.span}
                         title={
-                          h.dolu && h.dolu.kaldirilacak
-                            ? `${h.dolu.etiket} (${saatGoster(h.dolu.baslangic)}–${saatGoster(h.dolu.bitis)}) — plan yayınlanınca kaldırılacak, üzerine tıklayarak yeni ders/taslak ekleyebilirsiniz`
-                            : h.dolu
+                          h.dolu && !h.dolu.kaldirilacak
                             ? `${h.dolu.etiket} (${saatGoster(h.dolu.baslangic)}–${saatGoster(h.dolu.bitis)})`
                             : seciliMi
                             ? 'Şu an bunu ekliyorsunuz'
@@ -871,8 +869,8 @@ export default function MusaitlikTablosu({
                             : undefined
                         }
                         className={`group relative border-t border-l border-gray-100 text-center align-middle py-1 ${
-                          h.dolu
-                            ? `${h.dolu.renk}${h.dolu.kaldirilacak ? ' cursor-pointer hover:brightness-95 transition' : ''}`
+                          h.dolu && !h.dolu.kaldirilacak
+                            ? h.dolu.renk
                             : seciliMi
                             ? 'bg-navy text-white h-8 cursor-pointer ring-2 ring-inset ring-orange-400'
                             : tiklanabilir
@@ -880,9 +878,9 @@ export default function MusaitlikTablosu({
                             : 'bg-green-50 h-8'
                         }`}
                       >
-                        {h.dolu ? (
+                        {h.dolu && !h.dolu.kaldirilacak ? (
                           <span className="leading-none block px-0.5">
-                            {h.dolu.kaynak === 'ders_programi' && onSinifDersiSil && !h.dolu.kaldirilacak && (
+                            {h.dolu.kaynak === 'ders_programi' && onSinifDersiSil && (
                               <div className="absolute top-0 right-0 flex opacity-0 group-hover:opacity-100 transition-opacity">
                                 {onSinifDersiGuncelle && (
                                   <button
