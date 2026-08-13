@@ -15,7 +15,7 @@ const ROL_ETIKET = {
   zil: 'Zil Ekranı',
 }
 
-function menuOlustur(rol) {
+function menuOlustur(rol, kendiProfileId) {
   if (rol === 'yonetici') {
     return [
       { tur: 'link', to: '/', label: 'Ana Sayfa', end: true },
@@ -108,6 +108,12 @@ function menuOlustur(rol) {
       { tur: 'link', to: '/', label: 'Ana Sayfa', end: true },
       { tur: 'link', to: '/program', label: 'Ders Programım' },
       { tur: 'link', to: '/bire-bir', label: 'Bire Bir Derslerim' },
+      // Öğretmenin ayın tamamında verdiği TÜM dersleri (sınıf dersi, bire bir,
+      // soru çözümü — hepsi) tek listede, aylık/haftalık/tüm zamanlar
+      // seçenekleriyle görebildiği döküm sayfası — kullanıcı isteğiyle
+      // eklendi. Sayfa (OgretmenEkstre.jsx) zaten Soru Çözümü'nü de
+      // sayıyordu, sadece öğretmenin kendi menüsünde bir linki yoktu.
+      ...(kendiProfileId ? [{ tur: 'link', to: `/ogretmen-ekstre/${kendiProfileId}`, label: 'Aylık Ders Dökümüm' }] : []),
       { tur: 'link', to: '/odev', label: 'Ödevler' },
       // Öğretmen burada sadece GÖRÜNTÜLEME + İNDİRME yapabilir (kitapçık
       // yükleme/düzenleme/silme butonları sayfa içinde SinavKitapciklari.jsx'te
@@ -372,7 +378,7 @@ export default function Layout() {
   const location = useLocation()
   const navigate = useNavigate()
 
-  const menu = menuOlustur(rol)
+  const menu = menuOlustur(rol, profile?.id)
   // "beforeinstallprompt"/"appinstalled" olaylarını TEK bir yerde (burada)
   // yakalayıp, hem alttaki banner'a hem sol menüdeki butona aynı sonucu
   // veriyoruz — bkz. usePwaYukleme.js dosya başındaki genel not.
