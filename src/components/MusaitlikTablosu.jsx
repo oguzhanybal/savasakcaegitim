@@ -732,7 +732,14 @@ export default function MusaitlikTablosu({
 
   function hucreDurumu(ogretmenId, dilim) {
     const mesguliyetler = ogretmenMesguliyetleri.get(ogretmenId) || []
-    return mesguliyetler.find((m) => araliklarCakisiyorMu(dilim.baslangic, dilim.bitis, m.baslangic, m.bitis))
+    const cakisanlar = mesguliyetler.filter((m) => araliklarCakisiyorMu(dilim.baslangic, dilim.bitis, m.baslangic, m.bitis))
+    if (cakisanlar.length === 0) return undefined
+    // Aynı saatte hem "kaldırılacak" (üstü çizili, henüz gerçekten silinmemiş)
+    // eski bir ders HEM DE onun üzerine yeni eklenen bir taslak varsa, eski
+    // (kaldırılacak) olanı göstermeye devam etmek kafa karıştırır — kullanıcı
+    // "ekledim ama görünmüyor" sanır. Bu yüzden YENİ eklenen taslak/ders varsa
+    // o öne çıkar, kaldırılacak olan sadece ikisi de yoksa gösterilir.
+    return cakisanlar.find((m) => !m.kaldirilacak) || cakisanlar[0]
   }
 
   // Aynı ders/atama, 30 dakikalık birden fazla sütuna yayılıyorsa (ör. 2 saatlik
