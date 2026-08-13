@@ -663,8 +663,28 @@ export default function MusaitlikTablosu({
     // yeni bir ders/taslak ekleyebilsin istiyor. Bu yüzden bu satırları normal
     // "dolu" gibi bloke etmek yerine ayrı bir görünüm+tıklanabilir hâle
     // getiriyoruz (bkz. aşağıdaki push ve JSX'teki kaldirilacak kontrolü).
+    // Bu planın "hangi tarihten itibaren geçerli" olduğunu, plandaki TARİHLİ
+    // taslaklardan (bire_bir_tekil/soru_cozumu — "tarih" alanı olanlar) tespit
+    // ediyoruz: en erken tarihli olanı planın gerçek başlangıcı sayıyoruz.
+    // 'sinif'/'sinif_kaldir' taslaklarının KENDİ tarihi yok — sadece haftanın
+    // günü var, o yüzden hiç kısıtlanmazsa BUGÜN dahil o güne denk gelen HER
+    // haftanın gerçek dersini gizleyip yerine taslağı gösterirdi (yaşanan
+    // gerçek vaka: "17-23 Ağustos Programı" adlı, gelecek haftaya ait bir plan,
+    // taslak modu açılır açılmaz BUGÜNÜN — aynı gün adını taşıdığı için —
+    // gerçek dersini "Kaldırılacak" gösterip yerine taslağı koydu). Planda hiç
+    // tarihli taslak yoksa (saf sınıf-dersi planı) bugünden itibaren göster
+    // (eski davranış), ama geçmişe asla sızdırma.
+    const planTarihliTaslaklar = (taslakModuAcik && aktifPlanAdi ? taslaklar || [] : []).filter(
+      (t) => t.plan_adi === aktifPlanAdi && t.veri?.tarih
+    )
+    const planBaslangicTarihi =
+      planTarihliTaslaklar.length > 0
+        ? planTarihliTaslaklar.reduce((min, t) => (t.veri.tarih < min ? t.veri.tarih : min), planTarihliTaslaklar[0].veri.tarih)
+        : bugununTarihi
+    const planBuTarihteGecerli = tarih >= planBaslangicTarihi
+
     const kaldirilacakDersIdleri = new Set(
-      (taslakModuAcik && aktifPlanAdi ? taslaklar || [] : [])
+      (taslakModuAcik && aktifPlanAdi && planBuTarihteGecerli ? taslaklar || [] : [])
         .filter((t) => t.tur === 'sinif_kaldir' && t.plan_adi === aktifPlanAdi)
         .map((t) => t.veri?.ders_programi_id)
         .filter(Boolean)
@@ -740,7 +760,7 @@ export default function MusaitlikTablosu({
     // değil, yukarıda ayrıca işlenen bir KALDIRMA taslağı, bu overlay
     // döngüsüne dahil edilirse yanlışlıkla "Bire bir" gibi görünürlerdi.
     const aktifPlanaAitTaslaklar =
-      taslakModuAcik && aktifPlanAdi
+      taslakModuAcik && aktifPlanAdi && planBuTarihteGecerli
         ? (taslaklar || []).filter((t) => t.plan_adi === aktifPlanAdi && t.tur !== 'sinif_kaldir')
         : []
     for (const t of aktifPlanaAitTaslaklar) {
@@ -775,7 +795,7 @@ export default function MusaitlikTablosu({
       })
     }
     return harita
-  }, [ogretmenler, dersProgrami, atamalar, yoklamalar, gun, tarih, ogrenciAdMap, taslaklar, siniflar, ogrenciler, taslakModuAcik, aktifPlanAdi])
+  }, [ogretmenler, dersProgrami, atamalar, yoklamalar, gun, tarih, ogrenciAdMap, taslaklar, siniflar, ogrenciler, taslakModuAcik, aktifPlanAdi, bugununTarihi])
 
   function hucreDurumu(ogretmenId, dilim) {
     const mesguliyetler = ogretmenMesguliyetleri.get(ogretmenId) || []
