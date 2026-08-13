@@ -59,6 +59,11 @@ export default function BireBirDersDokumu({
   hedefDonem = null,
   ikinciTarafBasligi = null,
   onDonemDegisti = null,
+  // tutarGizle: true verilirse (ör. OgretmenEkstre.jsx'te öğretmen KENDİ
+  // dökümünü görürken — kullanıcı isteğiyle, öğretmenler ücret bilgisini hiçbir
+  // şekilde görmesin diye) "Tutar" sütunu, satır başına tutarlar ve "Toplam"
+  // satırı TAMAMEN tablodan çıkarılır — sadece tarih/saat/karşı taraf/tür bilgisi kalır.
+  tutarGizle = false,
 }) {
   const [periyot, setPeriyot] = useState(hedefDonem ? 'ay' : baslangicPeriyot) // 'hafta' | 'ay' | 'hepsi'
   const [gosterilenSayisi, setGosterilenSayisi] = useState(6)
@@ -235,7 +240,7 @@ export default function BireBirDersDokumu({
             ).sort((a, b) => (a[0] < b[0] ? -1 : 1))
           : null
 
-        const sutunSayisi = (ikinciTarafBasligi ? 5 : 4) + (turGoster ? 1 : 0)
+        const sutunSayisi = (ikinciTarafBasligi ? 5 : 4) + (turGoster ? 1 : 0) - (tutarGizle ? 1 : 0)
 
         const tabloYaz = (dersListesi, toplam) => (
           <table className="w-full text-xs sm:text-sm border border-gray-200 rounded-lg overflow-hidden">
@@ -246,7 +251,7 @@ export default function BireBirDersDokumu({
                 <th className="px-2 sm:px-3 py-2 font-semibold">{karsiTarafBasligi}</th>
                 {ikinciTarafBasligi && <th className="px-2 sm:px-3 py-2 font-semibold">{ikinciTarafBasligi}</th>}
                 {turGoster && <th className="px-2 sm:px-3 py-2 font-semibold">Tür</th>}
-                <th className="px-2 sm:px-3 py-2 font-semibold text-right">Tutar</th>
+                {!tutarGizle && <th className="px-2 sm:px-3 py-2 font-semibold text-right">Tutar</th>}
               </tr>
             </thead>
             <tbody>
@@ -275,16 +280,18 @@ export default function BireBirDersDokumu({
                       </span>
                     </td>
                   )}
-                  <td className="px-2 sm:px-3 py-2 text-right font-medium">{paraFormat(d.tutar)}</td>
+                  {!tutarGizle && <td className="px-2 sm:px-3 py-2 text-right font-medium">{paraFormat(d.tutar)}</td>}
                 </tr>
               ))}
             </tbody>
-            <tfoot>
-              <tr className="bg-gray-50 font-semibold">
-                <td colSpan={sutunSayisi - 1} className="px-2 sm:px-3 py-2 text-right">Toplam</td>
-                <td className="px-2 sm:px-3 py-2 text-right">{paraFormat(toplam)}</td>
-              </tr>
-            </tfoot>
+            {!tutarGizle && (
+              <tfoot>
+                <tr className="bg-gray-50 font-semibold">
+                  <td colSpan={sutunSayisi - 1} className="px-2 sm:px-3 py-2 text-right">Toplam</td>
+                  <td className="px-2 sm:px-3 py-2 text-right">{paraFormat(toplam)}</td>
+                </tr>
+              </tfoot>
+            )}
           </table>
         )
 
