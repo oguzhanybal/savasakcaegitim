@@ -809,8 +809,22 @@ function TaslaklarimDersProgrami({ taslaklar, siniflar, ogretmenler, program, on
   // tek tek silmek yerine hepsini birden temizleyeyim" için.
   async function planiSil(liste, planAdi) {
     const adGoster = planAdi ? `"${planAdi}" planındaki` : 'isimsiz'
-    if (!confirm(`${adGoster} ${liste.length} taslağın TAMAMINI silmek istediğinize emin misiniz? Bu işlem geri alınamaz.`)) return
-    await supabase.from('taslaklar').delete().in('id', liste.map((t) => t.id))
+    if (
+      !confirm(
+        `${adGoster} TÜM taslakları (sınıf dersi, bire bir, soru çözümü — bu sayfada görünmeyen türler dahil, planın hepsi) silmek istediğinize emin misiniz? Bu işlem geri alınamaz.`
+      )
+    )
+      return
+    // ÖNEMLİ: eskiden sadece bu listede (bu sayfada görünen tur'larda) olan
+    // taslaklar id'ye göre siliniyordu — bu yüzden "Planı Sil" derken, aynı
+    // plan_adi'na sahip ama Bire Bir sayfasında eklenmiş bire_bir/soru_cozumu
+    // taslakları arkada kalıp GÖRÜNMEDEN duruyordu. Artık planAdi'na göre
+    // TÜM taslaklar (her tur) tek seferde siliniyor.
+    if (planAdi) {
+      await supabase.from('taslaklar').delete().eq('plan_adi', planAdi)
+    } else {
+      await supabase.from('taslaklar').delete().is('plan_adi', null)
+    }
     onDegisti()
   }
 
