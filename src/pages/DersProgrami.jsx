@@ -407,6 +407,14 @@ function DersEkleForm({
       setHata('Birleşik ders taslağa kaydedilemez — lütfen doğrudan "Ekle" butonunu kullanın.')
       return
     }
+    // Geçmiş bir tarih için taslak oluşturmak mantıksız (o gün zaten geçti) —
+    // kullanıcı isteğiyle engellendi. Günlük Müsaitlik'teki tarih seçicisi
+    // geçmişteyken bu formun Gün seçimi de o tarihe göre önerildiği için, aynı
+    // kontrolü burada da yapıyoruz.
+    if (musaitlikTarihi && musaitlikTarihi < yerelBugunTarihi()) {
+      setHata('Geçmiş bir tarih için taslak oluşturulamaz. Lütfen Günlük Müsaitlik üzerinde bugün veya daha ileri bir tarih seçin.')
+      return
+    }
     // Bu taslak hangi plana kaydedilecekse (Taslak Modu açıksa isimli plana,
     // kapalıysa "Taslağa Kaydet" ile isimsiz/null plana), çakışma kontrolü
     // SADECE o plana ait diğer taslaklara karşı yapılır — farklı isimli
