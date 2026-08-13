@@ -967,7 +967,17 @@ function TaslaklarimDersProgrami({ taslaklar, siniflar, ogretmenler, program, at
               {haftalikTabloOlustur(liste).map(({ gunNo, gunAdi, gunTaslaklari }) => (
                 <div key={gunNo} className="flex-1 min-w-[140px]">
                   <div className="bg-navy text-white px-2 py-2 text-xs font-semibold text-center sticky top-0">
-                    {gunAdi}
+                    <div>{gunAdi}</div>
+                    {gunTaslaklari.length > 0 && (
+                      <button
+                        type="button"
+                        onClick={() => tumunuYayinla(gunTaslaklari)}
+                        disabled={tumuGonderiliyor}
+                        className="mt-0.5 text-[10px] font-semibold text-orange-200 hover:text-white hover:underline disabled:opacity-50"
+                      >
+                        Günü Yayınla
+                      </button>
+                    )}
                   </div>
                   <div className="p-1.5 space-y-1.5 min-h-[70px]">
                     {gunTaslaklari.length === 0 ? (

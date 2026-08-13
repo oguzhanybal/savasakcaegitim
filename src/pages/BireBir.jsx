@@ -1235,6 +1235,19 @@ function TaslaklarimBireBir({ taslaklar, ogrenciler, ogretmenler, dersProgrami, 
     })
   }
 
+  // TEKİL (belirli bir tarihe bağlı) taslakları takvim tarihine göre
+  // gruplar — "Pazartesi yayınlansın, Salı yayınlansın" isteğiyle, kullanıcı
+  // artık her günü ayrı ayrı, tek tıkla yayınlayabilsin diye.
+  function tarihGruplariOlustur(tekilListe) {
+    const tarihler = [...new Set(tekilListe.map((t) => t.veri.tarih))].sort()
+    return tarihler.map((tarih) => ({
+      tarih,
+      tarihListe: tekilListe
+        .filter((t) => t.veri.tarih === tarih)
+        .sort((a, b) => (saatKisalt(a.veri.baslangic_saat) < saatKisalt(b.veri.baslangic_saat) ? -1 : 1)),
+    }))
+  }
+
   const planAdlari = [...new Set(taslaklar.filter((t) => t.plan_adi).map((t) => t.plan_adi))]
   const isimsizTaslaklar = taslaklar.filter((t) => !t.plan_adi)
   const gruplar = [
@@ -1295,7 +1308,19 @@ function TaslaklarimBireBir({ taslaklar, ogrenciler, ogretmenler, dersProgrami, 
                 <div className="flex min-w-[980px] divide-x divide-gray-100">
                   {gunSutunlariOlustur(haftalikListe).map(({ gunNo, gunAdi, gunTaslaklari }) => (
                     <div key={gunNo} className="flex-1 min-w-[140px]">
-                      <div className="bg-navy text-white px-2 py-2 text-xs font-semibold text-center">{gunAdi}</div>
+                      <div className="bg-navy text-white px-2 py-2 text-xs font-semibold text-center">
+                        <div>{gunAdi}</div>
+                        {gunTaslaklari.length > 0 && (
+                          <button
+                            type="button"
+                            onClick={() => tumunuYayinla(gunTaslaklari)}
+                            disabled={tumuGonderiliyor}
+                            className="mt-0.5 text-[10px] font-semibold text-orange-200 hover:text-white hover:underline disabled:opacity-50"
+                          >
+                            Günü Yayınla
+                          </button>
+                        )}
+                      </div>
                       <div className="p-1.5 space-y-1.5 min-h-[70px]">
                         {gunTaslaklari.length === 0 ? (
                           <p className="text-[11px] text-gray-300 text-center py-3">—</p>
@@ -1333,35 +1358,52 @@ function TaslaklarimBireBir({ taslaklar, ogrenciler, ogretmenler, dersProgrami, 
 
             {tekilListe.length > 0 && (
               <div className="divide-y divide-gray-50">
-                {tekilListe.map((t) => {
-                  const soruCozumuMu = t.tur === 'soru_cozumu'
-                  return (
-                    <div key={t.id} className="px-4 py-2.5 flex items-center justify-between gap-3 flex-wrap">
-                      <div>
-                        <p className="text-sm font-medium text-gray-800">
-                          {soruCozumuMu ? '🧠 Soru Çözümü' : ogrenciAd(t.veri.ogrenci_id)}{' '}
-                          <span className="text-gray-400 font-normal">— {ogretmenAd(t.veri.ogretmen_profile_id)}</span>
-                        </p>
-                        <p className="text-xs text-gray-400">
-                          {new Date(t.veri.tarih + 'T12:00:00').toLocaleDateString('tr-TR')}
-                          {t.veri.baslangic_saat ? ` · ${saatGoster(t.veri.baslangic_saat)}–${saatGoster(t.veri.bitis_saat)}` : ''}
-                          {!soruCozumuMu ? ` · ${paraFormat(t.veri.tutar)}` : ''}
-                        </p>
-                        {hataMap[t.id] && <p className="text-xs text-red-600 mt-1">{hataMap[t.id]}</p>}
-                      </div>
-                      <div className="flex items-center gap-3 shrink-0">
-                        <button
-                          onClick={() => tekYayinla(t)}
-                          disabled={gonderiliyorId === t.id || tumuGonderiliyor}
-                          className="text-navy text-sm font-semibold hover:underline disabled:opacity-50"
-                        >
-                          {gonderiliyorId === t.id ? 'Yayınlanıyor...' : 'Yayınla'}
-                        </button>
-                        <button onClick={() => sil(t.id)} className="text-gray-400 text-sm hover:underline">Sil</button>
-                      </div>
+                {tarihGruplariOlustur(tekilListe).map(({ tarih, tarihListe }) => (
+                  <div key={tarih}>
+                    <div className="px-4 py-1.5 bg-gray-50/40 flex items-center justify-between gap-2">
+                      <p className="text-xs font-semibold text-gray-500">
+                        {new Date(tarih + 'T12:00:00').toLocaleDateString('tr-TR', { weekday: 'long', day: '2-digit', month: 'long' })}
+                      </p>
+                      <button
+                        type="button"
+                        onClick={() => tumunuYayinla(tarihListe)}
+                        disabled={tumuGonderiliyor}
+                        className="text-navy text-xs font-semibold hover:underline disabled:opacity-50"
+                      >
+                        Günü Yayınla
+                      </button>
                     </div>
-                  )
-                })}
+                    {tarihListe.map((t) => {
+                      const soruCozumuMu = t.tur === 'soru_cozumu'
+                      return (
+                        <div key={t.id} className="px-4 py-2.5 flex items-center justify-between gap-3 flex-wrap">
+                          <div>
+                            <p className="text-sm font-medium text-gray-800">
+                              {soruCozumuMu ? '🧠 Soru Çözümü' : ogrenciAd(t.veri.ogrenci_id)}{' '}
+                              <span className="text-gray-400 font-normal">— {ogretmenAd(t.veri.ogretmen_profile_id)}</span>
+                            </p>
+                            <p className="text-xs text-gray-400">
+                              {new Date(t.veri.tarih + 'T12:00:00').toLocaleDateString('tr-TR')}
+                              {t.veri.baslangic_saat ? ` · ${saatGoster(t.veri.baslangic_saat)}–${saatGoster(t.veri.bitis_saat)}` : ''}
+                              {!soruCozumuMu ? ` · ${paraFormat(t.veri.tutar)}` : ''}
+                            </p>
+                            {hataMap[t.id] && <p className="text-xs text-red-600 mt-1">{hataMap[t.id]}</p>}
+                          </div>
+                          <div className="flex items-center gap-3 shrink-0">
+                            <button
+                              onClick={() => tekYayinla(t)}
+                              disabled={gonderiliyorId === t.id || tumuGonderiliyor}
+                              className="text-navy text-sm font-semibold hover:underline disabled:opacity-50"
+                            >
+                              {gonderiliyorId === t.id ? 'Yayınlanıyor...' : 'Yayınla'}
+                            </button>
+                            <button onClick={() => sil(t.id)} className="text-gray-400 text-sm hover:underline">Sil</button>
+                          </div>
+                        </div>
+                      )
+                    })}
+                  </div>
+                ))}
               </div>
             )}
           </div>
