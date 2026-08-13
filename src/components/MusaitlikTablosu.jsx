@@ -317,14 +317,25 @@ export default function MusaitlikTablosu({
   }
 
   async function yonetimSil(kayit) {
+    // Taslak Modu açıkken, hücrenin rengi taslak (amber, kesik çizgili) mi
+    // yoksa CANLI (turuncu/mor, düz çizgili) mi olduğu ekranda kolayca
+    // karışabiliyor — ikisi de görsel olarak birbirine yakın. Kullanıcı bir
+    // taslağı sildiğini sanıp yanlışlıkla canlı bir kaydı silmesin diye,
+    // Taslak Modu açıkken canlı (taslaklar DIŞI) bir kayıt siliniyorsa uyarıyı
+    // özellikle "bu bir taslak DEĞİL, gerçek/canlı bir kayıt" diye başlatıyoruz.
+    const canliUyariOnEki =
+      taslakModuAcik && kayit.kaynak !== 'taslaklar'
+        ? '⚠️ DİKKAT: Bu bir taslak DEĞİL, CANLI/gerçek bir kayıt! Taslak Modu açık olsa bile bu kayıt hemen ve kalıcı olarak silinecek.\n\n'
+        : ''
     const mesaj =
-      kayit.kaynak === 'taslaklar'
+      canliUyariOnEki +
+      (kayit.kaynak === 'taslaklar'
         ? 'Bu taslağı iptal etmek istediğinize emin misiniz?'
         : kayit.kaynak === 'bire_bir_atamalari'
         ? 'Bu atamayı ve tüm yoklama geçmişini silmek istediğinize emin misiniz? Bu işlem geri alınamaz.'
         : kayit.soruCozumuMu
         ? 'Bu Soru Çözümü seansını silmek istediğinize emin misiniz?'
-        : 'Bu dersi silmek istediğinize emin misiniz?'
+        : 'Bu dersi silmek istediğinize emin misiniz?')
     if (!confirm(mesaj)) return
     const { error } = await supabase.from(kayit.kaynak).delete().eq('id', kayit.id)
     if (error) {
