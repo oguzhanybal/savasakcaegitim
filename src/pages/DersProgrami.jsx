@@ -163,6 +163,100 @@ function bireBirCakismaBul(gun, baslangic, bitis, ogretmenId, atamalar = [], yok
   return null
 }
 
+// Ders Programı sayfasından bire-bir HAFTALIK bir taslağı yayınlarken (aynı
+// planın bire-bir taslaklarını da artık buradan tek yerden yayınlayabilme
+// isteğiyle eklendi — bkz. BireBir.jsx'teki cakismaBul, aynı mantık burada
+// tekrarlanıyor çünkü iki sayfa ayrı state/veri şekilleriyle çalışıyor).
+// Sınıf programını, DİĞER haftalık bire bir atamalarını (öğretmen tarafı) ve
+// aynı öğrencinin başka bir öğretmenle olan haftalık dersini kontrol eder.
+function bireBirHaftalikCakismaBul({ ogrenciId, ogretmenId, gun, baslangic, bitis, haricAtamaId }, program, atamalar, ogrenciAdMap, ogretmenler) {
+  if (!ogretmenId || !baslangic || !bitis) return null
+
+  for (const p of program) {
+    if (p.gun !== gun || p.ogretmen_profile_id !== ogretmenId) continue
+    if (!araliklarCakisiyorMu(baslangic, bitis, p.baslangic_saat, p.bitis_saat)) continue
+    return {
+      aciklama: `bu öğretmenin ${GUNLER[p.gun]} günü ${saatGoster(p.baslangic_saat)}–${saatGoster(p.bitis_saat)} arası "${p.ders_adi || p.sinif_adi}" sınıf dersi var`,
+    }
+  }
+
+  for (const a of atamalar) {
+    if (a.id === haricAtamaId) continue
+    if (!a.aktif || a.gun !== gun) continue
+    if (!araliklarCakisiyorMu(baslangic, bitis, a.baslangic_saat, a.bitis_saat)) continue
+    if (a.ogretmen_profile_id === ogretmenId) {
+      const ogrAdi = a.ogrenciler?.ad_soyad || ogrenciAdMap.get(a.ogrenci_id) || 'bir öğrenci'
+      return {
+        aciklama: `bu öğretmenin ${GUNLER[a.gun]} günü ${saatGoster(a.baslangic_saat)}–${saatGoster(a.bitis_saat)} arası "${ogrAdi}" ile bire bir dersi var`,
+      }
+    }
+    if (ogrenciId && a.ogrenci_id === ogrenciId) {
+      const ogrtAdi = (ogretmenler || []).find((o) => o.id === a.ogretmen_profile_id)?.ad_soyad || 'başka bir öğretmen'
+      return {
+        aciklama: `bu öğrencinin her hafta ${GUNLER[a.gun]} günü ${saatGoster(a.baslangic_saat)}–${saatGoster(a.bitis_saat)} arası "${ogrtAdi}" ile başka bir bire bir dersi var`,
+      }
+    }
+  }
+
+  return null
+}
+
+// Ders Programı sayfasından bire-bir TEKİL (tarihe bağlı) ya da soru çözümü
+// taslağını yayınlarken aynı kontrolü yapar — sınıf programı, haftalık bire
+// bir atamaları (o tarihin haftanın günü üzerinden) ve AYNI TARİHTEKİ başka
+// tekil kayıtlar (BireBir.jsx'teki tekSeferlikCakismaBul ile aynı mantık).
+function bireBirTekilCakismaBul({ ogrenciId, ogretmenId, tarih, baslangic, bitis }, program, atamalar, yoklamalar, ogrenciAdMap, ogretmenler) {
+  if (!ogretmenId || !tarih || !baslangic || !bitis) return null
+  const gun = gunNumaraTarihten(tarih)
+
+  for (const p of program) {
+    if (p.gun !== gun || p.ogretmen_profile_id !== ogretmenId) continue
+    if (!araliklarCakisiyorMu(baslangic, bitis, p.baslangic_saat, p.bitis_saat)) continue
+    return {
+      aciklama: `bu öğretmenin ${GUNLER[p.gun]} günü ${saatGoster(p.baslangic_saat)}–${saatGoster(p.bitis_saat)} arası "${p.ders_adi || p.sinif_adi}" sınıf dersi var`,
+    }
+  }
+
+  for (const a of atamalar) {
+    if (!a.aktif || a.gun !== gun) continue
+    if (!araliklarCakisiyorMu(baslangic, bitis, a.baslangic_saat, a.bitis_saat)) continue
+    if (a.ogretmen_profile_id === ogretmenId) {
+      const ogrAdi = a.ogrenciler?.ad_soyad || ogrenciAdMap.get(a.ogrenci_id) || 'bir öğrenci'
+      return {
+        aciklama: `bu öğretmenin ${GUNLER[a.gun]} günü ${saatGoster(a.baslangic_saat)}–${saatGoster(a.bitis_saat)} arası "${ogrAdi}" ile haftalık bire bir dersi var`,
+      }
+    }
+    if (ogrenciId && a.ogrenci_id === ogrenciId) {
+      const ogrtAdi = (ogretmenler || []).find((o) => o.id === a.ogretmen_profile_id)?.ad_soyad || 'başka bir öğretmen'
+      return {
+        aciklama: `bu öğrencinin her hafta ${GUNLER[a.gun]} günü ${saatGoster(a.baslangic_saat)}–${saatGoster(a.bitis_saat)} arası "${ogrtAdi}" ile haftalık bire bir dersi var`,
+      }
+    }
+  }
+
+  for (const y of yoklamalar) {
+    if (y.atama_id) continue // sadece diğer TEK SEFERLİK derslerle karşılaştırılır
+    if (y.durum === 'gelmedi') continue
+    if (y.tarih !== tarih) continue
+    if (!y.baslangic_saat || !y.bitis_saat) continue
+    if (!araliklarCakisiyorMu(baslangic, bitis, y.baslangic_saat, y.bitis_saat)) continue
+    if (y.ogretmen_profile_id === ogretmenId) {
+      const ogrAdi = ogrenciAdMap.get(y.ogrenci_id) || 'başka bir öğrenci'
+      return {
+        aciklama: `bu öğretmenin ${tarih} tarihinde ${saatGoster(y.baslangic_saat)}–${saatGoster(y.bitis_saat)} arası "${ogrAdi}" ile başka bir tek seferlik dersi var`,
+      }
+    }
+    if (ogrenciId && y.ogrenci_id === ogrenciId) {
+      const ogrtAdi = (ogretmenler || []).find((o) => o.id === y.ogretmen_profile_id)?.ad_soyad || 'başka bir öğretmen'
+      return {
+        aciklama: `bu öğrencinin ${tarih} tarihinde ${saatGoster(y.baslangic_saat)}–${saatGoster(y.bitis_saat)} arası "${ogrtAdi}" ile başka bir tek seferlik dersi var`,
+      }
+    }
+  }
+
+  return null
+}
+
 function DersEkleForm({
   siniflar,
   ogretmenler,
@@ -774,6 +868,7 @@ function TaslaklarimDersProgrami({ taslaklar, siniflar, ogretmenler, program, at
 
   const sinifAdi = (id) => siniflar.find((s) => s.id === id)?.ad || 'Bilinmeyen sınıf'
   const ogretmenAdi = (id) => ogretmenler.find((o) => o.id === id)?.ad_soyad || null
+  const ogrenciAdi = (id) => ogrenciAdMap.get(id) || 'Bilinmeyen öğrenci'
 
   async function yayinla(t) {
     const v = t.veri
@@ -799,9 +894,121 @@ function TaslaklarimDersProgrami({ taslaklar, siniflar, ogretmenler, program, at
       })
       return true
     }
+    // Aşağıdaki üç dal, aslen BireBir.jsx'teki yayinla()'nın birebir aynısı —
+    // "bire bir taslaklarını Ders Programı sayfasından yayınlayamıyorum, tek
+    // yerden yayınlayayım" isteğiyle, aynı planın bire-bir/soru çözümü
+    // taslakları artık BURADAN da yayınlanabiliyor (Bire Bir sayfasındaki
+    // Taslaklarım bölümü de aynı şekilde çalışmaya devam ediyor, iki sayfa da
+    // aynı taslaklar tablosunu okuyor).
+    if (t.tur === 'bire_bir_haftalik') {
+      const cakisma = bireBirHaftalikCakismaBul(
+        { ogrenciId: v.ogrenci_id, ogretmenId: v.ogretmen_profile_id, gun: v.gun, baslangic: v.baslangic_saat, bitis: v.bitis_saat },
+        program,
+        atamalar,
+        ogrenciAdMap,
+        ogretmenler
+      )
+      if (cakisma) {
+        setHataMap((h) => ({ ...h, [t.id]: `Çakışma var: ${cakisma.aciklama}.` }))
+        return false
+      }
+      const { error } = await supabase.from('bire_bir_atamalari').insert({
+        ogrenci_id: v.ogrenci_id,
+        ogretmen_profile_id: v.ogretmen_profile_id,
+        ders_ucreti: v.ders_ucreti,
+        gun: v.gun,
+        baslangic_saat: v.baslangic_saat,
+        bitis_saat: v.bitis_saat,
+      })
+      if (error) {
+        setHataMap((h) => ({ ...h, [t.id]: 'Hata: ' + error.message }))
+        return false
+      }
+      await supabase.from('taslaklar').delete().eq('id', t.id)
+      setHataMap((h) => {
+        const yeni = { ...h }
+        delete yeni[t.id]
+        return yeni
+      })
+      return true
+    }
+    if (t.tur === 'soru_cozumu') {
+      const { error } = await supabase.from('bire_bir_yoklama').insert({
+        ogretmen_profile_id: v.ogretmen_profile_id,
+        tur: 'soru_cozumu',
+        tutar: 0,
+        tarih: v.tarih,
+        durum: 'geldi',
+        baslangic_saat: v.baslangic_saat,
+        bitis_saat: v.bitis_saat,
+      })
+      if (error) {
+        setHataMap((h) => ({ ...h, [t.id]: 'Hata: ' + error.message }))
+        return false
+      }
+      await supabase.from('taslaklar').delete().eq('id', t.id)
+      setHataMap((h) => {
+        const yeni = { ...h }
+        delete yeni[t.id]
+        return yeni
+      })
+      return true
+    }
+    if (t.tur === 'bire_bir_tekil') {
+      if (v.baslangic_saat && v.bitis_saat) {
+        const cakisma = bireBirTekilCakismaBul(
+          { ogrenciId: v.ogrenci_id, ogretmenId: v.ogretmen_profile_id, tarih: v.tarih, baslangic: v.baslangic_saat, bitis: v.bitis_saat },
+          program,
+          atamalar,
+          yoklamalar,
+          ogrenciAdMap,
+          ogretmenler
+        )
+        if (cakisma) {
+          setHataMap((h) => ({ ...h, [t.id]: `Çakışma var: ${cakisma.aciklama}.` }))
+          return false
+        }
+      }
+      const ileriTarihli = v.tarih > yerelBugunTarihi()
+      const { error } = await supabase.from('bire_bir_yoklama').insert({
+        ogrenci_id: v.ogrenci_id,
+        ogretmen_profile_id: v.ogretmen_profile_id,
+        tutar: v.tutar,
+        tarih: v.tarih,
+        durum: ileriTarihli ? 'bekliyor' : 'geldi',
+        baslangic_saat: v.baslangic_saat,
+        bitis_saat: v.bitis_saat,
+      })
+      if (error) {
+        setHataMap((h) => ({ ...h, [t.id]: 'Hata: ' + error.message }))
+        return false
+      }
+      await supabase.from('taslaklar').delete().eq('id', t.id)
+      setHataMap((h) => {
+        const yeni = { ...h }
+        delete yeni[t.id]
+        return yeni
+      })
+      return true
+    }
+    // Aynı plana ait, bu sınıf taslağıyla birlikte "önce eskisini kaldır,
+    // sonra yenisini ekle" olarak hazırlanmış bekleyen "sinif_kaldir"
+    // taslakları varsa, onların hedeflediği ders_programi satırlarını
+    // çakışma kontrolünden hariç tutuyoruz. Aksi halde kullanıcı zaten
+    // "bu ders gidecek" diye işaretlediği eski dersi, henüz gerçekten
+    // silinmediği (o da ancak yayınlanınca silinir) için hâlâ "orada"
+    // sayıp yanlışlıkla "çakışma var" diyorduk — oysa kullanıcının niyeti
+    // zaten değiştirmekti, gerçek bir çift-rezervasyon değildi.
+    const ayniPlanKaldirilacakIdleri = new Set(
+      (taslaklar || [])
+        .filter((tk) => tk.tur === 'sinif_kaldir' && (tk.plan_adi || null) === (t.plan_adi || null))
+        .map((tk) => tk.veri?.ders_programi_id)
+        .filter(Boolean)
+    )
+    const programHaricKaldirilacaklar = program.filter((p) => !ayniPlanKaldirilacakIdleri.has(p.id))
     const cakisma = cakismaBul(
       { sinifId: v.sinif_id, gun: v.gun, baslangic: v.baslangic_saat, bitis: v.bitis_saat, ogretmenId: v.ogretmen_profile_id },
-      program
+      programHaricKaldirilacaklar
     )
     if (cakisma) {
       const mesaj =
@@ -914,6 +1121,21 @@ function TaslaklarimDersProgrami({ taslaklar, siniflar, ogretmenler, program, at
     })
   }
 
+  // bire_bir_tekil ve soru_cozumu taslakları haftanın GÜNÜNE değil, belirli bir
+  // TARİHE bağlıdır (v.tarih) — haftalık gün-sütunlu tabloya girmezler, bunun
+  // yerine aşağıda ayrı bir "tarihe bağlı" bölümde, tarihe göre gruplanarak,
+  // her tarihin kendi "Günü Yayınla" butonuyla gösterilirler (BireBir.jsx'teki
+  // aynı isimli fonksiyonla birebir aynı mantık).
+  function tarihGruplariOlustur(tekilListe) {
+    const tarihler = [...new Set(tekilListe.map((t) => t.veri.tarih))].sort()
+    return tarihler.map((tarih) => ({
+      tarih,
+      tarihListe: tekilListe
+        .filter((t) => t.veri.tarih === tarih)
+        .sort((a, b) => (saatKisalt(a.veri.baslangic_saat) < saatKisalt(b.veri.baslangic_saat) ? -1 : 1)),
+    }))
+  }
+
   const planAdlari = [...new Set(taslaklar.filter((t) => t.plan_adi).map((t) => t.plan_adi))]
   const isimsizTaslaklar = taslaklar.filter((t) => !t.plan_adi)
   const gruplar = [
@@ -985,27 +1207,37 @@ function TaslaklarimDersProgrami({ taslaklar, siniflar, ogretmenler, program, at
                     ) : (
                       gunTaslaklari.map((t) => {
                         const kaldirma = t.tur === 'sinif_kaldir'
+                        // "Evet, tek yerden yayınlayayım" isteğiyle: aynı planın
+                        // bire-bir HAFTALIK taslakları da (v.gun kullandıkları
+                        // için sınıf taslaklarıyla aynı gün sütununa düşüyorlar)
+                        // artık burada, mor bir kartla, öğrenci adıyla gösteriliyor.
+                        const bireBir = t.tur === 'bire_bir_haftalik'
                         return (
                         <div
                           key={t.id}
                           className={
                             kaldirma
                               ? 'bg-red-50 border border-red-200 rounded-lg px-2 py-1.5'
+                              : bireBir
+                              ? 'bg-purple-50 border border-purple-200 rounded-lg px-2 py-1.5'
                               : 'bg-blue-50 border border-blue-100 rounded-lg px-2 py-1.5'
                           }
                         >
                           {kaldirma && (
                             <p className="text-[10px] font-bold text-red-600 leading-tight mb-0.5">❌ Kaldırılacak</p>
                           )}
+                          {bireBir && (
+                            <p className="text-[10px] font-bold text-purple-600 leading-tight mb-0.5">👤 Bire Bir</p>
+                          )}
                           <p className={kaldirma ? 'text-xs font-semibold text-red-700 leading-tight line-through' : 'text-xs font-semibold text-navy leading-tight'}>
-                            {t.veri.ders_adi || sinifAdi(t.veri.sinif_id)}
+                            {bireBir ? ogrenciAdi(t.veri.ogrenci_id) : t.veri.ders_adi || sinifAdi(t.veri.sinif_id)}
                           </p>
                           {t.veri.sinav_mi && (
                             <p className="text-[10px] font-semibold text-orange-600 leading-tight">
                               📝 {SINAV_TURU_ETIKET[t.veri.sinav_turu] || 'Sınav'}
                             </p>
                           )}
-                          <p className="text-[11px] text-gray-500 leading-tight">{sinifAdi(t.veri.sinif_id)}</p>
+                          {!bireBir && <p className="text-[11px] text-gray-500 leading-tight">{sinifAdi(t.veri.sinif_id)}</p>}
                           <p className="text-[11px] text-gray-400 leading-tight">
                             {saatGoster(t.veri.baslangic_saat)}–{saatGoster(t.veri.bitis_saat)}
                           </p>
@@ -1043,6 +1275,72 @@ function TaslaklarimDersProgrami({ taslaklar, siniflar, ogretmenler, program, at
               ))}
             </div>
           </div>
+          {(() => {
+            // Tarihe bağlı (bire_bir_tekil / soru_cozumu) taslaklar haftalık
+            // gün tablosuna girmez — burada, aynı planın altında, ayrı bir
+            // tarihe göre gruplu bölümde gösteriliyor.
+            const tekilListe = liste.filter((t) => t.tur === 'bire_bir_tekil' || t.tur === 'soru_cozumu')
+            if (tekilListe.length === 0) return null
+            return (
+              <div className="border-t border-gray-100">
+                <div className="px-3 py-1.5 bg-gray-50/30">
+                  <p className="text-[11px] font-semibold text-gray-400">Tarihe Bağlı Bire Bir / Soru Çözümü</p>
+                </div>
+                <div className="divide-y divide-gray-50">
+                  {tarihGruplariOlustur(tekilListe).map(({ tarih, tarihListe }) => (
+                    <div key={tarih} className="px-3 py-2">
+                      <div className="flex items-center justify-between gap-2 mb-1.5">
+                        <p className="text-xs font-semibold text-gray-500">
+                          {new Date(tarih + 'T12:00:00').toLocaleDateString('tr-TR', { weekday: 'long', day: '2-digit', month: 'long' })}
+                        </p>
+                        <button
+                          type="button"
+                          onClick={() => tumunuYayinla(tarihListe)}
+                          disabled={tumuGonderiliyor}
+                          className="text-navy text-xs font-semibold hover:underline disabled:opacity-50"
+                        >
+                          Günü Yayınla
+                        </button>
+                      </div>
+                      <div className="flex flex-wrap gap-2">
+                        {tarihListe.map((t) => (
+                          <div key={t.id} className="bg-purple-50 border border-purple-200 rounded-lg px-2 py-1.5 min-w-[160px]">
+                            <p className="text-xs font-semibold text-navy leading-tight">
+                              {t.tur === 'soru_cozumu' ? 'Soru Çözümü' : ogrenciAdi(t.veri.ogrenci_id)}
+                            </p>
+                            <p className="text-[11px] text-gray-400 leading-tight">
+                              {saatGoster(t.veri.baslangic_saat)}–{saatGoster(t.veri.bitis_saat)}
+                            </p>
+                            {ogretmenAdi(t.veri.ogretmen_profile_id) && (
+                              <p className="text-[11px] text-gray-400 leading-tight">{ogretmenAdi(t.veri.ogretmen_profile_id)}</p>
+                            )}
+                            {hataMap[t.id] && <p className="text-[11px] text-red-600 mt-1">{hataMap[t.id]}</p>}
+                            <div className="flex items-center gap-2 mt-1">
+                              <button
+                                type="button"
+                                onClick={() => tekYayinla(t)}
+                                disabled={gonderiliyorId === t.id || tumuGonderiliyor}
+                                className="text-[11px] text-navy font-semibold hover:underline disabled:opacity-50"
+                              >
+                                {gonderiliyorId === t.id ? '...' : 'Yayınla'}
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => sil(t.id)}
+                                className="text-[11px] text-gray-400 hover:underline"
+                              >
+                                Sil
+                              </button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )
+          })()}
         </div>
       ))}
     </div>
@@ -2125,7 +2423,7 @@ export default function DersProgrami() {
                 aktifPlanAdi={aktifPlanAdi}
               />
               <TaslaklarimDersProgrami
-                taslaklar={taslaklar.filter((t) => t.tur === 'sinif' || t.tur === 'sinif_kaldir')}
+                taslaklar={taslaklar}
                 siniflar={siniflar}
                 ogretmenler={ogretmenler}
                 program={program}
