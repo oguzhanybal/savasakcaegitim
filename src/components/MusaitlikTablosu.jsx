@@ -273,6 +273,25 @@ export default function MusaitlikTablosu({
       return
     }
     setYmGonderiliyor(true)
+    // Bekleyen bir taslak (henüz canlıya/başka bir tabloya yazılmamış) —
+    // taslaklar tablosunda saat bilgisi düz kolon değil, "veri" jsonb'si
+    // içinde tutuluyor, o yüzden burada ayrı bir güncelleme şekli gerekiyor:
+    // diğer alanları (sinif_id, ders_adi, ogrenci_id, tarih/gun vb.) olduğu
+    // gibi koruyup sadece baslangic_saat/bitis_saat'i güncelliyoruz.
+    if (kayit.kaynak === 'taslaklar') {
+      const { error } = await supabase
+        .from('taslaklar')
+        .update({ veri: { ...kayit.veri, baslangic_saat: ymBaslangic, bitis_saat: ymBitis } })
+        .eq('id', kayit.id)
+      setYmGonderiliyor(false)
+      if (error) {
+        setYmHata('Hata: ' + error.message)
+        return
+      }
+      yonetimPopupKapat()
+      onHizliEklendi && onHizliEklendi()
+      return
+    }
     const guncelleme = { baslangic_saat: ymBaslangic, bitis_saat: ymBitis }
     if (kayit.kaynak === 'bire_bir_atamalari' || (kayit.kaynak === 'bire_bir_yoklama' && !kayit.soruCozumuMu)) {
       if (!ymTutar || Number(ymTutar) <= 0) {
@@ -299,7 +318,9 @@ export default function MusaitlikTablosu({
 
   async function yonetimSil(kayit) {
     const mesaj =
-      kayit.kaynak === 'bire_bir_atamalari'
+      kayit.kaynak === 'taslaklar'
+        ? 'Bu taslağı iptal etmek istediğinize emin misiniz?'
+        : kayit.kaynak === 'bire_bir_atamalari'
         ? 'Bu atamayı ve tüm yoklama geçmişini silmek istediğinize emin misiniz? Bu işlem geri alınamaz.'
         : kayit.soruCozumuMu
         ? 'Bu Soru Çözümü seansını silmek istediğinize emin misiniz?'
@@ -367,6 +388,14 @@ export default function MusaitlikTablosu({
     // canlıya ya da taslağa gitmek değil, önce bir plan adı yazmaktır.
     if (taslakModuAcik && !aktifPlanAdi) {
       setHpHata('Taslak Modu açık — devam etmeden önce sayfanın üstündeki kutuya bir plan adı yazın (yoksa hiçbir yere eklenmez).')
+      return
+    }
+
+    // Geçmiş bir tarih için taslak oluşturmak mantıksız (o gün zaten geçti) —
+    // kullanıcı isteğiyle engellendi. Sadece Taslak Modu'nda kontrol ediyoruz;
+    // canlı (anlık) ekleme geçmişe dönük düzeltme amaçlı hâlâ mümkün.
+    if (taslakModuAcik && aktifPlanAdi && hizliPopup.tarih && hizliPopup.tarih < bugununTarihi) {
+      setHpHata('Geçmiş bir tarih için taslak oluşturulamaz. Lütfen bugün veya daha ileri bir tarih seçin.')
       return
     }
 
@@ -725,6 +754,13 @@ export default function MusaitlikTablosu({
         bitis: v.bitis_saat,
         etiket,
         renk: 'bg-amber-100 text-amber-900 border-l-4 border-l-amber-500 border-dashed',
+        // id/kaynak/veri: bekleyen taslağı hücrenin üzerinden de (Taslaklarım
+        // listesine gitmeden) düzenleyip silebilmek için — bkz. aşağıdaki
+        // yonetimPopupAc/yonetimKaydet/yonetimSil, "taslaklar" kaynağı için
+        // özel dallar eklendi.
+        id: t.id,
+        kaynak: 'taslaklar',
+        veri: v,
       })
     }
     return harita
@@ -908,7 +944,9 @@ export default function MusaitlikTablosu({
                                 </button>
                               </div>
                             )}
-                            {(h.dolu.kaynak === 'bire_bir_atamalari' || h.dolu.kaynak === 'bire_bir_yoklama') && (
+                            {(h.dolu.kaynak === 'bire_bir_atamalari' ||
+                              h.dolu.kaynak === 'bire_bir_yoklama' ||
+                              h.dolu.kaynak === 'taslaklar') && (
                               <div className="absolute top-0 right-0 flex opacity-0 group-hover:opacity-100 transition-opacity">
                                 <button
                                   type="button"
