@@ -194,16 +194,22 @@ export default function OgretmenEkstre() {
                 <span className="font-bold text-navy">
                   VERİLEN DERS <span className="font-normal text-gray-400 capitalize">({ozetBaslik})</span>
                 </span>
-                <span className="font-bold text-navy text-lg">{ozetDersSayisi} ders — {paraFormat(ozetTutar)}</span>
+                {/* Öğretmen KENDİ dökümünü görürken ücret bilgisi (ne tutar ne
+                    "ücretli"/"ücretsiz" ifadesi) hiçbir şekilde gösterilmesin —
+                    kullanıcı isteğiyle. Sadece yönetici görüntülerken tutar
+                    yazılır; öğretmen için burada sadece ders sayısı kalır. */}
+                <span className="font-bold text-navy text-lg">
+                  {ozetDersSayisi} ders{isYonetici ? ` — ${paraFormat(ozetTutar)}` : ''}
+                </span>
               </div>
               <div className="px-4 py-2 bg-purple-50 border-t border-purple-100 text-xs text-purple-700">
-                Bunların <b>{ozetSoruCozumuSayisi}</b> tanesi Soru Çözümü seansı (ücretsiz, tutara dahil değil).
+                Bunların <b>{ozetSoruCozumuSayisi}</b> tanesi Soru Çözümü seansı{isYonetici ? ' (ücretsiz, tutara dahil değil)' : ''}.
               </div>
               <div className="px-4 py-2 bg-blue-50 border-t border-blue-100 text-xs text-blue-700">
-                Bunların <b>{ozetSinifDersSayisi}</b> tanesi sınıf dersi (ücretsiz, tutara dahil değil).
+                Bunların <b>{ozetSinifDersSayisi}</b> tanesi sınıf dersi{isYonetici ? ' (ücretsiz, tutara dahil değil)' : ''}.
               </div>
               <div className="px-4 py-2 bg-green-50 border-t border-green-100 text-xs text-green-700">
-                Bunların <b>{ozetBireBirDersSayisi}</b> tanesi bire bir dersi (ücretli, tutara dahil).
+                Bunların <b>{ozetBireBirDersSayisi}</b> tanesi bire bir dersi{isYonetici ? ' (ücretli, tutara dahil)' : ''}.
               </div>
             </div>
 
@@ -214,6 +220,7 @@ export default function OgretmenEkstre() {
                 dersler={dersler.map((d) => ({ ...d, karsiTarafAdi: d.ogrenciAdi }))}
                 karsiTarafBasligi="Öğrenci"
                 onDonemDegisti={setGosterilenDonem}
+                tutarGizle={!isYonetici}
               />
             )}
           </div>
