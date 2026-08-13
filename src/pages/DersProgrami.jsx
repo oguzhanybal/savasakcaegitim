@@ -428,8 +428,19 @@ function DersEkleForm({
         ders_adi: t.veri.ders_adi,
         ogretmen_profile_id: t.veri.ogretmen_profile_id,
       }))
+    // Aynı plana ait bekleyen "sinif_kaldir" (kaldırma) taslakları olan
+    // ders_programi satırlarını çakışma kontrolünden hariç tutuyoruz — o
+    // dersler zaten kaldırılmak üzere işaretli, "hâlâ orada" sayıp yanlış
+    // çakışma hatası vermemek için.
+    const kaldirilacakDersIdleri = new Set(
+      taslaklar
+        .filter((t) => t.tur === 'sinif_kaldir' && (t.plan_adi || null) === hedefPlanAdi)
+        .map((t) => t.veri?.ders_programi_id)
+        .filter(Boolean)
+    )
+    const programHaricKaldirilacaklar = program.filter((p) => !kaldirilacakDersIdleri.has(p.id))
     for (const g of seciliGunler) {
-      const canliCakisma = cakismaBul({ sinifId, gun: Number(g), baslangic, bitis, ogretmenId }, program)
+      const canliCakisma = cakismaBul({ sinifId, gun: Number(g), baslangic, bitis, ogretmenId }, programHaricKaldirilacaklar)
       if (canliCakisma) {
         setHata(
           canliCakisma.tur === 'ogretmen'
