@@ -435,10 +435,22 @@ export default function MusaitlikTablosu({
       // Bu sınıfın bu gün/saatte (farklı bir öğretmenle bile olsa) başka dersi
       // var mı? Bu kontrol taslak modunda da anlamlı (canlı program hâlâ
       // canlı program), o yüzden HER İKİ modda da çalışır.
+      //
+      // İSTİSNA: aktif planda bu ders için bekleyen bir "sinif_kaldir"
+      // (kaldırma) taslağı varsa, artık bu dersi "hâlâ orada" sayıp çakışma
+      // vermiyoruz — kullanıcı zaten o dersi kaldırmak üzere işaretlemiş,
+      // üzerine yeni bir ders/taslak ekleyebilmeli.
+      const kaldirilacakDersIdleri = new Set(
+        (taslakModuAcik && aktifPlanAdi ? taslaklar || [] : [])
+          .filter((t) => t.tur === 'sinif_kaldir' && t.plan_adi === aktifPlanAdi)
+          .map((t) => t.veri?.ders_programi_id)
+          .filter(Boolean)
+      )
       const cakisan = (dersProgrami || []).find(
         (d) =>
           d.sinif_id === secilen.id &&
           d.gun === hizliPopup.gun &&
+          !kaldirilacakDersIdleri.has(d.id) &&
           araliklarCakisiyorMu(hizliPopup.baslangic, hizliPopup.bitis, d.baslangic_saat, d.bitis_saat)
       )
       if (cakisan) {
