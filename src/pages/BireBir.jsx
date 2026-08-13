@@ -2676,6 +2676,34 @@ export default function BireBir() {
     return !aranan || ad.toLocaleLowerCase('tr-TR').includes(aranan)
   })
 
+  // "Bu Planı Sil" — aktif plandaki TÜM taslakları (tur'una bakmaksızın) tek
+  // seferde siler. "Taslaklarım" listesi sadece bire bir/soru çözümü
+  // taslaklarını gösterdiği için (sinif taslakları hariç tutuluyor), plan
+  // sadece sinif taslaklarından oluşuyorsa o liste hiç görünmüyordu ve
+  // planı silmenin bir yolu kalmıyordu. Bu buton, listeden bağımsız, plan
+  // adı girildiği sürece HER ZAMAN görünür.
+  const aktifPlanaAitTaslakSayisi = aktifPlanAdi.trim()
+    ? taslaklar.filter((t) => t.plan_adi === aktifPlanAdi.trim()).length
+    : 0
+  async function aktifPlaniSil() {
+    const ad = aktifPlanAdi.trim()
+    if (!ad) return
+    const sayi = aktifPlanaAitTaslakSayisi
+    if (sayi === 0) {
+      alert(`"${ad}" planında bekleyen hiç taslak yok.`)
+      return
+    }
+    if (
+      !confirm(
+        `"${ad}" planındaki TÜM taslakları (${sayi} tane — sınıf dersi, bire bir, soru çözümü, hepsi dahil) silmek istediğinize emin misiniz? Bu işlem geri alınamaz.`
+      )
+    )
+      return
+    const { error } = await supabase.from('taslaklar').delete().eq('plan_adi', ad)
+    if (error) alert('Hata: ' + error.message)
+    else veriyiYenile()
+  }
+
   if (loading) return <p className="text-gray-400">Yükleniyor...</p>
 
   return (
@@ -2748,6 +2776,16 @@ export default function BireBir() {
                     ? `Açık — Hızlı Ekle ve formdan eklenen dersler "${aktifPlanAdi.trim()}" planına kaydediliyor (canlıya değil). Ders Programı sayfasına geçtiğinizde de aynı plan açık gelir.`
                     : 'Devam etmeden önce bir plan adı yazın.'}
                 </span>
+                {aktifPlanAdi.trim() && (
+                  <button
+                    type="button"
+                    onClick={aktifPlaniSil}
+                    className="text-xs text-red-500 font-semibold hover:underline whitespace-nowrap"
+                    title="Bu plandaki tüm taslakları (sınıf dersi, bire bir, soru çözümü — hepsi) sil"
+                  >
+                    🗑 Bu Planı Sil{aktifPlanaAitTaslakSayisi > 0 ? ` (${aktifPlanaAitTaslakSayisi})` : ''}
+                  </button>
+                )}
               </>
             )}
           </div>

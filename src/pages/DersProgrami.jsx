@@ -1734,6 +1734,36 @@ export default function DersProgrami() {
     else veriyiYenile()
   }
 
+  // Taslak Modu üstündeki plan adı kutusunun yanındaki "Bu Planı Sil" butonu —
+  // aktif plana ait TÜM taslakları (sınıf dersi, kaldırma, bire bir, soru
+  // çözümü — hepsi, tur farkı gözetmeksizin) tek seferde siler. Aşağıdaki
+  // "Taslaklarım" listesi SADECE tur='sinif'/'sinif_kaldir' taslakları
+  // gösterdiği için (bire bir/soru çözümü taslakları orada hiç görünmez),
+  // kullanıcı sadece bire-bir taslaklardan oluşan bir planı o listeden asla
+  // silemiyordu — bu buton, listede hiçbir şey görünmese bile HER ZAMAN
+  // erişilebilir olsun diye plan adı kutusunun hemen yanına eklendi.
+  const aktifPlanaAitTaslakSayisi = aktifPlanAdi.trim()
+    ? taslaklar.filter((t) => t.plan_adi === aktifPlanAdi.trim()).length
+    : 0
+  async function aktifPlaniSil() {
+    const ad = aktifPlanAdi.trim()
+    if (!ad) return
+    const sayi = aktifPlanaAitTaslakSayisi
+    if (sayi === 0) {
+      alert(`"${ad}" planında bekleyen hiç taslak yok.`)
+      return
+    }
+    if (
+      !confirm(
+        `"${ad}" planındaki TÜM taslakları (${sayi} tane — sınıf dersi, bire bir, soru çözümü, hepsi dahil) silmek istediğinize emin misiniz? Bu işlem geri alınamaz.`
+      )
+    )
+      return
+    const { error } = await supabase.from('taslaklar').delete().eq('plan_adi', ad)
+    if (error) alert('Hata: ' + error.message)
+    else veriyiYenile()
+  }
+
   // Öğretmen rolü "Ders Programı" sayfasını açtığında, aşağıdaki Tablo/Liste
   // görünümü eskiden HAM "program"ı (okulun TÜM sınıflarının, TÜM
   // öğretmenlerinin dersleri) gösteriyordu — öğretmen kendi programına
@@ -1985,6 +2015,21 @@ export default function DersProgrami() {
                         ? `Açık — Hızlı Ekle ve formdan eklenen dersler "${aktifPlanAdi.trim()}" planına kaydediliyor (canlıya değil). Bire Bir sayfasına geçtiğinizde de aynı plan açık gelir.`
                         : 'Devam etmeden önce bir plan adı yazın.'}
                     </span>
+                    {/* Aşağıdaki "Taslaklarım" listesi sadece sınıf dersi
+                        taslaklarını gösteriyor — bire bir/soru çözümü
+                        taslakları o listede hiç görünmez. Bu yüzden "bütün
+                        planı sil" ihtiyacı her zaman burada, listeden
+                        bağımsız olarak karşılanabilsin diye eklendi. */}
+                    {aktifPlanAdi.trim() && (
+                      <button
+                        type="button"
+                        onClick={aktifPlaniSil}
+                        className="text-xs text-red-500 font-semibold hover:underline whitespace-nowrap"
+                        title="Bu plandaki tüm taslakları (sınıf dersi, bire bir, soru çözümü — hepsi) sil"
+                      >
+                        🗑 Bu Planı Sil{aktifPlanaAitTaslakSayisi > 0 ? ` (${aktifPlanaAitTaslakSayisi})` : ''}
+                      </button>
+                    )}
                   </>
                 )}
               </div>
