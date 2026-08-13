@@ -120,6 +120,49 @@ function cakismaBul({ sinifId, gun, baslangic, bitis, ogretmenId, hedefSinifId =
   return null
 }
 
+// Bir sınıf dersi taslağını yayınlarken, aynı öğretmenin o gün/saatte zaten bir
+// BİRE BİR dersi (haftalık atama YA DA tek seferlik/tekil kayıt) olup olmadığını
+// kontrol eder. Eskiden cakismaBul() SADECE ders_programi'ni (diğer sınıf
+// derslerini) kontrol ediyordu — bire bir dersler hiç bakılmadığı için, bir
+// öğretmenin bire bir dersi olan saate sınıf dersi taslağı sessizce yayınlanıp
+// üstüne biniyordu (bkz. Gülem Nur Kaynar / Elif Lina Ercan Cumartesi 11.45
+// vakası). Tekil (tarih bağlı) kayıtlar için haftanın günü, o kaydın tarihinden
+// hesaplanır (gunNumaraTarihten) — sadece BUGÜN ve sonrası tekil kayıtlar
+// kontrol edilir, geçmiş tarihli olanlar zaten olup bitmiş sayılır.
+function bireBirCakismaBul(gun, baslangic, bitis, ogretmenId, atamalar = [], yoklamalar = [], ogrenciAdMap = new Map()) {
+  if (!ogretmenId || !baslangic || !bitis) return null
+  const bugun = yerelBugunTarihi()
+
+  for (const a of atamalar) {
+    if (!a.aktif || a.gun !== gun) continue
+    if (a.ogretmen_profile_id !== ogretmenId) continue
+    if (!araliklarCakisiyorMu(baslangic, bitis, a.baslangic_saat, a.bitis_saat)) continue
+    const ogrAdi = a.ogrenciler?.ad_soyad || ogrenciAdMap.get(a.ogrenci_id) || 'bir öğrenci'
+    return {
+      saat: `${saatGoster(a.baslangic_saat)}–${saatGoster(a.bitis_saat)}`,
+      gun: GUNLER[gun],
+      aciklama: `bu öğretmenin ${GUNLER[gun]} günü ${saatGoster(a.baslangic_saat)}–${saatGoster(a.bitis_saat)} arası "${ogrAdi}" ile haftalık bire bir dersi var`,
+    }
+  }
+
+  for (const y of yoklamalar) {
+    if (!y.tarih || y.tarih < bugun) continue
+    if (y.durum === 'gelmedi') continue
+    if (y.ogretmen_profile_id !== ogretmenId) continue
+    if (gunNumaraTarihten(y.tarih) !== gun) continue
+    if (!y.baslangic_saat || !y.bitis_saat) continue
+    if (!araliklarCakisiyorMu(baslangic, bitis, y.baslangic_saat, y.bitis_saat)) continue
+    const ogrAdi = ogrenciAdMap.get(y.ogrenci_id) || 'bir öğrenci'
+    return {
+      saat: `${saatGoster(y.baslangic_saat)}–${saatGoster(y.bitis_saat)}`,
+      gun: GUNLER[gun],
+      aciklama: `bu öğretmenin ${y.tarih} tarihinde (${GUNLER[gun]}) ${saatGoster(y.baslangic_saat)}–${saatGoster(y.bitis_saat)} arası "${ogrAdi}" ile bire bir dersi var`,
+    }
+  }
+
+  return null
+}
+
 function DersEkleForm({
   siniflar,
   ogretmenler,
@@ -724,7 +767,7 @@ function DersEkleForm({
 // tablosuna aktarabilir. Yayınlarken çakışma kontrolü TEKRAR çalıştırılır —
 // taslak kaydedildikten sonra program değişmiş olabilir.
 // ============================================================================
-function TaslaklarimDersProgrami({ taslaklar, siniflar, ogretmenler, program, onDegisti }) {
+function TaslaklarimDersProgrami({ taslaklar, siniflar, ogretmenler, program, atamalar = [], yoklamalar = [], ogrenciAdMap = new Map(), onDegisti }) {
   const [gonderiliyorId, setGonderiliyorId] = useState(null)
   const [tumuGonderiliyor, setTumuGonderiliyor] = useState(false)
   const [hataMap, setHataMap] = useState({})
@@ -766,6 +809,11 @@ function TaslaklarimDersProgrami({ taslaklar, siniflar, ogretmenler, program, on
           ? `Çakışma var: bu öğretmen ${cakisma.gun} günü ${cakisma.saat} arasında zaten "${cakisma.dersAdi || cakisma.sinifAdi}" dersinde.`
           : `Çakışma var: bu sınıfın ${cakisma.gun} günü ${cakisma.saat} arasında zaten "${cakisma.dersAdi || 'başka bir'}" dersi var.`
       setHataMap((h) => ({ ...h, [t.id]: mesaj }))
+      return false
+    }
+    const bbCakisma = bireBirCakismaBul(v.gun, v.baslangic_saat, v.bitis_saat, v.ogretmen_profile_id, atamalar, yoklamalar, ogrenciAdMap)
+    if (bbCakisma) {
+      setHataMap((h) => ({ ...h, [t.id]: `Çakışma var: ${bbCakisma.aciklama}.` }))
       return false
     }
     const { error } = await supabase.from('ders_programi').insert({
@@ -2071,6 +2119,9 @@ export default function DersProgrami() {
                 siniflar={siniflar}
                 ogretmenler={ogretmenler}
                 program={program}
+                atamalar={bireBirAtamalar}
+                yoklamalar={bireBirYoklamalar}
+                ogrenciAdMap={ogrenciAdMap}
                 onDegisti={veriyiYenile}
               />
             </>
