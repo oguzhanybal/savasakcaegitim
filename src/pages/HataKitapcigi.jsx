@@ -38,6 +38,12 @@ export default function HataKitapcigi() {
   const [ozet, setOzet] = useState(null)
   const [sorular, setSorular] = useState([])
   const [eslesmeyenler, setEslesmeyenler] = useState([])
+  // Hangi soruların PDF/yazdırma çıktısına dahil edileceği — varsayılan
+  // olarak hepsi seçili başlıyor (Karnem.jsx'teki Derse Göre Hata
+  // Kitapçığı'ndaki (DersBazliHataKitapcigi.jsx) aynı desen). Kullanıcı
+  // istemediği soruların işaretini kaldırınca o kart no-print olup ekranda
+  // soluk kalıyor ama Ctrl+P/PDF çıktısına hiç girmiyor.
+  const [seciliSorular, setSeciliSorular] = useState(new Set())
 
   useEffect(() => {
     let iptalEdildi = false
@@ -267,6 +273,7 @@ export default function HataKitapcigi() {
           return ia - ib
         })
         setSorular(hazirSorular)
+        setSeciliSorular(new Set(hazirSorular.map((s) => s.id)))
         setEslesmeyenler(bulunamayanlar)
         // hazirSorular boş ama aslında yanlış/boş soru VARDI (hepsi eşleşme
         // kurulamadığı için elendi) — bu durumu "tebrikler, hata yok" ile
@@ -298,6 +305,26 @@ export default function HataKitapcigi() {
     }
   }, [ogrenciAdi, sinavAdi, dersFiltresi])
 
+  function soruSecimiDegistir(soruId) {
+    setSeciliSorular((onceki) => {
+      const yeni = new Set(onceki)
+      if (yeni.has(soruId)) yeni.delete(soruId)
+      else yeni.add(soruId)
+      return yeni
+    })
+  }
+  function tumunuSec() {
+    setSeciliSorular(new Set(sorular.map((s) => s.id)))
+  }
+  function tumunuKaldir() {
+    setSeciliSorular(new Set())
+  }
+  const hepsiSecili = seciliSorular.size === sorular.length && sorular.length > 0
+  // Bir dersin başlığı, o dersten hiç seçili soru kalmadıysa (kullanıcı
+  // hepsinin işaretini kaldırdıysa) yazdırma çıktısında yalnız başına
+  // asılı kalmasın diye ayrıca no-print oluyor — bkz. aşağıdaki render.
+  const dersSeciliVarMi = new Set(sorular.filter((s) => seciliSorular.has(s.id)).map((s) => s.ders_adi))
+
   return (
     <div className="min-h-screen bg-cream py-8 px-4">
       <style>{`
@@ -315,12 +342,22 @@ export default function HataKitapcigi() {
         <div className="no-print flex items-center justify-between mb-4 flex-wrap gap-2">
           <Link to="/sinav-yukle" className="text-sm text-blue hover:underline">← Sınav Sonucu Yükle'ye Dön</Link>
           {durum === 'hazir' && (
-            <button
-              onClick={() => window.print()}
-              className="bg-orange text-white font-semibold px-5 py-2 rounded-lg hover:opacity-90 transition-opacity"
-            >
-              Yazdır / PDF Kaydet
-            </button>
+            <div className="flex items-center gap-3 flex-wrap">
+              <span className="text-sm text-gray-500">{seciliSorular.size} / {sorular.length} soru seçili</span>
+              <button
+                onClick={hepsiSecili ? tumunuKaldir : tumunuSec}
+                className="text-sm font-semibold text-navy border border-gray-200 px-3 py-2 rounded-lg hover:bg-gray-50 transition-colors"
+              >
+                {hepsiSecili ? 'Tümünü Kaldır' : 'Tümünü Seç'}
+              </button>
+              <button
+                onClick={() => window.print()}
+                disabled={seciliSorular.size === 0}
+                className="bg-orange text-white font-semibold px-5 py-2 rounded-lg hover:opacity-90 transition-opacity disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                Yazdır / PDF Kaydet
+              </button>
+            </div>
           )}
         </div>
 
@@ -399,6 +436,10 @@ export default function HataKitapcigi() {
                     <td className="px-3 py-2 font-semibold text-gray-600">Bu kitapçıktaki soru sayısı</td>
                     <td className="px-3 py-2 text-gray-700">{sorular.length}</td>
                   </tr>
+                  <tr className="no-print">
+                    <td className="px-3 py-2 font-semibold text-gray-600">Yazdırılacak soru sayısı</td>
+                    <td className="px-3 py-2 text-gray-700">{seciliSorular.size}</td>
+                  </tr>
                 </tbody>
               </table>
             </div>
@@ -438,12 +479,22 @@ export default function HataKitapcigi() {
             <div style={{ margin: '0 -6px' }}>
               {sorular.flatMap((s, i) => {
                 const dersBasligiGoster = i === 0 || sorular[i - 1].ders_adi !== s.ders_adi
+                const secili = seciliSorular.has(s.id)
                 const kart = (
                   <div
                     key={s.id}
-                    className="soru-karti bg-white rounded-lg border border-gray-200 p-2"
+                    className={`soru-karti bg-white rounded-lg border p-2 ${secili ? 'border-gray-200' : 'border-gray-100 no-print opacity-50'}`}
                     style={{ display: 'inline-block', verticalAlign: 'top', width: 'calc(50% - 12px)', margin: '0 6px 12px 6px' }}
                   >
+                    <label className="no-print flex items-center gap-1.5 mb-1 text-[11px] font-medium text-gray-600 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={secili}
+                        onChange={() => soruSecimiDegistir(s.id)}
+                        className="w-3.5 h-3.5"
+                      />
+                      PDF'e dahil et
+                    </label>
                     <p className="text-[11px] font-semibold text-navy leading-tight">
                       Soru {s.soru_no}
                       {s.konu && <span className="text-gray-400 font-normal"> · {s.konu}</span>}
@@ -462,10 +513,11 @@ export default function HataKitapcigi() {
                   </div>
                 )
                 if (!dersBasligiGoster) return [kart]
+                const dersSecili = dersSeciliVarMi.has(s.ders_adi)
                 const baslik = (
                   <p
                     key={`baslik-${s.id}`}
-                    className="text-sm font-bold text-navy border-b border-navy/20 pb-1 mt-1 first:mt-0"
+                    className={`text-sm font-bold text-navy border-b border-navy/20 pb-1 mt-1 first:mt-0 ${!dersSecili ? 'no-print' : ''}`}
                     style={{ display: 'inline-block', width: 'calc(100% - 12px)', margin: '4px 6px' }}
                   >
                     {s.ders_adi}
