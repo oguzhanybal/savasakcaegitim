@@ -9,6 +9,18 @@ import GunlukProgramListesi from '../components/GunlukProgramListesi'
 // olarak kendisi çekiyor (o sayfaya hiç gitmeden de doğrudan açılabilsin diye).
 export default function GunlukProgram() {
   const [program, setProgram] = useState([])
+  // ÖNEMLİ DÜZELTME: önceden sadece "aktif=true" satırlar çekiliyordu — bu
+  // yüzden GunlukProgramListesi'nin geçmiş tarihler için yaptığı tarihsel
+  // yeniden kurma (bkz. o dosyadaki tarihIcinAktifProgram) hiç çalışamıyordu,
+  // çünkü pasife çekilmiş (aktif=false) eski satırlar veritabanından hiç
+  // istemciye gelmiyordu. Sonuç: bu sayfa HER ZAMAN bugünkü güncel öğretmeni
+  // gösteriyordu, seçilen tarih ne olursa olsun (örn. bir sınıf dersi yakın
+  // zamanda başka öğretmene devredildiyse, geçmiş bir tarihte bile hep YENİ
+  // öğretmen görünüyordu). Artık DersProgrami.jsx'teki "programTum" ile AYNI
+  // şekilde TÜM satırlar (aktif + pasif) çekiliyor; "program" (sadece aktif)
+  // ayrıca tutulmaya devam ediyor çünkü GunlukProgramListesi, tarihe uygun
+  // kayıt bulunamayan (boşluk) durumlarda yedek olarak ona da bakıyor.
+  const [programTum, setProgramTum] = useState([])
   const [ogretmenler, setOgretmenler] = useState([])
   const [atamalar, setAtamalar] = useState([])
   const [yoklamalar, setYoklamalar] = useState([])
@@ -20,9 +32,9 @@ export default function GunlukProgram() {
       supabase
         .from('ders_programi')
         .select('*, siniflar(ad), profiles:ogretmen_profile_id(ad_soyad)')
-        // Silinmiş (pasif yapılmış) ders saatleri bu listede görünmemeli —
-        // bkz. DersProgrami.jsx'teki sil().
-        .eq('aktif', true)
+        // NOT: burada artık aktif=true filtresi YOK — pasif (silinmiş/devredilmiş)
+        // satırlar da çekiliyor, filtreleme aşağıda JS tarafında yapılıyor
+        // (bkz. yukarıdaki not — DersProgrami.jsx'teki veriyiYenile ile aynı desen).
         .order('gun')
         .order('baslangic_saat'),
       supabase.from('profiles').select('*').eq('rol', 'ogretmen').order('ad_soyad'),
@@ -30,13 +42,13 @@ export default function GunlukProgram() {
       supabase.from('bire_bir_yoklama').select('*'),
       supabase.from('ogrenciler').select('id, ad_soyad'),
     ]).then(([p, og, ba, by, o]) => {
-      setProgram(
-        (p.data || []).map((d) => ({
-          ...d,
-          sinif_adi: d.siniflar?.ad,
-          ogretmen_adi: d.profiles?.ad_soyad,
-        }))
-      )
+      const dersleriGenislet = (p.data || []).map((d) => ({
+        ...d,
+        sinif_adi: d.siniflar?.ad,
+        ogretmen_adi: d.profiles?.ad_soyad,
+      }))
+      setProgramTum(dersleriGenislet)
+      setProgram(dersleriGenislet.filter((d) => d.aktif !== false))
       setOgretmenler(og.data || [])
       setAtamalar((ba.data || []).map((a) => ({ ...a, ogrenci_adi: a.ogrenciler?.ad_soyad })))
       setYoklamalar(by.data || [])
@@ -57,6 +69,7 @@ export default function GunlukProgram() {
       ) : (
         <GunlukProgramListesi
           program={program}
+          programTum={programTum}
           ogretmenler={ogretmenler}
           atamalar={atamalar}
           yoklamalar={yoklamalar}
