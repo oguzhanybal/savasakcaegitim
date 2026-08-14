@@ -20,6 +20,36 @@ function suankiAy() {
   return `${n.getFullYear()}-${String(n.getMonth() + 1).padStart(2, '0')}`
 }
 
+// Şu anki YEREL tarih (YYYY-MM-DD) ve saat (HH:MM) — aşağıdaki
+// "henüz yaşanmamış dersleri gizle" filtresinde kullanılıyor.
+function suankiTarihVeSaat() {
+  const n = new Date()
+  const tarih = `${n.getFullYear()}-${String(n.getMonth() + 1).padStart(2, '0')}-${String(n.getDate()).padStart(2, '0')}`
+  const saat = `${String(n.getHours()).padStart(2, '0')}:${String(n.getMinutes()).padStart(2, '0')}`
+  return { tarih, saat }
+}
+
+// "VERİLEN DERS" dökümü, o dersin GERÇEKTEN yaşanıp yaşanmadığına
+// bakmaksızın, o haftanın/ayın programındaki HER kaydı gösteriyordu — bu
+// yüzden örn. bugün 14 Ağustos iken, 15 Ağustos'a önceden hazırlanmış bir
+// Soru Çözümü seansı (ya da ileri tarihli bire bir/sınıf kaydı) daha hiç
+// gerçekleşmeden "verilmiş ders" gibi listede görünüyordu. Oysa o ders daha
+// o güne gelinmediği için iptal de olabilir — kullanıcı isteğiyle, artık
+// sadece GEÇMİŞTE kalan (tarihi bugünden önce olan) ya da BUGÜN olup saati
+// şu ana kadar geçmiş olan dersler gösteriliyor; ileri tarihli/henüz saati
+// gelmemiş kayıtlar bu dökümde görünmüyor (kayıt silinmiyor, sadece bu
+// listede henüz gösterilmiyor — o gün/saat geldiğinde otomatik görünür).
+function gecmisteKalanlar(dersler) {
+  const { tarih: bugun, saat: suankiSaat } = suankiTarihVeSaat()
+  return dersler.filter((d) => {
+    if (!d.tarih) return true
+    if (d.tarih < bugun) return true
+    if (d.tarih > bugun) return false
+    if (!d.baslangicSaat) return true
+    return d.baslangicSaat <= suankiSaat
+  })
+}
+
 // Öğretmenin verdiği TÜM bire bir dersleri (haftalık + tek seferlik), hangi
 // öğrenciye hangi tarihte verildiği ve tutarıyla birlikte listeleyen,
 // yazdırılabilir/PDF alınabilir bir döküm sayfası. Ekstre.jsx'in öğretmen
@@ -76,7 +106,9 @@ export default function OgretmenEkstre() {
           const bireBirDersler = bireBirDersDetaylariOlustur(atamalar, tumYoklamalar)
           const sinifDersler = sinifDersDetaylariOlustur(sinifYoklamalari.data || [])
           setOgretmen(ogr.data)
-          setDersler([...bireBirDersler, ...sinifDersler].sort((a, b) => (a.tarih < b.tarih ? 1 : -1)))
+          setDersler(
+            gecmisteKalanlar([...bireBirDersler, ...sinifDersler]).sort((a, b) => (a.tarih < b.tarih ? 1 : -1))
+          )
           setLoading(false)
         })
       })
