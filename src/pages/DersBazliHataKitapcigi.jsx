@@ -30,6 +30,12 @@ export default function DersBazliHataKitapcigi() {
   const [eksikKitapciklar, setEksikKitapciklar] = useState([]) // [{sinavAdi, soruSayisi}]
   const [bulunamayanlar, setBulunamayanlar] = useState([]) // [{sinavAdi, soru_no}]
   const [toplamSoruSayisi, setToplamSoruSayisi] = useState(0)
+  // Kullanıcı isteğiyle eklendi: kitapçık hazırlandıktan sonra, PDF'e/çıktıya
+  // GİRSİN istenmeyen sorular tek tek işaretten kaldırılabilsin diye. Soru
+  // id'lerini (sinav_soru_sonuclari.id, global benzersiz) tutan bir Set —
+  // varsayılan olarak TÜMÜ seçili gelir (eski davranışla birebir aynı: hiç
+  // dokunulmazsa tüm yanlış/boş sorular yazdırılır).
+  const [seciliSorular, setSeciliSorular] = useState(new Set())
 
   const ders = decodeURIComponent(dersParam || '')
 
@@ -357,6 +363,7 @@ export default function DersBazliHataKitapcigi() {
 
         setSinavGruplari(sonucGruplar)
         setToplamSoruSayisi(toplamSayac)
+        setSeciliSorular(new Set(sonucGruplar.flatMap((g) => g.sorular.map((s) => s.id))))
         setDurum('hazir')
       } catch (e) {
         if (!iptalEdildi) {
@@ -381,6 +388,22 @@ export default function DersBazliHataKitapcigi() {
     }
   }, [ogrenciAdi, ders])
 
+  function soruSecimiDegistir(soruId) {
+    setSeciliSorular((onceki) => {
+      const yeni = new Set(onceki)
+      if (yeni.has(soruId)) yeni.delete(soruId)
+      else yeni.add(soruId)
+      return yeni
+    })
+  }
+  function tumunuSec() {
+    setSeciliSorular(new Set(sinavGruplari.flatMap((g) => g.sorular.map((s) => s.id))))
+  }
+  function tumunuKaldir() {
+    setSeciliSorular(new Set())
+  }
+  const hepsiSecili = seciliSorular.size === toplamSoruSayisi && toplamSoruSayisi > 0
+
   return (
     <div className="min-h-screen bg-cream py-8 px-4">
       <style>{`
@@ -399,12 +422,22 @@ export default function DersBazliHataKitapcigi() {
         <div className="no-print flex items-center justify-between mb-4 flex-wrap gap-2">
           <Link to="/karnem" className="text-sm text-blue hover:underline">← Karnem'e Dön</Link>
           {durum === 'hazir' && sinavGruplari.length > 0 && (
-            <button
-              onClick={() => window.print()}
-              className="bg-orange text-white font-semibold px-5 py-2 rounded-lg hover:opacity-90 transition-opacity"
-            >
-              Yazdır / PDF Kaydet
-            </button>
+            <div className="flex items-center gap-3 flex-wrap">
+              <span className="text-xs text-gray-500">{seciliSorular.size} / {toplamSoruSayisi} soru seçili</span>
+              <button
+                onClick={hepsiSecili ? tumunuKaldir : tumunuSec}
+                className="bg-white border border-gray-200 text-gray-600 text-sm font-medium px-3 py-2 rounded-lg hover:bg-gray-50 transition-colors"
+              >
+                {hepsiSecili ? 'Tümünü Kaldır' : 'Tümünü Seç'}
+              </button>
+              <button
+                onClick={() => window.print()}
+                disabled={seciliSorular.size === 0}
+                className="bg-orange text-white font-semibold px-5 py-2 rounded-lg hover:opacity-90 transition-opacity disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                Yazdır / PDF Kaydet
+              </button>
+            </div>
           )}
         </div>
 
@@ -456,6 +489,10 @@ export default function DersBazliHataKitapcigi() {
                     <td className="px-3 py-2 font-semibold text-gray-600">Toplam Soru Sayısı</td>
                     <td className="px-3 py-2 text-gray-700">{toplamSoruSayisi}</td>
                   </tr>
+                  <tr>
+                    <td className="px-3 py-2 font-semibold text-gray-600">Yazdırılacak Soru Sayısı</td>
+                    <td className="px-3 py-2 text-gray-700 font-semibold">{seciliSorular.size}</td>
+                  </tr>
                 </tbody>
               </table>
             </div>
@@ -495,49 +532,69 @@ export default function DersBazliHataKitapcigi() {
               </div>
             )}
 
-            {sinavGruplari.map((grup) => (
-              <div key={grup.sonucId} className="mb-6">
-                <p className="sinav-baslik text-sm font-bold text-navy border-b border-navy/20 pb-1 mb-3">
-                  {grup.sinavAdi}
-                  {grup.sinavTarihi && (
-                    <span className="text-gray-400 font-normal"> · {new Date(grup.sinavTarihi).toLocaleDateString('tr-TR')}</span>
-                  )}
-                  {grup.kitapcik && <span className="text-gray-400 font-normal"> · Kitapçık {grup.kitapcik}</span>}
-                </p>
-                {/* NOT: ne "grid" ne "flex" — ikisinde de Chrome/Safari'nin
-                    yazdırma motorları break-inside:avoid'i çocuklarda güvenilir
-                    uygulamıyor (Chrome'da grid'de, Safari/iOS'ta hem grid hem
-                    flex'te bozuk çıktı — iPhone/iPad'de aynı soru yine
-                    bölünüyordu). En eski ve en yaygın desteklenen yöntem olan
-                    inline-block + simetrik margin kullanılıyor; break-inside
-                    orada tüm tarayıcılarda güvenilir çalışıyor. */}
-                <div style={{ margin: '0 -6px' }}>
-                  {grup.sorular.map((s) => (
-                    <div
-                      key={s.id}
-                      className="soru-karti bg-white rounded-lg border border-gray-200 p-2"
-                      style={{ display: 'inline-block', verticalAlign: 'top', width: 'calc(50% - 12px)', margin: '0 6px 12px 6px' }}
-                    >
-                      <p className="text-[11px] font-semibold text-navy leading-tight">
-                        Soru {s.soru_no}
-                        {s.konu && <span className="text-gray-400 font-normal"> · {s.konu}</span>}
-                      </p>
-                      <p className="text-[10px] text-gray-400 mb-1 leading-tight">
-                        {s.sonuc === 'bos'
-                          ? `Boş bırakılmış — Doğru: ${s.dogru_cevap || '—'}`
-                          : `Yanlış — İşaretlenen: ${s.ogrenci_cevap || '—'}, Doğru: ${s.dogru_cevap || '—'}`}
-                      </p>
-                      <img
-                        src={s.dataUrl}
-                        alt={`${ders} soru ${s.soru_no}`}
-                        className="border border-gray-200 rounded"
-                        style={{ maxWidth: '100%', width: `${Math.min(s.genislikPt, 250)}pt`, height: 'auto' }}
-                      />
-                    </div>
-                  ))}
+            {sinavGruplari.map((grup) => {
+              // Kullanıcı isteğiyle: bu sınavdaki sorulardan HİÇBİRİ seçili
+              // değilse, sınav başlığı dahil tüm grup yazdırmadan (no-print)
+              // tamamen düşer — ekranda hâlâ görünür (seçim yapılabilsin diye),
+              // sadece çıktıya/PDF'e girmez.
+              const grupSeciliSayisi = grup.sorular.filter((s) => seciliSorular.has(s.id)).length
+              return (
+                <div key={grup.sonucId} className={`mb-6 ${grupSeciliSayisi === 0 ? 'no-print' : ''}`}>
+                  <p className="sinav-baslik text-sm font-bold text-navy border-b border-navy/20 pb-1 mb-3">
+                    {grup.sinavAdi}
+                    {grup.sinavTarihi && (
+                      <span className="text-gray-400 font-normal"> · {new Date(grup.sinavTarihi).toLocaleDateString('tr-TR')}</span>
+                    )}
+                    {grup.kitapcik && <span className="text-gray-400 font-normal"> · Kitapçık {grup.kitapcik}</span>}
+                    <span className="no-print text-gray-400 font-normal"> · {grupSeciliSayisi}/{grup.sorular.length} seçili</span>
+                  </p>
+                  {/* NOT: ne "grid" ne "flex" — ikisinde de Chrome/Safari'nin
+                      yazdırma motorları break-inside:avoid'i çocuklarda güvenilir
+                      uygulamıyor (Chrome'da grid'de, Safari/iOS'ta hem grid hem
+                      flex'te bozuk çıktı — iPhone/iPad'de aynı soru yine
+                      bölünüyordu). En eski ve en yaygın desteklenen yöntem olan
+                      inline-block + simetrik margin kullanılıyor; break-inside
+                      orada tüm tarayıcılarda güvenilir çalışıyor. */}
+                  <div style={{ margin: '0 -6px' }}>
+                    {grup.sorular.map((s) => {
+                      const secili = seciliSorular.has(s.id)
+                      return (
+                        <div
+                          key={s.id}
+                          className={`soru-karti bg-white rounded-lg border p-2 ${secili ? 'border-gray-200' : 'border-gray-100 no-print opacity-50'}`}
+                          style={{ display: 'inline-block', verticalAlign: 'top', width: 'calc(50% - 12px)', margin: '0 6px 12px 6px' }}
+                        >
+                          <label className="no-print flex items-center gap-1.5 mb-1 cursor-pointer select-none">
+                            <input
+                              type="checkbox"
+                              checked={secili}
+                              onChange={() => soruSecimiDegistir(s.id)}
+                              className="w-3.5 h-3.5"
+                            />
+                            <span className="text-[10px] text-gray-400">PDF'e dahil et</span>
+                          </label>
+                          <p className="text-[11px] font-semibold text-navy leading-tight">
+                            Soru {s.soru_no}
+                            {s.konu && <span className="text-gray-400 font-normal"> · {s.konu}</span>}
+                          </p>
+                          <p className="text-[10px] text-gray-400 mb-1 leading-tight">
+                            {s.sonuc === 'bos'
+                              ? `Boş bırakılmış — Doğru: ${s.dogru_cevap || '—'}`
+                              : `Yanlış — İşaretlenen: ${s.ogrenci_cevap || '—'}, Doğru: ${s.dogru_cevap || '—'}`}
+                          </p>
+                          <img
+                            src={s.dataUrl}
+                            alt={`${ders} soru ${s.soru_no}`}
+                            className="border border-gray-200 rounded"
+                            style={{ maxWidth: '100%', width: `${Math.min(s.genislikPt, 250)}pt`, height: 'auto' }}
+                          />
+                        </div>
+                      )
+                    })}
+                  </div>
                 </div>
-              </div>
-            ))}
+              )
+            })}
           </>
         )}
       </div>
