@@ -67,6 +67,20 @@ export default function KantinGunlukRapor() {
   // öğrenciyi bulmak aşağı kaydırmadan zorlaşıyordu.
   const [ogrenciFiltre, setOgrenciFiltre] = useState('')
 
+  // Ürün Bazında Kırılım tablosu — hangi sütuna göre (varsayılan: tutar) ve
+  // hangi yönde (azalan/artan) sıralı gösterileceği. "Adet" başlığına
+  // tıklayınca en çok/en az satılana göre sıralanabilsin isteğiyle eklendi.
+  const [urunSiralama, setUrunSiralama] = useState({ alan: 'tutar', yon: 'azalan' })
+  function siralamaDegistir(alan) {
+    setUrunSiralama((s) => (s.alan === alan ? { alan, yon: s.yon === 'azalan' ? 'artan' : 'azalan' } : { alan, yon: 'azalan' }))
+  }
+
+  // Ürün Bazında Kırılım'da bir ürünün Adet sayısına tıklanınca, o ürüne ait
+  // TEK TEK alışları (hangi öğrenci, hangi tarih, kaç adet) altta açılan bir
+  // detay tablosunda gösterir — kullanıcı isteğiyle eklendi. Aynı ürün adına
+  // tekrar tıklanınca kapanır.
+  const [secilenUrunAdi, setSecilenUrunAdi] = useState(null)
+
   async function veriyiYukle() {
     setYukleniyor(true)
     setHata('')
@@ -96,6 +110,7 @@ export default function KantinGunlukRapor() {
     veriyiYukle()
     setDuzenlenenGrup(null)
     setEkleHedefi(null)
+    setSecilenUrunAdi(null)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [donem, seciliTarih, seciliAy])
 
@@ -123,8 +138,29 @@ export default function KantinGunlukRapor() {
       mevcut.tutar += Number(a.tutar)
       map.set(k, mevcut)
     }
-    return [...map.entries()].sort((a, b) => b[1].tutar - a[1].tutar)
-  }, [alislar])
+    const liste = [...map.entries()]
+    const yon = urunSiralama.yon === 'azalan' ? -1 : 1
+    if (urunSiralama.alan === 'urun') {
+      liste.sort((a, b) => yon * a[0].localeCompare(b[0], 'tr-TR'))
+    } else {
+      liste.sort((a, b) => yon * (a[1][urunSiralama.alan] - b[1][urunSiralama.alan]))
+    }
+    return liste
+  }, [alislar, urunSiralama])
+
+  // Bir ürünün Adet sayısına tıklanınca açılan detay tablosu için, o ürüne
+  // ait ham (gruplanmamış) kantin_alislar satırları — tarih sırasıyla, aynı
+  // tarihte birden fazla öğrenci varsa öğrenci adına göre.
+  const urunDetayKayitlari = useMemo(() => {
+    if (!secilenUrunAdi) return []
+    return alislar
+      .filter((a) => (a.urun_adi || 'Belirtilmemiş') === secilenUrunAdi)
+      .slice()
+      .sort((a, b) => {
+        if (a.tarih !== b.tarih) return a.tarih < b.tarih ? -1 : 1
+        return (a.ogrenciler?.ad_soyad || '').localeCompare(b.ogrenciler?.ad_soyad || '', 'tr-TR')
+      })
+  }, [alislar, secilenUrunAdi])
 
   const ogrenciGruplari = useMemo(() => {
     const map = new Map()
@@ -416,22 +452,176 @@ export default function KantinGunlukRapor() {
           {urunKirilimi.length > 0 && (
             <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden mb-6">
               <p className="px-4 pt-4 pb-1 font-semibold text-navy text-sm">Ürün Bazında Kırılım (Kurum Geneli)</p>
+              <p className="px-4 pb-2 text-[11px] text-gray-400">Adet sayısına tıklayınca o ürünün tek tek alışlarını görebilir ve düzenleyebilirsin. Başlıklara tıklayınca sıralama değişir.</p>
               <div className="overflow-x-auto" style={{ touchAction: 'pan-x pan-y' }}>
                 <table className="w-full text-sm">
                   <thead>
                     <tr className="text-left text-gray-500 border-b border-gray-100">
-                      <th className="px-4 py-2 font-medium">Ürün</th>
-                      <th className="px-4 py-2 font-medium text-right">Adet</th>
-                      <th className="px-4 py-2 font-medium text-right">Tutar</th>
+                      <th
+                        className="px-4 py-2 font-medium cursor-pointer select-none hover:text-navy"
+                        onClick={() => siralamaDegistir('urun')}
+                      >
+                        Ürün {urunSiralama.alan === 'urun' && (urunSiralama.yon === 'azalan' ? '▼' : '▲')}
+                      </th>
+                      <th
+                        className="px-4 py-2 font-medium text-right cursor-pointer select-none hover:text-navy"
+                        onClick={() => siralamaDegistir('adet')}
+                      >
+                        Adet {urunSiralama.alan === 'adet' && (urunSiralama.yon === 'azalan' ? '▼' : '▲')}
+                      </th>
+                      <th
+                        className="px-4 py-2 font-medium text-right cursor-pointer select-none hover:text-navy"
+                        onClick={() => siralamaDegistir('tutar')}
+                      >
+                        Tutar {urunSiralama.alan === 'tutar' && (urunSiralama.yon === 'azalan' ? '▼' : '▲')}
+                      </th>
                     </tr>
                   </thead>
                   <tbody>
                     {urunKirilimi.map(([ad, v]) => (
-                      <tr key={ad} className="border-b border-gray-50 last:border-0">
-                        <td className="px-4 py-2">{ad}</td>
-                        <td className="px-4 py-2 text-right">{v.adet}</td>
-                        <td className="px-4 py-2 text-right font-medium">{paraFormat(v.tutar)}</td>
-                      </tr>
+                      <>
+                        <tr key={ad} className="border-b border-gray-50 last:border-0">
+                          <td className="px-4 py-2">{ad}</td>
+                          <td className="px-4 py-2 text-right">
+                            <button
+                              type="button"
+                              onClick={() => setSecilenUrunAdi((mevcut) => (mevcut === ad ? null : ad))}
+                              className={
+                                secilenUrunAdi === ad
+                                  ? 'text-blue font-semibold hover:underline'
+                                  : 'text-navy font-semibold hover:underline'
+                              }
+                            >
+                              {v.adet}
+                            </button>
+                          </td>
+                          <td className="px-4 py-2 text-right font-medium">{paraFormat(v.tutar)}</td>
+                        </tr>
+                        {secilenUrunAdi === ad && (
+                          <tr key={ad + '-detay'}>
+                            <td colSpan={3} className="bg-gray-50/60 px-4 py-3 border-b border-gray-100">
+                              <p className="text-xs font-semibold text-gray-500 mb-2">
+                                "{ad}" — tek tek alışlar ({urunDetayKayitlari.length})
+                              </p>
+                              <div className="overflow-x-auto" style={{ touchAction: 'pan-x pan-y' }}>
+                                <table className="w-full text-xs">
+                                  <thead>
+                                    <tr className="text-left text-gray-400 border-b border-gray-200">
+                                      <th className="py-1.5 pr-3 font-medium">Öğrenci</th>
+                                      {donem !== 'gun' && <th className="py-1.5 pr-3 font-medium">Tarih</th>}
+                                      <th className="py-1.5 pr-3 font-medium">Ürün</th>
+                                      <th className="py-1.5 pr-3 font-medium text-right">Adet</th>
+                                      <th className="py-1.5 pr-3 font-medium text-right">Tutar</th>
+                                      <th className="py-1.5 font-medium text-right"></th>
+                                    </tr>
+                                  </thead>
+                                  <tbody>
+                                    {urunDetayKayitlari.map((a) => {
+                                      const grupGorunumu = {
+                                        anahtar: `detay-${a.id}`,
+                                        urun_id: a.urun_id,
+                                        urun_adi: a.urun_adi,
+                                        adet: a.adet,
+                                        tutar: Number(a.tutar),
+                                        idler: [a.id],
+                                      }
+                                      const duzenleniyor = duzenlenenGrup?.anahtar === grupGorunumu.anahtar
+                                      return (
+                                        <tr key={a.id} className="border-b border-gray-100 last:border-0">
+                                          <td className="py-1.5 pr-3 whitespace-nowrap">{a.ogrenciler?.ad_soyad || 'Bilinmeyen Öğrenci'}</td>
+                                          {donem !== 'gun' && (
+                                            <td className="py-1.5 pr-3 whitespace-nowrap">
+                                              {new Date(a.tarih + 'T12:00:00').toLocaleDateString('tr-TR')}
+                                            </td>
+                                          )}
+                                          {duzenleniyor ? (
+                                            <>
+                                              <td className="py-1.5 pr-3">
+                                                <select
+                                                  value={duzenlemeUrunId}
+                                                  onChange={(e) => {
+                                                    setDuzenlemeUrunId(e.target.value)
+                                                    const u = urunler.find((x) => x.id === e.target.value)
+                                                    if (u) setDuzenlemeBirimFiyat(String(u.fiyat))
+                                                  }}
+                                                  className="px-1.5 py-1 rounded border border-gray-200 text-xs w-full"
+                                                >
+                                                  <option value="">{a.urun_adi}</option>
+                                                  {urunler.map((u) => (
+                                                    <option key={u.id} value={u.id}>{u.ad}</option>
+                                                  ))}
+                                                </select>
+                                              </td>
+                                              <td className="py-1.5 pr-3 text-right w-16">
+                                                <input
+                                                  type="number"
+                                                  min="1"
+                                                  value={duzenlemeAdet}
+                                                  onChange={(e) => setDuzenlemeAdet(e.target.value)}
+                                                  className="w-14 px-1.5 py-1 rounded border border-gray-200 text-xs text-right"
+                                                />
+                                              </td>
+                                              <td className="py-1.5 pr-3 text-right w-24">
+                                                <input
+                                                  type="number"
+                                                  min="0"
+                                                  step="0.01"
+                                                  value={duzenlemeBirimFiyat}
+                                                  onChange={(e) => setDuzenlemeBirimFiyat(e.target.value)}
+                                                  className="w-20 px-1.5 py-1 rounded border border-gray-200 text-xs text-right"
+                                                />
+                                              </td>
+                                              <td className="py-1.5 text-right whitespace-nowrap">
+                                                <button
+                                                  type="button"
+                                                  disabled={kaydediliyor}
+                                                  onClick={() => duzenlemeyiKaydet(grupGorunumu)}
+                                                  className="text-blue text-xs font-semibold mr-2 disabled:opacity-50"
+                                                >
+                                                  Kaydet
+                                                </button>
+                                                <button
+                                                  type="button"
+                                                  onClick={() => setDuzenlenenGrup(null)}
+                                                  className="text-gray-400 text-xs font-semibold"
+                                                >
+                                                  İptal
+                                                </button>
+                                              </td>
+                                            </>
+                                          ) : (
+                                            <>
+                                              <td className="py-1.5 pr-3">{a.urun_adi}</td>
+                                              <td className="py-1.5 pr-3 text-right">{a.adet}</td>
+                                              <td className="py-1.5 pr-3 text-right font-medium">{paraFormat(a.tutar)}</td>
+                                              <td className="py-1.5 text-right whitespace-nowrap">
+                                                <button
+                                                  type="button"
+                                                  onClick={() => duzenlemeyeBasla(grupGorunumu)}
+                                                  className="text-navy text-xs font-semibold mr-2"
+                                                >
+                                                  Düzenle
+                                                </button>
+                                                <button
+                                                  type="button"
+                                                  onClick={() => sil([a.id])}
+                                                  className="text-red-600 text-xs font-semibold"
+                                                >
+                                                  Sil
+                                                </button>
+                                              </td>
+                                            </>
+                                          )}
+                                        </tr>
+                                      )
+                                    })}
+                                  </tbody>
+                                </table>
+                              </div>
+                            </td>
+                          </tr>
+                        )}
+                      </>
                     ))}
                   </tbody>
                 </table>
