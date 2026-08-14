@@ -104,10 +104,29 @@ export default function GunlukProgramListesi({ program, programTum, ogretmenler,
   // geçmiş bir tarih seçildiğinde o tarihte GERÇEKTEN kim ders veriyorduysa o
   // görünmeli (bkz. tarihIcinAktifProgram). programTum yoksa (örn. eski bir
   // kullanım yeri unutulmuşsa) program'a geri düşer.
-  const gununProgrami = useMemo(
-    () => tarihIcinAktifProgram(programTum || program, tarih),
-    [programTum, program, tarih]
-  )
+  //
+  // BOŞLUK YEDEĞİ: bazı sınıf dersi satırları sık sık düzenlenip yeniden
+  // oluşturuluyor (öğretmen değişikliği, saat düzeltmesi vb. — her düzenleme
+  // eskiyi pasife çekip yenisini ekliyor). Eğer eski satır pasife çekildikten
+  // SONRA yenisi hemen eklenmediyse, araya "kimsenin kapsamadığı" bir tarih
+  // boşluğu girebiliyor — bu boşluğa denk gelen bir tarih seçilirse yukarıdaki
+  // tarihIcinAktifProgram o slot için HİÇBİR satır bulamaz ve öğretmen satırdan
+  // TAMAMEN kaybolur (kullanıcının fark ettiği ikinci hata — "şimdi komple
+  // gitti"). Bunu önlemek için: aynı gün/saat/sınıf ("slot") için tarihe göre
+  // hiçbir geçerli satır bulunamadıysa, o slot için GÜNCEL (bugünkü aktif)
+  // satırı yedek olarak ekliyoruz — "tam o tarihte kimdi" kesin bilinmiyorsa
+  // bile en azından BİR isim görünsün diye. Geçerli bir tarihsel satır
+  // bulunabiliyorsa (asıl düzeltilen hata — bkz. Gülem/Yücel 12 Ağustos) bu
+  // yedek devreye girmez, tarihsel satır önceliklidir.
+  const gununProgrami = useMemo(() => {
+    const tarihe = tarihIcinAktifProgram(programTum || program, tarih)
+    const slotAnahtari = (d) => `${d.gun}|${saatKisalt(d.baslangic_saat)}|${d.sinif_id}`
+    const kapsananlar = new Set(tarihe.filter((d) => d.sinif_id).map(slotAnahtari))
+    const guncelYedek = (program || []).filter(
+      (d) => d.sinif_id && d.gun === gun && !kapsananlar.has(slotAnahtari(d))
+    )
+    return guncelYedek.length > 0 ? [...tarihe, ...guncelYedek] : tarihe
+  }, [programTum, program, tarih, gun])
 
   // O günün TÜM olaylarını (sınıf dersi + haftalık bire bir + tek seferlik
   // bire bir) tek listede topluyoruz.
