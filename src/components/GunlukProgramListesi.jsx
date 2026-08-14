@@ -30,7 +30,43 @@ function gunEkle(tarihStr, gunSayisi) {
   return t.toISOString().slice(0, 10)
 }
 
-export default function GunlukProgramListesi({ program, ogretmenler, atamalar, yoklamalar, ogrenciAdMap }) {
+function yerelBugunTarihi() {
+  const n = new Date()
+  return `${n.getFullYear()}-${String(n.getMonth() + 1).padStart(2, '0')}-${String(n.getDate()).padStart(2, '0')}`
+}
+
+function tarihStrYerel(isoStr) {
+  if (!isoStr) return null
+  const d = new Date(isoStr)
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+}
+
+// DersProgrami.jsx'teki "Ders Ekleme Aracı" sekmesindeki musaitlikIcinProgram
+// ile AYNI mantık (kod tekrarı olsa da, iki dosya arasında ayrı state/import
+// zincirine girmemek için burada da bağımsız tutuluyor): "ders_programi"
+// satırları belirli bir TARİHE değil haftanın GÜNÜNE bağlı şablonlar olduğu
+// için, salt "aktif=true" filtresi seçilen tarihi hiç hesaba katmıyordu — bir
+// sınıf dersi yakın zamanda başka bir öğretmene devredildiğinde (eski satır
+// pasif_tarihi ile pasife çekilir, yeni satır baslangic_tarihi ile aktif
+// eklenir) GEÇMİŞ bir tarih seçilince bile hep BUGÜNKÜ (güncel) öğretmen
+// görünüyordu — bu da "12 Ağustos'ta Gülem hocanın dersi Yücel hocada
+// görünüyor" hatasının kaynağıydı. Bu fonksiyon, seçilen tarihte GERÇEKTEN
+// geçerli olan satırları (o tarihte aktif olanı, eski/yeni ayrımı gözetmeden)
+// seçer — musaitlikTarihi yerine bu bileşenin kendi "tarih" state'iyle.
+function tarihIcinAktifProgram(programTum, tarih) {
+  const bugun = yerelBugunTarihi()
+  return (programTum || []).filter((d) => {
+    if (d.aktif !== false) {
+      const esasTarih = d.baslangic_tarihi || tarihStrYerel(d.created_at)
+      return !esasTarih || esasTarih <= tarih
+    }
+    if (!d.pasif_tarihi || tarih > d.pasif_tarihi) return false
+    if (tarih === d.pasif_tarihi && tarih === bugun) return false
+    return true
+  })
+}
+
+export default function GunlukProgramListesi({ program, programTum, ogretmenler, atamalar, yoklamalar, ogrenciAdMap }) {
   // Sayfa açık bırakılıp gece yarısı geçildiğinde, hâlâ "bugün"e bakılıyorsa
   // (kullanıcı elle başka bir tarihe geçmediyse) gösterilen tarih otomatik
   // yeni güne ilerlesin diye — bkz. lib/bugununTarihi.js (kullanıcı isteğiyle
@@ -62,11 +98,22 @@ export default function GunlukProgramListesi({ program, ogretmenler, atamalar, y
     return 'ogle2'
   })
 
+  // Seçilen TARİH için o an geçerli olan ders_programi satırları — sadece
+  // "program" (aktif=true) DEĞİL, çünkü o her zaman BUGÜNKÜ güncel durumu
+  // yansıtıyor. Bir sınıf dersi yakın zamanda başka bir öğretmene devredildiyse,
+  // geçmiş bir tarih seçildiğinde o tarihte GERÇEKTEN kim ders veriyorduysa o
+  // görünmeli (bkz. tarihIcinAktifProgram). programTum yoksa (örn. eski bir
+  // kullanım yeri unutulmuşsa) program'a geri düşer.
+  const gununProgrami = useMemo(
+    () => tarihIcinAktifProgram(programTum || program, tarih),
+    [programTum, program, tarih]
+  )
+
   // O günün TÜM olaylarını (sınıf dersi + haftalık bire bir + tek seferlik
   // bire bir) tek listede topluyoruz.
   const gununOlaylari = useMemo(() => {
     const olaylar = []
-    for (const d of program) {
+    for (const d of gununProgrami) {
       if (d.gun !== gun || !d.ogretmen_profile_id) continue
       olaylar.push({
         ogretmenId: d.ogretmen_profile_id,
@@ -112,7 +159,7 @@ export default function GunlukProgramListesi({ program, ogretmenler, atamalar, y
       })
     }
     return olaylar
-  }, [program, atamalar, yoklamalar, gun, tarih, ogrenciAdMap])
+  }, [gununProgrami, atamalar, yoklamalar, gun, tarih, ogrenciAdMap])
 
   // Saat sütunları: artık o günün olaylarından türetilen değişken sınırlar
   // DEĞİL, okulun sabit ders periyotları (45dk ders + 10dk teneffüs, bkz.
