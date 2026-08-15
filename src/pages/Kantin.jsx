@@ -1216,7 +1216,7 @@ export default function Kantin() {
                     {ogrenciBorcu.kalanBakiye > 0
                       ? `Kantin Borcu: ${paraFormat(ogrenciBorcu.kalanBakiye)}`
                       : ogrenciBorcu.fazlaOdeme > 0.01
-                        ? `Kantin Borcu: ₺0,00 — ${paraFormat(ogrenciBorcu.fazlaOdeme)} Alacaklı`
+                        ? `Kantin: ${paraFormat(ogrenciBorcu.fazlaOdeme)} Alacaklı`
                         : `Kantin Borcu: ${paraFormat(0)}`}
                   </span>
                 )
