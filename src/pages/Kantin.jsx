@@ -562,7 +562,7 @@ export default function Kantin() {
   // borcHesaplaVeGoster) — sözleşme/Bire Bir gibi diğer kalemler kasıtlı
   // olarak dahil değil, kantin görevlisi burada sadece kendi alanıyla
   // ilgileniyor.
-  const [ogrenciBorcu, setOgrenciBorcu] = useState(null) // { kalanBakiye } | null
+  const [ogrenciBorcu, setOgrenciBorcu] = useState(null) // { kalanBakiye, fazlaOdeme } | null
   const [borcYukleniyor, setBorcYukleniyor] = useState(false)
   // Ürün ızgarasının üstündeki arama kutusu — bkz. gorunenUrunler.
   const [urunArama, setUrunArama] = useState('')
@@ -670,7 +670,11 @@ export default function Kantin() {
     const kantinBorclar = [...(aylikBorclarRes.data || []), ...kantinBorclariOlustur(kantin.data || [])]
     const buAy = new Date().toISOString().slice(0, 7)
     const sonuc = aylikKalemHesapla('Kantin', kantinBorclar, o.data || [], buAy)
-    setOgrenciBorcu({ kalanBakiye: sonuc ? sonuc.toplamOdenecek : 0 })
+    // fazlaOdeme: veli/öğrenci borçtan FAZLA ödeme yaptıysa (ör. Muhasebe'den
+    // önden kantin parası yatırıldıysa) burada da gösteriliyor — önceden bu
+    // bilgi hesaplansa da ekrana hiç yansıtılmıyordu, "0 borç" ile "0 borç
+    // + alacaklı" ayrımı kayboluyordu.
+    setOgrenciBorcu({ kalanBakiye: sonuc ? sonuc.toplamOdenecek : 0, fazlaOdeme: sonuc ? sonuc.fazlaOdeme : 0 })
     setBorcYukleniyor(false)
   }
 
@@ -1209,7 +1213,11 @@ export default function Kantin() {
                       ogrenciBorcu.kalanBakiye > 0 ? 'bg-red-100 text-red-700' : 'bg-green-100 text-green-700'
                     }`}
                   >
-                    Kantin Borcu: {paraFormat(ogrenciBorcu.kalanBakiye)}
+                    {ogrenciBorcu.kalanBakiye > 0
+                      ? `Kantin Borcu: ${paraFormat(ogrenciBorcu.kalanBakiye)}`
+                      : ogrenciBorcu.fazlaOdeme > 0.01
+                        ? `Kantin Borcu: ₺0,00 — ${paraFormat(ogrenciBorcu.fazlaOdeme)} Alacaklı`
+                        : `Kantin Borcu: ${paraFormat(0)}`}
                   </span>
                 )
               )}
