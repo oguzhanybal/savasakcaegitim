@@ -4,7 +4,7 @@ import { paraFormat } from '../lib/ekstreHesap'
 
 // Bilinen kalemler bu sırayla gösterilir; veride bunların dışında bir kalem
 // çıkarsa (ör. eski/elle girilmiş farklı bir isim) sona, alfabetik sırayla eklenir.
-const BILINEN_KALEM_SIRASI = ['Okul', 'Kurs', 'Kitap', 'Bire Bir', 'Yemek', 'Kantin']
+const BILINEN_KALEM_SIRASI = ['Okul', 'Kurs', 'Kitap', 'Deneme Kulübü', 'Bire Bir', 'Yemek', 'Kantin']
 
 function ayAnahtari(tarihStr) {
   const d = new Date(tarihStr)

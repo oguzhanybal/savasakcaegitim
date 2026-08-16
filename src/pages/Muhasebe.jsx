@@ -39,7 +39,7 @@ function DurumRozeti({ durum }) {
 }
 
 const DAGITILAMAYAN_ETIKET = 'Dağıtılmamış'
-const DAGITILABILIR_KALEMLER = ['Okul', 'Kurs', 'Kitap', 'Bire Bir', 'Yemek', 'Kantin']
+const DAGITILABILIR_KALEMLER = ['Okul', 'Kurs', 'Kitap', 'Deneme Kulübü', 'Bire Bir', 'Yemek', 'Kantin']
 
 function saatKisalt(s) {
   return s ? s.slice(0, 5) : s
@@ -351,6 +351,7 @@ function SozlesmeEkleForm({ ogrenciId, onEklendi }) {
             <option>Okul</option>
             <option>Kurs</option>
             <option>Kitap</option>
+            <option>Deneme Kulübü</option>
           </select>
         </div>
         <div className="flex-1 min-w-[140px]">
@@ -447,8 +448,11 @@ function SozlesmeEkleForm({ ogrenciId, onEklendi }) {
 // ise doğrudan "aylik_borclar" tablosuna yazılır. "Bire Bir" için ÖNEMLİ: bu,
 // yeni bir ders GİRMEZ (öğretmen seçmeye gerek YOK) — sadece geçmişe dönük
 // düz bir borç satırı ekler, hiçbir öğretmenin ekstresini etkilemez.
-const GECMIS_BORC_KALEMLERI = ['Okul', 'Kurs', 'Yemek', 'Kantin', 'Bire Bir']
-const GECMIS_BORC_SOZLESME_KALEMLERI = ['Okul', 'Kurs']
+const GECMIS_BORC_KALEMLERI = ['Okul', 'Kurs', 'Deneme Kulübü', 'Yemek', 'Kantin', 'Bire Bir']
+// "Deneme Kulübü" de Okul/Kurs gibi tek seferlik/taksitli bir kayıt ücreti
+// olduğu için (aylık tekrar eden bir borç değil), sözleşme sistemiyle
+// (sozlesmeler tablosu, tek taksit) çalışması gereken kalemler listesine dahil.
+const GECMIS_BORC_SOZLESME_KALEMLERI = ['Okul', 'Kurs', 'Deneme Kulübü']
 
 function GecmisBorcEkleForm({ ogrenciId, onEklendi }) {
   const [kalem, setKalem] = useState('Okul')
