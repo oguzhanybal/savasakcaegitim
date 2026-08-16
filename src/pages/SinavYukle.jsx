@@ -102,7 +102,16 @@ export default function SinavYukle() {
   const [satirlar, setSatirlar] = useState(() => {
     try {
       const kayitli = localStorage.getItem(SATIRLAR_ANAHTARI)
-      return kayitli ? JSON.parse(kayitli) : []
+      const liste = kayitli ? JSON.parse(kayitli) : []
+      // Zaten "Kaydedildi" durumuna geçmiş satırlar veritabanına yazılmış,
+      // yani zaten güvende — localStorage'a yazmamızın tek amacı HENÜZ
+      // kaydedilmemiş satırları (sayfadan yanlışlıkla çıkılırsa) kaybetmemekti
+      // (bkz. üstteki açıklama). Bu yüzden sayfa yeniden açıldığında (özellikle
+      // günler sonra yeni bir yükleme yapılırken) eski kaydedilmiş satırları
+      // BURADA geri getirmiyoruz — aksi halde liste sürekli büyüyüp yeni
+      // yüklenenlerin arasına eski, zaten tamamlanmış işler karışarak kafa
+      // karıştırıyordu.
+      return liste.filter((s) => s.durum !== 'kaydedildi')
     } catch {
       return []
     }
