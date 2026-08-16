@@ -250,6 +250,7 @@ function OdemeEkleForm({ ogrenciId, onEklendi }) {
           <option>Okul</option>
           <option>Kurs</option>
           <option>Kitap</option>
+          <option>Deneme Kulübü</option>
           <option>Bire Bir</option>
           <option>Yemek</option>
           <option>Kantin</option>
@@ -1269,6 +1270,7 @@ export default function Muhasebe() {
                                 <option>Okul</option>
                                 <option>Kurs</option>
                                 <option>Kitap</option>
+                                <option>Deneme Kulübü</option>
                               </select>
                             </div>
                             <div className="flex-1 min-w-[130px]">
