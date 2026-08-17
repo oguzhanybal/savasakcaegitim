@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import { useAuth } from '../lib/AuthContext'
+import { supabase } from '../lib/supabase'
 import UygulamaYukleBanner from './UygulamaYukleBanner'
 import PullToRefresh from './PullToRefresh'
 import { bildirimAcikMi, bildirimleriAc, bildirimleriKapat, pushDestekleniyorMu } from '../lib/pushBildirim'
@@ -15,7 +16,7 @@ const ROL_ETIKET = {
   zil: 'Zil Ekranı',
 }
 
-function menuOlustur(rol, kendiProfileId) {
+function menuOlustur(rol, kendiProfileId, hatirlatmaSayisi) {
   if (rol === 'yonetici') {
     return [
       { tur: 'link', to: '/', label: 'Ana Sayfa', end: true },
@@ -86,6 +87,11 @@ function menuOlustur(rol, kendiProfileId) {
           { to: '/karnem', label: 'Gelişim Grafiği' },
         ],
       },
+      // Ayrı, tek başına bir bölüm olarak en altta — kullanıcı isteğiyle
+      // "Kullanıcılar" grubunun içinden çıkarılıp buraya taşındı. Rozet:
+      // tamamlanmamış hatırlatma sayısı (0 ise hiç görünmez) — bkz.
+      // Hatirlatmalar.jsx'teki "bekleyenler" tanımıyla birebir aynı.
+      { tur: 'link', to: '/hatirlatmalar', label: 'Hatırlatmalar', rozet: hatirlatmaSayisi },
     ]
   }
   if (rol === 'kantin') {
@@ -357,12 +363,17 @@ function GrupMenuOgesi({ grup, pathname, onLinkTiklandi }) {
               end={o.end}
               onClick={onLinkTiklandi}
               className={({ isActive }) =>
-                `block px-3 py-1.5 rounded-lg text-sm transition-colors ${
+                `flex items-center justify-between px-3 py-1.5 rounded-lg text-sm transition-colors ${
                   isActive ? 'bg-white/15 text-white font-medium' : 'text-white/60 hover:bg-white/10 hover:text-white'
                 }`
               }
             >
-              {o.label}
+              <span>{o.label}</span>
+              {!!o.rozet && (
+                <span className="bg-red-500 text-white text-[11px] font-semibold min-w-[17px] h-[17px] rounded-full flex items-center justify-center px-1">
+                  {o.rozet}
+                </span>
+              )}
             </NavLink>
           ))}
         </div>
@@ -378,7 +389,26 @@ export default function Layout() {
   const location = useLocation()
   const navigate = useNavigate()
 
-  const menu = menuOlustur(rol, profile?.id)
+  // Sol menüdeki "Hatırlatmalar" linkinin yanındaki kırmızı rozet — tamamlanmamış
+  // hatırlatma sayısı. Sadece yönetici bu tabloyu görebildiği için (RLS) sorgu
+  // sadece o rolde çalıştırılıyor. Sayfalar arası geçişte (ör. bir hatırlatmayı
+  // tamamlayıp başka sayfaya dönünce) rozetin hemen güncellenmesi için
+  // location.pathname her değiştiğinde tekrar sorgulanıyor.
+  const [hatirlatmaSayisi, setHatirlatmaSayisi] = useState(0)
+  useEffect(() => {
+    if (rol !== 'yonetici') return
+    let iptal = false
+    supabase
+      .from('hatirlatmalar')
+      .select('id', { count: 'exact', head: true })
+      .eq('tamamlandi', false)
+      .then(({ count }) => {
+        if (!iptal) setHatirlatmaSayisi(count || 0)
+      })
+    return () => { iptal = true }
+  }, [rol, location.pathname])
+
+  const menu = menuOlustur(rol, profile?.id, hatirlatmaSayisi)
   // "beforeinstallprompt"/"appinstalled" olaylarını TEK bir yerde (burada)
   // yakalayıp, hem alttaki banner'a hem sol menüdeki butona aynı sonucu
   // veriyoruz — bkz. usePwaYukleme.js dosya başındaki genel not.
@@ -508,12 +538,17 @@ export default function Layout() {
                 end={oge.end}
                 onClick={() => setMenuAcik(false)}
                 className={({ isActive }) =>
-                  `block px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+                  `flex items-center justify-between px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
                     isActive ? 'bg-white/15 text-white' : 'text-white/70 hover:bg-white/10 hover:text-white'
                   }`
                 }
               >
-                {oge.label}
+                <span>{oge.label}</span>
+                {!!oge.rozet && (
+                  <span className="bg-red-500 text-white text-[11px] font-semibold min-w-[17px] h-[17px] rounded-full flex items-center justify-center px-1">
+                    {oge.rozet}
+                  </span>
+                )}
               </NavLink>
             )
           )}
