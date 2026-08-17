@@ -312,6 +312,28 @@ export default function Ogrenciler() {
   async function ogrenciEkle(e) {
     e.preventDefault()
     if (!yeniForm.ad_soyad.trim()) return
+    // Aynı isimde bir öğrenci (aktif ya da pasif) zaten var mı diye kontrol
+    // ediyoruz — daha önce bu kontrol hiç yoktu, bu yüzden aynı öğrenci için
+    // (ör. pasifteki eski kaydı fark etmeden) yanlışlıkla ikinci bir kayıt
+    // açılabiliyordu (bkz. "Zeren Kızılkaya" mükerrer kayıt olayı). Burada
+    // ENGELLEMİYORUZ — admin gerçekten farklı bir öğrenciyse (ör. kardeşler
+    // aynı isimde olabilir) "Evet, yine de ekle" diyip devam edebilsin diye
+    // sadece uyarıyoruz.
+    const normalize = (s) => (s || '').toLocaleLowerCase('tr-TR').trim()
+    const hedefIsim = normalize(adSoyadDuzelt(yeniForm.ad_soyad))
+    const eslesen = ogrenciler.find((o) => normalize(o.ad_soyad) === hedefIsim)
+    if (eslesen) {
+      const durumMetni = (eslesen.durum || 'aktif') === 'pasif' ? 'Pasif' : 'Aktif'
+      if (
+        !confirm(
+          `"${eslesen.ad_soyad}" isminde ${durumMetni} bir öğrenci zaten kayıtlı. Bu muhtemelen aynı öğrenci ` +
+            `(ör. pasifteki eski kaydı arıyorsanız "Pasif" filtresinden bulup tekrar aktif yapabilirsiniz). ` +
+            `Yine de YENİ ve ayrı bir öğrenci kaydı olarak eklemek istediğinize emin misiniz?`
+        )
+      ) {
+        return
+      }
+    }
     setEkleniyor(true)
     const { data: eklenen, error } = await supabase
       .from('ogrenciler')

@@ -569,6 +569,113 @@ function GecmisBorcEkleForm({ ogrenciId, onEklendi }) {
   )
 }
 
+// "Sistem Öncesi Borç Ekle" ile AYNI amaç ama ters yönde: öğrenci bu sisteme
+// geçmeden ÖNCE zaten bir ödeme yapmışsa (ör. geçen yıl nakit ödediği bir
+// tutar), bunu normal "Ödeme Ekle" formuyla girmek YANLIŞ olur — çünkü o form
+// ödemenin tarihini her zaman "şimdi" yazar, geçmişe dönük tarih seçilemez.
+// Bu form aynı "odemeler" tablosuna yazar ama admin'in TARİHİ elle seçmesine
+// izin verir, böylece Ödeme Geçmişi ve Gelir Raporu'nda doğru ayda görünür.
+const GECMIS_ODEME_KALEMLERI = ['Okul', 'Kurs', 'Kitap', 'Deneme Kulübü', 'Yemek', 'Kantin', 'Bire Bir']
+
+function GecmisOdemeEkleForm({ ogrenciId, onEklendi }) {
+  const [kalem, setKalem] = useState('Okul')
+  const [tutar, setTutar] = useState('')
+  const [tarih, setTarih] = useState(() => new Date().toISOString().slice(0, 10))
+  const [gonderiliyor, setGonderiliyor] = useState(false)
+  const [acik, setAcik] = useState(false)
+
+  async function ekle(e) {
+    e.preventDefault()
+    if (!tutar || Number(tutar) <= 0 || !tarih) return
+    setGonderiliyor(true)
+    const { error } = await supabase.from('odemeler').insert({
+      ogrenci_id: ogrenciId,
+      tutar: Number(tutar),
+      kalem,
+      tarih: new Date(tarih).toISOString(),
+    })
+    setGonderiliyor(false)
+    if (!error) {
+      setTutar('')
+      setAcik(false)
+      onEklendi()
+    } else {
+      alert('Hata: ' + error.message)
+    }
+  }
+
+  if (!acik) {
+    return (
+      <button
+        onClick={() => setAcik(true)}
+        className="text-navy font-semibold text-sm underline hover:no-underline"
+      >
+        + Sistem Öncesi (Geçmiş) Ödeme Ekle
+      </button>
+    )
+  }
+
+  return (
+    <form onSubmit={ekle} className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5 mb-6">
+      <p className="text-sm text-gray-500 mb-3">
+        Öğrencinin bu sisteme geçmeden ÖNCE (ya da geçmiş bir tarihte) zaten yaptığı bir ödemeyi buradan,
+        gerçek tarihini seçerek kaydedin. Normal "Ödeme Ekle" kutusu ödemeyi her zaman bugünün tarihiyle
+        kaydeder — geçmiş bir ödeme için bu formu kullanın ki Ödeme Geçmişi ve Gelir Raporu'nda doğru ayda görünsün.
+      </p>
+      <div className="flex flex-wrap gap-3 items-end">
+        <div className="flex-1 min-w-[120px]">
+          <label className="block text-sm font-medium text-gray-700 mb-1">Kalem</label>
+          <select
+            value={kalem}
+            onChange={(e) => setKalem(e.target.value)}
+            className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue bg-white"
+          >
+            {GECMIS_ODEME_KALEMLERI.map((k) => (
+              <option key={k}>{k}</option>
+            ))}
+          </select>
+        </div>
+        <div className="flex-1 min-w-[140px]">
+          <label className="block text-sm font-medium text-gray-700 mb-1">Tutar (₺)</label>
+          <input
+            type="number"
+            min="0"
+            step="0.01"
+            value={tutar}
+            onChange={(e) => setTutar(e.target.value)}
+            className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue"
+          />
+        </div>
+        <div className="flex-1 min-w-[140px]">
+          <label className="block text-sm font-medium text-gray-700 mb-1">Ödeme Tarihi</label>
+          <input
+            type="date"
+            value={tarih}
+            onChange={(e) => setTarih(e.target.value)}
+            className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue"
+          />
+        </div>
+      </div>
+      <div className="flex gap-2 mt-3">
+        <button
+          type="submit"
+          disabled={gonderiliyor}
+          className="bg-navy text-white font-semibold px-5 py-2 rounded-lg hover:bg-blue transition-colors disabled:opacity-50"
+        >
+          {gonderiliyor ? 'Ekleniyor...' : 'Ödeme Ekle'}
+        </button>
+        <button
+          type="button"
+          onClick={() => setAcik(false)}
+          className="text-gray-500 font-medium px-4 py-2 hover:text-gray-700"
+        >
+          Vazgeç
+        </button>
+      </div>
+    </form>
+  )
+}
+
 // Bir kalemde borçtan FAZLA ödeme yapılmışsa (veli taksitini/borcunu önden ya
 // da fazladan ödediyse), bu paneli göster — tutar otomatik olarak o kalemde
 // bir sonraki borç doğduğunda (sonraki ay taksiti / yeni ders ya da alış)
@@ -1174,6 +1281,7 @@ export default function Muhasebe() {
               <div className="flex flex-wrap gap-4 mb-6">
                 <SozlesmeEkleForm ogrenciId={seciliId} onEklendi={veriyiYenile} />
                 <GecmisBorcEkleForm ogrenciId={seciliId} onEklendi={veriyiYenile} />
+                <GecmisOdemeEkleForm ogrenciId={seciliId} onEklendi={veriyiYenile} />
               </div>
               <DagitilmamisOdemelerPaneli odemeler={odemeler} onDegisti={veriyiYenile} digerOgrenciAdlari={faturaDigerleri.length > 0} />
             </>
