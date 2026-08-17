@@ -23,6 +23,7 @@ import GenelBireBirEkstre from './pages/GenelBireBirEkstre'
 import TopluEkstre from './pages/TopluEkstre'
 import GelirRaporu from './pages/GelirRaporu'
 import Giderler from './pages/Giderler'
+import Hatirlatmalar from './pages/Hatirlatmalar'
 import AylikOzet from './pages/AylikOzet'
 import BorcYaslandirma from './pages/BorcYaslandirma'
 import KullaniciOlustur from './pages/KullaniciOlustur'
@@ -333,6 +334,14 @@ function AnaUygulama() {
             element={
               <Korumali izinliRoller={['yonetici']}>
                 <Giderler />
+              </Korumali>
+            }
+          />
+          <Route
+            path="hatirlatmalar"
+            element={
+              <Korumali izinliRoller={['yonetici']}>
+                <Hatirlatmalar />
               </Korumali>
             }
           />
