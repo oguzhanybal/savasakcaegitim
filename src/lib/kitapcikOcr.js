@@ -345,7 +345,7 @@ export function baslangicKutulariUret(sutunluAdaylar, sayfaGenisligi, sayfaYukse
 // veritabanındaki x/y/genişlik/yükseklik değerlerini DEĞİŞTİRMEZ — sadece PDF
 // üretilirken kırpılan görüntüye uygulanır, bu yüzden eski (zaten
 // işaretlenmiş) sınavlarda da otomatik devreye girer.
-export function alttakiBosluguKirp(canvas, { esikDegeri = 245, altPay = 14, minKazanc = 20 } = {}) {
+export function alttakiBosluguKirp(canvas, { esikDegeri = 235, altPay = 14, minKazanc = 20, minDoluPiksel = 3 } = {}) {
   const genislik = canvas.width
   const yukseklik = canvas.height
   if (genislik < 1 || yukseklik < 1) return canvas
@@ -364,14 +364,26 @@ export function alttakiBosluguKirp(canvas, { esikDegeri = 245, altPay = 14, minK
     // Performans için satır başına birkaç piksette bir örnekleme yeterli —
     // taranmış bir sayfada yazı yatayda geniş dağıldığı için atlanan
     // piksellerin hepsinin boş olması pratikte olası değil.
+    //
+    // TEK bir soluk piksel yeterli sayılırsa, taramadaki JPEG sıkıştırma
+    // kırıntısı / hafif gri leke gibi gürültü, gerçekten BOŞ olan bir satırı
+    // bile "dolu" sanıp kırpmayı neredeyse hiç çalıştırmayabiliyordu (canlıda
+    // gözlemlenen davranış). Bunun önüne geçmek için aynı satırda EN AZ
+    // minDoluPiksel kadar GERÇEKTEN koyu piksel arıyoruz — tek tük gürültü
+    // artık yanıltmıyor, gerçek yazı/çizgi (yan yana çok sayıda koyu piksel)
+    // yine doğru tespit ediliyor.
+    let doluSayisi = 0
     for (let x = 0; x < genislik; x += 2) {
       const i = satirBasi + x * 4
       if (data[i] < esikDegeri || data[i + 1] < esikDegeri || data[i + 2] < esikDegeri) {
-        sonDoluSatir = y
-        break
+        doluSayisi++
+        if (doluSayisi >= minDoluPiksel) break
       }
     }
-    if (sonDoluSatir !== -1) break
+    if (doluSayisi >= minDoluPiksel) {
+      sonDoluSatir = y
+      break
+    }
   }
 
   if (sonDoluSatir === -1) return canvas // satırların hepsi boşsa dokunma
