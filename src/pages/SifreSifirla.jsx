@@ -237,6 +237,67 @@ function KullaniciAdiDegistirSatiri({ kullanici, onTamamlandi }) {
   )
 }
 
+// Bir kullanıcının satırdaki "Sil" akışı — hem profiles hem giriş (auth)
+// kaydını KALICI olarak siler (bkz. api/kullanici-sil.js, Ogretmenler.jsx'teki
+// öğretmen silme ile aynı uç nokta). En sık kullanım amacı: yanlışlıkla iki
+// kez kullanıcı oluşturulmuş (ör. bir öğrenci kaydı silinip yeniden
+// eklendiğinde eski hesabın ARKADA kalması gibi) "yetim" hesapları temizlemek
+// — öğrenci/veli kaydını silmek SADECE o kaydı siler, bağlı giriş hesabını
+// silmez, bu yüzden aynı kullanıcı adını tekrar kullanmak isteyince "zaten
+// var" hatası alınabiliyordu (kullanıcının canlıda karşılaştığı durum).
+//
+// GÜVENLİK: yönetici hesapları burada YÖNETICI rolü olduğu için hiç
+// gösterilmiyor (aşağıdaki render'da filtreleniyor) — bu sayfadan
+// yanlışlıkla kendi/başka bir yönetici hesabının silinmesini engellemek için.
+function KullaniciSilSatiri({ kullanici, onTamamlandi }) {
+  const [gonderiliyor, setGonderiliyor] = useState(false)
+  const [hata, setHata] = useState('')
+
+  async function sil() {
+    if (
+      !confirm(
+        `"${kullanici.ad_soyad}" (${kullaniciAdiGosterimineCevir(kullanici.kullanici_adi)}) kullanıcısını ` +
+          `KALICI olarak silmek istediğinize emin misiniz?\n\nBu işlem GERİ ALINAMAZ. Bu kullanıcının geçmiş ` +
+          `ders/yoklama/ödeme kaydı varsa sistem silmeyi zaten engelleyecektir.`
+      )
+    ) {
+      return
+    }
+    setHata('')
+    setGonderiliyor(true)
+    try {
+      const yanit = await fetch('/api/kullanici-sil', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: kullanici.id }),
+      })
+      const veri = await yanit.json()
+      if (!yanit.ok) {
+        setHata(veri.error || 'Bilinmeyen bir hata oluştu.')
+      } else {
+        onTamamlandi?.()
+      }
+    } catch (err) {
+      setHata('Bağlantı hatası: ' + err.message)
+    }
+    setGonderiliyor(false)
+  }
+
+  return (
+    <div>
+      <button
+        type="button"
+        onClick={sil}
+        disabled={gonderiliyor}
+        className="text-red-500 text-sm font-semibold hover:underline disabled:opacity-50"
+      >
+        {gonderiliyor ? 'Siliniyor...' : 'Sil'}
+      </button>
+      {hata && <p className="text-red-600 text-xs mt-1 max-w-[220px]">{hata}</p>}
+    </div>
+  )
+}
+
 export default function SifreSifirla() {
   const [kullanicilar, setKullanicilar] = useState([])
   const [loading, setLoading] = useState(true)
@@ -360,6 +421,7 @@ export default function SifreSifirla() {
                   <div className="flex flex-col items-start gap-2">
                     <SifreSifirlaSatiri kullanici={k} onTamamlandi={yukle} />
                     <KullaniciAdiDegistirSatiri kullanici={k} onTamamlandi={yukle} />
+                    {k.rol !== 'yonetici' && <KullaniciSilSatiri kullanici={k} onTamamlandi={yukle} />}
                   </div>
                 </td>
               </tr>
