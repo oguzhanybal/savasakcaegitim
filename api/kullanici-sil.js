@@ -35,7 +35,7 @@ export default async function handler(req, res) {
     if (profilHatasi.code === '23503') {
       res.status(400).json({
         error:
-          'Bu öğretmenin sistemde geçmiş ders, yoklama ya da ödeme kayıtları var — bu yüzden silinemiyor (geçmiş kayıtlar kaybolmasın diye). Bu öğretmeni artık kullanmıyorsanız bana söyleyin, "pasif" hale getirme özelliği ekleyebilirim.',
+          'Bu kullanıcının sistemde geçmiş ders, yoklama ya da ödeme kaydı var — bu yüzden silinemiyor (geçmiş kayıtlar kaybolmasın diye).',
       })
     } else {
       res.status(400).json({ error: 'Profil silinemedi: ' + profilHatasi.message })
