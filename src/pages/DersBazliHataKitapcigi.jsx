@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { useParams, useSearchParams, Link } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../lib/AuthContext'
-import { pdfBelgesiAc, sayfayiGoruntuyeCevir } from '../lib/kitapcikOcr'
+import { pdfBelgesiAc, sayfayiGoruntuyeCevir, alttakiBosluguKirp } from '../lib/kitapcikOcr'
 
 // HataKitapcigi.jsx'in "tek sınav, tek kitapçık" mantığının, "bir öğrencinin
 // SEÇTİĞİ TEK bir dersteki (ör. Kimya), BİRDEN FAZLA sınavdaki tüm yanlış/boş
@@ -290,17 +290,24 @@ export default function DersBazliHataKitapcigi() {
             const sayfaCanvas = await sayfaCanvasGetir(kv, kutu.sayfa_no)
             const genislikPx = Math.max(1, Math.round(kutu.genislik))
             const yukseklikPx = Math.max(1, Math.round(kutu.yukseklik))
-            const soruKirpmaCanvas = document.createElement('canvas')
+            let soruKirpmaCanvas = document.createElement('canvas')
             soruKirpmaCanvas.width = genislikPx
             soruKirpmaCanvas.height = yukseklikPx
             soruKirpmaCanvas
               .getContext('2d')
               .drawImage(sayfaCanvas, kutu.x, kutu.y, kutu.genislik, kutu.yukseklik, 0, 0, genislikPx, yukseklikPx)
+            // Soru sayfada/sütunda tek başınaysa kutu sayfa sonuna kadar
+            // uzatılmış olabilir (bkz. kitapcikOcr.js'teki açıklama) — burada
+            // fazla boşluk otomatik kesiliyor.
+            soruKirpmaCanvas = alttakiBosluguKirp(soruKirpmaCanvas)
 
             // Ortak Parça — bkz. HataKitapcigi.jsx'teki aynı mantık.
             let nihaiCanvas = soruKirpmaCanvas
             let nihaiGenislikPt = kutu.genislik / olcek
-            let nihaiYukseklikPt = kutu.yukseklik / olcek
+            // Kırpma sonrası yükseklik (soruKirpmaCanvas.height) kutu.yukseklik'ten
+            // KÜÇÜK olabilir (bkz. alttakiBosluguKirp) — o yüzden kutu.yukseklik
+            // yerine canvas'ın GERÇEK yüksekliği kullanılıyor.
+            let nihaiYukseklikPt = soruKirpmaCanvas.height / olcek
             if (kutu.parca_x != null && kutu.parca_y != null && kutu.parca_genislik != null && kutu.parca_yukseklik != null) {
               const parcaSayfaNo = kutu.parca_sayfa_no || kutu.sayfa_no
               const parcaSayfaCanvas = await sayfaCanvasGetir(kv, parcaSayfaNo)
@@ -315,7 +322,7 @@ export default function DersBazliHataKitapcigi() {
 
               const araBosluk = 6
               const birlesikGenislikPx = Math.max(genislikPx, parcaGenislikPx)
-              const birlesikYukseklikPx = parcaYukseklikPx + araBosluk + yukseklikPx
+              const birlesikYukseklikPx = parcaYukseklikPx + araBosluk + soruKirpmaCanvas.height
               const birlesikCanvas = document.createElement('canvas')
               birlesikCanvas.width = birlesikGenislikPx
               birlesikCanvas.height = birlesikYukseklikPx
