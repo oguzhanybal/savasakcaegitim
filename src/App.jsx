@@ -48,7 +48,26 @@ import ZilSistemi from './pages/ZilSistemi'
 import Duyurular from './pages/Duyurular'
 import UygulamaYuklemeleri from './pages/UygulamaYuklemeleri'
 
-function Yukleniyor() {
+// zamanAsimiOldu true ise (AuthContext.jsx: 12 saniyede bir türlü yüklenmediyse)
+// sonsuza kadar dönen "Yükleniyor..." yerine kullanıcının en azından tekrar
+// deneyebileceği bir buton gösteriyoruz — önceden bu durumda çıkışsız kalınıyordu.
+function Yukleniyor({ zamanAsimiOldu }) {
+  if (zamanAsimiOldu) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-cream px-4">
+        <div className="text-center">
+          <p className="text-gray-500 mb-3">Bağlantı sorunu oluştu, sayfa yüklenemedi.</p>
+          <button
+            type="button"
+            onClick={() => window.location.reload()}
+            className="bg-lacivert text-white px-4 py-2 rounded-lg font-semibold"
+          >
+            Sayfayı Yenile
+          </button>
+        </div>
+      </div>
+    )
+  }
   return (
     <div className="min-h-screen flex items-center justify-center bg-cream">
       <p className="text-gray-400">Yükleniyor...</p>
@@ -57,9 +76,9 @@ function Yukleniyor() {
 }
 
 function Korumali({ children, izinliRoller }) {
-  const { session, profile, loading } = useAuth()
+  const { session, profile, loading, zamanAsimiOldu } = useAuth()
   const location = useLocation()
-  if (loading) return <Yukleniyor />
+  if (loading) return <Yukleniyor zamanAsimiOldu={zamanAsimiOldu} />
   if (!session) {
     const hedef = location.pathname + location.search
     // Sadece location.state'e güvenmek yetmiyor — Login.jsx giriş başarılı
@@ -87,15 +106,15 @@ function Korumali({ children, izinliRoller }) {
   // "bazen geç geliyor" dediği asıl kök neden buydu. Artık profile,
   // izinliRoller olsun olmasın HER durumda beklenir; sayfa bileşenleri artık
   // her zaman dolu bir profile ile monte olur.
-  if (!profile) return <Yukleniyor />
+  if (!profile) return <Yukleniyor zamanAsimiOldu={zamanAsimiOldu} />
   if (izinliRoller && !izinliRoller.includes(profile?.rol)) return <Navigate to="/" replace />
   return children
 }
 
 function GirisSayfasi() {
-  const { session, loading } = useAuth()
+  const { session, loading, zamanAsimiOldu } = useAuth()
   const location = useLocation()
-  if (loading) return <Yukleniyor />
+  if (loading) return <Yukleniyor zamanAsimiOldu={zamanAsimiOldu} />
   if (session) return <Navigate to={location.state?.from || '/'} replace />
   return <Login />
 }
