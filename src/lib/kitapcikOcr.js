@@ -331,3 +331,56 @@ export function baslangicKutulariUret(sutunluAdaylar, sayfaGenisligi, sayfaYukse
   }
   return kutular
 }
+
+// Bir soru kutusunun yüksekliği, o soru sayfada/sütunda TEK BAŞINAYSA
+// (altında/yanında sınır koyacak başka bir soru yoksa) hem elle
+// işaretlemede (bkz. SinavKitapciklari.jsx'teki noktalariKutuyaCevir) hem
+// OCR otomatik tespitinde (yukarıdaki baslangicKutulariUret) sayfanın
+// sonuna kadar uzatılıyor — gerçek soru metni çok daha yukarıda bitmiş olsa
+// bile. HataKitapcigi.jsx ve DersBazliHataKitapcigi.jsx, kutuyu kırptıktan
+// SONRA bu fonksiyonla görüntüyü ALTTAN YUKARI tarayıp gerçek içeriğin
+// (yazı/çizgi) bittiği son satırı bulur ve fazla boşluğu atar — küçük bir
+// pay bırakarak. İçerik zaten kutunun sonuna kadar uzanıyorsa (ör. gerçekten
+// uzun bir soru) hiçbir şey kesilmez, canvas olduğu gibi döner. Bu, kutunun
+// veritabanındaki x/y/genişlik/yükseklik değerlerini DEĞİŞTİRMEZ — sadece PDF
+// üretilirken kırpılan görüntüye uygulanır, bu yüzden eski (zaten
+// işaretlenmiş) sınavlarda da otomatik devreye girer.
+export function alttakiBosluguKirp(canvas, { esikDegeri = 245, altPay = 14, minKazanc = 20 } = {}) {
+  const genislik = canvas.width
+  const yukseklik = canvas.height
+  if (genislik < 1 || yukseklik < 1) return canvas
+  let data
+  try {
+    data = canvas.getContext('2d').getImageData(0, 0, genislik, yukseklik).data
+  } catch {
+    // Güvenlik kısıtı (CORS vb.) yüzünden piksel okunamazsa dokunmadan dön —
+    // bu bir "en kötü ihtimalle eskisi gibi davran" güvenlik ağı.
+    return canvas
+  }
+
+  let sonDoluSatir = -1
+  for (let y = yukseklik - 1; y >= 0; y--) {
+    const satirBasi = y * genislik * 4
+    // Performans için satır başına birkaç piksette bir örnekleme yeterli —
+    // taranmış bir sayfada yazı yatayda geniş dağıldığı için atlanan
+    // piksellerin hepsinin boş olması pratikte olası değil.
+    for (let x = 0; x < genislik; x += 2) {
+      const i = satirBasi + x * 4
+      if (data[i] < esikDegeri || data[i + 1] < esikDegeri || data[i + 2] < esikDegeri) {
+        sonDoluSatir = y
+        break
+      }
+    }
+    if (sonDoluSatir !== -1) break
+  }
+
+  if (sonDoluSatir === -1) return canvas // satırların hepsi boşsa dokunma
+  const yeniYukseklik = Math.min(yukseklik, sonDoluSatir + 1 + altPay)
+  if (yukseklik - yeniYukseklik < minKazanc) return canvas // kazanç önemsizse dokunma
+
+  const yeniCanvas = document.createElement('canvas')
+  yeniCanvas.width = genislik
+  yeniCanvas.height = yeniYukseklik
+  yeniCanvas.getContext('2d').drawImage(canvas, 0, 0)
+  return yeniCanvas
+}
