@@ -1,7 +1,13 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../lib/AuthContext'
-import { sesSisteminiEtkinlestir, cikisZiliCal, manuelZilCalBaslat, manuelZilDurdur } from '../lib/zilSesiCal'
+import {
+  sesSisteminiEtkinlestir,
+  cikisZiliCal,
+  manuelZilCalBaslat,
+  manuelZilDurdur,
+  ozelSesleriOnYukle,
+} from '../lib/zilSesiCal'
 import { saatGoster } from '../lib/saatFormat'
 
 // ============================================================================
@@ -245,6 +251,24 @@ export default function ZilSistemi() {
     return () => document.removeEventListener('visibilitychange', gorunurlukDegisti)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [etkinMi, isZil])
+
+  // ---- ÖZEL ZİL SESLERİNİ ÖNCEDEN İNDİRME ----
+  // "Öğretmen zili bazen (özellikle kalabalık saatlerde) kendi sesi yerine
+  // öntanımlı sese düşüyor" şikayetinin kök nedeni: özel ses, zilin TAM
+  // ÇALDIĞI ANDA Supabase'den taze indiriliyordu — o anki bir wifi/ağ
+  // yavaşlaması indirmeyi başarısız kılıp sessizce öntanımlı sese
+  // düşürüyordu. Çözüm: SADECE "zil" hesabıyla açık cihazda, sayfa açılır
+  // açılmaz ve düzenli aralıklarla, her türün güncel sesini önceden indirip
+  // tarayıcı önbelleğine alıyoruz (bkz. zilSesiCal.js — ozelSesleriOnYukle).
+  // Zil çaldığı anda artık ağa ihtiyaç duymuyor. 3 dakikada bir tekrarlanması,
+  // yönetici gün içinde yeni bir ses yüklerse cihazın bunu makul bir sürede
+  // fark etmesini sağlıyor.
+  useEffect(() => {
+    if (!isZil) return
+    ozelSesleriOnYukle()
+    const id = setInterval(ozelSesleriOnYukle, 3 * 60 * 1000)
+    return () => clearInterval(id)
+  }, [isZil])
 
   // ---- Yeni ders ekleme formu — Öğrenci girilince Öğretmen (+1dk),
   // Öğretmen (elle ya da otomatik) belli olunca Çıkış (+45dk) öneriliyor.
