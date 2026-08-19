@@ -131,14 +131,77 @@ function siraylaCal(urlListesi, index = 0) {
 // tur: 'ogrenci' | 'ogretmen' | 'cikis' — hangi zilin çaldığını belirtir,
 // önce o türe özel yüklenmiş sesi arar. tur verilmezse (ör. eski kod ya da
 // genel bir "test" çağrısı) ortak öntanımlı sese düşer.
+//
+// ÖNBELLEKTEN ÇALMA — "öğretmen zili bazen çalmıyor, öntanımlıya düşüyor"
+// şikayetinin kök nedeni: bu fonksiyon HER çağrıldığında Supabase'den taze
+// bir URL isteyip (cache-busting'li) yeniden indiriyordu, yani zilin çaldığı
+// TAM O ANDA internet/wifi bir anlığına yavaşlarsa/kesilirse indirme
+// başarısız oluyor ve sessizce öntanımlı sese düşülüyordu (kalabalık
+// saatlerde daha sık). Şimdi önce aşağıdaki ozelSesleriOnYukle() ile
+// ÖNCEDEN indirilip tarayıcı önbelleğine alınmış sabit URL'i deniyoruz —
+// çalma anında ağa ihtiyaç YOK, anında ve güvenilir çalar. Önbellek henüz
+// oluşmadıysa (ör. sayfa yeni açıldı) eski canlı-indirme yöntemine düşülür.
 export function cikisZiliCal(tur) {
   if (!tur) {
     siraylaCal(['/cikis-zili.mp3'])
     return
   }
+  const onbellek = onYuklemeOnbellegi[tur]
+  if (onbellek?.url) {
+    siraylaCal([onbellek.url, '/cikis-zili.mp3'])
+    return
+  }
   aktifOzelZilUrlGetir(tur).then((ozelUrl) => {
     siraylaCal([ozelUrl, '/cikis-zili.mp3'].filter(Boolean))
   })
+}
+
+// ============================================================================
+// ÖN YÜKLEME ÖNBELLEĞİ — zil çalmadan ÖNCE, düzenli aralıklarla, her türün
+// güncel özel sesini indirip tarayıcının kendi HTTP önbelleğine düşürür.
+// Buradaki URL BİLEREK cache-busting'siz (sabit) — aynı URL her seferinde
+// aynı kalmalı ki tarayıcı onu gerçekten önbelleğe alabilsin. Yönetici yeni
+// bir ses yüklerse, bu fonksiyon bir sonraki periyodik çağrısında (birkaç
+// dakika içinde) yeni dosyayı fark edip önbelleği günceller.
+const onYuklemeOnbellegi = {} // { [tur]: { url } }
+
+async function sabitOzelZilUrlGetir(tur) {
+  try {
+    const onek = `aktif-${tur}`
+    const { data, error } = await supabase.storage.from('zil-sesi').list('', { search: onek })
+    if (error || !data) return null
+    const dosya = data.find((d) => d.name.startsWith(onek))
+    if (!dosya) return null
+    const { data: pub } = supabase.storage.from('zil-sesi').getPublicUrl(dosya.name)
+    return pub?.publicUrl || null
+  } catch {
+    return null
+  }
+}
+
+// Sadece "zil" hesabıyla açık cihazda, sayfa açılır açılmaz ve düzenli
+// aralıklarla (bkz. ZilSistemi.jsx) çağrılmalı. Bir tur için dosya
+// bulunamazsa (özel ses hiç yüklenmemişse) önbellekten silinir — o tur zaten
+// öntanımlı sesi kullanır, ekstra bir indirmeye gerek yoktur.
+export async function ozelSesleriOnYukle() {
+  for (const tur of ZIL_TURLERI) {
+    const url = await sabitOzelZilUrlGetir(tur)
+    if (!url) {
+      delete onYuklemeOnbellegi[tur]
+      continue
+    }
+    if (onYuklemeOnbellegi[tur]?.url === url) continue // zaten güncel, tekrar indirmeye gerek yok
+    await new Promise((resolve) => {
+      const ses = new Audio(url)
+      ses.preload = 'auto'
+      const tamam = () => resolve()
+      ses.addEventListener('canplaythrough', tamam, { once: true })
+      ses.addEventListener('error', tamam, { once: true })
+      ses.load()
+      setTimeout(tamam, 8000) // bağlantı hiç yanıt vermezse sonsuza kadar beklemeyelim
+    })
+    onYuklemeOnbellegi[tur] = { url }
+  }
 }
 
 // ============================================================================
