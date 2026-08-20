@@ -2438,7 +2438,6 @@ export default function DersProgrami() {
           {yonetimGorunum === 'gunluk' && (
             <GunlukProgramListesi
               program={program}
-              programTum={programTum}
               ogretmenler={ogretmenler}
               atamalar={bireBirAtamalar}
               yoklamalar={bireBirYoklamalar}

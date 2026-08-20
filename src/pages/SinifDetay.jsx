@@ -90,6 +90,11 @@ export default function SinifDetay() {
   // ayarlanır — form o zaman "ekleme" değil "güncelleme" moduna geçer (tek
   // gün, tek kayıt). Boşsa (null) form normal "ekle" modunda çalışır.
   const [duzenlenenId, setDuzenlenenId] = useState(null)
+  // Düzenlenen kaydın TAM satırı — "Düzenle" artık aynı satırın üzerine
+  // yazmıyor (bkz. dersSaatiEkle içindeki uzun yorum), yeni satır eklerken
+  // eski kaydın birlesik_grup_id'sini de koruyabilmek için orijinal satır
+  // burada tutuluyor.
+  const [duzenlenenSatir, setDuzenlenenSatir] = useState(null)
   // "Birleşik Ders" — bu sınıfın dersi, aynı anda başka sınıf(lar)la da
   // birlikte (aynı öğretmen, aynı derslik, tek oturum) işleniyorsa, o diğer
   // sınıfların listesi ve seçilenler burada tutulur. Sadece YENİ ders eklerken
@@ -195,6 +200,7 @@ export default function SinifDetay() {
 
   function duzenle(p) {
     setDuzenlenenId(p.id)
+    setDuzenlenenSatir(p)
     setDersAdi(p.ders_adi || '')
     setDersOgretmen(p.ogretmen_profile_id || '')
     setSeciliGunler([p.gun])
@@ -212,6 +218,7 @@ export default function SinifDetay() {
 
   function duzenlemeyiIptalEt() {
     setDuzenlenenId(null)
+    setDuzenlenenSatir(null)
     setSeciliGunler([])
     setDersAdi('')
     setDersOgretmen('')
@@ -266,8 +273,23 @@ export default function SinifDetay() {
       return
     }
 
-    // DÜZENLEME MODU: tek kayıt güncelleniyor (insert değil update), çakışma
-    // kontrolü kendi kaydı hariç tutularak yapılır.
+    // DÜZENLEME MODU: artık AYNI kaydın üzerine yazmıyoruz. ÖNEMLİ KÖK NEDEN
+    // DÜZELTMESİ: eskiden burada doğrudan .update(...) yapılıyordu — bu,
+    // kaydın kimliğini (id) koruyarak sinif/saat/hoca alanlarını YERİNDE
+    // değiştiriyordu. Sorun şu: bu kayda bağlı GEÇMİŞ gerçek yoklama
+    // kayıtları (yoklama.ders_programi_id) hep bu id'yi referans alıyor —
+    // kayıt yerinde değiştirilince, geçmişte alınmış yoklama da yanlışlıkla
+    // YENİ (güncel) saat/sınıf/hoca bilgisine göre etiketlenmiş oluyordu.
+    // Bunun görünür sonucu: Geçmiş Yoklama / Yoklama Raporu sayfalarında bir
+    // hocanın DEĞİŞMEDEN önceki günlerdeki gerçek dersi, artık yanlış saatte
+    // "Alındı" görünüyor, o saatteki GÜNCEL ders ise (başka bir hoca/sınıfa
+    // ait olabilir) sanki hiç yoklaması alınmamış gibi "Alınmadı" görünüyordu
+    // — bu da yöneticinin "bütün yoklamalar alındı ama geçmiş yoklamada bazıları
+    // alınmamış görünüyor" şikayetinin asıl kök nedeniydi.
+    // Çözüm: "Sil"de zaten yapılan pasif-yapma deseninin AYNISI — eski kaydı
+    // aktif=false + pasif_tarihi=bugün ile pasifleştiriyoruz (geçmiş veri
+    // olduğu gibi eski hâliyle korunur, hiçbir şey silinmez) ve YENİ bir kayıt
+    // ekliyoruz. Değişiklik artık sadece BUGÜNDEN İTİBAREN geçerli oluyor.
     if (duzenlenenId) {
       const gun = seciliGunler[0]
       const cakisma = cakismaBul(gun, duzenlenenId)
@@ -282,9 +304,14 @@ export default function SinifDetay() {
         return
       }
       setEkleniyor(true)
-      const { error } = await supabase
+      const { error: pasifHata } = await supabase
         .from('ders_programi')
-        .update({
+        .update({ aktif: false, pasif_tarihi: yerelBugunTarihi() })
+        .eq('id', duzenlenenId)
+      let error = pasifHata
+      if (!error) {
+        const { error: yeniHata } = await supabase.from('ders_programi').insert({
+          sinif_id: sinifId,
           gun,
           baslangic_saat: baslangic,
           bitis_saat: bitis,
@@ -293,8 +320,10 @@ export default function SinifDetay() {
           baslangic_tarihi: baslangicTarihi || null,
           sinav_mi: sinavMi,
           sinav_turu: sinavMi ? sinavTuru : null,
+          birlesik_grup_id: duzenlenenSatir?.birlesik_grup_id || null,
         })
-        .eq('id', duzenlenenId)
+        error = yeniHata
+      }
       setEkleniyor(false)
       if (!error) {
         duzenlemeyiIptalEt()
