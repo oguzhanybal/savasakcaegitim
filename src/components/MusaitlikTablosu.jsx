@@ -971,12 +971,20 @@ export default function MusaitlikTablosu({
                     // "kaldirilacak" = taslak modunda kaldırılmak üzere işaretlenmiş
                     // ama henüz gerçekten silinmemiş bir ders_programi hücresi —
                     // normal dolu hücrelerin aksine bu hâlâ tıklanabilir/eklenebilir.
-                    // "ipucuMu" = geçen haftanın echo'su (sınıf dersi ya da tek
-                    // seferlik bire-bir) — aynı şekilde sadece bir hatırlatma,
-                    // hücre boş sayılır ve tıklanabilir.
-                    const tiklanabilir = (!h.dolu || h.dolu.kaldirilacak || h.dolu.ipucuMu) && !!onHucreTikla
+                    // "ipucuMu" = geçen haftanın echo'su. Sınıf dersi echo'su
+                    // (kaynak: 'ders_programi') KALICI olarak zaten her hafta
+                    // otomatik tekrarlanıyor — üzerine "ekle" denince "zaten
+                    // var" hatası vermesi kafa karıştırıyordu, o yüzden onun
+                    // hücre gövdesi ARTIK tıklanabilir DEĞİL (sadece rengi
+                    // soluk gri). Değiştirmek/kaldırmak isteyen aşağıdaki ✏️/✕
+                    // hover butonlarını kullanır (mevcut Düzenle/Sil akışı).
+                    // Tek seferlik bire-bir/soru çözümü echo'su ise (kaynak
+                    // yok) gerçekten YOK ve yeniden eklenmesi gerekebileceği
+                    // için o hâlâ tıklanabilir.
+                    const ipucuTiklanabilirMi = h.dolu?.ipucuMu && h.dolu?.kaynak !== 'ders_programi'
+                    const tiklanabilir = (!h.dolu || h.dolu.kaldirilacak || ipucuTiklanabilirMi) && !!onHucreTikla
                     const seciliMi =
-                      (!h.dolu || h.dolu.kaldirilacak || h.dolu.ipucuMu) &&
+                      (!h.dolu || h.dolu.kaldirilacak || ipucuTiklanabilirMi) &&
                       secili &&
                       secili.ogretmenId === o.id &&
                       secili.tarih === tarih &&
@@ -997,7 +1005,7 @@ export default function MusaitlikTablosu({
                         key={h.baslangic}
                         colSpan={h.span}
                         title={
-                          h.dolu && h.dolu.ipucuMu
+                          h.dolu && ipucuTiklanabilirMi
                             ? `${h.dolu.etiket} — geçen hafta bu saatteydi, sadece hatırlatma amaçlı gösteriliyor. Tıklayarak farklı bir şey planlayabilir ya da hiç dokunmayabilirsiniz.`
                             : h.dolu && !h.dolu.kaldirilacak
                             ? `${h.dolu.etiket} (${saatGoster(h.dolu.baslangic)}–${saatGoster(h.dolu.bitis)})`
@@ -1023,7 +1031,7 @@ export default function MusaitlikTablosu({
                         }
                         className={`group relative border-t border-l border-gray-100 text-center align-middle py-1 ${
                           h.dolu && !h.dolu.kaldirilacak
-                            ? h.dolu.renk + (h.dolu.ipucuMu ? ' cursor-pointer hover:bg-gray-200 transition-colors' : '')
+                            ? h.dolu.renk + (ipucuTiklanabilirMi ? ' cursor-pointer hover:bg-gray-200 transition-colors' : '')
                             : seciliMi
                             ? 'bg-navy text-white h-8 cursor-pointer ring-2 ring-inset ring-orange-400'
                             : tiklanabilir
@@ -1033,7 +1041,7 @@ export default function MusaitlikTablosu({
                       >
                         {h.dolu && !h.dolu.kaldirilacak ? (
                           <span className="leading-none block px-0.5">
-                            {h.dolu.kaynak === 'ders_programi' && onSinifDersiSil && !h.dolu.ipucuMu && (
+                            {h.dolu.kaynak === 'ders_programi' && onSinifDersiSil && (
                               <div className="absolute top-0 right-0 flex opacity-0 group-hover:opacity-100 transition-opacity">
                                 {onSinifDersiGuncelle && (
                                   <button
@@ -1326,7 +1334,7 @@ export default function MusaitlikTablosu({
         </span>
         {taslakIpucuAktif && (
           <span className="flex items-center gap-1">
-            <span className="w-3 h-3 rounded bg-gray-100 border-l-4 border-l-gray-300 border border-dashed inline-block"></span> Geçen hafta (hatırlatma, gerçek değil — tıklanabilir)
+            <span className="w-3 h-3 rounded bg-gray-100 border-l-4 border-l-gray-300 border border-dashed inline-block"></span> Geçen hafta — sınıf dersi otomatik devam eder (değiştirmek için ✏️/✕), bire-bir/soru çözümü sadece hatırlatma (tıklayıp ekleyebilirsiniz)
           </span>
         )}
       </div>
