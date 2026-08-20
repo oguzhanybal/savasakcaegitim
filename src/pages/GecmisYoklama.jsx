@@ -21,6 +21,15 @@ const GUN_PENCERESI = 21
 // Öğretmen sadece KENDİ derslerini görür (hem gereksiz kalabalık olmasın
 // diye, hem de yoklama tablosunun RLS kuralı zaten başka öğretmenin
 // kaydını göstermiyor — bu da yanlış "Alınmadı" görünümüne yol açıyordu).
+//
+// ÖNEMLİ DÜZELTME: bir ders saati SONRADAN düzenlenip pasif hale
+// getirildiyse (aktif=false, pasif_tarihi=X), o satır eskiden SADECE "şu an
+// aktif mi" diye kontrol edilip listeden tamamen ATLANIYORDU — bu da o
+// derse ait eski günlerin (gerçek yoklama kaydı da yoksa) hiç listede
+// görünmemesine, dolayısıyla "her gün 10 ders var ama bazı günler 7
+// görünüyor" şikayetine yol açıyordu. Artık pasif bir satır da, pasif
+// olduğu tarihten ÖNCEKİ günler için hâlâ "o günün programının parçası"
+// sayılıyor (oTarihteAktifMi kontrolü).
 // ============================================================================
 
 function yerelTarih(d) {
@@ -77,9 +86,9 @@ export default function GecmisYoklama() {
 
   // Sınıf seçimi (ya da "Tümü") değişince: son GUN_PENCERESI gündeki dersleri
   // güne göre gruplayarak üretir. Her gün için: o gün gerçekten yoklaması
-  // alınmış dersler (asla filtrelenmez) + şu anki aktif programa göre henüz
-  // yoklaması alınmamış dersler — aynı saat+sınıf için ikisi de varsa alınmış
-  // olan kazanır.
+  // alınmış dersler (asla filtrelenmez) + o TARİHTE geçerli olan programa
+  // göre henüz yoklaması alınmamış dersler — aynı saat+sınıf için ikisi de
+  // varsa alınmış olan kazanır.
   useEffect(() => {
     setSeciliGun(null)
     setSeciliOge(null)
@@ -91,7 +100,6 @@ export default function GecmisYoklama() {
       const satirlar =
         profile?.rol === 'ogretmen' ? tumSatirlar.filter((s) => s.ogretmen_profile_id === profile.id) : tumSatirlar
       const satirMap = new Map(satirlar.map((s) => [s.id, s]))
-      const aktifSatirlar = satirlar.filter((s) => s.aktif !== false)
       const bugun = yerelTarih(new Date())
       const dEski = new Date(bugun + 'T12:00:00')
       dEski.setDate(dEski.getDate() - GUN_PENCERESI)
@@ -134,15 +142,20 @@ export default function GecmisYoklama() {
         for (const [anahtar, ders] of alinanAnahtarlar) {
           dersMap.set(anahtar, { ders, alindiMi: true })
         }
-        // Sonra şu anki aktif programa göre o gün olması gereken dersler —
-        // aynı saat+sınıfta zaten alınmış bir ders varsa eklenmez. Ders
-        // hangi tarihten itibaren geçerliyse (elle girilmiş "Başlangıç
+        // Sonra O TARİHTE geçerli olan programa göre o gün olması gereken
+        // dersler — aynı saat+sınıfta zaten alınmış bir ders varsa eklenmez.
+        // Ders hangi tarihten itibaren geçerliyse (elle girilmiş "Başlangıç
         // Tarihi", yoksa satırın oluşturulduğu tarih) ondan ÖNCEKİ günler
-        // için hiç üretilmez.
-        for (const s of aktifSatirlar) {
+        // için hiç üretilmez. Satır sonradan pasif yapıldıysa (aktif=false,
+        // pasif_tarihi=X), bu SADECE o tarihten SONRAKİ günler için geçerli
+        // değildir — pasif_tarihi'nden ÖNCEKİ günlerde hâlâ o günün
+        // programının bir parçasıydı, listeden düşürülmemeli.
+        for (const s of satirlar) {
           if (s.gun !== gunNo) continue
           const gecerliBaslangic = s.baslangic_tarihi || (s.created_at ? s.created_at.slice(0, 10) : null)
           if (gecerliBaslangic && gecerliBaslangic > tarih) continue
+          const oTarihteAktifMi = s.aktif !== false || (s.pasif_tarihi && s.pasif_tarihi > tarih)
+          if (!oTarihteAktifMi) continue
           const anahtar = `${s.sinif_id}|${s.baslangic_saat}-${s.bitis_saat}`
           if (dersMap.has(anahtar)) continue
           dersMap.set(anahtar, { ders: s, alindiMi: false })
