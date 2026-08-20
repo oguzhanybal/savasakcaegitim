@@ -184,6 +184,34 @@ export default function MusaitlikTablosu({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tarih])
 
+  // Taslak Modu'nda "geçen hafta bu saatte tek seferlik bir bire-bir ders var
+  // mıydı" sorusunu cevaplamak için, seçili tarihten TAM 1 HAFTA ÖNCESİNİN
+  // (aynı haftanın günü) tek seferlik (atama_id boş) bire_bir_yoklama
+  // kayıtlarını ayrıca çekiyoruz — yoklamalar propu sadece SEÇİLİ tarihe göre
+  // geldiği için (üst sayfa öyle sorguluyor), geçmiş haftanın verisi onda
+  // bulunmuyor. Sadece Taslak Modu bir plana bağlıyken anlamlı olduğundan,
+  // gereksiz sorgu atmamak için sadece o zaman çekiyoruz.
+  const [gecenHaftaYoklamalari, setGecenHaftaYoklamalari] = useState([])
+  useEffect(() => {
+    if (!taslakModuAcik || !aktifPlanAdi) {
+      setGecenHaftaYoklamalari([])
+      return
+    }
+    let iptalEdildi = false
+    const gecenHaftaTarihi = gunEkle(tarih, -7)
+    supabase
+      .from('bire_bir_yoklama')
+      .select('id, ogretmen_profile_id, ogrenci_id, baslangic_saat, bitis_saat, tur, durum, tarih')
+      .is('atama_id', null)
+      .eq('tarih', gecenHaftaTarihi)
+      .then(({ data, error }) => {
+        if (!iptalEdildi && !error) setGecenHaftaYoklamalari(data || [])
+      })
+    return () => {
+      iptalEdildi = true
+    }
+  }, [tarih, taslakModuAcik, aktifPlanAdi])
+
   // "Hızlı Ekle" kutusu — bkz. yukarıdaki hizliEkleEtkin açıklaması.
   const [hizliPopup, setHizliPopup] = useState(null)
   const [aramaMetni, setAramaMetni] = useState('')
@@ -651,6 +679,39 @@ export default function MusaitlikTablosu({
     onHizliEklendi && onHizliEklendi()
   }
 
+  // Taslak Modu'ndaki bir planın "hangi tarihten itibaren geçerli" olduğu —
+  // hem ders_programi/kaldirilacak hesaplamasında hem de aşağıdaki "geçen
+  // haftanın echo'sunu taslak ipucusu gibi göster" kuralında ortak kullanılıyor.
+  // 'sinif'/'sinif_kaldir' taslaklarının KENDİ tarihi yok — sadece haftanın
+  // günü var, o yüzden hiç kısıtlanmazsa BUGÜN dahil o güne denk gelen HER
+  // haftanın gerçek dersini gizleyip yerine taslağı gösterirdi (yaşanan
+  // gerçek vaka: "17-23 Ağustos Programı" adlı, gelecek haftaya ait bir plan,
+  // taslak modu açılır açılmaz BUGÜNÜN — aynı gün adını taşıdığı için —
+  // gerçek dersini "Kaldırılacak" gösterip yerine taslağı koydu). Planda hiç
+  // tarihli taslak yoksa (saf sınıf-dersi planı) bugünden itibaren göster
+  // (eski davranış), ama geçmişe asla sızdırma.
+  const planBuTarihteGecerli = useMemo(() => {
+    const planTarihliTaslaklar = (taslakModuAcik && aktifPlanAdi ? taslaklar || [] : []).filter(
+      (t) => t.plan_adi === aktifPlanAdi && t.veri?.tarih
+    )
+    const planBaslangicTarihi =
+      planTarihliTaslaklar.length > 0
+        ? planTarihliTaslaklar.reduce((min, t) => (t.veri.tarih < min ? t.veri.tarih : min), planTarihliTaslaklar[0].veri.tarih)
+        : bugununTarihi
+    return tarih >= planBaslangicTarihi
+  }, [taslakModuAcik, aktifPlanAdi, taslaklar, tarih, bugununTarihi])
+
+  // Taslak Modu açık, bir plan seçili VE gösterilen tarih o planın geçerli
+  // olduğu aralıktaysa — bu üç şart birden sağlanınca "geçen haftanın
+  // echo'su" (hem sınıf dersi hem tek seferlik bire-bir) artık KESİN bir
+  // blokaj değil, sadece soluk gri bir HATIRLATMA: hücre boş sayılır,
+  // tıklanıp üzerine başka bir şey planlanabilir. Kullanıcı isteğiyle:
+  // taslak yaparken hiçbir şey henüz "kesin" değil, sınıf dersi dahil —
+  // gerçek çakışma koruması (aynı sınıfın/öğrencinin ikinci kez eklenmesi)
+  // yine de hizliKaydet() içindeki kontrollerle korunuyor, sadece bu görsel
+  // katman "dolu" görünümünü kaldırıyor.
+  const taslakIpucuAktif = taslakModuAcik && !!aktifPlanAdi && planBuTarihteGecerli
+
   // Her öğretmen için, seçilen tarihteki tüm dolu aralıkları (kaynağı ne olursa
   // olsun) tek listede topluyoruz.
   const ogretmenMesguliyetleri = useMemo(() => {
@@ -663,28 +724,8 @@ export default function MusaitlikTablosu({
     // yeni bir ders/taslak ekleyebilsin istiyor. Bu yüzden bu satırları normal
     // "dolu" gibi bloke etmek yerine ayrı bir görünüm+tıklanabilir hâle
     // getiriyoruz (bkz. aşağıdaki push ve JSX'teki kaldirilacak kontrolü).
-    // Bu planın "hangi tarihten itibaren geçerli" olduğunu, plandaki TARİHLİ
-    // taslaklardan (bire_bir_tekil/soru_cozumu — "tarih" alanı olanlar) tespit
-    // ediyoruz: en erken tarihli olanı planın gerçek başlangıcı sayıyoruz.
-    // 'sinif'/'sinif_kaldir' taslaklarının KENDİ tarihi yok — sadece haftanın
-    // günü var, o yüzden hiç kısıtlanmazsa BUGÜN dahil o güne denk gelen HER
-    // haftanın gerçek dersini gizleyip yerine taslağı gösterirdi (yaşanan
-    // gerçek vaka: "17-23 Ağustos Programı" adlı, gelecek haftaya ait bir plan,
-    // taslak modu açılır açılmaz BUGÜNÜN — aynı gün adını taşıdığı için —
-    // gerçek dersini "Kaldırılacak" gösterip yerine taslağı koydu). Planda hiç
-    // tarihli taslak yoksa (saf sınıf-dersi planı) bugünden itibaren göster
-    // (eski davranış), ama geçmişe asla sızdırma.
-    const planTarihliTaslaklar = (taslakModuAcik && aktifPlanAdi ? taslaklar || [] : []).filter(
-      (t) => t.plan_adi === aktifPlanAdi && t.veri?.tarih
-    )
-    const planBaslangicTarihi =
-      planTarihliTaslaklar.length > 0
-        ? planTarihliTaslaklar.reduce((min, t) => (t.veri.tarih < min ? t.veri.tarih : min), planTarihliTaslaklar[0].veri.tarih)
-        : bugununTarihi
-    const planBuTarihteGecerli = tarih >= planBaslangicTarihi
-
     const kaldirilacakDersIdleri = new Set(
-      (taslakModuAcik && aktifPlanAdi && planBuTarihteGecerli ? taslaklar || [] : [])
+      (taslakIpucuAktif ? taslaklar || [] : [])
         .filter((t) => t.tur === 'sinif_kaldir' && t.plan_adi === aktifPlanAdi)
         .map((t) => t.veri?.ders_programi_id)
         .filter(Boolean)
@@ -693,6 +734,11 @@ export default function MusaitlikTablosu({
     for (const d of dersProgrami) {
       if (d.gun !== gun || !harita.has(d.ogretmen_profile_id)) continue
       const kaldirilacakMi = kaldirilacakDersIdleri.has(d.id)
+      // Taslak Modu'nda (bkz. yukarıdaki taslakIpucuAktif) sınıf dersi artık
+      // kesin bir blokaj değil, soluk gri bir hatırlatma — kaldırılacak
+      // işaretliyse zaten kendi (kırmızı) görünümü öncelikli, o durumda ipucu
+      // görünümüne çevirmiyoruz.
+      const ipucuMu = taslakIpucuAktif && !kaldirilacakMi
       harita.get(d.ogretmen_profile_id).push({
         baslangic: d.baslangic_saat,
         bitis: d.bitis_saat,
@@ -703,10 +749,13 @@ export default function MusaitlikTablosu({
         etiket: (kaldirilacakMi ? '❌ ' : '') + (d.sinif_adi || d.ders_adi || 'Sınıf dersi'),
         renk: kaldirilacakMi
           ? 'bg-red-100 text-red-700 border-l-4 border-l-red-500 border-dashed line-through'
+          : ipucuMu
+          ? 'bg-gray-100 text-gray-400 border-l-4 border-l-gray-300 border-dashed italic'
           : 'bg-blue-200 text-blue-900 border-l-4 border-l-blue-600',
         id: d.id,
         kaynak: 'ders_programi',
         kaldirilacak: kaldirilacakMi,
+        ipucuMu,
       })
     }
     for (const a of atamalar || []) {
@@ -759,10 +808,9 @@ export default function MusaitlikTablosu({
     // "sinif_kaldir" taslakları burada hariç tutuluyor — onlar bir EKLEME
     // değil, yukarıda ayrıca işlenen bir KALDIRMA taslağı, bu overlay
     // döngüsüne dahil edilirse yanlışlıkla "Bire bir" gibi görünürlerdi.
-    const aktifPlanaAitTaslaklar =
-      taslakModuAcik && aktifPlanAdi && planBuTarihteGecerli
-        ? (taslaklar || []).filter((t) => t.plan_adi === aktifPlanAdi && t.tur !== 'sinif_kaldir')
-        : []
+    const aktifPlanaAitTaslaklar = taslakIpucuAktif
+      ? (taslaklar || []).filter((t) => t.plan_adi === aktifPlanAdi && t.tur !== 'sinif_kaldir')
+      : []
     for (const t of aktifPlanaAitTaslaklar) {
       const v = t.veri || {}
       if (!v.baslangic_saat || !v.bitis_saat || !v.ogretmen_profile_id) continue
@@ -795,18 +843,51 @@ export default function MusaitlikTablosu({
       })
     }
     return harita
-  }, [ogretmenler, dersProgrami, atamalar, yoklamalar, gun, tarih, ogrenciAdMap, taslaklar, siniflar, ogrenciler, taslakModuAcik, aktifPlanAdi, bugununTarihi])
+  }, [ogretmenler, dersProgrami, atamalar, yoklamalar, gun, tarih, ogrenciAdMap, taslaklar, siniflar, ogrenciler, taslakModuAcik, aktifPlanAdi, bugununTarihi, taslakIpucuAktif])
+
+  // Geçen haftanın AYNI GÜNÜNDE var olan tek seferlik (atama_id boş) bire-bir
+  // dersler — sadece taslakIpucuAktif iken (bkz. yukarısı) hücre boşsa bir
+  // "geçen hafta burada X vardı" hatırlatması olarak gösterilir. Gerçek bir
+  // ders DEĞİL — tıklanıp normal şekilde yeniden eklenebilir ya da hiç
+  // dokunulmadan bırakılabilir, öğrenciye/veliye/başka hiçbir yerde asla
+  // görünmez (sadece bu tablodaki geçici bir render, hiçbir tabloya yazılmaz).
+  const gecenHaftaMesguliyetleri = useMemo(() => {
+    const harita = new Map()
+    for (const o of ogretmenler) harita.set(o.id, [])
+    if (!taslakIpucuAktif) return harita
+    for (const y of gecenHaftaYoklamalari) {
+      if (!y.baslangic_saat || !y.bitis_saat || !harita.has(y.ogretmen_profile_id)) continue
+      if (y.durum === 'gelmedi') continue
+      const soruCozumuMu = y.tur === 'soru_cozumu'
+      harita.get(y.ogretmen_profile_id).push({
+        baslangic: y.baslangic_saat,
+        bitis: y.bitis_saat,
+        etiket: (soruCozumuMu ? 'Soru Çözümü' : (ogrenciAdMap && ogrenciAdMap.get(y.ogrenci_id)) || 'Bire bir') + ' (geçen hafta)',
+        renk: 'bg-gray-100 text-gray-400 border-l-4 border-l-gray-300 border-dashed italic',
+        ipucuMu: true,
+      })
+    }
+    return harita
+  }, [ogretmenler, gecenHaftaYoklamalari, ogrenciAdMap, taslakIpucuAktif])
 
   function hucreDurumu(ogretmenId, dilim) {
     const mesguliyetler = ogretmenMesguliyetleri.get(ogretmenId) || []
     const cakisanlar = mesguliyetler.filter((m) => araliklarCakisiyorMu(dilim.baslangic, dilim.bitis, m.baslangic, m.bitis))
-    if (cakisanlar.length === 0) return undefined
-    // Aynı saatte hem "kaldırılacak" (üstü çizili, henüz gerçekten silinmemiş)
-    // eski bir ders HEM DE onun üzerine yeni eklenen bir taslak varsa, eski
-    // (kaldırılacak) olanı göstermeye devam etmek kafa karıştırır — kullanıcı
-    // "ekledim ama görünmüyor" sanır. Bu yüzden YENİ eklenen taslak/ders varsa
-    // o öne çıkar, kaldırılacak olan sadece ikisi de yoksa gösterilir.
-    return cakisanlar.find((m) => !m.kaldirilacak) || cakisanlar[0]
+    if (cakisanlar.length > 0) {
+      // Aynı saatte hem "kaldırılacak" (üstü çizili, henüz gerçekten silinmemiş)
+      // eski bir ders HEM DE onun üzerine yeni eklenen bir taslak varsa, eski
+      // (kaldırılacak) olanı göstermeye devam etmek kafa karıştırır — kullanıcı
+      // "ekledim ama görünmüyor" sanır. Bu yüzden YENİ eklenen taslak/ders varsa
+      // o öne çıkar, kaldırılacak/ipucu olan sadece başka bir şey yoksa gösterilir.
+      return (
+        cakisanlar.find((m) => !m.kaldirilacak && !m.ipucuMu) ||
+        cakisanlar.find((m) => !m.kaldirilacak) ||
+        cakisanlar[0]
+      )
+    }
+    if (!taslakIpucuAktif) return undefined
+    const gecenHafta = gecenHaftaMesguliyetleri.get(ogretmenId) || []
+    return gecenHafta.find((m) => araliklarCakisiyorMu(dilim.baslangic, dilim.bitis, m.baslangic, m.bitis))
   }
 
   // Aynı ders/atama, 30 dakikalık birden fazla sütuna yayılıyorsa (ör. 2 saatlik
@@ -890,9 +971,12 @@ export default function MusaitlikTablosu({
                     // "kaldirilacak" = taslak modunda kaldırılmak üzere işaretlenmiş
                     // ama henüz gerçekten silinmemiş bir ders_programi hücresi —
                     // normal dolu hücrelerin aksine bu hâlâ tıklanabilir/eklenebilir.
-                    const tiklanabilir = (!h.dolu || h.dolu.kaldirilacak) && !!onHucreTikla
+                    // "ipucuMu" = geçen haftanın echo'su (sınıf dersi ya da tek
+                    // seferlik bire-bir) — aynı şekilde sadece bir hatırlatma,
+                    // hücre boş sayılır ve tıklanabilir.
+                    const tiklanabilir = (!h.dolu || h.dolu.kaldirilacak || h.dolu.ipucuMu) && !!onHucreTikla
                     const seciliMi =
-                      (!h.dolu || h.dolu.kaldirilacak) &&
+                      (!h.dolu || h.dolu.kaldirilacak || h.dolu.ipucuMu) &&
                       secili &&
                       secili.ogretmenId === o.id &&
                       secili.tarih === tarih &&
@@ -913,7 +997,9 @@ export default function MusaitlikTablosu({
                         key={h.baslangic}
                         colSpan={h.span}
                         title={
-                          h.dolu && !h.dolu.kaldirilacak
+                          h.dolu && h.dolu.ipucuMu
+                            ? `${h.dolu.etiket} — geçen hafta bu saatteydi, sadece hatırlatma amaçlı gösteriliyor. Tıklayarak farklı bir şey planlayabilir ya da hiç dokunmayabilirsiniz.`
+                            : h.dolu && !h.dolu.kaldirilacak
                             ? `${h.dolu.etiket} (${saatGoster(h.dolu.baslangic)}–${saatGoster(h.dolu.bitis)})`
                             : seciliMi
                             ? 'Şu an bunu ekliyorsunuz'
@@ -937,7 +1023,7 @@ export default function MusaitlikTablosu({
                         }
                         className={`group relative border-t border-l border-gray-100 text-center align-middle py-1 ${
                           h.dolu && !h.dolu.kaldirilacak
-                            ? h.dolu.renk
+                            ? h.dolu.renk + (h.dolu.ipucuMu ? ' cursor-pointer hover:bg-gray-200 transition-colors' : '')
                             : seciliMi
                             ? 'bg-navy text-white h-8 cursor-pointer ring-2 ring-inset ring-orange-400'
                             : tiklanabilir
@@ -947,7 +1033,7 @@ export default function MusaitlikTablosu({
                       >
                         {h.dolu && !h.dolu.kaldirilacak ? (
                           <span className="leading-none block px-0.5">
-                            {h.dolu.kaynak === 'ders_programi' && onSinifDersiSil && (
+                            {h.dolu.kaynak === 'ders_programi' && onSinifDersiSil && !h.dolu.ipucuMu && (
                               <div className="absolute top-0 right-0 flex opacity-0 group-hover:opacity-100 transition-opacity">
                                 {onSinifDersiGuncelle && (
                                   <button
@@ -977,7 +1063,8 @@ export default function MusaitlikTablosu({
                             )}
                             {(h.dolu.kaynak === 'bire_bir_atamalari' ||
                               h.dolu.kaynak === 'bire_bir_yoklama' ||
-                              h.dolu.kaynak === 'taslaklar') && (
+                              h.dolu.kaynak === 'taslaklar') &&
+                              !h.dolu.ipucuMu && (
                               <div className="absolute top-0 right-0 flex opacity-0 group-hover:opacity-100 transition-opacity">
                                 <button
                                   type="button"
@@ -1221,7 +1308,7 @@ export default function MusaitlikTablosu({
           </tbody>
         </table>
       </div>
-      <div className="px-4 py-2 border-t border-gray-100 flex items-center gap-4 text-[11px] text-gray-500">
+      <div className="px-4 py-2 border-t border-gray-100 flex items-center gap-4 text-[11px] text-gray-500 flex-wrap">
         <span className="flex items-center gap-1">
           <span className="w-3 h-3 rounded bg-green-50 border border-green-200 inline-block"></span> Boş
         </span>
@@ -1237,6 +1324,11 @@ export default function MusaitlikTablosu({
         <span className="flex items-center gap-1">
           <span className="w-3 h-3 rounded bg-amber-100 border-l-4 border-l-amber-500 border border-dashed inline-block"></span> Taslak (henüz yayınlanmadı)
         </span>
+        {taslakIpucuAktif && (
+          <span className="flex items-center gap-1">
+            <span className="w-3 h-3 rounded bg-gray-100 border-l-4 border-l-gray-300 border border-dashed inline-block"></span> Geçen hafta (hatırlatma, gerçek değil — tıklanabilir)
+          </span>
+        )}
       </div>
     </div>
   )
