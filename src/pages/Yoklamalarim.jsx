@@ -43,7 +43,7 @@ function DevamsizlikOzeti({ kayitlar }) {
   // Sınav yoklamaları (ders_programi.sinav_mi) normal ders devamsızlığından
   // AYRI sayılıyor — kullanıcı isteğiyle: eskiden "82 ders" gibi tek bir
   // toplam, aslında 80 gerçek ders + 2 sınavı birbirine karıştırıyordu,
-  // öğrenci/veli kaç sınava girdiğini/kaçırdığını ayrı göremiyordu.
+  // öğrenci/veli kaç sınava girdiğini/girmediğını ayrı göremiyordu.
   const dersKayitlari = kayitlar.filter((y) => !y.ders_programi?.sinav_mi)
   const sinavKayitlari = kayitlar.filter((y) => y.ders_programi?.sinav_mi)
 
@@ -110,7 +110,10 @@ function DevamsizlikOzeti({ kayitlar }) {
             Toplam <span className="font-semibold text-gray-800">{sinavOzet.toplam}</span> sınav
           </span>
           <span className="text-green-600 font-semibold">{sinavOzet.geldi} girdi</span>
-          <span className="text-red-500 font-semibold">{sinavOzet.gelmedi} kaçırdı</span>
+          <span className="text-red-500 font-semibold">{sinavOzet.gelmedi} girmedi</span>
+          <span className={`font-semibold ${sinavOzet.oran > 20 ? 'text-red-500' : 'text-gray-400'}`}>
+            (%{sinavOzet.oran} girmedi)
+          </span>
         </div>
       )}
 
@@ -141,12 +144,13 @@ function DevamsizlikOzeti({ kayitlar }) {
           <div className="divide-y divide-gray-50 border-t border-gray-100">
             {sinavListesi.map((s) => {
               const toplam = s.geldi + s.gelmedi
+              const oran = toplam > 0 ? Math.round((s.gelmedi / toplam) * 100) : 0
               return (
                 <div key={s.baslik} className="py-2.5 flex items-center justify-between gap-3 flex-wrap">
                   <p className="font-medium text-gray-800 text-sm">{s.baslik}</p>
                   <span className="text-sm text-gray-500 shrink-0">
-                    <span className={`font-semibold ${s.geldi === toplam ? 'text-green-600' : 'text-red-500'}`}>{s.geldi}</span>/{toplam} sınava girdi
-                    {s.gelmedi > 0 && <span className="font-semibold text-red-500"> ({s.gelmedi} kaçırdı)</span>}
+                    <span className={`font-semibold ${s.geldi === toplam ? 'text-green-600' : 'text-red-500'}`}>{s.geldi}</span>/{toplam} sınava girdi{' '}
+                    <span className={`font-semibold ${oran > 20 ? 'text-red-500' : 'text-gray-400'}`}>(%{oran} girmedi)</span>
                   </span>
                 </div>
               )
@@ -311,7 +315,7 @@ export default function Yoklamalarim() {
                             {k.ders_programi?.sinav_mi
                               ? k.geldi
                                 ? 'Girdi'
-                                : 'Kaçırdı'
+                                : 'Girmedi'
                               : k.geldi
                               ? 'Geldi'
                               : 'Gelmedi'}
