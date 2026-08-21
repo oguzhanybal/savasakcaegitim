@@ -1,12 +1,25 @@
 import { useEffect, useMemo, useState } from 'react'
 import { supabase } from '../lib/supabase'
-import { paraFormat, bireBirDersDetaylariOlustur, sozlesmeKalemHesapla } from '../lib/ekstreHesap'
+import {
+  paraFormat,
+  bireBirDersDetaylariOlustur,
+  sozlesmeKalemHesapla,
+  kantinBorclariOlustur,
+  ayEkle,
+  ayIndexOf,
+  odemeToplamKalem,
+} from '../lib/ekstreHesap'
 
-// Taksitler sekmesinde hangi sözleşme kalemleri toplanıyor — kullanıcı
-// isteğiyle sadece Kurs/Okul/Kitap (Deneme Kulübü ve aylık kalemler — Bire
-// Bir/Yemek/Kantin — bu sekmenin dışında, onlar zaten kendi sekmelerinde ya
-// da başka raporlarda ayrıca gösteriliyor).
+// Taksitler sekmesinde hangi sözleşme kalemleri (taksitli, vadeli) gösteriliyor.
 const TAKSIT_KALEMLERI = ['Okul', 'Kurs', 'Kitap']
+// Kantin, sözleşme/taksit değil — her alışta biriken KÜMÜLATİF bir bakiye
+// (vade yok). Bu yüzden ayrı bir hesap mantığıyla ama AYNI "Taksitler"
+// sekmesinde, kendi ayrı tablosunda gösteriliyor (kullanıcı isteğiyle).
+const KANTIN_KALEM = 'Kantin'
+// Sekmede gösterilecek tüm kalemler, sırayla — her biri kendi AYRI tablosunda
+// (kullanıcı isteğiyle: kalemler birbirine karıştırılmasın, hepsi ayrı ayrı
+// görünsün).
+const TUM_KALEMLER = [...TAKSIT_KALEMLERI, KANTIN_KALEM]
 
 // Ayı "YYYY-MM" olarak YEREL saate göre üretir (toISOString KULLANMIYORUZ —
 // Türkiye UTC+3 gece yarısına yakın saatlerde bir gün geriye kayabiliyor).
@@ -133,73 +146,98 @@ export default function AylikOzet() {
 
   const ogrenciAdMap = useMemo(() => new Map(ogrenciler.map((o) => [o.id, o.ad_soyad])), [ogrenciler])
 
-  // Taksitler sekmesi: her öğrenci için Okul/Kurs/Kitap "gereken" tutarları
-  // KALEM BAZINDA AYRI tutulur (tek bir toplam yerine) — aksi halde bir
-  // kalemdeki fazla ödeme başka bir kalemdeki eksik ödemeyi görsel olarak
-  // "kapatıyor" gibi yanlış bir izlenim veriyordu (ör. kitabı ödeyip kurs
-  // taksitini ödemeyen bir öğrenci, toplamda "borcu yok" gibi görünüyordu —
-  // kullanıcı isteğiyle düzeltildi). "Alınan" ise artık SADECE bu 3 kalemle
-  // sınırlı değil — o öğrenciden o ay alınan TÜM ödemeler (Kantin, Bire Bir,
-  // Yemek, Deneme Kulübü dahil) tek bir toplam olarak ayrıca gösteriliyor,
-  // böylece "bu öğrenciden bu ay hiç para alınmadı" yanılgısı da önleniyor.
-  // "Gereken" ödeme geçmişine göre kümülatif hesaplandığı (bkz.
-  // sozlesmeKalemHesapla'daki yorum) için her öğrencinin KENDİ ödemeleriyle
-  // hesaplanması gerekiyor — tüm ödemeleri karıştırıp tek havuzda toplamak
-  // yanlış sonuç verir.
-  const taksitOgrenciler = useMemo(() => {
-    const map = new Map() // ogrenci_id -> { ad, kalemler: Map(kalem->gereken), toplamAlinan }
-    function satirAl(ogrenciId) {
-      if (!map.has(ogrenciId)) {
-        map.set(ogrenciId, { ad: ogrenciAdMap.get(ogrenciId) || '—', kalemler: new Map(), toplamAlinan: 0 })
-      }
-      return map.get(ogrenciId)
-    }
-    for (const s of sozlesmeler) {
-      if (!TAKSIT_KALEMLERI.includes(s.kalem)) continue
-      const oOdemeler = odemeler.filter((od) => od.ogrenci_id === s.ogrenci_id)
-      const sonuc = sozlesmeKalemHesapla(s, oOdemeler, seciliAy)
-      const gereken = sonuc ? sonuc.buAyTutar : 0
-      if (gereken <= 0.01) continue
-      const r = satirAl(s.ogrenci_id)
-      r.kalemler.set(s.kalem, (r.kalemler.get(s.kalem) || 0) + gereken)
-    }
-    // Bu ay yapılan TÜM ödemeler (kalem fark etmeksizin) — bir öğrencinin bu
-    // aya ait taksiti olmasa bile (ör. sadece kantin alışverişi ödediyse)
-    // yine de listede görünsün diye ayrı bir döngüde ekleniyor.
-    for (const od of odemeler) {
-      if (od.tarih?.slice(0, 7) !== seciliAy) continue
-      satirAl(od.ogrenci_id).toplamAlinan += Number(od.tutar) || 0
-    }
-    return Array.from(map.values())
-      .map((r) => ({
-        ad: r.ad,
-        toplamAlinan: r.toplamAlinan,
-        toplamGereken: Array.from(r.kalemler.values()).reduce((t, g) => t + g, 0),
-        kalemler: Array.from(r.kalemler.entries())
-          .map(([kalem, gereken]) => ({ kalem, gereken }))
-          .sort((a, b) => TAKSIT_KALEMLERI.indexOf(a.kalem) - TAKSIT_KALEMLERI.indexOf(b.kalem)),
-      }))
-      .filter((r) => r.kalemler.length > 0 || r.toplamAlinan > 0.01)
-      .sort((a, b) => b.toplamGereken - a.toplamGereken || a.ad.localeCompare(b.ad, 'tr'))
-  }, [sozlesmeler, odemeler, seciliAy, ogrenciAdMap])
+  // Taksitler sekmesi: kullanıcı isteğiyle kalemler HİÇBİR ŞEKİLDE
+  // birleştirilmiyor — Okul, Kurs, Kitap, Kantin her biri kendi AYRI
+  // tablosunda, kendi öğrenci listesiyle gösteriliyor. Bir kalemdeki fazla
+  // ödeme ya da ödeme bilgisi başka bir kalemi hiç etkilemiyor/kapatmıyor.
+  //
+  // Okul/Kurs/Kitap: sözleşme/taksit kalemi — sozlesmeKalemHesapla ile "bu ay
+  // gereken taksit" (buAyTutar) ve "kümülatif kalan bakiye" (toplamOdenecek)
+  // hesaplanır.
+  // Kantin: sözleşme yok, vade yok — her alış kümülatif bir bakiye oluşturur.
+  // aylikKalemHesapla'nın kullandığı AYNI mantık burada elle tekrarlanıyor
+  // (J = o aya kadar TÜM alışlar, odenen = o aya kadar TÜM Kantin ödemeleri,
+  // kalan = J - odenen) — çünkü aylikKalemHesapla sadece "kalan"ı döndürüyor,
+  // burada ayrıca "toplam borç" ve "bu ay gereken" de ayrı ayrı gösterilmek
+  // isteniyor.
+  //
+  // Her iki tür için de "Bu ay ödenen", SADECE o kaleme ait ve SADECE seçili
+  // aya ait ödemelerin toplamıdır (kalem bazında ayrı, ay bazında ayrı).
+  //
+  // "Gereken" hesabı öğrencinin KENDİ ödeme geçmişine göre kümülatif
+  // yapıldığı için, her öğrencinin KENDİ ödemeleriyle hesaplanması gerekiyor
+  // — tüm ödemeleri karıştırıp tek havuzda toplamak yanlış sonuç verir.
+  const kantinBorclarTumu = useMemo(() => kantinBorclariOlustur(kantinAlislari), [kantinAlislari])
 
-  const taksitToplamGereken = taksitOgrenciler.reduce((t, r) => t + r.toplamGereken, 0)
-  const taksitToplamAlinan = taksitOgrenciler.reduce((t, r) => t + r.toplamAlinan, 0)
+  const taksitKalemTablolari = useMemo(() => {
+    const sonuc = {}
 
-  // Üst özet kutusu ve alt "Toplam" satırı için Gereken, kalem bazında AYRI
-  // gösterilsin diye (kullanıcı isteğiyle) — Okul/Kurs/Kitap tek bir toplamda
-  // birleştirilmesin.
-  const taksitKalemToplamlari = useMemo(() => {
-    const map = new Map(TAKSIT_KALEMLERI.map((k) => [k, 0]))
-    for (const o of taksitOgrenciler) {
-      for (const k of o.kalemler) {
-        map.set(k.kalem, (map.get(k.kalem) || 0) + k.gereken)
-      }
+    function buAyOdenenHesapla(kendiOdemeler, kalemAdi) {
+      return kendiOdemeler
+        .filter((o) => o.kalem === kalemAdi || (o.kalem && o.kalem.startsWith(kalemAdi)))
+        .filter((o) => o.tarih?.slice(0, 7) === seciliAy)
+        .reduce((t, o) => t + (Number(o.tutar) || 0), 0)
     }
-    return TAKSIT_KALEMLERI.map((kalem) => ({ kalem, toplam: map.get(kalem) || 0 })).filter(
-      (x) => x.toplam > 0.01
+
+    // Okul / Kurs / Kitap — sözleşme (taksit) kalemleri
+    for (const kalem of TAKSIT_KALEMLERI) {
+      const satirlar = []
+      for (const s of sozlesmeler) {
+        if (s.kalem !== kalem) continue
+        const kendiOdemeler = odemeler.filter((od) => od.ogrenci_id === s.ogrenci_id)
+        const hesap = sozlesmeKalemHesapla(s, kendiOdemeler, seciliAy)
+        if (!hesap) continue
+        const buAyGereken = hesap.buAyTutar
+        const kalanBakiye = hesap.toplamOdenecek
+        const buAyOdenen = buAyOdenenHesapla(kendiOdemeler, kalem)
+        if (buAyGereken <= 0.01 && kalanBakiye <= 0.01 && buAyOdenen <= 0.01) continue
+        satirlar.push({
+          ad: ogrenciAdMap.get(s.ogrenci_id) || '—',
+          buAyGereken,
+          kalanBakiye,
+          buAyOdenen,
+        })
+      }
+      sonuc[kalem] = satirlar.sort((a, b) => b.kalanBakiye - a.kalanBakiye || a.ad.localeCompare(b.ad, 'tr'))
+    }
+
+    // Kantin — kümülatif bakiye kalemi (taksit/vade yok)
+    const simdi = ayEkle(seciliAy, 0)
+    const simdiIndex = ayIndexOf(simdi)
+    const kantinliOgrenciIdleri = new Set(kantinBorclarTumu.map((b) => b.ogrenci_id))
+    const kantinSatirlari = []
+    for (const ogrenciId of kantinliOgrenciIdleri) {
+      const kendiBorclar = kantinBorclarTumu.filter((b) => b.ogrenci_id === ogrenciId)
+      const kendiOdemeler = odemeler.filter((od) => od.ogrenci_id === ogrenciId)
+      const toplamBorc = kendiBorclar
+        .filter((b) => {
+          const d = new Date(b.donem)
+          return ayIndexOf({ yil: d.getFullYear(), ay: d.getMonth() + 1 }) <= simdiIndex
+        })
+        .reduce((t, b) => t + b.tutar, 0)
+      const buAyGereken = kendiBorclar
+        .filter((b) => {
+          const d = new Date(b.donem)
+          return d.getFullYear() === simdi.yil && d.getMonth() + 1 === simdi.ay
+        })
+        .reduce((t, b) => t + b.tutar, 0)
+      const odenenKumulatif = odemeToplamKalem(kendiOdemeler, KANTIN_KALEM, simdi)
+      const kalanBakiye = Math.max(0, toplamBorc - odenenKumulatif)
+      const buAyOdenen = buAyOdenenHesapla(kendiOdemeler, KANTIN_KALEM)
+      if (buAyGereken <= 0.01 && kalanBakiye <= 0.01 && buAyOdenen <= 0.01) continue
+      kantinSatirlari.push({
+        ad: ogrenciAdMap.get(ogrenciId) || '—',
+        buAyGereken,
+        kalanBakiye,
+        buAyOdenen,
+      })
+    }
+    sonuc[KANTIN_KALEM] = kantinSatirlari.sort(
+      (a, b) => b.kalanBakiye - a.kalanBakiye || a.ad.localeCompare(b.ad, 'tr')
     )
-  }, [taksitOgrenciler])
+
+    return sonuc
+  }, [sozlesmeler, odemeler, kantinBorclarTumu, seciliAy, ogrenciAdMap])
 
   if (loading) return <p className="p-6 text-gray-400">Yükleniyor...</p>
 
@@ -297,25 +335,10 @@ export default function AylikOzet() {
               </div>
             )}
             {sekme === 'taksit' && (
-              <div className="border-2 border-navy rounded-lg p-4 bg-navy/5 inline-block min-w-[280px] mb-6">
-                <p className="text-xs font-semibold text-navy uppercase tracking-wide">Okul / Kurs / Kitap Taksitleri</p>
-                {taksitKalemToplamlari.length === 0 ? (
-                  <p className="text-sm text-gray-400 mt-1">Bu ay gereken taksit yok</p>
-                ) : (
-                  taksitKalemToplamlari.map((k) => (
-                    <p key={k.kalem} className="text-lg font-bold text-navy mt-1">
-                      {k.kalem} gereken: {paraFormat(k.toplam)}
-                    </p>
-                  ))
-                )}
-                <p className="text-sm text-green-700 font-medium mt-1">
-                  Alınan (tüm ödemeler): {paraFormat(taksitToplamAlinan)}
-                </p>
-                <p className="text-[11px] text-gray-400 mt-1">
-                  Alınan tutar, Kantin/Bire Bir gibi başka kalemlerden yapılan ödemeleri de içerir — bu yüzden
-                  doğrudan Gereken'den çıkarılamaz, aşağıdaki kalem dökümüne bakın.
-                </p>
-              </div>
+              <p className="text-xs text-gray-400 mb-4">
+                Her kalem (Okul, Kurs, Kitap, Kantin) kendi ayrı tablosunda gösterilir — hiçbiri birbirine
+                karıştırılmaz veya toplanmaz.
+              </p>
             )}
 
             {sekme === 'birebir' && soruCozumuSayisi > 0 && (
@@ -392,56 +415,55 @@ export default function AylikOzet() {
             </div>
 
             <div className={sekme === 'taksit' ? '' : 'hidden'}>
-              <p className="font-bold text-navy mb-2 aylik-ozet-baslik">Okul / Kurs / Kitap Taksitleri — Öğrenci Bazında</p>
-              <p className="text-xs text-gray-400 mb-3">
-                Her öğrencinin kalemleri (Okul/Kurs/Kitap) AYRI AYRI "Gereken" olarak gösterilir — biri ödenip
-                diğeri ödenmemişse birbirini kapatmaz. Sağdaki "Bu ay alınan (tüm ödemeler)" ise Kantin/Bire Bir
-                dahil o öğrenciden o ay alınan HER ödemenin toplamıdır.
-              </p>
-              {taksitOgrenciler.length === 0 ? (
-                <p className="text-sm text-gray-400">Bu ay alınması gereken ya da alınan bir ödeme kaydı yok.</p>
-              ) : (
-                <div className="divide-y divide-gray-100 border border-gray-200 rounded-lg overflow-hidden">
-                  {taksitOgrenciler.map((o) => (
-                    <div key={o.ad} className="p-3 bg-white">
-                      <div className="flex items-center justify-between gap-3 flex-wrap mb-1.5">
-                        <p className="font-semibold text-gray-800 text-sm">{o.ad}</p>
-                        <p className="text-xs text-gray-500">
-                          Bu ay alınan (tüm ödemeler):{' '}
-                          <span className={`font-semibold ${o.toplamAlinan > 0 ? 'text-green-700' : 'text-gray-400'}`}>
-                            {paraFormat(o.toplamAlinan)}
-                          </span>
-                        </p>
-                      </div>
-                      {o.kalemler.length > 0 ? (
-                        <div className="flex flex-wrap gap-1.5">
-                          {o.kalemler.map((k) => (
-                            <span
-                              key={k.kalem}
-                              className="text-xs px-2 py-1 rounded-lg border bg-red-50 border-red-200 text-red-700 font-medium"
-                            >
-                              {k.kalem} taksiti gereken: {paraFormat(k.gereken)}
-                            </span>
+              {TUM_KALEMLER.map((kalem) => {
+                const satirlar = taksitKalemTablolari[kalem] || []
+                const toplamGereken = satirlar.reduce((t, s) => t + s.buAyGereken, 0)
+                const toplamKalan = satirlar.reduce((t, s) => t + s.kalanBakiye, 0)
+                const toplamOdenen = satirlar.reduce((t, s) => t + s.buAyOdenen, 0)
+                return (
+                  <div key={kalem} className="mb-6">
+                    <p className="font-bold text-navy mb-2 aylik-ozet-baslik">{kalem}</p>
+                    {satirlar.length === 0 ? (
+                      <p className="text-sm text-gray-400">
+                        Bu ay {kalem} kalemiyle ilgili gereken, kalan bakiye ya da ödeme kaydı yok.
+                      </p>
+                    ) : (
+                      <table className="w-full text-sm border border-gray-200 rounded-lg overflow-hidden">
+                        <thead>
+                          <tr className="bg-navy text-white text-left">
+                            <th className="px-3 py-2 font-semibold">Öğrenci</th>
+                            <th className="px-3 py-2 font-semibold text-right">Bu Ay Gereken</th>
+                            <th className="px-3 py-2 font-semibold text-right">Kalan Bakiye</th>
+                            <th className="px-3 py-2 font-semibold text-right">Bu Ay Ödenen</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {satirlar.map((s, i) => (
+                            <tr key={s.ad + i} className={i % 2 ? 'bg-gray-50' : ''}>
+                              <td className="px-3 py-2">{s.ad}</td>
+                              <td className="px-3 py-2 text-right">{paraFormat(s.buAyGereken)}</td>
+                              <td className={`px-3 py-2 text-right font-medium ${s.kalanBakiye > 0.01 ? 'text-red-700' : 'text-gray-400'}`}>
+                                {paraFormat(s.kalanBakiye)}
+                              </td>
+                              <td className={`px-3 py-2 text-right ${s.buAyOdenen > 0 ? 'text-green-700 font-medium' : 'text-gray-400'}`}>
+                                {paraFormat(s.buAyOdenen)}
+                              </td>
+                            </tr>
                           ))}
-                        </div>
-                      ) : (
-                        <p className="text-xs text-gray-400">Bu ay Okul/Kurs/Kitap taksiti yok.</p>
-                      )}
-                    </div>
-                  ))}
-                  <div className="p-3 bg-gray-50 font-semibold text-sm flex items-center justify-between flex-wrap gap-2">
-                    <span>Toplam</span>
-                    <span>
-                      {taksitKalemToplamlari.map((k) => (
-                        <span key={k.kalem}>
-                          {k.kalem}: {paraFormat(k.toplam)} ·{' '}
-                        </span>
-                      ))}
-                      Alınan (tüm ödemeler): {paraFormat(taksitToplamAlinan)}
-                    </span>
+                        </tbody>
+                        <tfoot>
+                          <tr className="bg-gray-50 font-semibold">
+                            <td className="px-3 py-2">Toplam</td>
+                            <td className="px-3 py-2 text-right">{paraFormat(toplamGereken)}</td>
+                            <td className="px-3 py-2 text-right">{paraFormat(toplamKalan)}</td>
+                            <td className="px-3 py-2 text-right">{paraFormat(toplamOdenen)}</td>
+                          </tr>
+                        </tfoot>
+                      </table>
+                    )}
                   </div>
-                </div>
-              )}
+                )
+              })}
             </div>
           </div>
         </div>
