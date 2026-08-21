@@ -40,17 +40,29 @@ function dersBasligi(k) {
 }
 
 function DevamsizlikOzeti({ kayitlar }) {
-  const genelGeldi = kayitlar.filter((y) => y.geldi).length
-  const genelGelmedi = kayitlar.length - genelGeldi
-  const genelOran = kayitlar.length > 0 ? Math.round((genelGelmedi / kayitlar.length) * 100) : 0
+  // Sınav yoklamaları (ders_programi.sinav_mi) normal ders devamsızlığından
+  // AYRI sayılıyor — kullanıcı isteğiyle: eskiden "82 ders" gibi tek bir
+  // toplam, aslında 80 gerçek ders + 2 sınavı birbirine karıştırıyordu,
+  // öğrenci/veli kaç sınava girdiğini/kaçırdığını ayrı göremiyordu.
+  const dersKayitlari = kayitlar.filter((y) => !y.ders_programi?.sinav_mi)
+  const sinavKayitlari = kayitlar.filter((y) => y.ders_programi?.sinav_mi)
+
+  function ozetHesapla(liste) {
+    const geldi = liste.filter((y) => y.geldi).length
+    const gelmedi = liste.length - geldi
+    const oran = liste.length > 0 ? Math.round((gelmedi / liste.length) * 100) : 0
+    return { geldi, gelmedi, oran, toplam: liste.length }
+  }
+  const dersOzet = ozetHesapla(dersKayitlari)
+  const sinavOzet = ozetHesapla(sinavKayitlari)
 
   // Kartta ders adı büyük/belirgin, öğretmen adı küçük — ama aynı dersi
   // (ör. "Matematik") farklı öğretmenler veriyorsa (dönem içinde öğretmen
   // değişmiş olabilir) bunları TEK satırda birleştirmiyoruz, her öğretmen
   // kendi satırında ayrı ayrı görünüyor. Bu yüzden grup anahtarı ders adı +
-  // öğretmen adı ikilisi.
+  // öğretmen adı ikilisi. Sınavlar burada YOK — aşağıda ayrı listeleniyor.
   const dersMap = new Map()
-  for (const y of kayitlar) {
+  for (const y of dersKayitlari) {
     const baslik = dersBasligi(y)
     const ogretmen = y.ders_programi?.profiles?.ad_soyad || ''
     const anahtar = `${baslik}||${ogretmen}`
@@ -63,23 +75,47 @@ function DevamsizlikOzeti({ kayitlar }) {
     (a, b) => a.baslik.localeCompare(b.baslik, 'tr') || a.ogretmen.localeCompare(b.ogretmen, 'tr')
   )
 
+  // Sınav adına göre grup (ör. "TYT Deneme Sınavı") — öğretmen bilgisi
+  // sınavlarda genelde anlamsız, o yüzden sadece sınav adına göre birleşiyor.
+  const sinavMap = new Map()
+  for (const y of sinavKayitlari) {
+    const baslik = dersBasligi(y)
+    if (!sinavMap.has(baslik)) sinavMap.set(baslik, { baslik, geldi: 0, gelmedi: 0 })
+    const s = sinavMap.get(baslik)
+    if (y.geldi) s.geldi += 1
+    else s.gelmedi += 1
+  }
+  const sinavListesi = [...sinavMap.values()].sort((a, b) => a.baslik.localeCompare(b.baslik, 'tr'))
+
   return (
     <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5 mb-6">
       <h2 className="font-semibold text-gray-700 mb-3">Devamsızlık Özeti</h2>
-      <div className="flex flex-wrap gap-4 mb-4 text-sm">
+
+      <div className="flex flex-wrap gap-4 text-sm">
         <span className="text-gray-500">
-          Toplam <span className="font-semibold text-gray-800">{kayitlar.length}</span> ders
+          Toplam <span className="font-semibold text-gray-800">{dersOzet.toplam}</span> ders
         </span>
-        <span className="text-green-600 font-semibold">{genelGeldi} geldi</span>
-        <span className="text-red-500 font-semibold">{genelGelmedi} gelmedi</span>
-        {kayitlar.length > 0 && (
-          <span className={`font-semibold ${genelOran > 20 ? 'text-red-500' : 'text-gray-400'}`}>
-            (%{genelOran} devamsızlık)
+        <span className="text-green-600 font-semibold">{dersOzet.geldi} geldi</span>
+        <span className="text-red-500 font-semibold">{dersOzet.gelmedi} gelmedi</span>
+        {dersOzet.toplam > 0 && (
+          <span className={`font-semibold ${dersOzet.oran > 20 ? 'text-red-500' : 'text-gray-400'}`}>
+            (%{dersOzet.oran} devamsızlık)
           </span>
         )}
       </div>
+
+      {sinavOzet.toplam > 0 && (
+        <div className="flex flex-wrap gap-4 text-sm mt-2 pt-2 border-t border-gray-50">
+          <span className="text-gray-500">
+            Toplam <span className="font-semibold text-gray-800">{sinavOzet.toplam}</span> sınav
+          </span>
+          <span className="text-green-600 font-semibold">{sinavOzet.geldi} girdi</span>
+          <span className="text-red-500 font-semibold">{sinavOzet.gelmedi} kaçırdı</span>
+        </div>
+      )}
+
       {dersListesi.length > 0 && (
-        <div className="divide-y divide-gray-50 border-t border-gray-100">
+        <div className="divide-y divide-gray-50 border-t border-gray-100 mt-4">
           {dersListesi.map((s) => {
             const toplam = s.geldi + s.gelmedi
             const oran = toplam > 0 ? Math.round((s.gelmedi / toplam) * 100) : 0
@@ -97,6 +133,26 @@ function DevamsizlikOzeti({ kayitlar }) {
             )
           })}
         </div>
+      )}
+
+      {sinavListesi.length > 0 && (
+        <>
+          <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wide mt-4 mb-1 px-1">Sınavlar</h3>
+          <div className="divide-y divide-gray-50 border-t border-gray-100">
+            {sinavListesi.map((s) => {
+              const toplam = s.geldi + s.gelmedi
+              return (
+                <div key={s.baslik} className="py-2.5 flex items-center justify-between gap-3 flex-wrap">
+                  <p className="font-medium text-gray-800 text-sm">{s.baslik}</p>
+                  <span className="text-sm text-gray-500 shrink-0">
+                    <span className={`font-semibold ${s.geldi === toplam ? 'text-green-600' : 'text-red-500'}`}>{s.geldi}</span>/{toplam} sınava girdi
+                    {s.gelmedi > 0 && <span className="font-semibold text-red-500"> ({s.gelmedi} kaçırdı)</span>}
+                  </span>
+                </div>
+              )
+            })}
+          </div>
+        </>
       )}
     </div>
   )
@@ -137,7 +193,7 @@ export default function Yoklamalarim() {
     supabase
       .from('yoklama')
       .select(
-        '*, ders_programi(ders_adi, baslangic_saat, bitis_saat, siniflar(ad), profiles:ogretmen_profile_id(ad_soyad, brans))'
+        '*, ders_programi(ders_adi, baslangic_saat, bitis_saat, sinav_mi, siniflar(ad), profiles:ogretmen_profile_id(ad_soyad, brans))'
       )
       .eq('ogrenci_id', seciliId)
       .order('tarih', { ascending: false })
@@ -252,7 +308,13 @@ export default function Yoklamalarim() {
                               k.geldi ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-600'
                             }`}
                           >
-                            {k.geldi ? 'Geldi' : 'Gelmedi'}
+                            {k.ders_programi?.sinav_mi
+                              ? k.geldi
+                                ? 'Girdi'
+                                : 'Kaçırdı'
+                              : k.geldi
+                              ? 'Geldi'
+                              : 'Gelmedi'}
                           </span>
                         </div>
                       ))}
