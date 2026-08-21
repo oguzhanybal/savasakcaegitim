@@ -112,7 +112,7 @@ function DevamsizlikOzeti({ kayitlar }) {
           <span className="text-green-600 font-semibold">{sinavOzet.geldi} girdi</span>
           <span className="text-red-500 font-semibold">{sinavOzet.gelmedi} girmedi</span>
           <span className={`font-semibold ${sinavOzet.oran > 20 ? 'text-red-500' : 'text-gray-400'}`}>
-            (%{sinavOzet.oran} girmedi)
+            (%{sinavOzet.oran} devamsızlık)
           </span>
         </div>
       )}
@@ -150,7 +150,7 @@ function DevamsizlikOzeti({ kayitlar }) {
                   <p className="font-medium text-gray-800 text-sm">{s.baslik}</p>
                   <span className="text-sm text-gray-500 shrink-0">
                     <span className={`font-semibold ${s.geldi === toplam ? 'text-green-600' : 'text-red-500'}`}>{s.geldi}</span>/{toplam} sınava girdi{' '}
-                    <span className={`font-semibold ${oran > 20 ? 'text-red-500' : 'text-gray-400'}`}>(%{oran} girmedi)</span>
+                    <span className={`font-semibold ${oran > 20 ? 'text-red-500' : 'text-gray-400'}`}>(%{oran} devamsızlık)</span>
                   </span>
                 </div>
               )
