@@ -186,6 +186,21 @@ export default function AylikOzet() {
   const taksitToplamGereken = taksitOgrenciler.reduce((t, r) => t + r.toplamGereken, 0)
   const taksitToplamAlinan = taksitOgrenciler.reduce((t, r) => t + r.toplamAlinan, 0)
 
+  // Üst özet kutusu ve alt "Toplam" satırı için Gereken, kalem bazında AYRI
+  // gösterilsin diye (kullanıcı isteğiyle) — Okul/Kurs/Kitap tek bir toplamda
+  // birleştirilmesin.
+  const taksitKalemToplamlari = useMemo(() => {
+    const map = new Map(TAKSIT_KALEMLERI.map((k) => [k, 0]))
+    for (const o of taksitOgrenciler) {
+      for (const k of o.kalemler) {
+        map.set(k.kalem, (map.get(k.kalem) || 0) + k.gereken)
+      }
+    }
+    return TAKSIT_KALEMLERI.map((kalem) => ({ kalem, toplam: map.get(kalem) || 0 })).filter(
+      (x) => x.toplam > 0.01
+    )
+  }, [taksitOgrenciler])
+
   if (loading) return <p className="p-6 text-gray-400">Yükleniyor...</p>
 
   return (
@@ -284,8 +299,18 @@ export default function AylikOzet() {
             {sekme === 'taksit' && (
               <div className="border-2 border-navy rounded-lg p-4 bg-navy/5 inline-block min-w-[280px] mb-6">
                 <p className="text-xs font-semibold text-navy uppercase tracking-wide">Okul / Kurs / Kitap Taksitleri</p>
-                <p className="text-lg font-bold text-navy mt-1">Gereken: {paraFormat(taksitToplamGereken)}</p>
-                <p className="text-sm text-green-700 font-medium">Alınan (tüm ödemeler): {paraFormat(taksitToplamAlinan)}</p>
+                {taksitKalemToplamlari.length === 0 ? (
+                  <p className="text-sm text-gray-400 mt-1">Bu ay gereken taksit yok</p>
+                ) : (
+                  taksitKalemToplamlari.map((k) => (
+                    <p key={k.kalem} className="text-lg font-bold text-navy mt-1">
+                      {k.kalem} gereken: {paraFormat(k.toplam)}
+                    </p>
+                  ))
+                )}
+                <p className="text-sm text-green-700 font-medium mt-1">
+                  Alınan (tüm ödemeler): {paraFormat(taksitToplamAlinan)}
+                </p>
                 <p className="text-[11px] text-gray-400 mt-1">
                   Alınan tutar, Kantin/Bire Bir gibi başka kalemlerden yapılan ödemeleri de içerir — bu yüzden
                   doğrudan Gereken'den çıkarılamaz, aşağıdaki kalem dökümüne bakın.
@@ -407,7 +432,12 @@ export default function AylikOzet() {
                   <div className="p-3 bg-gray-50 font-semibold text-sm flex items-center justify-between flex-wrap gap-2">
                     <span>Toplam</span>
                     <span>
-                      Gereken: {paraFormat(taksitToplamGereken)} · Alınan (tüm ödemeler): {paraFormat(taksitToplamAlinan)}
+                      {taksitKalemToplamlari.map((k) => (
+                        <span key={k.kalem}>
+                          {k.kalem}: {paraFormat(k.toplam)} ·{' '}
+                        </span>
+                      ))}
+                      Alınan (tüm ödemeler): {paraFormat(taksitToplamAlinan)}
                     </span>
                   </div>
                 </div>
