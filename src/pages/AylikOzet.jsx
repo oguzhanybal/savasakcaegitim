@@ -1,6 +1,12 @@
 import { useEffect, useMemo, useState } from 'react'
 import { supabase } from '../lib/supabase'
-import { paraFormat, bireBirDersDetaylariOlustur } from '../lib/ekstreHesap'
+import { paraFormat, bireBirDersDetaylariOlustur, sozlesmeKalemHesapla } from '../lib/ekstreHesap'
+
+// Taksitler sekmesinde hangi sözleşme kalemleri toplanıyor — kullanıcı
+// isteğiyle sadece Kurs/Okul/Kitap (Deneme Kulübü ve aylık kalemler — Bire
+// Bir/Yemek/Kantin — bu sekmenin dışında, onlar zaten kendi sekmelerinde ya
+// da başka raporlarda ayrıca gösteriliyor).
+const TAKSIT_KALEMLERI = ['Okul', 'Kurs', 'Kitap']
 
 // Ayı "YYYY-MM" olarak YEREL saate göre üretir (toISOString KULLANMIYORUZ —
 // Türkiye UTC+3 gece yarısına yakın saatlerde bir gün geriye kayabiliyor).
@@ -43,9 +49,12 @@ export default function AylikOzet() {
   // ikisi asla aynı anda görünmez. Kullanıcı bunları patrona AYRI AYRI
   // (iki farklı PDF/ekran görüntüsü olarak) göndereceği için, "Kantin"
   // seçiliyken Bire Bir'e ait hiçbir şey (üst kutu dahil) görünmemeli.
-  const [sekme, setSekme] = useState('birebir') // 'birebir' | 'kantin'
+  const [sekme, setSekme] = useState('birebir') // 'birebir' | 'kantin' | 'taksit'
   const [bireBirDersler, setBireBirDersler] = useState([])
   const [kantinAlislari, setKantinAlislari] = useState([])
+  const [sozlesmeler, setSozlesmeler] = useState([])
+  const [odemeler, setOdemeler] = useState([])
+  const [ogrenciler, setOgrenciler] = useState([])
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
@@ -59,7 +68,10 @@ export default function AylikOzet() {
         .select('*, ogrenciler(ad_soyad), profiles:ogretmen_profile_id(ad_soyad, brans)')
         .is('atama_id', null),
       supabase.from('kantin_alislar').select('*, ogrenciler(ad_soyad)'),
-    ]).then(([bba, ekDersler, kantin]) => {
+      supabase.from('sozlesmeler').select('*'),
+      supabase.from('odemeler').select('*'),
+      supabase.from('ogrenciler').select('id, ad_soyad'),
+    ]).then(([bba, ekDersler, kantin, sozlesme, odeme, ogrenci]) => {
       const atamalar = bba.data || []
       const atamaIdleri = atamalar.map((x) => x.id)
       const yoklamaSorgusu =
@@ -70,6 +82,9 @@ export default function AylikOzet() {
         const tumYoklamalar = [...(by.data || []), ...(ekDersler.data || [])]
         setBireBirDersler(bireBirDersDetaylariOlustur(atamalar, tumYoklamalar))
         setKantinAlislari(kantin.data || [])
+        setSozlesmeler(sozlesme.data || [])
+        setOdemeler(odeme.data || [])
+        setOgrenciler(ogrenci.data || [])
         setLoading(false)
       })
     })
@@ -79,7 +94,8 @@ export default function AylikOzet() {
   // hangi sekme + hangi ay olduğunu göstersin diye — "Savaş Akça Eğitim
   // Portalı" gibi genel bir isimle kaydedilmesin.
   useEffect(() => {
-    document.title = `Aylık Özet — ${sekme === 'kantin' ? 'Kantin' : 'Bire Bir'} — ${ayEtiketiUret(seciliAy)}`
+    const sekmeAdi = sekme === 'kantin' ? 'Kantin' : sekme === 'taksit' ? 'Taksitler' : 'Bire Bir'
+    document.title = `Aylık Özet — ${sekmeAdi} — ${ayEtiketiUret(seciliAy)}`
     return () => {
       document.title = 'Savaş Akça Eğitim Portalı'
     }
@@ -92,15 +108,19 @@ export default function AylikOzet() {
     ).length
     const kantinBuAy = kantinAlislari.filter((k) => k.tarih?.slice(0, 7) === seciliAy)
     // Ay seçici dropdown'ında SADECE verinin gerçekten bulunduğu aylar
-    // görünsün diye — boş aylar listede kirlilik yaratmasın.
+    // görünsün diye — boş aylar listede kirlilik yaratmasın. Ödemeler de
+    // dahil edildi (Taksitler sekmesinde, sadece bire bir/kantin işlemi
+    // olmayan ama o ay ödeme alınmış bir ay da listede görünebilsin diye).
     const aySet = new Set(
-      [...bireBirDersler.map((d) => d.tarih?.slice(0, 7)), ...kantinAlislari.map((k) => k.tarih?.slice(0, 7))].filter(
-        Boolean
-      )
+      [
+        ...bireBirDersler.map((d) => d.tarih?.slice(0, 7)),
+        ...kantinAlislari.map((k) => k.tarih?.slice(0, 7)),
+        ...odemeler.map((o) => o.tarih?.slice(0, 7)),
+      ].filter(Boolean)
     )
     const aylar = Array.from(aySet).sort((a, b) => (a < b ? 1 : -1))
     return { bireBirBuAy, kantinBuAy, soruCozumuSayisi, aylar }
-  }, [bireBirDersler, kantinAlislari, seciliAy])
+  }, [bireBirDersler, kantinAlislari, odemeler, seciliAy])
 
   const bireBirOgrenciler = useMemo(() => gruplaOgrenciye(bireBirBuAy, (d) => d.ogrenciAdi), [bireBirBuAy])
   const kantinOgrenciler = useMemo(
@@ -110,6 +130,44 @@ export default function AylikOzet() {
 
   const bireBirToplamTutar = bireBirBuAy.reduce((t, d) => t + Number(d.tutar), 0)
   const kantinToplamTutar = kantinBuAy.reduce((t, k) => t + Number(k.tutar), 0)
+
+  const ogrenciAdMap = useMemo(() => new Map(ogrenciler.map((o) => [o.id, o.ad_soyad])), [ogrenciler])
+
+  // Taksitler sekmesi: her öğrenci için "o ay alınması gereken" (bu ayın
+  // taksiti, ekstredeki AYNI mantık — sozlesmeKalemHesapla) ile "o ay
+  // gerçekten alınan" (odemeler tablosunda, ödeme TARİHİ seçili aya denk
+  // gelen) tutarları Okul/Kurs/Kitap kalemleri için yan yana gösterir.
+  // "Gereken" ödeme geçmişine göre kümülatif hesaplandığı (bkz.
+  // sozlesmeKalemHesapla'daki yorum) için her öğrencinin KENDİ ödemeleriyle
+  // hesaplanması gerekiyor — tüm ödemeleri karıştırıp tek havuzda toplamak
+  // yanlış sonuç verir.
+  const taksitSatirlari = useMemo(() => {
+    const map = new Map() // ogrenci_id -> { ad, gereken, alinan }
+    function satirAl(ogrenciId) {
+      if (!map.has(ogrenciId)) {
+        map.set(ogrenciId, { ad: ogrenciAdMap.get(ogrenciId) || '—', gereken: 0, alinan: 0 })
+      }
+      return map.get(ogrenciId)
+    }
+    for (const s of sozlesmeler) {
+      if (!TAKSIT_KALEMLERI.includes(s.kalem)) continue
+      const oOdemeler = odemeler.filter((od) => od.ogrenci_id === s.ogrenci_id)
+      const sonuc = sozlesmeKalemHesapla(s, oOdemeler, seciliAy)
+      if (!sonuc || sonuc.buAyTutar <= 0) continue
+      satirAl(s.ogrenci_id).gereken += sonuc.buAyTutar
+    }
+    for (const od of odemeler) {
+      if (!od.kalem || !TAKSIT_KALEMLERI.some((k) => od.kalem.startsWith(k))) continue
+      if (od.tarih?.slice(0, 7) !== seciliAy) continue
+      satirAl(od.ogrenci_id).alinan += Number(od.tutar) || 0
+    }
+    return Array.from(map.values())
+      .filter((r) => r.gereken > 0.01 || r.alinan > 0.01)
+      .sort((a, b) => b.gereken - a.gereken || a.ad.localeCompare(b.ad, 'tr'))
+  }, [sozlesmeler, odemeler, seciliAy, ogrenciAdMap])
+
+  const taksitToplamGereken = taksitSatirlari.reduce((t, r) => t + r.gereken, 0)
+  const taksitToplamAlinan = taksitSatirlari.reduce((t, r) => t + r.alinan, 0)
 
   if (loading) return <p className="p-6 text-gray-400">Yükleniyor...</p>
 
@@ -181,19 +239,37 @@ export default function AylikOzet() {
               >
                 Kantin
               </button>
+              <button
+                type="button"
+                onClick={() => setSekme('taksit')}
+                className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors ${
+                  sekme === 'taksit' ? 'bg-navy text-white' : 'bg-white border border-gray-200 text-gray-600 hover:bg-gray-100'
+                }`}
+              >
+                Taksitler
+              </button>
             </div>
 
-            {sekme === 'birebir' ? (
+            {sekme === 'birebir' && (
               <div className="border-2 border-navy rounded-lg p-4 bg-navy/5 inline-block min-w-[220px] mb-6">
                 <p className="text-xs font-semibold text-navy uppercase tracking-wide">Bire Bir</p>
                 <p className="text-lg font-bold text-navy mt-1">{bireBirBuAy.length} ders</p>
                 <p className="text-sm text-gray-600">{paraFormat(bireBirToplamTutar)}</p>
               </div>
-            ) : (
+            )}
+            {sekme === 'kantin' && (
               <div className="border-2 border-navy rounded-lg p-4 bg-navy/5 inline-block min-w-[220px] mb-6">
                 <p className="text-xs font-semibold text-navy uppercase tracking-wide">Kantin</p>
                 <p className="text-lg font-bold text-navy mt-1">{kantinBuAy.length} alış</p>
                 <p className="text-sm text-gray-600">{paraFormat(kantinToplamTutar)}</p>
+              </div>
+            )}
+            {sekme === 'taksit' && (
+              <div className="border-2 border-navy rounded-lg p-4 bg-navy/5 inline-block min-w-[280px] mb-6">
+                <p className="text-xs font-semibold text-navy uppercase tracking-wide">Okul / Kurs / Kitap Taksitleri</p>
+                <p className="text-lg font-bold text-navy mt-1">Gereken: {paraFormat(taksitToplamGereken)}</p>
+                <p className="text-sm text-green-700 font-medium">Alınan: {paraFormat(taksitToplamAlinan)}</p>
+                <p className="text-sm text-gray-500">Kalan: {paraFormat(Math.max(0, taksitToplamGereken - taksitToplamAlinan))}</p>
               </div>
             )}
 
@@ -264,6 +340,41 @@ export default function AylikOzet() {
                       <td className="px-3 py-2">Toplam</td>
                       <td className="px-3 py-2 text-right">{kantinBuAy.length}</td>
                       <td className="px-3 py-2 text-right">{paraFormat(kantinToplamTutar)}</td>
+                    </tr>
+                  </tfoot>
+                </table>
+              )}
+            </div>
+
+            <div className={sekme === 'taksit' ? '' : 'hidden'}>
+              <p className="font-bold text-navy mb-2 aylik-ozet-baslik">Okul / Kurs / Kitap Taksitleri — Öğrenci Bazında</p>
+              {taksitSatirlari.length === 0 ? (
+                <p className="text-sm text-gray-400">Bu ay alınması gereken ya da alınan bir taksit kaydı yok.</p>
+              ) : (
+                <table className="w-full text-sm border border-gray-200 rounded-lg overflow-hidden">
+                  <thead>
+                    <tr className="bg-navy text-white text-left">
+                      <th className="px-3 py-2 font-semibold">Öğrenci</th>
+                      <th className="px-3 py-2 font-semibold text-right">Gereken</th>
+                      <th className="px-3 py-2 font-semibold text-right">Alınan</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {taksitSatirlari.map((r, i) => (
+                      <tr key={r.ad} className={i % 2 ? 'bg-gray-50' : ''}>
+                        <td className="px-3 py-2">{r.ad}</td>
+                        <td className="px-3 py-2 text-right">{paraFormat(r.gereken)}</td>
+                        <td className={`px-3 py-2 text-right font-medium ${r.alinan >= r.gereken ? 'text-green-700' : ''}`}>
+                          {paraFormat(r.alinan)}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                  <tfoot>
+                    <tr className="bg-gray-50 font-semibold">
+                      <td className="px-3 py-2">Toplam</td>
+                      <td className="px-3 py-2 text-right">{paraFormat(taksitToplamGereken)}</td>
+                      <td className="px-3 py-2 text-right">{paraFormat(taksitToplamAlinan)}</td>
                     </tr>
                   </tfoot>
                 </table>
