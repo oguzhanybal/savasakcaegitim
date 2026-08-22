@@ -48,6 +48,27 @@ function tarihUzunFormat(tarihStr) {
   })
 }
 
+// ÖNEMLİ DÜZELTME 5: Supabase tek seferlik sorgularda VARSAYILAN OLARAK 1000
+// satırla sınırlıyor. "yoklama" tablosu ÖĞRENCİ BAŞINA bir satır olduğu
+// için (21 gün × okulun tüm dersleri × öğrenci sayısı), bu sınır kolayca
+// aşılıyor ve sorgu sessizce kesiliyor — bu da gerçekten alınmış
+// yoklamaların "Alınmadı" görünmesine yol açıyordu (yönetici dahil, RLS'le
+// ilgisi yoktu). `queryOlustur` her çağrıda YENİ bir sorgu nesnesi
+// üretmeli (aynı builder tekrar kullanılamaz), 1000'er satır sayfalanarak
+// hepsi çekilir.
+async function sayfalayarakGetir(queryOlustur, sayfaBoyutu = 1000) {
+  let tumSatirlar = []
+  let sayfa = 0
+  while (true) {
+    const { data, error } = await queryOlustur().range(sayfa * sayfaBoyutu, sayfa * sayfaBoyutu + sayfaBoyutu - 1)
+    if (error || !data) break
+    tumSatirlar = tumSatirlar.concat(data)
+    if (data.length < sayfaBoyutu) break
+    sayfa++
+  }
+  return tumSatirlar
+}
+
 export default function GecmisYoklama() {
   const { profile } = useAuth()
   const [siniflar, setSiniflar] = useState([])
@@ -93,10 +114,14 @@ export default function GecmisYoklama() {
     setSeciliGun(null)
     setSeciliOge(null)
     setYukleniyorListe(true)
-    let sorgu = supabase.from('ders_programi').select('*')
-    if (seciliSinif) sorgu = sorgu.eq('sinif_id', seciliSinif)
-    sorgu.then(async ({ data }) => {
-      const tumSatirlar = data || []
+    ;(async () => {
+      // ders_programi de zamanla (sık değişen dersler yüzünden) 1000 satırı
+      // geçebileceğinden aynı sayfalama burada da uygulanıyor.
+      const tumSatirlar = await sayfalayarakGetir(() => {
+        let sorgu = supabase.from('ders_programi').select('*')
+        if (seciliSinif) sorgu = sorgu.eq('sinif_id', seciliSinif)
+        return sorgu
+      })
       const bugun = yerelTarih(new Date())
       const dEski = new Date(bugun + 'T12:00:00')
       dEski.setDate(dEski.getDate() - GUN_PENCERESI)
@@ -127,14 +152,16 @@ export default function GecmisYoklama() {
       // olmayan "Alındı" satırları üretmesine sebep olmuştu.)
       const tumSatirMap = new Map(tumSatirlar.map((s) => [s.id, s]))
       const tumIdler = tumSatirlar.map((s) => s.id)
-      const { data: yoklamaSatirlari } = tumIdler.length
-        ? await supabase
-            .from('yoklama')
-            .select('ders_programi_id, tarih')
-            .in('ders_programi_id', tumIdler)
-            .gte('tarih', enEskiTarih)
-            .lte('tarih', dun)
-        : { data: [] }
+      const yoklamaSatirlari = tumIdler.length
+        ? await sayfalayarakGetir(() =>
+            supabase
+              .from('yoklama')
+              .select('ders_programi_id, tarih')
+              .in('ders_programi_id', tumIdler)
+              .gte('tarih', enEskiTarih)
+              .lte('tarih', dun)
+          )
+        : []
       // tarih -> Map(sinif_id|gun|saat -> ders) — anahtara GÜN de dahil,
       // aksi halde farklı günlerin aynı saatteki dersleri birbirine karışır.
       const alinanByTarih = new Map()
@@ -218,7 +245,7 @@ export default function GecmisYoklama() {
 
       setGunListesi(gunler)
       setYukleniyorListe(false)
-    })
+    })()
   }, [seciliSinif, profile?.id, profile?.rol])
 
   // Bir öge seçilince o dersin öğrencilerini + (varsa) o tarihe ait yoklama
