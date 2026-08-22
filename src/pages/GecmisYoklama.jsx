@@ -97,8 +97,6 @@ export default function GecmisYoklama() {
     if (seciliSinif) sorgu = sorgu.eq('sinif_id', seciliSinif)
     sorgu.then(async ({ data }) => {
       const tumSatirlar = data || []
-      const satirlar =
-        profile?.rol === 'ogretmen' ? tumSatirlar.filter((s) => s.ogretmen_profile_id === profile.id) : tumSatirlar
       const bugun = yerelTarih(new Date())
       const dEski = new Date(bugun + 'T12:00:00')
       dEski.setDate(dEski.getDate() - GUN_PENCERESI)
@@ -148,6 +146,17 @@ export default function GecmisYoklama() {
         alinanByTarih.get(y.tarih).set(anahtar, ders)
       }
 
+      // Slot (sınıf+gün+saat) bazında gruplama — bir slotu zaman içinde farklı
+      // öğretmenler devralmış olabilir. "O tarihte GERÇEKTEN kimin dersiydi"
+      // sorusunu doğru cevaplamak için, aynı slotu paylaşan TÜM satırlar
+      // (hangi öğretmene ait olursa olsun) birlikte değerlendirilir.
+      const slotGruplari = new Map() // temelAnahtar -> satır dizisi
+      for (const s of tumSatirlar) {
+        const anahtar = `${s.sinif_id}|${s.gun}|${s.baslangic_saat}-${s.bitis_saat}`
+        if (!slotGruplari.has(anahtar)) slotGruplari.set(anahtar, [])
+        slotGruplari.get(anahtar).push(s)
+      }
+
       // Güne göre ders listesi üret.
       const gunler = []
       for (let i = 1; i <= GUN_PENCERESI; i++) {
@@ -158,31 +167,46 @@ export default function GecmisYoklama() {
         const alinanAnahtarlar = alinanByTarih.get(tarih) || new Map()
         const dersMap = new Map() // anahtar -> {ders, alindiMi}
 
-        // O TARİHTE geçerli olan programa göre o gün GERÇEKTEN kendisine ait
-        // olan dersler — bu liste tek doğru kaynak. Ders hangi tarihten
-        // itibaren geçerliyse (elle girilmiş "Başlangıç Tarihi", yoksa
-        // satırın oluşturulduğu tarih) ondan ÖNCEKİ günler için hiç
-        // üretilmez. Satır sonradan pasif yapıldıysa (aktif=false,
-        // pasif_tarihi=X), bu SADECE o tarihten SONRAKİ günler için geçerli
-        // değildir — pasif_tarihi'nden ÖNCEKİ günlerde hâlâ o günün
-        // programının bir parçasıydı, listeden düşürülmemeli; pasif_tarihi
-        // GEÇMİŞTE kaldıysa (bugünden önce), o satır artık o günün adayı
-        // DEĞİLDİR (bu, 20 Ağustos'ta hâlâ pasif eski derslerin sayılması
-        // hatasını da düzeltir).
-        for (const s of satirlar) {
-          if (s.gun !== gunNo) continue
-          const gecerliBaslangic = s.baslangic_tarihi || (s.created_at ? s.created_at.slice(0, 10) : null)
-          if (gecerliBaslangic && gecerliBaslangic > tarih) continue
-          const oTarihteAktifMi = s.aktif !== false || (s.pasif_tarihi && s.pasif_tarihi > tarih)
-          if (!oTarihteAktifMi) continue
-          const anahtar = `${s.sinif_id}|${s.baslangic_saat}-${s.bitis_saat}`
-          if (dersMap.has(anahtar)) continue
-          // Bu tam olarak (sınıf+gün+saat) bugünkü adayım — GERÇEKTEN
-          // alınmış mı diye AYNI sınıf+gün+saate bakan geniş anahtarla
-          // (hangi ders_programi_id/öğretmen olursa olsun) kontrol edilir.
-          const genisAnahtar = `${s.sinif_id}|${s.gun}|${s.baslangic_saat}-${s.bitis_saat}`
-          const alinanKaydi = alinanAnahtarlar.get(genisAnahtar)
-          dersMap.set(anahtar, { ders: alinanKaydi || s, alindiMi: !!alinanKaydi })
+        // ÖNEMLİ DÜZELTME 4: bir slot (sınıf+gün+saat) devredildiğinde, admin
+        // genelde önce YENİ öğretmen için yeni satırı ekliyor, ESKİ satırı
+        // ("pasif_tarihi") ise günler sonra, başka bir değişiklik yaparken
+        // siliyor. Bu yüzden "eski" satırın pasif_tarihi'ne bakarak
+        // "o tarihte aktif miydi" diye sormak yanıltıcı olabiliyor — eski
+        // satır teknik olarak hâlâ "aktif" görünse bile, o slot o tarihte
+        // ARTIK BAŞKA BİR ÖĞRETMENE aitti. Doğru soru: "bu slotu paylaşan
+        // satırlar arasında, bu tarihten önce/bu tarihte başlamış olanların
+        // EN YENİSİ hangisi" — cevap o tarihteki GERÇEK sahibi verir (yeni
+        // bir satırın oluşturulması, o slotun artık yeni sahibine geçtiğinin
+        // en güvenilir işaretidir; eski satırın ne zaman silindiği önemsiz).
+        for (const [temelAnahtar, satirGrubu] of slotGruplari) {
+          if (satirGrubu[0].gun !== gunNo) continue
+
+          let enYeni = null
+          let enYeniBaslangic = null
+          for (const s of satirGrubu) {
+            const gecerliBaslangic = s.baslangic_tarihi || (s.created_at ? s.created_at.slice(0, 10) : null)
+            if (!gecerliBaslangic || gecerliBaslangic > tarih) continue
+            const karsilastirmaAnahtari = `${gecerliBaslangic}T${s.created_at || ''}`
+            const enYeniKarsilastirma = enYeniBaslangic ? `${enYeniBaslangic}T${enYeni.created_at || ''}` : null
+            if (!enYeni || karsilastirmaAnahtari > enYeniKarsilastirma) {
+              enYeni = s
+              enYeniBaslangic = gecerliBaslangic
+            }
+          }
+          if (!enYeni) continue // bu tarihte bu slot henüz hiç oluşturulmamış
+
+          const oTarihteAktifMi = enYeni.aktif !== false || (enYeni.pasif_tarihi && enYeni.pasif_tarihi > tarih)
+          if (!oTarihteAktifMi) continue // o tarihte slot tamamen kaldırılmış, kimseye ait değil
+
+          // Öğretmen sadece O TARİHTE GERÇEKTEN kendisine ait olan slotları
+          // görür — "en yeni satır"ın sahibi kendisi değilse, bu slot o gün
+          // için ona ait değildir (devredilmiş).
+          if (profile?.rol === 'ogretmen' && enYeni.ogretmen_profile_id !== profile.id) continue
+
+          // GERÇEKTEN alınmış mı — aynı slotta (hangi ders_programi_id/
+          // öğretmen olursa olsun) o tarihe ait yoklama kaydı var mı.
+          const alinanKaydi = alinanAnahtarlar.get(temelAnahtar)
+          dersMap.set(temelAnahtar, { ders: alinanKaydi || enYeni, alindiMi: !!alinanKaydi })
         }
 
         if (dersMap.size === 0) continue
