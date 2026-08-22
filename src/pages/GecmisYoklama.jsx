@@ -99,7 +99,6 @@ export default function GecmisYoklama() {
       const tumSatirlar = data || []
       const satirlar =
         profile?.rol === 'ogretmen' ? tumSatirlar.filter((s) => s.ogretmen_profile_id === profile.id) : tumSatirlar
-      const satirMap = new Map(satirlar.map((s) => [s.id, s]))
       const bugun = yerelTarih(new Date())
       const dEski = new Date(bugun + 'T12:00:00')
       dEski.setDate(dEski.getDate() - GUN_PENCERESI)
@@ -110,7 +109,28 @@ export default function GecmisYoklama() {
 
       // GERÇEKTEN yoklaması alınmış dersler — doğrudan yoklama tablosundan,
       // ders_programi'nin aktif/pasif durumuna bakılmadan.
-      const tumIdler = satirlar.map((s) => s.id)
+      //
+      // ÖNEMLİ DÜZELTME 2: bir ders saati başka bir öğretmene DEVREDİLDİYSE
+      // (aynı sınıf+saat için eski satır pasif yapılıp yeni bir satır/yeni
+      // ders_programi_id oluşturulduysa), o günkü yoklama kaydı ESKİ satırın
+      // id'sine bağlı kalır. Yeni öğretmen artık o eski satırın "sahibi"
+      // olmadığı için (satirlar CURRENT ogretmen_profile_id'ye göre
+      // filtreleniyor), bu gerçek kayıt aksi halde tamamen görünmez olur ve o
+      // gün sanki hiç yoklama alınmamış gibi YANLIŞLIKLA "Alınmadı" görünürdü
+      // — halbuki ders o gün gerçekten verilmiş ve yoklaması alınmıştı, sadece
+      // sonradan başka bir öğretmene devredilmişti. Bunu düzeltmek için
+      // "alınmış mı" kontrolü TÜM ders_programi satırlarına (tumSatirlar)
+      // karşı yapılır — ama öğretmen görünümünde SADECE öğretmenin ŞU AN
+      // sahip olduğu sınıf+saat kombinasyonlarıyla (izinliAnahtarlar) eşleşen
+      // kayıtlar dikkate alınır, böylece başka bir öğretmenin hiç ilgisi
+      // olmayan dersleri sızdırılmaz — sadece "bu, benim şu an verdiğim
+      // dersin geçmişteki hali" tanınmış olur.
+      const izinliAnahtarlar =
+        profile?.rol === 'ogretmen'
+          ? new Set(satirlar.map((s) => `${s.sinif_id}|${s.baslangic_saat}-${s.bitis_saat}`))
+          : null // null = yönetici, kısıtlama yok
+      const tumSatirMap = new Map(tumSatirlar.map((s) => [s.id, s]))
+      const tumIdler = tumSatirlar.map((s) => s.id)
       const { data: yoklamaSatirlari } = tumIdler.length
         ? await supabase
             .from('yoklama')
@@ -121,10 +141,11 @@ export default function GecmisYoklama() {
         : { data: [] }
       const alinanByTarih = new Map() // tarih -> Map(anahtar -> ders)
       for (const y of yoklamaSatirlari || []) {
-        const ders = satirMap.get(y.ders_programi_id)
+        const ders = tumSatirMap.get(y.ders_programi_id)
         if (!ders) continue
-        if (!alinanByTarih.has(y.tarih)) alinanByTarih.set(y.tarih, new Map())
         const anahtar = `${ders.sinif_id}|${ders.baslangic_saat}-${ders.bitis_saat}`
+        if (izinliAnahtarlar && !izinliAnahtarlar.has(anahtar)) continue
+        if (!alinanByTarih.has(y.tarih)) alinanByTarih.set(y.tarih, new Map())
         alinanByTarih.get(y.tarih).set(anahtar, ders)
       }
 
