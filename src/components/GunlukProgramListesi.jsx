@@ -53,17 +53,47 @@ function tarihStrYerel(isoStr) {
 // görünüyor" hatasının kaynağıydı. Bu fonksiyon, seçilen tarihte GERÇEKTEN
 // geçerli olan satırları (o tarihte aktif olanı, eski/yeni ayrımı gözetmeden)
 // seçer — musaitlikTarihi yerine bu bileşenin kendi "tarih" state'iyle.
+// ÖNEMLİ DÜZELTME 2: bu fonksiyon önceden bir slotta (sınıf+gün+saat) o
+// tarihte "geçerli" sayılan TÜM satırları döndürüyordu — ama bir ders başka
+// bir öğretmene devredildiğinde, admin genelde önce YENİ öğretmen için yeni
+// satırı ekliyor, ESKİ satırı (pasif_tarihi) günler sonra siliyor. Bu ara
+// dönemde HEM eski HEM yeni satır aynı anda "o tarihte geçerli" sayılıp
+// İKİSİ BİRDEN gösterilebiliyordu — bu da "aynı ders iki öğretmende birden
+// görünüyor, karmakarışık" şikayetinin kaynağıydı (GecmisYoklama.jsx'teki
+// "7 derse girmedi, 3 girdi" hatasıyla aynı kök neden). Artık her slot için
+// SADECE o tarihten önce/o tarihte başlamış olanların EN YENİSİ seçiliyor —
+// yeni bir satırın oluşturulması, o slotun artık yeni sahibine geçtiğinin en
+// güvenilir işareti (eski satırın ne zaman silindiği önemsiz).
 function tarihIcinAktifProgram(programTum, tarih) {
   const bugun = yerelBugunTarihi()
-  return (programTum || []).filter((d) => {
-    if (d.aktif !== false) {
+  const gruplar = new Map() // sınıf+gün+saat -> satır dizisi
+  for (const d of programTum || []) {
+    const anahtar = `${d.sinif_id || d.id}|${d.gun}|${d.baslangic_saat}-${d.bitis_saat}`
+    if (!gruplar.has(anahtar)) gruplar.set(anahtar, [])
+    gruplar.get(anahtar).push(d)
+  }
+  const sonuc = []
+  for (const satirlar of gruplar.values()) {
+    let enYeni = null
+    let enYeniEsasTarih = null
+    for (const d of satirlar) {
       const esasTarih = d.baslangic_tarihi || tarihStrYerel(d.created_at)
-      return !esasTarih || esasTarih <= tarih
+      if (esasTarih && esasTarih > tarih) continue
+      if (d.aktif === false) {
+        if (!d.pasif_tarihi || tarih > d.pasif_tarihi) continue
+        if (tarih === d.pasif_tarihi && tarih === bugun) continue
+      }
+      const karsilastirma = `${esasTarih || ''}T${d.created_at || ''}`
+      const enYeniKarsilastirma =
+        enYeniEsasTarih !== null ? `${enYeniEsasTarih || ''}T${enYeni.created_at || ''}` : null
+      if (!enYeni || karsilastirma > enYeniKarsilastirma) {
+        enYeni = d
+        enYeniEsasTarih = esasTarih
+      }
     }
-    if (!d.pasif_tarihi || tarih > d.pasif_tarihi) return false
-    if (tarih === d.pasif_tarihi && tarih === bugun) return false
-    return true
-  })
+    if (enYeni) sonuc.push(enYeni)
+  }
+  return sonuc
 }
 
 export default function GunlukProgramListesi({ program, programTum, ogretmenler, atamalar, yoklamalar, ogrenciAdMap }) {
