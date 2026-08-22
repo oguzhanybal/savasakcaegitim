@@ -107,28 +107,26 @@ export default function GecmisYoklama() {
       dDun.setDate(dDun.getDate() - 1)
       const dun = yerelTarih(dDun)
 
-      // GERÇEKTEN yoklaması alınmış dersler — doğrudan yoklama tablosundan,
-      // ders_programi'nin aktif/pasif durumuna bakılmadan.
+      // GERÇEKTEN yoklaması alınmış dersler — doğrudan yoklama tablosundan.
       //
-      // ÖNEMLİ DÜZELTME 2: bir ders saati başka bir öğretmene DEVREDİLDİYSE
-      // (aynı sınıf+saat için eski satır pasif yapılıp yeni bir satır/yeni
-      // ders_programi_id oluşturulduysa), o günkü yoklama kaydı ESKİ satırın
-      // id'sine bağlı kalır. Yeni öğretmen artık o eski satırın "sahibi"
-      // olmadığı için (satirlar CURRENT ogretmen_profile_id'ye göre
-      // filtreleniyor), bu gerçek kayıt aksi halde tamamen görünmez olur ve o
-      // gün sanki hiç yoklama alınmamış gibi YANLIŞLIKLA "Alınmadı" görünürdü
-      // — halbuki ders o gün gerçekten verilmiş ve yoklaması alınmıştı, sadece
-      // sonradan başka bir öğretmene devredilmişti. Bunu düzeltmek için
-      // "alınmış mı" kontrolü TÜM ders_programi satırlarına (tumSatirlar)
-      // karşı yapılır — ama öğretmen görünümünde SADECE öğretmenin ŞU AN
-      // sahip olduğu sınıf+saat kombinasyonlarıyla (izinliAnahtarlar) eşleşen
-      // kayıtlar dikkate alınır, böylece başka bir öğretmenin hiç ilgisi
-      // olmayan dersleri sızdırılmaz — sadece "bu, benim şu an verdiğim
-      // dersin geçmişteki hali" tanınmış olur.
-      const izinliAnahtarlar =
-        profile?.rol === 'ogretmen'
-          ? new Set(satirlar.map((s) => `${s.sinif_id}|${s.baslangic_saat}-${s.bitis_saat}`))
-          : null // null = yönetici, kısıtlama yok
+      // ÖNEMLİ DÜZELTME 2 (ve DÜZELTME 3 — ilk denemedeki hatayı giderir):
+      // bir ders saati başka bir öğretmene DEVREDİLDİYSE (aynı sınıf+gün+saat
+      // için eski satır pasif yapılıp yeni bir satır/yeni ders_programi_id
+      // oluşturulduysa), o günkü yoklama kaydı ESKİ satırın id'sine bağlı
+      // kalır. Bunu tanımak için "alınmış mı" kontrolü aşağıda, HER GÜN İÇİN
+      // SADECE O GÜN GERÇEKTEN KENDİSİNE AİT OLAN dersler (satirlar +
+      // tarih/aktiflik kontrolünden geçmiş adaylar) üzerinden, aynı
+      // sınıf+GÜN+saat kombinasyonuyla eşleşen TÜM ders_programi id'lerine
+      // (hangi öğretmene ait olursa olsun) bakılarak yapılır — bu sayede hem
+      // "benim devraldığım dersin geçmişi" doğru görünür, hem de HİÇBİR
+      // ZAMAN kendi adaylarımın dışına (başka güne/saate/asla sahip
+      // olmadığım bir derse) taşmaz. (İlk denemede "gun" eşleşmesi ve
+      // tarih/aktiflik kontrolü unutulmuştu — bu da bir öğretmenin, GEÇMİŞTE
+      // herhangi bir tarihte kısaca sahip olduğu her sınıf+saat için, o
+      // saatteki BAŞKA GÜNLERİN/BAŞKA ÖĞRETMENLERİN yoklamalarını da
+      // görebilmesi gibi ciddi bir gizlilik açığına yol açmıştı; ayrıca
+      // pasif olmuş eski derslerin de "hâlâ benim dersim" sayılıp gerçek
+      // olmayan "Alındı" satırları üretmesine sebep olmuştu.)
       const tumSatirMap = new Map(tumSatirlar.map((s) => [s.id, s]))
       const tumIdler = tumSatirlar.map((s) => s.id)
       const { data: yoklamaSatirlari } = tumIdler.length
@@ -139,12 +137,13 @@ export default function GecmisYoklama() {
             .gte('tarih', enEskiTarih)
             .lte('tarih', dun)
         : { data: [] }
-      const alinanByTarih = new Map() // tarih -> Map(anahtar -> ders)
+      // tarih -> Map(sinif_id|gun|saat -> ders) — anahtara GÜN de dahil,
+      // aksi halde farklı günlerin aynı saatteki dersleri birbirine karışır.
+      const alinanByTarih = new Map()
       for (const y of yoklamaSatirlari || []) {
         const ders = tumSatirMap.get(y.ders_programi_id)
         if (!ders) continue
-        const anahtar = `${ders.sinif_id}|${ders.baslangic_saat}-${ders.bitis_saat}`
-        if (izinliAnahtarlar && !izinliAnahtarlar.has(anahtar)) continue
+        const anahtar = `${ders.sinif_id}|${ders.gun}|${ders.baslangic_saat}-${ders.bitis_saat}`
         if (!alinanByTarih.has(y.tarih)) alinanByTarih.set(y.tarih, new Map())
         alinanByTarih.get(y.tarih).set(anahtar, ders)
       }
@@ -159,18 +158,17 @@ export default function GecmisYoklama() {
         const alinanAnahtarlar = alinanByTarih.get(tarih) || new Map()
         const dersMap = new Map() // anahtar -> {ders, alindiMi}
 
-        // Önce gerçekten alınmış olanlar (öncelikli, asla ezilmez).
-        for (const [anahtar, ders] of alinanAnahtarlar) {
-          dersMap.set(anahtar, { ders, alindiMi: true })
-        }
-        // Sonra O TARİHTE geçerli olan programa göre o gün olması gereken
-        // dersler — aynı saat+sınıfta zaten alınmış bir ders varsa eklenmez.
-        // Ders hangi tarihten itibaren geçerliyse (elle girilmiş "Başlangıç
-        // Tarihi", yoksa satırın oluşturulduğu tarih) ondan ÖNCEKİ günler
-        // için hiç üretilmez. Satır sonradan pasif yapıldıysa (aktif=false,
+        // O TARİHTE geçerli olan programa göre o gün GERÇEKTEN kendisine ait
+        // olan dersler — bu liste tek doğru kaynak. Ders hangi tarihten
+        // itibaren geçerliyse (elle girilmiş "Başlangıç Tarihi", yoksa
+        // satırın oluşturulduğu tarih) ondan ÖNCEKİ günler için hiç
+        // üretilmez. Satır sonradan pasif yapıldıysa (aktif=false,
         // pasif_tarihi=X), bu SADECE o tarihten SONRAKİ günler için geçerli
         // değildir — pasif_tarihi'nden ÖNCEKİ günlerde hâlâ o günün
-        // programının bir parçasıydı, listeden düşürülmemeli.
+        // programının bir parçasıydı, listeden düşürülmemeli; pasif_tarihi
+        // GEÇMİŞTE kaldıysa (bugünden önce), o satır artık o günün adayı
+        // DEĞİLDİR (bu, 20 Ağustos'ta hâlâ pasif eski derslerin sayılması
+        // hatasını da düzeltir).
         for (const s of satirlar) {
           if (s.gun !== gunNo) continue
           const gecerliBaslangic = s.baslangic_tarihi || (s.created_at ? s.created_at.slice(0, 10) : null)
@@ -179,7 +177,12 @@ export default function GecmisYoklama() {
           if (!oTarihteAktifMi) continue
           const anahtar = `${s.sinif_id}|${s.baslangic_saat}-${s.bitis_saat}`
           if (dersMap.has(anahtar)) continue
-          dersMap.set(anahtar, { ders: s, alindiMi: false })
+          // Bu tam olarak (sınıf+gün+saat) bugünkü adayım — GERÇEKTEN
+          // alınmış mı diye AYNI sınıf+gün+saate bakan geniş anahtarla
+          // (hangi ders_programi_id/öğretmen olursa olsun) kontrol edilir.
+          const genisAnahtar = `${s.sinif_id}|${s.gun}|${s.baslangic_saat}-${s.bitis_saat}`
+          const alinanKaydi = alinanAnahtarlar.get(genisAnahtar)
+          dersMap.set(anahtar, { ders: alinanKaydi || s, alindiMi: !!alinanKaydi })
         }
 
         if (dersMap.size === 0) continue
