@@ -1972,23 +1972,52 @@ export default function DersProgrami() {
   //    özel durumunda, viewed tarih de bugünse silinen ders hemen kayboluyor;
   //    D bugünden ÖNCEki bir tarihse (gerçekten geçmiş bir gün) eskisi gibi
   //    "o gün oradaydı" diye görünmeye devam ediyor.
+  // ÖNEMLİ DÜZELTME 4: bu filtre önceden bir slotta (sınıf+gün+saat) o
+  // tarihte "geçerli" sayılan TÜM satırları döndürüyordu — ama bir ders
+  // başka bir öğretmene devredildiğinde, admin genelde önce YENİ öğretmen
+  // için yeni satırı ekliyor, ESKİ satırı (pasif_tarihi) günler sonra
+  // siliyor. Bu ara dönemde HEM eski HEM yeni satır aynı anda "o tarihte
+  // geçerli" sayılıp Günlük Müsaitlik'te İKİSİ BİRDEN (farklı öğretmen
+  // satırlarında, aynı sınıf) görünebiliyordu — "geçmiş bir tarihe gidince
+  // her şey karmakarışık oluyor" şikâyetinin kaynağı buydu (aynı kök neden
+  // GunlukProgramListesi.jsx'te de düzeltildi). Artık her slot için SADECE
+  // o tarihten önce/o tarihte başlamış olanların EN YENİSİ seçiliyor.
   const musaitlikIcinProgram = useMemo(() => {
     if (!musaitlikTarihi) return program
     const bugun = yerelBugunTarihi()
-    return programTum.filter((d) => {
-      if (d.aktif !== false) {
+    const gruplar = new Map() // sınıf+gün+saat -> satır dizisi
+    for (const d of programTum) {
+      const anahtar = `${d.sinif_id || d.id}|${d.gun}|${d.baslangic_saat}-${d.bitis_saat}`
+      if (!gruplar.has(anahtar)) gruplar.set(anahtar, [])
+      gruplar.get(anahtar).push(d)
+    }
+    const sonuc = []
+    for (const satirlar of gruplar.values()) {
+      let enYeni = null
+      let enYeniEsasTarih = null
+      for (const d of satirlar) {
         // "baslangic_tarihi" elle girilmişse (bkz. DersEkleForm'daki opsiyonel
         // alan), o tarih created_at'in YERİNE esas alınır — kullanıcı bugün
         // bir ders eklerken "aslında bu 9 Ağustos'tan itibaren geçerli olsun"
         // diye işaretlediyse, bugüne (ve arasındaki günlere) sızmaması için.
         // Boşsa eskisi gibi created_at (eklendiği tarih) kullanılır.
         const esasTarih = d.baslangic_tarihi || tarihStrYerel(d.created_at)
-        return !esasTarih || esasTarih <= musaitlikTarihi
+        if (esasTarih && esasTarih > musaitlikTarihi) continue
+        if (d.aktif === false) {
+          if (!d.pasif_tarihi || musaitlikTarihi > d.pasif_tarihi) continue
+          if (musaitlikTarihi === d.pasif_tarihi && musaitlikTarihi === bugun) continue
+        }
+        const karsilastirma = `${esasTarih || ''}T${d.created_at || ''}`
+        const enYeniKarsilastirma =
+          enYeniEsasTarih !== null ? `${enYeniEsasTarih || ''}T${enYeni.created_at || ''}` : null
+        if (!enYeni || karsilastirma > enYeniKarsilastirma) {
+          enYeni = d
+          enYeniEsasTarih = esasTarih
+        }
       }
-      if (!d.pasif_tarihi || musaitlikTarihi > d.pasif_tarihi) return false
-      if (musaitlikTarihi === d.pasif_tarihi && musaitlikTarihi === bugun) return false
-      return true
-    })
+      if (enYeni) sonuc.push(enYeni)
+    }
+    return sonuc
   }, [programTum, program, musaitlikTarihi])
 
   // Öğretmen, Ders Programı'na karışık gösterilen kendi tekil bire bir
