@@ -185,7 +185,14 @@ export default function GunlukProgramListesi({ program, programTum, ogretmenler,
         etiket: a.ogrenci_adi || 'Bire bir',
         altEtiket: null,
         tur: 'birebir',
-        renk: 'bg-orange-300 text-orange-950 border-l-4 border-l-orange-700',
+        // ÖNEMLİ DÜZELTME: "orange" Tailwind renk sınıfları (hangi ton olursa
+        // olsun) bu projede render edilmiyor — muhtemelen tailwind.config.js'teki
+        // özel renk paletinde "orange" hiç tanımlı değil (bkz. MusaitlikTablosu.jsx'teki
+        // aynı düzeltme). Bu yüzden Tailwind sınıfı yerine doğrudan inline CSS
+        // (stil alanı) kullanılıyor — bu, Tailwind'in ne üretip üretmediğinden
+        // bağımsız olarak her zaman çalışır.
+        renk: 'border-l-4',
+        stil: { backgroundColor: '#fdba74', color: '#431407', borderLeftColor: '#c2410c' },
       })
     }
     for (const y of yoklamalar || []) {
@@ -204,7 +211,8 @@ export default function GunlukProgramListesi({ program, programTum, ogretmenler,
         tur: soruCozumuMu ? 'soru_cozumu' : 'birebir',
         renk: soruCozumuMu
           ? 'bg-purple-200 text-purple-900 border-l-4 border-l-purple-600'
-          : 'bg-orange-300 text-orange-950 border-l-4 border-l-orange-700',
+          : 'border-l-4',
+        stil: soruCozumuMu ? null : { backgroundColor: '#fdba74', color: '#431407', borderLeftColor: '#c2410c' },
       })
     }
     return olaylar
@@ -309,6 +317,7 @@ export default function GunlukProgramListesi({ program, programTum, ogretmenler,
                       colSpan={h.span}
                       title={h.dolu ? `${h.dolu.etiket}${h.dolu.altEtiket ? ' — ' + h.dolu.altEtiket : ''}` : ''}
                       className={`border-t border-l border-gray-100 text-center align-middle py-1 ${h.dolu ? h.dolu.renk : ''}`}
+                      style={h.dolu ? h.dolu.stil : undefined}
                     >
                       {h.dolu && (
                         // Sadece BAŞLICA bilgi gösteriliyor: sınıf dersiyse sınıf adı, bire
@@ -397,6 +406,7 @@ export default function GunlukProgramListesi({ program, programTum, ogretmenler,
                       colSpan={h.span}
                       title={h.dolu ? `${h.dolu.etiket}${h.dolu.altEtiket ? ' — ' + h.dolu.altEtiket : ''}` : ''}
                       className={`border-t border-l border-gray-100 text-center align-top py-1 leading-tight ${h.dolu ? h.dolu.renk : ''}`}
+                      style={h.dolu ? h.dolu.stil : undefined}
                     >
                       {h.dolu && (
                         // Gün artık 3 sekmeye bölündüğü için (en kalabalık sekmede 5 sütun,

@@ -764,7 +764,16 @@ export default function MusaitlikTablosu({
         baslangic: a.baslangic_saat,
         bitis: a.bitis_saat,
         etiket: a.ogrenci_adi || 'Bire bir',
-        renk: 'bg-orange-300 text-orange-950 border-l-4 border-l-orange-700',
+        // ÖNEMLİ DÜZELTME: "orange" Tailwind renk sınıfları (hangi ton olursa
+        // olsun — 200, 300, hiç fark etmiyor) bu sitede hiç render olmuyor
+        // (muhtemelen tailwind.config.js'teki özel renk paletinde "orange"
+        // hiç tanımlı değil — bkz. "seciliMi" için kullanılan ring-orange-400
+        // de aynı şekilde hiç görünmüyordu). Bunu tekrar tahmin etmek yerine,
+        // Bire bir'in rengini artık Tailwind sınıfı OLARAK DEĞİL, doğrudan
+        // satır-içi (inline) stil olarak veriyoruz — bu, Tailwind'in hangi
+        // renkleri ürettiğinden tamamen bağımsız olduğu için KESİN çalışır.
+        renk: 'border-l-4',
+        stil: { backgroundColor: '#fdba74', color: '#431407', borderLeftColor: '#c2410c' },
         id: a.id,
         kaynak: 'bire_bir_atamalari',
         tutar: a.ders_ucreti,
@@ -783,9 +792,8 @@ export default function MusaitlikTablosu({
         baslangic: y.baslangic_saat,
         bitis: y.bitis_saat,
         etiket: soruCozumuMu ? 'Soru Çözümü' : (ogrenciAdMap && ogrenciAdMap.get(y.ogrenci_id)) || 'Bire bir',
-        renk: soruCozumuMu
-          ? 'bg-purple-200 text-purple-900 border-l-4 border-l-purple-600'
-          : 'bg-orange-300 text-orange-950 border-l-4 border-l-orange-700',
+        renk: soruCozumuMu ? 'bg-purple-200 text-purple-900 border-l-4 border-l-purple-600' : 'border-l-4',
+        stil: soruCozumuMu ? null : { backgroundColor: '#fdba74', color: '#431407', borderLeftColor: '#c2410c' },
         id: y.id,
         kaynak: 'bire_bir_yoklama',
         tutar: soruCozumuMu ? null : y.tutar,
@@ -1033,11 +1041,18 @@ export default function MusaitlikTablosu({
                           h.dolu && !h.dolu.kaldirilacak
                             ? h.dolu.renk + (ipucuTiklanabilirMi ? ' cursor-pointer hover:bg-gray-200 transition-colors' : '')
                             : seciliMi
-                            ? 'bg-navy text-white h-8 cursor-pointer ring-2 ring-inset ring-orange-400'
+                            ? 'bg-navy text-white h-8 cursor-pointer ring-2 ring-inset'
                             : tiklanabilir
                             ? 'bg-green-50 h-8 cursor-pointer hover:bg-green-200 transition-colors'
                             : 'bg-green-50 h-8'
                         }`}
+                        style={
+                          h.dolu && !h.dolu.kaldirilacak && !ipucuTiklanabilirMi
+                            ? h.dolu.stil
+                            : seciliMi
+                            ? { boxShadow: 'inset 0 0 0 2px #fb923c' }
+                            : undefined
+                        }
                       >
                         {h.dolu && !h.dolu.kaldirilacak ? (
                           <span className="leading-none block px-0.5">
@@ -1324,7 +1339,10 @@ export default function MusaitlikTablosu({
           <span className="w-3 h-3 rounded bg-blue-200 border-l-4 border-l-blue-600 inline-block"></span> Sınıf dersi
         </span>
         <span className="flex items-center gap-1">
-          <span className="w-3 h-3 rounded bg-orange-200 border-l-4 border-l-orange-600 inline-block"></span> Bire bir
+          <span
+            className="w-3 h-3 rounded border-l-4 inline-block"
+            style={{ backgroundColor: '#fdba74', borderLeftColor: '#c2410c' }}
+          ></span> Bire bir
         </span>
         <span className="flex items-center gap-1">
           <span className="w-3 h-3 rounded bg-purple-200 border-l-4 border-l-purple-600 inline-block"></span> Soru Çözümü
