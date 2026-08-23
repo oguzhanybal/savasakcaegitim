@@ -192,7 +192,7 @@ export default function GunlukProgramListesi({ program, programTum, ogretmenler,
         // (stil alanı) kullanılıyor — bu, Tailwind'in ne üretip üretmediğinden
         // bağımsız olarak her zaman çalışır.
         renk: 'border-l-4',
-        stil: { backgroundColor: '#fdba74', color: '#431407', borderLeftColor: '#c2410c' },
+        stil: { backgroundColor: '#fed7aa', color: '#431407', borderLeftColor: '#c2410c' },
       })
     }
     for (const y of yoklamalar || []) {
@@ -212,7 +212,7 @@ export default function GunlukProgramListesi({ program, programTum, ogretmenler,
         renk: soruCozumuMu
           ? 'bg-purple-200 text-purple-900 border-l-4 border-l-purple-600'
           : 'border-l-4',
-        stil: soruCozumuMu ? null : { backgroundColor: '#fdba74', color: '#431407', borderLeftColor: '#c2410c' },
+        stil: soruCozumuMu ? null : { backgroundColor: '#fed7aa', color: '#431407', borderLeftColor: '#c2410c' },
       })
     }
     return olaylar

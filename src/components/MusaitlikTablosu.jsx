@@ -773,7 +773,7 @@ export default function MusaitlikTablosu({
         // satır-içi (inline) stil olarak veriyoruz — bu, Tailwind'in hangi
         // renkleri ürettiğinden tamamen bağımsız olduğu için KESİN çalışır.
         renk: 'border-l-4',
-        stil: { backgroundColor: '#fdba74', color: '#431407', borderLeftColor: '#c2410c' },
+        stil: { backgroundColor: '#fed7aa', color: '#431407', borderLeftColor: '#c2410c' },
         id: a.id,
         kaynak: 'bire_bir_atamalari',
         tutar: a.ders_ucreti,
@@ -793,7 +793,7 @@ export default function MusaitlikTablosu({
         bitis: y.bitis_saat,
         etiket: soruCozumuMu ? 'Soru Çözümü' : (ogrenciAdMap && ogrenciAdMap.get(y.ogrenci_id)) || 'Bire bir',
         renk: soruCozumuMu ? 'bg-purple-200 text-purple-900 border-l-4 border-l-purple-600' : 'border-l-4',
-        stil: soruCozumuMu ? null : { backgroundColor: '#fdba74', color: '#431407', borderLeftColor: '#c2410c' },
+        stil: soruCozumuMu ? null : { backgroundColor: '#fed7aa', color: '#431407', borderLeftColor: '#c2410c' },
         id: y.id,
         kaynak: 'bire_bir_yoklama',
         tutar: soruCozumuMu ? null : y.tutar,
@@ -1341,7 +1341,7 @@ export default function MusaitlikTablosu({
         <span className="flex items-center gap-1">
           <span
             className="w-3 h-3 rounded border-l-4 inline-block"
-            style={{ backgroundColor: '#fdba74', borderLeftColor: '#c2410c' }}
+            style={{ backgroundColor: '#fed7aa', borderLeftColor: '#c2410c' }}
           ></span> Bire bir
         </span>
         <span className="flex items-center gap-1">
