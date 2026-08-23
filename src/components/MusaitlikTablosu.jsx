@@ -764,7 +764,7 @@ export default function MusaitlikTablosu({
         baslangic: a.baslangic_saat,
         bitis: a.bitis_saat,
         etiket: a.ogrenci_adi || 'Bire bir',
-        renk: 'bg-orange-200 text-orange-900 border-l-4 border-l-orange-600',
+        renk: 'bg-orange-300 text-orange-950 border-l-4 border-l-orange-700',
         id: a.id,
         kaynak: 'bire_bir_atamalari',
         tutar: a.ders_ucreti,
@@ -785,7 +785,7 @@ export default function MusaitlikTablosu({
         etiket: soruCozumuMu ? 'Soru Çözümü' : (ogrenciAdMap && ogrenciAdMap.get(y.ogrenci_id)) || 'Bire bir',
         renk: soruCozumuMu
           ? 'bg-purple-200 text-purple-900 border-l-4 border-l-purple-600'
-          : 'bg-orange-200 text-orange-900 border-l-4 border-l-orange-600',
+          : 'bg-orange-300 text-orange-950 border-l-4 border-l-orange-700',
         id: y.id,
         kaynak: 'bire_bir_yoklama',
         tutar: soruCozumuMu ? null : y.tutar,

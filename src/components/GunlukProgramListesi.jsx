@@ -185,7 +185,7 @@ export default function GunlukProgramListesi({ program, programTum, ogretmenler,
         etiket: a.ogrenci_adi || 'Bire bir',
         altEtiket: null,
         tur: 'birebir',
-        renk: 'bg-orange-200 text-orange-900 border-l-4 border-l-orange-600',
+        renk: 'bg-orange-300 text-orange-950 border-l-4 border-l-orange-700',
       })
     }
     for (const y of yoklamalar || []) {
@@ -204,7 +204,7 @@ export default function GunlukProgramListesi({ program, programTum, ogretmenler,
         tur: soruCozumuMu ? 'soru_cozumu' : 'birebir',
         renk: soruCozumuMu
           ? 'bg-purple-200 text-purple-900 border-l-4 border-l-purple-600'
-          : 'bg-orange-200 text-orange-900 border-l-4 border-l-orange-600',
+          : 'bg-orange-300 text-orange-950 border-l-4 border-l-orange-700',
       })
     }
     return olaylar
