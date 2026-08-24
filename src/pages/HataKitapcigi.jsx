@@ -120,16 +120,6 @@ export default function HataKitapcigi() {
         const normalize = (s) => (s || '').toLocaleLowerCase('tr-TR').trim()
         const kutuMap = new Map((kutular || []).map((k) => [`${normalize(k.ders_adi)}|${k.soru_no}`, k]))
 
-        // Ders Bazlı Çözüm Videosu (bkz. migration_soru_video_linki.sql /
-        // SinavKitapciklari.jsx'teki "Video Linkleri" paneli) — soru soru
-        // değil, DERS bazında tek link. Hata yok sayılıyor: link tablosu boş
-        // olabilir, bu kitapçık üretimini engellememeli.
-        const { data: dersVideoLinkleriHam } = await supabase
-          .from('sinav_ders_video_linkleri')
-          .select('ders_adi, video_url')
-          .eq('sinav_id', sonuc.sinav_id)
-        const dersVideoMap = new Map((dersVideoLinkleriHam || []).map((d) => [normalize(d.ders_adi), d.video_url]))
-
         setIlerlemeMetni('Kitapçık PDF\'i indiriliyor...')
         const { data: pdfBlobu, error: indirmeHatasi } = await supabase.storage
           .from('sinav-kitapciklari')
@@ -275,9 +265,6 @@ export default function HataKitapcigi() {
             dataUrl: nihaiCanvas.toDataURL('image/png'),
             genislikPt: nihaiGenislikPt,
             yukseklikPt: nihaiYukseklikPt,
-            // Çözüm Videosu (YouTube, ders bazlı) — bkz. migration_soru_video_linki.sql /
-            // SinavKitapciklari.jsx'teki "Video Linkleri" paneli.
-            videoUrl: dersVideoMap.get(normalize(s.ders_adi)) || null,
           })
         }
         if (iptalEdildi) return
@@ -530,16 +517,6 @@ export default function HataKitapcigi() {
                       className="border border-gray-200 rounded"
                       style={{ maxWidth: '100%', width: `${Math.min(s.genislikPt, 250)}pt`, height: 'auto' }}
                     />
-                    {s.videoUrl && (
-                      <a
-                        href={s.videoUrl}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="mt-1 flex items-center gap-1 text-[10px] font-semibold text-red-600 hover:underline"
-                      >
-                        ▶ Çözüm Videosu
-                      </a>
-                    )}
                   </div>
                 )
                 if (!dersBasligiGoster) return [kart]

@@ -342,6 +342,17 @@ export default function Karnem() {
         const hazirKitapcikSeti = new Set(
           (kitapciklarData || []).filter((k) => k.onaylandi).map((k) => `${k.sinav_id}|${k.kitapcik}`)
         )
+        // Ders Bazlı Çözüm Videosu (bkz. migration_soru_video_linki.sql /
+        // SinavKitapciklari.jsx'teki "Video Linkleri" paneli) — Hata
+        // Kitapçığı'ndaki soru kartları yerine, doğrudan burada her sınavın
+        // ders satırının yanında gösteriliyor (kullanıcı isteğiyle taşındı).
+        const { data: videoLinkVerileri } =
+          sinavIdleri.length > 0
+            ? await supabase.from('sinav_ders_video_linkleri').select('sinav_id, ders_adi, video_url').in('sinav_id', sinavIdleri)
+            : { data: [] }
+        const videoMap = new Map(
+          (videoLinkVerileri || []).map((v) => [`${v.sinav_id}|${normalizeDers(v.ders_adi)}`, v.video_url])
+        )
         const tumSonuclar = liste.map((s) => ({
           ...s,
           dersler: (dersMap.get(s.id) || [])
@@ -350,7 +361,8 @@ export default function Karnem() {
             // Öğretmen SADECE kendi branşının ders(ler)ini görsün — Matematik
             // branşı hem Matematik hem Geometri, Türkçe branşı hem Türkçe hem
             // Edebiyat vb. (bkz. BRANS_DERS_ESLEME).
-            .filter((d) => dersGorebilir(d.ders_adi)),
+            .filter((d) => dersGorebilir(d.ders_adi))
+            .map((d) => ({ ...d, videoUrl: videoMap.get(`${s.sinav_id}|${normalizeDers(d.ders_adi)}`) || null })),
           puanlar: puanMap.get(s.id) || [],
           kitapcikHazirMi: hazirKitapcikSeti.has(`${s.sinav_id}|${s.kitapcik}`),
         }))
@@ -551,19 +563,22 @@ export default function Karnem() {
                             indirilebiliyor; bkz. HataKitapcigi.jsx'teki
                             ?ders= filtresi. */}
                         {s.dersler && s.dersler.length > 1 && (
-                          <select
-                            value={tekliHKDersSecim[s.id] || (isOgretmen ? dersFiltreDeger : '')}
-                            onClick={(e) => e.stopPropagation()}
-                            onChange={(e) =>
-                              setTekliHKDersSecim((onceki) => ({ ...onceki, [s.id]: e.target.value }))
-                            }
-                            className="text-xs border border-gray-200 rounded-full px-2.5 py-1.5 bg-white text-gray-600"
-                          >
-                            {!isOgretmen && <option value="">Tümü</option>}
-                            {s.dersler.map((d) => (
-                              <option key={d.id} value={d.ders_adi}>{d.ders_adi}</option>
-                            ))}
-                          </select>
+                          <span className="inline-flex items-center gap-1.5">
+                            <span className="text-xs text-gray-400">Ders:</span>
+                            <select
+                              value={tekliHKDersSecim[s.id] || (isOgretmen ? dersFiltreDeger : '')}
+                              onClick={(e) => e.stopPropagation()}
+                              onChange={(e) =>
+                                setTekliHKDersSecim((onceki) => ({ ...onceki, [s.id]: e.target.value }))
+                              }
+                              className="text-xs border border-gray-200 rounded-full px-2.5 py-1.5 bg-white text-gray-600"
+                            >
+                              {!isOgretmen && <option value="">Tüm Dersler</option>}
+                              {s.dersler.map((d) => (
+                                <option key={d.id} value={d.ders_adi}>{d.ders_adi}</option>
+                              ))}
+                            </select>
+                          </span>
                         )}
                         <Link
                           to={
@@ -614,7 +629,21 @@ export default function Karnem() {
                     <tbody>
                       {s.dersler.map((d) => (
                         <tr key={d.id} className="border-t border-gray-50">
-                          <td className="px-5 py-2 font-medium text-gray-800">{d.ders_adi}</td>
+                          <td className="px-5 py-2 font-medium text-gray-800">
+                            {d.ders_adi}
+                            {d.videoUrl && (
+                              <a
+                                href={d.videoUrl}
+                                target="_blank"
+                                rel="noreferrer"
+                                onClick={(e) => e.stopPropagation()}
+                                className="ml-2 inline-flex items-center gap-0.5 text-[11px] font-semibold text-red-600 hover:underline align-middle"
+                                title="Çözüm Videosu"
+                              >
+                                ▶ Video
+                              </a>
+                            )}
+                          </td>
                           <td className="px-5 py-2 text-center text-gray-500">{d.soru_sayisi}</td>
                           <td className="px-5 py-2 text-center text-green-700">{d.dogru}</td>
                           <td className="px-5 py-2 text-center text-red-700">{d.yanlis}</td>
