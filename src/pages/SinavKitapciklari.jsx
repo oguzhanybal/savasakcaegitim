@@ -668,7 +668,8 @@ export default function SinavKitapciklari() {
   // olabildiği için soru soru link girmek admin için çok zahmetli olurdu.
   // "Video Linkleri" butonuna basılınca o sınava ait kayıtlı linkler
   // yüklenir, admin ders adı + link satırları ekleyip kaydeder.
-  async function videoLinkPaneliAcKapat(sinavId) {
+  async function videoLinkPaneliAcKapat(sinav) {
+    const sinavId = sinav.id
     if (videoLinkSinavId === sinavId) {
       setVideoLinkSinavId(null)
       return
@@ -683,11 +684,20 @@ export default function SinavKitapciklari() {
         .eq('sinav_id', sinavId)
         .order('ders_adi')
       if (error) throw error
-      setVideoLinkleri(
-        data && data.length > 0
-          ? data.map((d) => ({ gecici_id: d.id, ders_adi: d.ders_adi, video_url: d.video_url }))
-          : [{ gecici_id: `yeni-${Date.now()}`, ders_adi: '', video_url: '' }]
-      )
+      if (data && data.length > 0) {
+        setVideoLinkleri(data.map((d) => ({ gecici_id: d.id, ders_adi: d.ders_adi, video_url: d.video_url })))
+      } else if (sinav.tur === 'TYT') {
+        // TYT'nin her zaman aynı standart 10 dersi olduğu için (bkz.
+        // TYT_STANDART_BLOKLAR — Toplu Ders Ataması'nda da kullanılıyor),
+        // admin her seferinde ders adı yazmak zorunda kalmasın diye hazır
+        // geliyor — sadece linkleri doldurup Kaydet'e basması yeterli.
+        const dersAdlariBenzersiz = [...new Set(TYT_STANDART_BLOKLAR.map((b) => b.ders))]
+        setVideoLinkleri(
+          dersAdlariBenzersiz.map((ders) => ({ gecici_id: `tyt-${ders}`, ders_adi: ders, video_url: '' }))
+        )
+      } else {
+        setVideoLinkleri([{ gecici_id: `yeni-${Date.now()}`, ders_adi: '', video_url: '' }])
+      }
     } catch (e) {
       setHata('Video linkleri yüklenemedi: ' + e.message)
     } finally {
@@ -1512,7 +1522,7 @@ export default function SinavKitapciklari() {
                       {isYonetici && (
                         <>
                           <button
-                            onClick={() => videoLinkPaneliAcKapat(s.id)}
+                            onClick={() => videoLinkPaneliAcKapat(s)}
                             className="text-purple-600 text-sm font-semibold hover:underline mr-4"
                           >
                             {videoLinkSinavId === s.id ? 'Video Linkleri ✕' : '▶ Video Linkleri'}
