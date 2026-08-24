@@ -1,0 +1,753 @@
+import { useEffect, useMemo, useState } from 'react'
+import { Link } from 'react-router-dom'
+import { supabase } from '../lib/supabase'
+import { useAuth } from '../lib/AuthContext'
+
+// Karnede dersler HANGİ SIRAYLA görünsün — sinav_ders_sonuclari tablosu
+// kendi başına bir sıra garanti etmediğinden (veritabanı ORDER BY olmadan
+// rastgele dönebilir), gerçek bir TYT/AYT karnesindeki sırayla aynı, sabit
+// bir öncelik listesiyle diziyoruz (bkz. SinavKitapciklari.jsx'teki Toplu
+// Ders Ataması'nda kullanılan aynı grup mantığı).
+const DERS_SIRASI = [
+  'Türkçe', 'Matematik', 'Geometri',
+  'Tarih', 'Coğrafya', 'Felsefe', 'Din Kültürü',
+  'Fizik', 'Kimya', 'Biyoloji',
+  'Sosyal Bilimler', 'Fen Bilimleri',
+]
+function dersSiraPuani(dersAdi) {
+  const i = DERS_SIRASI.indexOf(dersAdi)
+  return i === -1 ? 999 : i
+}
+
+// Öğretmenler de artık öğrencilerin hata raporuna ulaşabiliyor — ama SADECE
+// KENDİ BRANŞLARINA ait ders(ler)i görebiliyorlar (kullanıcı isteğiyle:
+// "matematikçiler matematik ve geometri, türkçeciler türkçe ve edebiyat,
+// diğer hocalar kendi alanlarına"). KullaniciOlustur.jsx/Ogretmenler.jsx'teki
+// BRANSLAR listesindeki her branş adı buradaki anahtarlarla eşleşiyor —
+// eşlemede olmayan bir branş (ör. "Diğer") varsayılan olarak SADECE kendi
+// adıyla birebir aynı ders_adi'na sahip sınavları görür.
+const BRANS_DERS_ESLEME = {
+  'Matematik': ['Matematik', 'Geometri'],
+  'Geometri': ['Matematik', 'Geometri'],
+  'Türkçe': ['Türkçe', 'Edebiyat'],
+  'Türkçe/Edebiyat': ['Türkçe', 'Edebiyat'],
+  'Fen Bilimleri': ['Fizik', 'Kimya', 'Biyoloji', 'Fen Bilimleri'],
+  'Sosyal Bilgiler': ['Tarih', 'Coğrafya', 'Felsefe', 'Din Kültürü', 'Sosyal Bilimler'],
+}
+function ogretmenDersListesiGetir(brans) {
+  if (!brans) return []
+  if (BRANS_DERS_ESLEME[brans]) return BRANS_DERS_ESLEME[brans]
+  return [brans]
+}
+function normalizeDers(s) {
+  return (s || '').toLocaleLowerCase('tr-TR').trim()
+}
+
+// Öğretmenin "Öğrenci Seçin" listesinde, sınavı hiç olmayan/kendi branşıyla
+// hiç ilgisi olmayan öğrenciler kalabalık yapmasın diye (kullanıcı isteğiyle:
+// "sadece hata raporları olanlar görünsün, listede aktif pasif her öğrenci
+// var") — sadece GERÇEKTEN kendi branşında yanlış/boş sorusu olan VE
+// kitapçığı onaylanmış (yani hata kitapçığı gerçekten indirilebilir) bir
+// sınav sonucuna sahip öğrencilerin id'lerini döner.
+async function ogretmenIcinUygunOgrenciIdleriGetir(izinliDersler) {
+  const izinliSet = new Set((izinliDersler || []).map((d) => normalizeDers(d)))
+  if (izinliSet.size === 0) return new Set()
+  const { data: sonuclarHam } = await supabase
+    .from('ogrenci_sinav_sonuclari')
+    .select('id, ogrenci_id, sinav_id, kitapcik, toplam_yanlis, toplam_bos')
+  const adaylar = (sonuclarHam || []).filter((s) => (s.toplam_yanlis || 0) + (s.toplam_bos || 0) > 0)
+  if (adaylar.length === 0) return new Set()
+
+  const sinavIdleri = [...new Set(adaylar.map((s) => s.sinav_id).filter(Boolean))]
+  const { data: kitapciklarData } =
+    sinavIdleri.length > 0
+      ? await supabase.from('sinav_kitapciklari').select('sinav_id, kitapcik, onaylandi').in('sinav_id', sinavIdleri)
+      : { data: [] }
+  const hazirSet = new Set(
+    (kitapciklarData || []).filter((k) => k.onaylandi).map((k) => `${k.sinav_id}|${k.kitapcik}`)
+  )
+  const hazirSonuclar = adaylar.filter((s) => hazirSet.has(`${s.sinav_id}|${s.kitapcik}`))
+  if (hazirSonuclar.length === 0) return new Set()
+
+  const sonucIdleri = hazirSonuclar.map((s) => s.id)
+  const { data: dersVerileri } = await supabase
+    .from('sinav_ders_sonuclari')
+    .select('sonuc_id, ders_adi')
+    .in('sonuc_id', sonucIdleri)
+  const uygunSonucIdleri = new Set(
+    (dersVerileri || []).filter((d) => izinliSet.has(normalizeDers(d.ders_adi))).map((d) => d.sonuc_id)
+  )
+  return new Set(hazirSonuclar.filter((s) => uygunSonucIdleri.has(s.id)).map((s) => s.ogrenci_id))
+}
+
+// Net/puan gibi ondalıklı değerler PDF'te HER ZAMAN 2 basamaklı gösterilir
+// (ör. "58,50") — JS'te bu tür sayıları olduğu gibi tutarsak sondaki sıfır
+// otomatik düşer (58.50 → 58.5) ve karne ile ekrandaki sayı görsel olarak
+// farklı görünür. Bu yüzden gösterirken her zaman 2 ondalık basamağa
+// yuvarlayıp öyle yazdırıyoruz — hesaplanan değer aynı, sadece görünüm PDF'teki
+// gibi sabit 2 basamaklı oluyor.
+function netFormat(n) {
+  return n == null ? '-' : Number(n).toFixed(2)
+}
+
+function tarihEtiket(tarih) {
+  if (!tarih) return '—'
+  return new Date(tarih + 'T12:00:00').toLocaleDateString('tr-TR', { day: '2-digit', month: 'short' })
+}
+
+// Dışarıdan bir chart kütüphanesi eklemeden (npm paketi eklemek, dosyayı elle
+// GitHub'a sürükleyip yükleyen kullanıcı için ekstra bir "package.json'a da
+// ekle" adımı gerektirir ve build'i bozma riski taşır), küçük, bağımlılıksız
+// bir SVG çizgi grafik — sadece şekli (yükseliyor mu, düşüyor mu) göstermek
+// yeterli, eksenlerde tam sayısal ölçek gerekmiyor.
+//
+// Tek satırlık kompakt versiyon — bir TÜR kartının (TYT/AYT/Konu Analiz)
+// İÇİNDE, "Genel Net" ve her ders için ayrı ayrı kullanılıyor. Önceki
+// tasarımda her ders ayrı bir üst düzey kart oluyordu (5-6 kart yan yana,
+// karışık görünüyordu) — artık tür başına TEK kart var, dersler o kartın
+// içinde satır satır sıralanıyor.
+function TrendSatiri({ etiket, noktalar, vurgu }) {
+  if (!noktalar || noktalar.length === 0) return null
+  const tekNokta = noktalar.length === 1
+  const degerler = noktalar.map((n) => n.deger)
+  const min = Math.min(...degerler)
+  const max = Math.max(...degerler)
+  const araligi = max - min || 1
+  const genislik = 100
+  const yukseklik = 22
+  const pad = 3
+  const cizilenler = noktalar.map((n, i) => {
+    const x = tekNokta ? genislik / 2 : pad + (i / (noktalar.length - 1)) * (genislik - pad * 2)
+    const y = yukseklik - pad - ((n.deger - min) / araligi) * (yukseklik - pad * 2)
+    return { ...n, x, y }
+  })
+  const yol = cizilenler.map((p, i) => `${i === 0 ? 'M' : 'L'} ${p.x.toFixed(1)} ${p.y.toFixed(1)}`).join(' ')
+  const son = degerler[degerler.length - 1]
+  const fark = son - degerler[0]
+
+  return (
+    <div className="flex items-center gap-2.5">
+      <span className={`text-xs w-24 sm:w-28 shrink-0 truncate ${vurgu ? 'font-bold text-gray-800' : 'text-gray-500'}`}>
+        {etiket}
+      </span>
+      <svg viewBox={`0 0 ${genislik} ${yukseklik}`} className="flex-1 h-6 min-w-0" preserveAspectRatio="none">
+        <path d={yol} fill="none" stroke="#0f2a4a" strokeWidth="1.5" vectorEffect="non-scaling-stroke" />
+        {cizilenler.map((p, i) => (
+          <circle key={i} cx={p.x} cy={p.y} r="1.4" fill="#0f2a4a" />
+        ))}
+      </svg>
+      <span className="text-xs font-semibold text-gray-700 w-11 text-right shrink-0">{netFormat(son)}</span>
+      {tekNokta ? (
+        <span className="text-[10px] text-gray-400 w-9 text-right shrink-0">ilk</span>
+      ) : (
+        <span
+          className={`text-[10px] font-bold w-9 text-right shrink-0 ${
+            fark > 0 ? 'text-green-600' : fark < 0 ? 'text-red-500' : 'text-gray-400'
+          }`}
+        >
+          {fark > 0 ? '▲' : fark < 0 ? '▼' : '–'}{Math.abs(fark).toFixed(1)}
+        </span>
+      )}
+    </div>
+  )
+}
+
+// Tür başına TEK kart (en fazla TYT / AYT / Konu Analiz / Diğer — yani en
+// fazla 4 kutu). İçinde varsa "Genel Net" satırı, altında her dersin kendi
+// satırı sıralanıyor.
+function TurKarti({ tur, genel, dersSerileri }) {
+  return (
+    <div className="bg-white rounded-xl border border-gray-100 p-4">
+      <p className="text-sm font-bold text-navy mb-3">{tur}</p>
+      <div className="space-y-2">
+        {genel.length > 0 && <TrendSatiri etiket="Genel Net" noktalar={genel} vurgu />}
+        {dersSerileri.map((d) => (
+          <TrendSatiri key={d.dersAdi} etiket={d.dersAdi} noktalar={d.noktalar} />
+        ))}
+      </div>
+    </div>
+  )
+}
+
+// Öğrenci/veli için "kendi sınav sonuçlarını görme" sayfası — SinavYukle.jsx'te
+// yöneticinin kaydettiği ogrenci_sinav_sonuclari + sinav_ders_sonuclari
+// verilerini, admin panelinden ayrı, sade bir "karne" görünümünde gösterir.
+// Hata Kitapçığı (yanlış soruların kitapçıktan kesilmiş hali) burada YOK —
+// o hâlâ sadece yönetici tarafında, "Sınav Sonucu Yükle" sayfasından üretiliyor.
+export default function Karnem() {
+  const { profile } = useAuth()
+  // Yönetici de bu sayfayı (özellikle Gelişim Grafiği'ni) görebilsin diye
+  // rota izni genişletildi (bkz. App.jsx). Veli/öğrenci sadece KENDİ bağlı
+  // olduğu öğrenci(ler)i görürken, yönetici İSTEDİĞİ HERHANGİ BİR öğrenciyi
+  // seçebilmeli — aşağıdaki öğrenci sorgusu buna göre dallanıyor.
+  const isYonetici = profile?.rol === 'yonetici'
+  // Öğretmen: yönetici gibi HERHANGİ bir öğrenciyi seçebilir ama sadece
+  // kendi branşına ait ders(ler)in sonuçlarını/hata kitapçığını görür —
+  // aşağıdaki sonuç işleme adımında (dersler filtrelenir, hiç eşleşmeyen
+  // sınavlar listeden tamamen çıkarılır).
+  const isOgretmen = profile?.rol === 'ogretmen'
+  const ogretmenDersleri = useMemo(
+    () => (isOgretmen ? ogretmenDersListesiGetir(profile?.brans) : []),
+    [isOgretmen, profile?.brans]
+  )
+  function dersGorebilir(dersAdi) {
+    if (!isOgretmen) return true
+    return ogretmenDersleri.some((d) => normalizeDers(d) === normalizeDers(dersAdi))
+  }
+  const [ogrenciler, setOgrenciler] = useState([])
+  const [seciliId, setSeciliId] = useState('')
+  const [sonuclar, setSonuclar] = useState([])
+  const [loading, setLoading] = useState(true)
+  // Detaylı Karne İndir: imzalı PDF adresleri artık TIKLAMA ANINDA değil,
+  // sonuçlar yüklenirken TOPLU olarak önceden çekiliyor ve gerçek bir <a
+  // href> olarak render ediliyor (aşağıya bkz.). Önceki yöntem — tıklamada
+  // window.open('', '_blank') ile boş sekme açıp imzalı URL gelince adresini
+  // değiştirmek — normal Safari'de iOS popup engelini aşmak için işe
+  // yarıyordu, ama site ana ekrana eklenmiş (PWA/standalone) modda
+  // kullanılırken bu "boş sekme" hilesi çalışmıyor, kullanıcı boş bir sayfa
+  // görüyordu. Gerçek bir <a> linki, standalone modda da güvenilir çalışıyor.
+  const [karneUrlMap, setKarneUrlMap] = useState({})
+  // Akordeon: sınav sayısı arttıkça sayfa çok uzayıp karışmasın diye SADECE
+  // en son sınav (liste zaten created_at'e göre en yeniden en eskiye sıralı,
+  // bkz. aşağıdaki .order('created_at', {ascending:false})) varsayılan
+  // olarak açık geliyor, diğerleri başlığa tıklanınca açılıyor.
+  const [acikId, setAcikId] = useState(null)
+  // "Derse Göre Hata Kitapçığı" — bir öğrencinin seçtiği TEK dersteki
+  // (ör. Kimya), BİRDEN FAZLA sınavdaki yanlış/boş sorularını tek bir
+  // birleşik kitapçıkta toplayan ayrı sayfaya (DersBazliHataKitapcigi.jsx)
+  // giden seçim kutuları.
+  const [dersHKDers, setDersHKDers] = useState(DERS_SIRASI[0])
+  const [dersHKTur, setDersHKTur] = useState('TYT')
+  // Öğretmen için varsayılan seçim (DERS_SIRASI[0] = 'Türkçe') kendi
+  // branşında olmayabilir — profil yüklendiğinde, izin verilen ilk derse
+  // otomatik geçiyoruz.
+  useEffect(() => {
+    if (!isOgretmen || ogretmenDersleri.length === 0) return
+    if (!dersGorebilir(dersHKDers)) {
+      const ilkIzinli = DERS_SIRASI.find((d) => dersGorebilir(d)) || ogretmenDersleri[0]
+      setDersHKDers(ilkIzinli)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOgretmen, ogretmenDersleri.join('|')])
+  // Tekli sınav Hata Kitapçığı: varsayılan "Tümü" (o sınavın bütün dersleri
+  // birlikte) ama veli/öğrenci isterse sadece TEK bir dersi seçip onun
+  // kitapçığını indirebilsin diye (ör. sadece Türkçe). Sonuç (sınav)
+  // bazında ayrı seçim tutuluyor — id -> seçilen ders adı ('' = Tümü).
+  const [tekliHKDersSecim, setTekliHKDersSecim] = useState({})
+
+
+  useEffect(() => {
+    if (!profile) return
+    supabase
+      .from('ogrenciler')
+      .select('id, ad_soyad, veli_profile_id, ogrenci_profile_id')
+      .order('ad_soyad')
+      .then(async ({ data }) => {
+        const tumu = data || []
+        if (isOgretmen) {
+          // Öğretmen listede SADECE gerçekten hata raporu olan öğrencileri
+          // görsün (yanlış/boş sorusu olan + kitapçığı onaylı + kendi
+          // branşına ait ders) — kullanıcı isteği: "sadece hata raporları
+          // olanlar görünsün, listede aktif pasif her öğrenci var".
+          const uygunIdSeti = await ogretmenIcinUygunOgrenciIdleriGetir(ogretmenDersleri)
+          setOgrenciler(tumu.filter((o) => uygunIdSeti.has(o.id)))
+          setLoading(false)
+          return
+        }
+        if (isYonetici) {
+          // Yönetici okuldaki HERHANGİ BİR öğrenciyi seçebilmeli —
+          // otomatik seçim yapmıyoruz (100'e yakın öğrenci arasından "ilk"
+          // öğrenciyi göstermenin bir anlamı yok), aşağıdaki dropdown'dan
+          // kendisi seçer.
+          setOgrenciler(tumu)
+          setLoading(false)
+          return
+        }
+        // GÜVENLİK: Muhasebe/Odev/DersProgrami'ndeki AYNI kanıtlanmış yöntem —
+        // sunucudaki RLS'ye körü körüne güvenmek yerine, İSTEMCİ TARAFINDA da
+        // sadece kendi bağlı olduğu öğrenci(ler)i listeye/otomatik seçime alıyoruz.
+        const liste = tumu.filter(
+          (o) => o.veli_profile_id === profile.id || o.ogrenci_profile_id === profile.id
+        )
+        setOgrenciler(liste)
+        if (liste.length > 0) {
+          setSeciliId(liste[0].id)
+        } else {
+          setLoading(false)
+        }
+      })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [profile?.id])
+
+  useEffect(() => {
+    if (!seciliId) return
+    setLoading(true)
+    supabase
+      .from('ogrenci_sinav_sonuclari')
+      .select('*, sinavlar(sinav_adi, sinav_tarihi, tur)')
+      .eq('ogrenci_id', seciliId)
+      .order('created_at', { ascending: false })
+      .then(async ({ data }) => {
+        const liste = data || []
+        const sonucIdleri = liste.map((s) => s.id)
+        const { data: dersVerileri } =
+          sonucIdleri.length > 0
+            ? await supabase.from('sinav_ders_sonuclari').select('*').in('sonuc_id', sonucIdleri)
+            : { data: [] }
+        const dersMap = new Map()
+        for (const d of dersVerileri || []) {
+          if (!dersMap.has(d.sonuc_id)) dersMap.set(d.sonuc_id, [])
+          dersMap.get(d.sonuc_id).push(d)
+        }
+        // Karnedeki "PUAN VE SIRALAMALAR" tablosu — üniversiteye yerleşmede
+        // asıl belirleyici olan bilgi bu olduğu için (net değil) her zaman,
+        // akordeon kapalıyken bile görünsün diye başlıkta gösteriyoruz.
+        const { data: puanVerileri } =
+          sonucIdleri.length > 0
+            ? await supabase.from('sinav_puan_sonuclari').select('*').in('sonuc_id', sonucIdleri)
+            : { data: [] }
+        const puanMap = new Map()
+        for (const p of puanVerileri || []) {
+          if (!puanMap.has(p.sonuc_id)) puanMap.set(p.sonuc_id, [])
+          puanMap.get(p.sonuc_id).push(p)
+        }
+        // Hata Kitapçığı butonu SADECE admin o sınavın o kitapçığını (A/B)
+        // gerçekten hazırlayıp ONAYLADIYSA çıksın istiyoruz — yoksa öğrenci/
+        // veli tıklayınca "kitapçık henüz yüklenmemiş" hata sayfasıyla
+        // karşılaşırdı. sinav_kitapciklari.onaylandi = true olan (sinav_id,
+        // kitapcik) çiftlerini önceden çekip bir sete koyuyoruz.
+        const sinavIdleri = [...new Set(liste.map((s) => s.sinav_id).filter(Boolean))]
+        const { data: kitapciklarData } =
+          sinavIdleri.length > 0
+            ? await supabase.from('sinav_kitapciklari').select('sinav_id, kitapcik, onaylandi').in('sinav_id', sinavIdleri)
+            : { data: [] }
+        const hazirKitapcikSeti = new Set(
+          (kitapciklarData || []).filter((k) => k.onaylandi).map((k) => `${k.sinav_id}|${k.kitapcik}`)
+        )
+        // Ders Bazlı Çözüm Videosu (bkz. migration_soru_video_linki.sql /
+        // SinavKitapciklari.jsx'teki "Video Linkleri" paneli) — Hata
+        // Kitapçığı'ndaki soru kartları yerine, doğrudan burada her sınavın
+        // ders satırının yanında gösteriliyor (kullanıcı isteğiyle taşındı).
+        const { data: videoLinkVerileri } =
+          sinavIdleri.length > 0
+            ? await supabase.from('sinav_ders_video_linkleri').select('sinav_id, ders_adi, video_url').in('sinav_id', sinavIdleri)
+            : { data: [] }
+        const videoMap = new Map(
+          (videoLinkVerileri || []).map((v) => [`${v.sinav_id}|${normalizeDers(v.ders_adi)}`, v.video_url])
+        )
+        const tumSonuclar = liste.map((s) => ({
+          ...s,
+          dersler: (dersMap.get(s.id) || [])
+            .slice()
+            .sort((a, b) => dersSiraPuani(a.ders_adi) - dersSiraPuani(b.ders_adi))
+            // Öğretmen SADECE kendi branşının ders(ler)ini görsün — Matematik
+            // branşı hem Matematik hem Geometri, Türkçe branşı hem Türkçe hem
+            // Edebiyat vb. (bkz. BRANS_DERS_ESLEME).
+            .filter((d) => dersGorebilir(d.ders_adi))
+            .map((d) => ({ ...d, videoUrl: videoMap.get(`${s.sinav_id}|${normalizeDers(d.ders_adi)}`) || null })),
+          puanlar: puanMap.get(s.id) || [],
+          kitapcikHazirMi: hazirKitapcikSeti.has(`${s.sinav_id}|${s.kitapcik}`),
+        }))
+        // Öğretmen için, kendi branşıyla HİÇ ilgisi olmayan (dersler filtreden
+        // sonra boş kalan) sınavları listeden tamamen çıkarıyoruz — aksi halde
+        // içi boş, tıklanamaz bir kart gibi görünüp kafa karıştırırdı.
+        const gosterilecekSonuclar = isOgretmen ? tumSonuclar.filter((s) => s.dersler.length > 0) : tumSonuclar
+        setSonuclar(gosterilecekSonuclar)
+        // En son sınav (liste zaten en yeniden en eskiye sıralı) varsayılan
+        // olarak açık gelsin, geri kalanlar kapalı.
+        setAcikId(gosterilecekSonuclar.length > 0 ? gosterilecekSonuclar[0].id : null)
+        setLoading(false)
+
+        // Detaylı Karne İndir: imzalı PDF URL'leri TOPLU olarak, sayfa
+        // yüklenirken önceden çekiliyor (12 saat geçerli) — tıklama anında
+        // değil. Böylece buton gerçek bir <a href> linki olabiliyor, bu da
+        // iOS'ta site ana ekrana eklenmişken (PWA/standalone) da güvenilir
+        // çalışıyor (window.open tabanlı eski yöntem orada boş sayfa
+        // açıyordu).
+        const pdfYollari = gosterilecekSonuclar.map((s) => s.karne_pdf_yolu).filter(Boolean)
+        if (pdfYollari.length > 0) {
+          supabase.storage
+            .from('sinav-sonuc-pdfleri')
+            .createSignedUrls(pdfYollari, 43200)
+            .then(({ data, error }) => {
+              if (error || !data) return
+              const yolToUrl = new Map(data.map((d) => [d.path, d.signedUrl]).filter(([p, u]) => p && u))
+              const yeniHarita = {}
+              for (const s of gosterilecekSonuclar) {
+                if (s.karne_pdf_yolu && yolToUrl.has(s.karne_pdf_yolu)) {
+                  yeniHarita[s.id] = yolToUrl.get(s.karne_pdf_yolu)
+                }
+              }
+              setKarneUrlMap(yeniHarita)
+            })
+        } else {
+          setKarneUrlMap({})
+        }
+      })
+  }, [seciliId])
+
+  const seciciGoster = isYonetici || isOgretmen || ogrenciler.length > 1
+  const seciliOgrenci = ogrenciler.find((o) => o.id === seciliId)
+
+  // Gelişim grafiği için sonuçları TÜRE göre ayırıyoruz — TYT'nin neti ile
+  // AYT'nin neti ya da tek dersli bir Konu Analiz testinin neti tamamen
+  // farklı ölçeklerde olduğundan hepsini aynı çizgide karşılaştırmak
+  // yanıltıcı olurdu (bkz. SinavYukle.jsx / SinavKitapciklari.jsx'teki
+  // "Sınav Türü" alanı). Tür başına EN FAZLA BİR KART var (yani en çok 4
+  // kutu: TYT / AYT / Konu Analiz / Diğer) — önceki tasarımda her ders ayrı
+  // bir üst düzey kart oluyordu, çok kalabalık görünüyordu. Artık dersler o
+  // tek kartın İÇİNDE satır satır sıralanıyor. "Konu Analiz" kartında genel
+  // toplam net GÖSTERİLMİYOR (bir konu analiz sınavı genelde tek dersi
+  // hedeflediği için, farklı derslerin karışık bir "genel net"i anlamsız
+  // olurdu) — sadece ders satırları var.
+  const TUR_SIRASI = ['TYT', 'AYT', 'Konu Analiz', 'Diğer']
+  const trendGruplari = useMemo(() => {
+    const siraliSonuclar = [...sonuclar].sort((a, b) => {
+      const ta = a.sinavlar?.sinav_tarihi || a.created_at || ''
+      const tb = b.sinavlar?.sinav_tarihi || b.created_at || ''
+      return ta < tb ? -1 : ta > tb ? 1 : 0
+    })
+    const turHaritasi = new Map() // tur -> { genel: [], dersHaritasi: Map(dersAdi -> noktalar[]) }
+    for (const s of siraliSonuclar) {
+      const tur = s.sinavlar?.tur || 'Diğer'
+      if (!turHaritasi.has(tur)) turHaritasi.set(tur, { genel: [], dersHaritasi: new Map() })
+      const grup = turHaritasi.get(tur)
+      if (s.toplam_net != null) {
+        grup.genel.push({ etiket: tarihEtiket(s.sinavlar?.sinav_tarihi), deger: Number(s.toplam_net) })
+      }
+      for (const d of s.dersler || []) {
+        if (d.net == null) continue
+        // Aynı ders farklı sınavlarda büyük/küçük harf ya da baş/son boşlukla
+        // biraz farklı yazılmış olabilir (ör. "Matematik " ile "matematik") —
+        // haftalık "kası" takibinde bu, aynı dersin YANLIŞLIKLA iki ayrı
+        // çizgiye bölünmesine yol açardı. Gruplamayı normalize edilmiş
+        // (boşluksuz, küçük harf) anahtarla yapıyoruz; ekranda ilk görülen
+        // yazım şekli gösteriliyor.
+        const anahtar = (d.ders_adi || '').trim().toLocaleLowerCase('tr-TR')
+        if (!grup.dersHaritasi.has(anahtar)) grup.dersHaritasi.set(anahtar, { etiket: d.ders_adi.trim(), noktalar: [] })
+        grup.dersHaritasi.get(anahtar).noktalar.push({ etiket: tarihEtiket(s.sinavlar?.sinav_tarihi), deger: Number(d.net) })
+      }
+    }
+    const turAdlari = [...turHaritasi.keys()].sort((a, b) => {
+      const ia = TUR_SIRASI.indexOf(a)
+      const ib = TUR_SIRASI.indexOf(b)
+      return (ia === -1 ? 999 : ia) - (ib === -1 ? 999 : ib)
+    })
+    const gruplar = []
+    for (const tur of turAdlari) {
+      const grup = turHaritasi.get(tur)
+      const dersSerileri = [...grup.dersHaritasi.values()]
+        .sort((a, b) => dersSiraPuani(a.etiket) - dersSiraPuani(b.etiket))
+        .map((d) => ({ dersAdi: d.etiket, noktalar: d.noktalar }))
+      const genel = tur === 'Konu Analiz' ? [] : grup.genel
+      if (genel.length === 0 && dersSerileri.length === 0) continue
+      gruplar.push({ tur, genel, dersSerileri })
+    }
+    return gruplar
+  }, [sonuclar])
+
+  return (
+    <div>
+      <h1 className="text-2xl font-bold text-navy mb-2">
+        {isYonetici ? 'Öğrenci Gelişim Grafiği' : seciciGoster ? 'Sınav Sonuçları' : 'Sınav Sonuçlarım'}
+      </h1>
+      <p className="text-sm text-gray-500 mb-6">
+        {isYonetici
+          ? 'Bir öğrenci seçin — sınav sonuçları ve türe göre (TYT/AYT/Konu Analiz) gelişim grafiği görünsün.'
+          : isOgretmen
+          ? `Bir öğrenci seçin — sadece ${ogretmenDersleri.join(', ') || 'branşınız'} dersi(ler)indeki sonuçlar ve hata kitapçığı görünür.`
+          : 'Girdiğiniz sınavların sonuçları ve ders bazında doğru/yanlış/boş dökümü.'}
+      </p>
+
+      {seciciGoster && (
+        <div className="mb-6">
+          <label className="block text-sm font-medium text-gray-700 mb-1">
+            {isYonetici || isOgretmen ? 'Öğrenci Seçin' : 'Çocuğunuzu Seçin'}
+          </label>
+          <select
+            value={seciliId}
+            onChange={(e) => setSeciliId(e.target.value)}
+            className="w-full max-w-sm px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue bg-white"
+          >
+            {(isYonetici || isOgretmen) && <option value="">Seçiniz...</option>}
+            {ogrenciler.map((o) => (
+              <option key={o.id} value={o.id}>{o.ad_soyad}</option>
+            ))}
+          </select>
+        </div>
+      )}
+
+      {(isYonetici || isOgretmen) && !seciliId && !loading && (
+        <p className="text-gray-400">Sonuçlarını görmek istediğiniz öğrenciyi yukarıdan seçin.</p>
+      )}
+
+      {!isYonetici && !isOgretmen && ogrenciler.length === 0 && !loading && (
+        <p className="text-gray-400">
+          Size bağlı bir öğrenci kaydı bulunamadı. Lütfen okul yönetimiyle iletişime geçin.
+        </p>
+      )}
+
+      {loading && <p className="text-gray-400">Yükleniyor...</p>}
+
+      {!loading && seciliId && sonuclar.length === 0 && (
+        <p className="text-gray-400">
+          {seciliOgrenci?.ad_soyad ? `${seciliOgrenci.ad_soyad} için ` : ''}henüz kaydedilmiş bir sınav sonucu yok.
+        </p>
+      )}
+
+      {/* Derse Göre Hata Kitapçığı: kullanıcı isteğiyle sayfanın en altından
+          buraya (sınav listesinin HEMEN ÜSTÜNE) taşındı — çok aşağıda
+          kaldığı için öğrenciler bu özelliğin var olduğunun farkında bile
+          değildi. */}
+      {!loading && sonuclar.length > 0 && (
+        <div className="mb-6 bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
+          <h2 className="font-semibold text-gray-700 mb-1">Derse Göre Hata Kitapçığı</h2>
+          <p className="text-xs text-gray-400 mb-4">
+            Seçilen dersteki, birden fazla sınavdaki TÜM yanlış/boş soruları tek bir yazdırılabilir kitapçıkta
+            birleştirir (ör. bütün TYT'lerdeki Kimya sorularını tek yerde toplar).
+          </p>
+          <div className="flex flex-wrap items-end gap-3">
+            <div>
+              <label className="block text-xs font-medium text-gray-500 mb-1">Ders</label>
+              <select
+                value={dersHKDers}
+                onChange={(e) => setDersHKDers(e.target.value)}
+                className="px-3 py-2 border border-gray-200 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue"
+              >
+                {/* Öğretmen sadece kendi branşının ders(ler)ini seçebilsin —
+                    aksi halde bu bulk indirici branş dışı derslerin de
+                    kitapçığını üretebilirdi. */}
+                {(isOgretmen ? DERS_SIRASI.filter((d) => dersGorebilir(d)) : DERS_SIRASI).map((d) => (
+                  <option key={d} value={d}>{d}</option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-gray-500 mb-1">Sınav Türü</label>
+              <select
+                value={dersHKTur}
+                onChange={(e) => setDersHKTur(e.target.value)}
+                className="px-3 py-2 border border-gray-200 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue"
+              >
+                <option value="TYT">TYT</option>
+                <option value="AYT">AYT</option>
+                <option value="Konu Analiz">Konu Analiz</option>
+                <option value="Diğer">Diğer</option>
+                <option value="Tümü">Tümü</option>
+              </select>
+            </div>
+            <Link
+              to={`/ders-hata-kitapcigi/${seciliId}/${encodeURIComponent(dersHKDers)}?tur=${encodeURIComponent(dersHKTur)}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="bg-orange text-white font-semibold text-sm px-4 py-2 rounded-lg hover:opacity-90 transition-opacity"
+            >
+              Oluştur
+            </Link>
+          </div>
+        </div>
+      )}
+
+      {!loading && sonuclar.length > 0 && (
+        <div className="space-y-5">
+          {sonuclar.map((s) => {
+            const acikMi = acikId === s.id
+            return (
+            <div key={s.id} className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+              <div
+                onClick={() => setAcikId(acikMi ? null : s.id)}
+                className="px-5 py-4 border-b border-gray-100 bg-gray-50 flex items-center justify-between flex-wrap gap-2 cursor-pointer select-none"
+              >
+                <div className="flex items-center gap-2">
+                  <svg
+                    width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"
+                    strokeLinecap="round" strokeLinejoin="round"
+                    className={`shrink-0 text-gray-400 transition-transform duration-150 ${acikMi ? 'rotate-180' : ''}`}
+                  >
+                    <polyline points="6 9 12 15 18 9" />
+                  </svg>
+                  <div>
+                    <p className="font-semibold text-navy">{s.sinavlar?.sinav_adi || 'Sınav'}</p>
+                    <p className="text-xs text-gray-400">
+                      {s.sinavlar?.sinav_tarihi && new Date(s.sinavlar.sinav_tarihi).toLocaleDateString('tr-TR')}
+                      {s.kitapcik && ` · Kitapçık ${s.kitapcik}`}
+                    </p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-4 flex-wrap">
+                  <div className="text-sm flex gap-4 flex-wrap">
+                    <span>
+                      Doğru: <b className="text-green-700">{s.toplam_dogru}</b>
+                    </span>
+                    <span>
+                      Yanlış: <b className="text-red-700">{s.toplam_yanlis}</b>
+                    </span>
+                    <span>
+                      Boş: <b className="text-gray-500">{s.toplam_bos}</b>
+                    </span>
+                    <span>
+                      Net: <b className="text-navy">{netFormat(s.toplam_net)}</b>
+                    </span>
+                  </div>
+                  {/* Detaylı Karne İndir: sınavdaki TÜM derslerin (branş
+                      farkı gözetmeksizin) puan/net bilgisini içeren orijinal
+                      PDF — öğretmene branş dışı bilgi sızdırmamak için bu
+                      buton öğretmenlere hiç gösterilmiyor. */}
+                  {s.karne_pdf_yolu && !isOgretmen && (
+                    karneUrlMap[s.id] ? (
+                      <a
+                        href={karneUrlMap[s.id]}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        onClick={(e) => e.stopPropagation()}
+                        className="inline-flex items-center gap-1.5 text-xs font-bold bg-navy text-white px-3.5 py-1.5 rounded-full shadow-sm hover:opacity-90"
+                      >
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                          <path d="M12 3v12m0 0l-4-4m4 4l4-4M4 20h16" />
+                        </svg>
+                        Detaylı Karne İndir
+                      </a>
+                    ) : (
+                      <span className="inline-flex items-center gap-1.5 text-xs font-bold bg-navy text-white px-3.5 py-1.5 rounded-full shadow-sm opacity-40">
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                          <path d="M12 3v12m0 0l-4-4m4 4l4-4M4 20h16" />
+                        </svg>
+                        Hazırlanıyor...
+                      </span>
+                    )
+                  )}
+                  {(s.toplam_yanlis || 0) + (s.toplam_bos || 0) > 0 && s.kitapcikHazirMi && (() => {
+                    // Öğretmen için "Tümü" seçeneği YOK — s.dersler zaten
+                    // sadece kendi branşının ders(ler)ine indirgenmiş, ama
+                    // yine de linke MUTLAKA bir ?ders= filtresi eklenmeli
+                    // (boşsa HataKitapcigi.jsx sınavın TÜM derslerini basar,
+                    // bu da branş dışı soruları sızdırır). Bu yüzden öğretmen
+                    // için seçim boşsa ilk (tek) ders otomatik kullanılıyor.
+                    const dersFiltreDeger = isOgretmen
+                      ? tekliHKDersSecim[s.id] || s.dersler[0]?.ders_adi || ''
+                      : tekliHKDersSecim[s.id]
+                    return (
+                      <>
+                        {/* Yönetici/veli/öğrenci için varsayılan "Tümü" — bu
+                            sınavdaki tüm dersler birlikte. Seçilirse tek bir
+                            ders (ör. sadece Türkçe) için ayrı kitapçık
+                            indirilebiliyor; bkz. HataKitapcigi.jsx'teki
+                            ?ders= filtresi. */}
+                        {s.dersler && s.dersler.length > 1 && (
+                          <span className="inline-flex items-center gap-1.5">
+                            <span className="text-xs text-gray-400">Ders:</span>
+                            <select
+                              value={tekliHKDersSecim[s.id] || (isOgretmen ? dersFiltreDeger : '')}
+                              onClick={(e) => e.stopPropagation()}
+                              onChange={(e) =>
+                                setTekliHKDersSecim((onceki) => ({ ...onceki, [s.id]: e.target.value }))
+                              }
+                              className="text-xs border border-gray-200 rounded-full px-2.5 py-1.5 bg-white text-gray-600"
+                            >
+                              {!isOgretmen && <option value="">Tüm Dersler</option>}
+                              {s.dersler.map((d) => (
+                                <option key={d.id} value={d.ders_adi}>{d.ders_adi}</option>
+                              ))}
+                            </select>
+                          </span>
+                        )}
+                        <Link
+                          to={
+                            dersFiltreDeger
+                              ? `/hata-kitapcigi/${s.id}?ders=${encodeURIComponent(dersFiltreDeger)}`
+                              : `/hata-kitapcigi/${s.id}`
+                          }
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          onClick={(e) => e.stopPropagation()}
+                          className="text-xs font-semibold bg-orange text-white px-3 py-1.5 rounded-full hover:opacity-90"
+                        >
+                          Hata Kitapçığını Görüntüle
+                        </Link>
+                      </>
+                    )
+                  })()}
+                </div>
+              </div>
+              {s.puanlar && s.puanlar.length > 0 && !isOgretmen && (
+                <div className="px-5 py-3 bg-orange/5 border-b border-orange/10 flex flex-wrap gap-x-6 gap-y-1">
+                  {s.puanlar.map((p) => (
+                    <div key={p.id} className="text-sm">
+                      <span className="font-semibold text-orange">{p.puan_turu} Puan: {netFormat(p.puan)}</span>
+                      {p.genel_siralama != null && (
+                        <span className="text-gray-600"> · Genel Sıralama: <b>{p.genel_siralama.toLocaleString('tr-TR')}</b></span>
+                      )}
+                      {p.kurum_siralama != null && <span className="text-gray-400"> · Kurum: {p.kurum_siralama}</span>}
+                      {p.sube_siralama != null && <span className="text-gray-400"> · Şube: {p.sube_siralama}</span>}
+                      {p.sinif_siralama != null && <span className="text-gray-400"> · Sınıf: {p.sinif_siralama}</span>}
+                    </div>
+                  ))}
+                </div>
+              )}
+              {acikMi && s.dersler.length > 0 && (
+                <div className="overflow-x-auto" style={{ touchAction: 'pan-x pan-y' }}>
+                  <table className="w-full text-sm min-w-[420px]">
+                    <thead>
+                      <tr className="text-left text-gray-500">
+                        <th className="px-5 py-2 font-medium">Ders</th>
+                        <th className="px-5 py-2 font-medium text-center">Soru</th>
+                        <th className="px-5 py-2 font-medium text-center">Doğru</th>
+                        <th className="px-5 py-2 font-medium text-center">Yanlış</th>
+                        <th className="px-5 py-2 font-medium text-center">Boş</th>
+                        <th className="px-5 py-2 font-medium text-center">Net</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {s.dersler.map((d) => (
+                        <tr key={d.id} className="border-t border-gray-50">
+                          <td className="px-5 py-2 font-medium text-gray-800">
+                            {d.ders_adi}
+                            {d.videoUrl && (
+                              <a
+                                href={d.videoUrl}
+                                target="_blank"
+                                rel="noreferrer"
+                                onClick={(e) => e.stopPropagation()}
+                                className="ml-2 inline-flex items-center gap-0.5 text-[11px] font-semibold text-red-600 hover:underline align-middle"
+                                title="Çözüm Videosu"
+                              >
+                                ▶ Video Çözümleri
+                              </a>
+                            )}
+                          </td>
+                          <td className="px-5 py-2 text-center text-gray-500">{d.soru_sayisi}</td>
+                          <td className="px-5 py-2 text-center text-green-700">{d.dogru}</td>
+                          <td className="px-5 py-2 text-center text-red-700">{d.yanlis}</td>
+                          <td className="px-5 py-2 text-center text-gray-500">{d.bos}</td>
+                          <td className="px-5 py-2 text-center font-semibold text-navy">{netFormat(d.net)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+            )
+          })}
+        </div>
+      )}
+
+      {!loading && trendGruplari.length > 0 && (
+        <div className="mt-8">
+          <h2 className="font-semibold text-gray-700 mb-1">Gelişim Grafiği</h2>
+          <p className="text-xs text-gray-400 mb-3">
+            Yukarıdaki sınav sonuçlarının özeti — aynı türdeki (TYT/AYT/Konu Analiz) sınavların netleri zaman
+            içinde nasıl değiştiğini gösterir. Yeşil ok net yükseldiğini, kırmızı ok düştüğünü, "İlk sonuç"
+            etiketi ise o türde/derste henüz TEK sonuç girildiğini (ikincisiyle birlikte çizgi oluşacağını) belirtir.
+          </p>
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+            {trendGruplari.map((g) => (
+              <TurKarti key={g.tur} tur={g.tur} genel={g.genel} dersSerileri={g.dersSerileri} />
+            ))}
+          </div>
+        </div>
+      )}
+
+    </div>
+  )
+}
