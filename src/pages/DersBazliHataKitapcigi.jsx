@@ -13,6 +13,15 @@ import { pdfBelgesiAc, sayfayiGoruntuyeCevir, alttakiBosluguKirp } from '../lib/
 // o dersten yanlış/boş sorusu olan HER sınavı için ayrı ayrı yapıp sonuçları
 // sınava göre gruplanmış tek sayfada art arda diziyoruz.
 //
+// İKİ AŞAMALI AKIŞ (kullanıcı isteğiyle): önceden sayfa açılır açılmaz TÜM
+// eşleşen sınavların soruları otomatik kesiliyordu — sınav sayısı arttıkça
+// bu çok uzun sürüyordu, özellikle kullanıcı zaten bazı sınavları
+// kitapçıktan çıkaracaksa boşuna kesiliyordu. Şimdi: FAZ 1 sadece hızlı bir
+// veritabanı sorgusuyla hangi sınavlarda bu dersten yanlış/boş soru
+// olduğunu listeler (PDF indirmeden, kesmeden) ve kullanıcıya "hangilerini
+// istiyorsun" diye sorar. FAZ 2 — "Kitapçığı Oluştur"a basınca — SADECE
+// işaretli sınavlar için (yavaş olan) PDF indirme/kesme işlemini yapar.
+//
 // Route: /ders-hata-kitapcigi/:ogrenciId/:ders  (?tur=TYT|AYT|Konu Analiz|Diğer|Tümü)
 export default function DersBazliHataKitapcigi() {
   const { ogrenciId, ders: dersParam } = useParams()
@@ -20,12 +29,18 @@ export default function DersBazliHataKitapcigi() {
   const tur = searchParams.get('tur') || 'TYT'
   const { profile } = useAuth()
 
-  const [durum, setDurum] = useState('yukleniyor') // yukleniyor | hazir | temiz | hata
+  const [durum, setDurum] = useState('yukleniyor') // yukleniyor | secim | kesiliyor | hazir | temiz | hata
   const [ilerlemeMetni, setIlerlemeMetni] = useState('Hazırlanıyor...')
   const [hataMetni, setHataMetni] = useState('')
   const [temizMetni, setTemizMetni] = useState('')
 
   const [ogrenciAdi, setOgrenciAdi] = useState('')
+
+  // FAZ 1 verisi — hızlı, PDF indirmeden bulunan sınav/soru listesi.
+  const [gruplarHam, setGruplarHam] = useState([]) // [{sonucId, sinavId, kitapcik, sinavAdi, sinavTarihi, soruSonuclari}]
+  const [secilenSonucIdler, setSecilenSonucIdler] = useState(new Set())
+
+  // FAZ 2 verisi — sadece seçilen sınavlar için kesilmiş sorular.
   const [sinavGruplari, setSinavGruplari] = useState([]) // [{sonucId, sinavAdi, sinavTarihi, kitapcikTuru, sorular:[...]}]
   const [eksikKitapciklar, setEksikKitapciklar] = useState([]) // [{sinavAdi, soruSayisi}]
   const [bulunamayanlar, setBulunamayanlar] = useState([]) // [{sinavAdi, soru_no}]
@@ -39,13 +54,15 @@ export default function DersBazliHataKitapcigi() {
 
   const ders = decodeURIComponent(dersParam || '')
 
+  // FAZ 1: sadece veritabanı sorgusu — hangi sınavlarda bu dersten
+  // yanlış/boş soru var, PDF'lere hiç dokunmadan.
   useEffect(() => {
     let iptalEdildi = false
 
-    async function hazirla() {
+    async function listele() {
       try {
         if (!profile) return
-
+        setDurum('yukleniyor')
         setIlerlemeMetni('Öğrenci bilgisi doğrulanıyor...')
         const { data: ogrenci, error: ogrenciHatasi } = await supabase
           .from('ogrenciler')
@@ -114,7 +131,7 @@ export default function DersBazliHataKitapcigi() {
           soruMapBySonuc.get(s.sonuc_id).push(s)
         }
 
-        const gruplarHam = turFiltreli
+        const ham = turFiltreli
           .filter((s) => soruMapBySonuc.has(s.id))
           .map((s) => ({
             sonucId: s.id,
@@ -125,7 +142,7 @@ export default function DersBazliHataKitapcigi() {
             soruSonuclari: soruMapBySonuc.get(s.id),
           }))
 
-        if (gruplarHam.length === 0) {
+        if (ham.length === 0) {
           setTemizMetni(
             `${ogrenci.ad_soyad || 'Bu öğrencinin'} girdiği ${tur === 'Tümü' ? '' : tur + ' '}sınavlarında "${ders}" dersinde yanlış/boş sorusu yok — tebrikler!`
           )
@@ -133,245 +150,11 @@ export default function DersBazliHataKitapcigi() {
           return
         }
 
-        setIlerlemeMetni('Sınav kitapçıkları aranıyor...')
-        const sinavIdleriBenzersiz = [...new Set(gruplarHam.map((g) => g.sinavId).filter(Boolean))]
-        const { data: kitapciklarData, error: kitapcikHatasi } =
-          sinavIdleriBenzersiz.length > 0
-            ? await supabase
-                .from('sinav_kitapciklari')
-                .select('*')
-                .in('sinav_id', sinavIdleriBenzersiz)
-                .eq('onaylandi', true)
-            : { data: [] }
-        if (kitapcikHatasi) throw kitapcikHatasi
-        if (iptalEdildi) return
-
-        const kitapcikBul = (sinavId, kitapcikTuru) =>
-          (kitapciklarData || []).find((k) => k.sinav_id === sinavId && k.kitapcik === kitapcikTuru)
-
-        const eksikler = []
-        const gruplarKitapcikli = []
-        for (const g of gruplarHam) {
-          if (!g.kitapcik) {
-            eksikler.push({ sinavAdi: g.sinavAdi, soruSayisi: g.soruSonuclari.length })
-            continue
-          }
-          const kv = kitapcikBul(g.sinavId, g.kitapcik)
-          if (!kv) {
-            eksikler.push({ sinavAdi: g.sinavAdi, soruSayisi: g.soruSonuclari.length })
-            continue
-          }
-          gruplarKitapcikli.push({ ...g, kitapcikVerisi: kv })
-        }
-        setEksikKitapciklar(eksikler)
-
-        if (gruplarKitapcikli.length === 0) {
-          // Hiçbiri için kitapçık yok — kesilecek bir şey kalmadı.
-          setDurum('hazir')
-          setSinavGruplari([])
-          setToplamSoruSayisi(0)
-          return
-        }
-
-        setIlerlemeMetni('Soru haritaları alınıyor...')
-        const kitapcikIdleri = [...new Set(gruplarKitapcikli.map((g) => g.kitapcikVerisi.id))]
-        const { data: tumKutular, error: kutuHatasi } = await supabase
-          .from('sinav_kitapcik_sorulari')
-          .select('*')
-          .in('kitapcik_id', kitapcikIdleri)
-        if (kutuHatasi) throw kutuHatasi
-        if (iptalEdildi) return
-
-        const kutularByKitapcik = new Map()
-        for (const k of tumKutular || []) {
-          if (!kutularByKitapcik.has(k.kitapcik_id)) kutularByKitapcik.set(k.kitapcik_id, [])
-          kutularByKitapcik.get(k.kitapcik_id).push(k)
-        }
-
-        // Her kitapçığın PDF'i ve sayfa genişlikleri, o kitapçığın KENDİ
-        // ölçeğinde (sinav_kitapciklari.olcek) bir kere açılıp önbelleğe
-        // alınır — aynı kitapçıktan birden fazla soru kesiliyorsa PDF'i
-        // tekrar tekrar indirip açmamak için (HataKitapcigi'deki aynı mantık,
-        // burada birden fazla kitapçık için tekrarlanıyor).
-        const belgeCache = new Map() // kitapcik_id -> { belge, olcek }
-        // BELLEK: her sayfanın canvas'ını (scale=3'te tam bir A4 canvas'ı
-        // onlarca MB) aynı anda bellekte tutmak — özellikle burada BİRDEN
-        // FAZLA SINAVIN kitapçıkları arka arkaya işlendiği için — iPhone/
-        // iPad Safari'de sekmenin "bir sorun oluştu" diyip çökmesine yol
-        // açıyordu. Aynı anda EN FAZLA TEK sayfanın canvas'ı bellekte
-        // tutuluyor (LRU-1); bir sonraki sayfaya/kitapçığa geçilince
-        // öncekini hemen serbest bırakıyoruz (width/height=0).
-        let aktifSayfaAnahtari = null
-        let aktifSayfaCanvas = null
-        async function belgeGetir(kitapcikVerisi) {
-          if (belgeCache.has(kitapcikVerisi.id)) return belgeCache.get(kitapcikVerisi.id)
-          const { data: pdfBlobu, error: indirmeHatasi } = await supabase.storage
-            .from('sinav-kitapciklari')
-            .download(kitapcikVerisi.pdf_yolu)
-          if (indirmeHatasi) throw indirmeHatasi
-          const belge = await pdfBelgesiAc(pdfBlobu)
-          const olcek = Number(kitapcikVerisi.olcek) || 3
-          const paket = { belge, olcek }
-          belgeCache.set(kitapcikVerisi.id, paket)
-          return paket
-        }
-        async function sayfaCanvasGetir(kitapcikVerisi, sayfaNo) {
-          const anahtar = `${kitapcikVerisi.id}:${sayfaNo}`
-          if (aktifSayfaAnahtari === anahtar && aktifSayfaCanvas) return aktifSayfaCanvas
-          if (aktifSayfaCanvas) {
-            aktifSayfaCanvas.width = 0
-            aktifSayfaCanvas.height = 0
-          }
-          const { belge, olcek } = await belgeGetir(kitapcikVerisi)
-          const { canvas } = await sayfayiGoruntuyeCevir(belge, sayfaNo, olcek)
-          aktifSayfaAnahtari = anahtar
-          aktifSayfaCanvas = canvas
-          return canvas
-        }
-
-        const sonucGruplar = []
-        let toplamSayac = 0
-        let islenenSoru = 0
-        const toplamSoruBeklenen = gruplarKitapcikli.reduce((acc, g) => acc + g.soruSonuclari.length, 0)
-
-        for (const g of gruplarKitapcikli) {
-          const kv = g.kitapcikVerisi
-          const kutular = kutularByKitapcik.get(kv.id) || []
-          const normalizeYerel = (s) => (s || '').toLocaleLowerCase('tr-TR').trim()
-          const kutuMap = new Map(kutular.map((k) => [`${normalizeYerel(k.ders_adi)}|${k.soru_no}`, k]))
-
-          // Bu kitapçığın KENDİ gerçek okuma sırası (sayfa → sütun → yukarıdan
-          // aşağı) — HataKitapcigi.jsx'teki aynı hesap, sadece bu kitapçığa özel.
-          const siraMap = new Map()
-          if (kutular.length > 0) {
-            const { belge, olcek } = await belgeGetir(kv)
-            const benzersizSayfalar = [...new Set(kutular.map((k) => k.sayfa_no))]
-            const genislikMap = new Map()
-            for (const sayfaNo of benzersizSayfalar) {
-              const sayfa = await belge.getPage(sayfaNo)
-              genislikMap.set(sayfaNo, sayfa.getViewport({ scale: olcek }).width)
-            }
-            kutular
-              .slice()
-              .sort((a, b) => {
-                if (a.sayfa_no !== b.sayfa_no) return a.sayfa_no - b.sayfa_no
-                const genislik = genislikMap.get(a.sayfa_no) || 0
-                const sutunA = Number(a.x) < genislik / 2 ? 0 : 1
-                const sutunB = Number(b.x) < genislik / 2 ? 0 : 1
-                if (sutunA !== sutunB) return sutunA - sutunB
-                return Number(a.y) - Number(b.y)
-              })
-              .forEach((k, i) => siraMap.set(`${normalizeYerel(k.ders_adi)}|${k.soru_no}`, i))
-          }
-
-          // LRU-1 sayfa önbelleğinin işe yaraması için sorular rastgele
-          // değil, KENDİ sayfa numarasına göre gruplu işleniyor — nihai
-          // gösterim sırası zaten aşağıda siraMap'e göre yeniden diziliyor,
-          // bu sadece işleme sırası (bkz. sayfaCanvasGetir'deki not).
-          const soruSonuclariSirali = g.soruSonuclari.slice().sort((a, b) => {
-            const ka = kutuMap.get(`${normalizeYerel(a.ders_adi)}|${a.soru_no}`)
-            const kb = kutuMap.get(`${normalizeYerel(b.ders_adi)}|${b.soru_no}`)
-            const sa = ka ? ka.sayfa_no : Infinity
-            const sb = kb ? kb.sayfa_no : Infinity
-            return sa - sb
-          })
-
-          const hazirSorular = []
-          for (const s of soruSonuclariSirali) {
-            islenenSoru++
-            setIlerlemeMetni(`Sorular kesiliyor (${islenenSoru}/${toplamSoruBeklenen})...`)
-            const anahtar = `${normalizeYerel(s.ders_adi)}|${s.soru_no}`
-            const kutu = kutuMap.get(anahtar)
-            if (!kutu) {
-              setBulunamayanlar((onceki) => [...onceki, { sinavAdi: g.sinavAdi, soru_no: s.soru_no, ders_adi: s.ders_adi }])
-              continue
-            }
-            const olcek = (await belgeGetir(kv)).olcek
-            const sayfaCanvas = await sayfaCanvasGetir(kv, kutu.sayfa_no)
-            const genislikPx = Math.max(1, Math.round(kutu.genislik))
-            const yukseklikPx = Math.max(1, Math.round(kutu.yukseklik))
-            let soruKirpmaCanvas = document.createElement('canvas')
-            soruKirpmaCanvas.width = genislikPx
-            soruKirpmaCanvas.height = yukseklikPx
-            soruKirpmaCanvas
-              .getContext('2d')
-              .drawImage(sayfaCanvas, kutu.x, kutu.y, kutu.genislik, kutu.yukseklik, 0, 0, genislikPx, yukseklikPx)
-            // Soru sayfada/sütunda tek başınaysa kutu sayfa sonuna kadar
-            // uzatılmış olabilir (bkz. kitapcikOcr.js'teki açıklama) — burada
-            // fazla boşluk otomatik kesiliyor.
-            soruKirpmaCanvas = alttakiBosluguKirp(soruKirpmaCanvas)
-
-            // Ortak Parça — bkz. HataKitapcigi.jsx'teki aynı mantık.
-            let nihaiCanvas = soruKirpmaCanvas
-            let nihaiGenislikPt = kutu.genislik / olcek
-            // Kırpma sonrası yükseklik (soruKirpmaCanvas.height) kutu.yukseklik'ten
-            // KÜÇÜK olabilir (bkz. alttakiBosluguKirp) — o yüzden kutu.yukseklik
-            // yerine canvas'ın GERÇEK yüksekliği kullanılıyor.
-            let nihaiYukseklikPt = soruKirpmaCanvas.height / olcek
-            if (kutu.parca_x != null && kutu.parca_y != null && kutu.parca_genislik != null && kutu.parca_yukseklik != null) {
-              const parcaSayfaNo = kutu.parca_sayfa_no || kutu.sayfa_no
-              const parcaSayfaCanvas = await sayfaCanvasGetir(kv, parcaSayfaNo)
-              const parcaGenislikPx = Math.max(1, Math.round(kutu.parca_genislik))
-              const parcaYukseklikPx = Math.max(1, Math.round(kutu.parca_yukseklik))
-              const parcaKirpmaCanvas = document.createElement('canvas')
-              parcaKirpmaCanvas.width = parcaGenislikPx
-              parcaKirpmaCanvas.height = parcaYukseklikPx
-              parcaKirpmaCanvas
-                .getContext('2d')
-                .drawImage(parcaSayfaCanvas, kutu.parca_x, kutu.parca_y, kutu.parca_genislik, kutu.parca_yukseklik, 0, 0, parcaGenislikPx, parcaYukseklikPx)
-
-              const araBosluk = 6
-              const birlesikGenislikPx = Math.max(genislikPx, parcaGenislikPx)
-              const birlesikYukseklikPx = parcaYukseklikPx + araBosluk + soruKirpmaCanvas.height
-              const birlesikCanvas = document.createElement('canvas')
-              birlesikCanvas.width = birlesikGenislikPx
-              birlesikCanvas.height = birlesikYukseklikPx
-              const bctx = birlesikCanvas.getContext('2d')
-              bctx.fillStyle = '#ffffff'
-              bctx.fillRect(0, 0, birlesikGenislikPx, birlesikYukseklikPx)
-              bctx.drawImage(parcaKirpmaCanvas, 0, 0)
-              bctx.strokeStyle = '#d1d5db'
-              bctx.lineWidth = 1
-              bctx.strokeRect(0.5, 0.5, parcaGenislikPx - 1, parcaYukseklikPx - 1)
-              bctx.drawImage(soruKirpmaCanvas, 0, parcaYukseklikPx + araBosluk)
-
-              nihaiCanvas = birlesikCanvas
-              nihaiGenislikPt = birlesikGenislikPx / olcek
-              nihaiYukseklikPt = birlesikYukseklikPx / olcek
-            }
-
-            hazirSorular.push({
-              ...s,
-              dataUrl: nihaiCanvas.toDataURL('image/png'),
-              genislikPt: nihaiGenislikPt,
-              yukseklikPt: nihaiYukseklikPt,
-              siraNo: siraMap.get(anahtar),
-            })
-          }
-          if (iptalEdildi) return
-          hazirSorular.sort((a, b) => {
-            if (a.siraNo === undefined && b.siraNo === undefined) return 0
-            if (a.siraNo === undefined) return 1
-            if (b.siraNo === undefined) return -1
-            return a.siraNo - b.siraNo
-          })
-          if (hazirSorular.length > 0) {
-            sonucGruplar.push({
-              sonucId: g.sonucId,
-              sinavAdi: g.sinavAdi,
-              sinavTarihi: g.sinavTarihi,
-              kitapcik: g.kitapcik,
-              sorular: hazirSorular,
-            })
-            toplamSayac += hazirSorular.length
-          }
-        }
-        if (iptalEdildi) return
-
-        setSinavGruplari(sonucGruplar)
-        setToplamSoruSayisi(toplamSayac)
-        setSeciliSorular(new Set(sonucGruplar.flatMap((g) => g.sorular.map((s) => s.id))))
-        setDurum('hazir')
+        setGruplarHam(ham)
+        // Varsayılan: hepsi seçili gelsin (eski davranışla aynı — hiç
+        // dokunulmazsa tüm sınavlar kitapçığa girer).
+        setSecilenSonucIdler(new Set(ham.map((g) => g.sonucId)))
+        setDurum('secim')
       } catch (e) {
         if (!iptalEdildi) {
           setHataMetni(e.message)
@@ -380,7 +163,7 @@ export default function DersBazliHataKitapcigi() {
       }
     }
 
-    hazirla()
+    listele()
     return () => {
       iptalEdildi = true
     }
@@ -394,6 +177,275 @@ export default function DersBazliHataKitapcigi() {
       document.title = 'Savaş Akça Eğitim Portalı'
     }
   }, [ogrenciAdi, ders])
+
+  function sinavSecimiDegistir(sonucId) {
+    setSecilenSonucIdler((onceki) => {
+      const yeni = new Set(onceki)
+      if (yeni.has(sonucId)) yeni.delete(sonucId)
+      else yeni.add(sonucId)
+      return yeni
+    })
+  }
+  function sinavHepsiniSec() {
+    setSecilenSonucIdler(new Set(gruplarHam.map((g) => g.sonucId)))
+  }
+  function sinavHicbiriniSecme() {
+    setSecilenSonucIdler(new Set())
+  }
+  const sinavHepsiSecili = secilenSonucIdler.size === gruplarHam.length && gruplarHam.length > 0
+
+  // FAZ 2: "Kitapçığı Oluştur"a basılınca — SADECE işaretli sınavlar için
+  // kitapçık PDF'lerini indirip soruları keser. Bu, sayfanın açılışında
+  // otomatik çalışan (ve sınav sayısı arttıkça yavaşlayan) eski davranışın
+  // yerini alıyor.
+  async function kitapciklariOlustur() {
+    const secilenGruplarHam = gruplarHam.filter((g) => secilenSonucIdler.has(g.sonucId))
+    if (secilenGruplarHam.length === 0) return
+    setDurum('kesiliyor')
+    setHataMetni('')
+    setEksikKitapciklar([])
+    setBulunamayanlar([])
+    try {
+      setIlerlemeMetni('Sınav kitapçıkları aranıyor...')
+      const sinavIdleriBenzersiz = [...new Set(secilenGruplarHam.map((g) => g.sinavId).filter(Boolean))]
+      const { data: kitapciklarData, error: kitapcikHatasi } =
+        sinavIdleriBenzersiz.length > 0
+          ? await supabase
+              .from('sinav_kitapciklari')
+              .select('*')
+              .in('sinav_id', sinavIdleriBenzersiz)
+              .eq('onaylandi', true)
+          : { data: [] }
+      if (kitapcikHatasi) throw kitapcikHatasi
+
+      const kitapcikBul = (sinavId, kitapcikTuru) =>
+        (kitapciklarData || []).find((k) => k.sinav_id === sinavId && k.kitapcik === kitapcikTuru)
+
+      const eksikler = []
+      const gruplarKitapcikli = []
+      for (const g of secilenGruplarHam) {
+        if (!g.kitapcik) {
+          eksikler.push({ sinavAdi: g.sinavAdi, soruSayisi: g.soruSonuclari.length })
+          continue
+        }
+        const kv = kitapcikBul(g.sinavId, g.kitapcik)
+        if (!kv) {
+          eksikler.push({ sinavAdi: g.sinavAdi, soruSayisi: g.soruSonuclari.length })
+          continue
+        }
+        gruplarKitapcikli.push({ ...g, kitapcikVerisi: kv })
+      }
+      setEksikKitapciklar(eksikler)
+
+      if (gruplarKitapcikli.length === 0) {
+        // Hiçbiri için kitapçık yok — kesilecek bir şey kalmadı.
+        setDurum('hazir')
+        setSinavGruplari([])
+        setToplamSoruSayisi(0)
+        return
+      }
+
+      setIlerlemeMetni('Soru haritaları alınıyor...')
+      const kitapcikIdleri = [...new Set(gruplarKitapcikli.map((g) => g.kitapcikVerisi.id))]
+      const { data: tumKutular, error: kutuHatasi } = await supabase
+        .from('sinav_kitapcik_sorulari')
+        .select('*')
+        .in('kitapcik_id', kitapcikIdleri)
+      if (kutuHatasi) throw kutuHatasi
+
+      const kutularByKitapcik = new Map()
+      for (const k of tumKutular || []) {
+        if (!kutularByKitapcik.has(k.kitapcik_id)) kutularByKitapcik.set(k.kitapcik_id, [])
+        kutularByKitapcik.get(k.kitapcik_id).push(k)
+      }
+
+      // Her kitapçığın PDF'i ve sayfa genişlikleri, o kitapçığın KENDİ
+      // ölçeğinde (sinav_kitapciklari.olcek) bir kere açılıp önbelleğe
+      // alınır — aynı kitapçıktan birden fazla soru kesiliyorsa PDF'i
+      // tekrar tekrar indirip açmamak için (HataKitapcigi'deki aynı mantık,
+      // burada birden fazla kitapçık için tekrarlanıyor).
+      const belgeCache = new Map() // kitapcik_id -> { belge, olcek }
+      // BELLEK: her sayfanın canvas'ını (scale=3'te tam bir A4 canvas'ı
+      // onlarca MB) aynı anda bellekte tutmak — özellikle burada BİRDEN
+      // FAZLA SINAVIN kitapçıkları arka arkaya işlendiği için — iPhone/
+      // iPad Safari'de sekmenin "bir sorun oluştu" diyip çökmesine yol
+      // açıyordu. Aynı anda EN FAZLA TEK sayfanın canvas'ı bellekte
+      // tutuluyor (LRU-1); bir sonraki sayfaya/kitapçığa geçilince
+      // öncekini hemen serbest bırakıyoruz (width/height=0).
+      let aktifSayfaAnahtari = null
+      let aktifSayfaCanvas = null
+      async function belgeGetir(kitapcikVerisi) {
+        if (belgeCache.has(kitapcikVerisi.id)) return belgeCache.get(kitapcikVerisi.id)
+        const { data: pdfBlobu, error: indirmeHatasi } = await supabase.storage
+          .from('sinav-kitapciklari')
+          .download(kitapcikVerisi.pdf_yolu)
+        if (indirmeHatasi) throw indirmeHatasi
+        const belge = await pdfBelgesiAc(pdfBlobu)
+        const olcek = Number(kitapcikVerisi.olcek) || 3
+        const paket = { belge, olcek }
+        belgeCache.set(kitapcikVerisi.id, paket)
+        return paket
+      }
+      async function sayfaCanvasGetir(kitapcikVerisi, sayfaNo) {
+        const anahtar = `${kitapcikVerisi.id}:${sayfaNo}`
+        if (aktifSayfaAnahtari === anahtar && aktifSayfaCanvas) return aktifSayfaCanvas
+        if (aktifSayfaCanvas) {
+          aktifSayfaCanvas.width = 0
+          aktifSayfaCanvas.height = 0
+        }
+        const { belge, olcek } = await belgeGetir(kitapcikVerisi)
+        const { canvas } = await sayfayiGoruntuyeCevir(belge, sayfaNo, olcek)
+        aktifSayfaAnahtari = anahtar
+        aktifSayfaCanvas = canvas
+        return canvas
+      }
+
+      const sonucGruplar = []
+      let toplamSayac = 0
+      let islenenSoru = 0
+      const toplamSoruBeklenen = gruplarKitapcikli.reduce((acc, g) => acc + g.soruSonuclari.length, 0)
+
+      for (const g of gruplarKitapcikli) {
+        const kv = g.kitapcikVerisi
+        const kutular = kutularByKitapcik.get(kv.id) || []
+        const normalizeYerel = (s) => (s || '').toLocaleLowerCase('tr-TR').trim()
+        const kutuMap = new Map(kutular.map((k) => [`${normalizeYerel(k.ders_adi)}|${k.soru_no}`, k]))
+
+        // Bu kitapçığın KENDİ gerçek okuma sırası (sayfa → sütun → yukarıdan
+        // aşağı) — HataKitapcigi.jsx'teki aynı hesap, sadece bu kitapçığa özel.
+        const siraMap = new Map()
+        if (kutular.length > 0) {
+          const { belge, olcek } = await belgeGetir(kv)
+          const benzersizSayfalar = [...new Set(kutular.map((k) => k.sayfa_no))]
+          const genislikMap = new Map()
+          for (const sayfaNo of benzersizSayfalar) {
+            const sayfa = await belge.getPage(sayfaNo)
+            genislikMap.set(sayfaNo, sayfa.getViewport({ scale: olcek }).width)
+          }
+          kutular
+            .slice()
+            .sort((a, b) => {
+              if (a.sayfa_no !== b.sayfa_no) return a.sayfa_no - b.sayfa_no
+              const genislik = genislikMap.get(a.sayfa_no) || 0
+              const sutunA = Number(a.x) < genislik / 2 ? 0 : 1
+              const sutunB = Number(b.x) < genislik / 2 ? 0 : 1
+              if (sutunA !== sutunB) return sutunA - sutunB
+              return Number(a.y) - Number(b.y)
+            })
+            .forEach((k, i) => siraMap.set(`${normalizeYerel(k.ders_adi)}|${k.soru_no}`, i))
+        }
+
+        // LRU-1 sayfa önbelleğinin işe yaraması için sorular rastgele
+        // değil, KENDİ sayfa numarasına göre gruplu işleniyor — nihai
+        // gösterim sırası zaten aşağıda siraMap'e göre yeniden diziliyor,
+        // bu sadece işleme sırası (bkz. sayfaCanvasGetir'deki not).
+        const soruSonuclariSirali = g.soruSonuclari.slice().sort((a, b) => {
+          const ka = kutuMap.get(`${normalizeYerel(a.ders_adi)}|${a.soru_no}`)
+          const kb = kutuMap.get(`${normalizeYerel(b.ders_adi)}|${b.soru_no}`)
+          const sa = ka ? ka.sayfa_no : Infinity
+          const sb = kb ? kb.sayfa_no : Infinity
+          return sa - sb
+        })
+
+        const hazirSorular = []
+        for (const s of soruSonuclariSirali) {
+          islenenSoru++
+          setIlerlemeMetni(`Sorular kesiliyor (${islenenSoru}/${toplamSoruBeklenen})...`)
+          const anahtar = `${normalizeYerel(s.ders_adi)}|${s.soru_no}`
+          const kutu = kutuMap.get(anahtar)
+          if (!kutu) {
+            setBulunamayanlar((onceki) => [...onceki, { sinavAdi: g.sinavAdi, soru_no: s.soru_no, ders_adi: s.ders_adi }])
+            continue
+          }
+          const olcek = (await belgeGetir(kv)).olcek
+          const sayfaCanvas = await sayfaCanvasGetir(kv, kutu.sayfa_no)
+          const genislikPx = Math.max(1, Math.round(kutu.genislik))
+          const yukseklikPx = Math.max(1, Math.round(kutu.yukseklik))
+          let soruKirpmaCanvas = document.createElement('canvas')
+          soruKirpmaCanvas.width = genislikPx
+          soruKirpmaCanvas.height = yukseklikPx
+          soruKirpmaCanvas
+            .getContext('2d')
+            .drawImage(sayfaCanvas, kutu.x, kutu.y, kutu.genislik, kutu.yukseklik, 0, 0, genislikPx, yukseklikPx)
+          // Soru sayfada/sütunda tek başınaysa kutu sayfa sonuna kadar
+          // uzatılmış olabilir (bkz. kitapcikOcr.js'teki açıklama) — burada
+          // fazla boşluk otomatik kesiliyor.
+          soruKirpmaCanvas = alttakiBosluguKirp(soruKirpmaCanvas)
+
+          // Ortak Parça — bkz. HataKitapcigi.jsx'teki aynı mantık.
+          let nihaiCanvas = soruKirpmaCanvas
+          let nihaiGenislikPt = kutu.genislik / olcek
+          // Kırpma sonrası yükseklik (soruKirpmaCanvas.height) kutu.yukseklik'ten
+          // KÜÇÜK olabilir (bkz. alttakiBosluguKirp) — o yüzden kutu.yukseklik
+          // yerine canvas'ın GERÇEK yüksekliği kullanılıyor.
+          let nihaiYukseklikPt = soruKirpmaCanvas.height / olcek
+          if (kutu.parca_x != null && kutu.parca_y != null && kutu.parca_genislik != null && kutu.parca_yukseklik != null) {
+            const parcaSayfaNo = kutu.parca_sayfa_no || kutu.sayfa_no
+            const parcaSayfaCanvas = await sayfaCanvasGetir(kv, parcaSayfaNo)
+            const parcaGenislikPx = Math.max(1, Math.round(kutu.parca_genislik))
+            const parcaYukseklikPx = Math.max(1, Math.round(kutu.parca_yukseklik))
+            const parcaKirpmaCanvas = document.createElement('canvas')
+            parcaKirpmaCanvas.width = parcaGenislikPx
+            parcaKirpmaCanvas.height = parcaYukseklikPx
+            parcaKirpmaCanvas
+              .getContext('2d')
+              .drawImage(parcaSayfaCanvas, kutu.parca_x, kutu.parca_y, kutu.parca_genislik, kutu.parca_yukseklik, 0, 0, parcaGenislikPx, parcaYukseklikPx)
+
+            const araBosluk = 6
+            const birlesikGenislikPx = Math.max(genislikPx, parcaGenislikPx)
+            const birlesikYukseklikPx = parcaYukseklikPx + araBosluk + soruKirpmaCanvas.height
+            const birlesikCanvas = document.createElement('canvas')
+            birlesikCanvas.width = birlesikGenislikPx
+            birlesikCanvas.height = birlesikYukseklikPx
+            const bctx = birlesikCanvas.getContext('2d')
+            bctx.fillStyle = '#ffffff'
+            bctx.fillRect(0, 0, birlesikGenislikPx, birlesikYukseklikPx)
+            bctx.drawImage(parcaKirpmaCanvas, 0, 0)
+            bctx.strokeStyle = '#d1d5db'
+            bctx.lineWidth = 1
+            bctx.strokeRect(0.5, 0.5, parcaGenislikPx - 1, parcaYukseklikPx - 1)
+            bctx.drawImage(soruKirpmaCanvas, 0, parcaYukseklikPx + araBosluk)
+
+            nihaiCanvas = birlesikCanvas
+            nihaiGenislikPt = birlesikGenislikPx / olcek
+            nihaiYukseklikPt = birlesikYukseklikPx / olcek
+          }
+
+          hazirSorular.push({
+            ...s,
+            dataUrl: nihaiCanvas.toDataURL('image/png'),
+            genislikPt: nihaiGenislikPt,
+            yukseklikPt: nihaiYukseklikPt,
+            siraNo: siraMap.get(anahtar),
+          })
+        }
+        hazirSorular.sort((a, b) => {
+          if (a.siraNo === undefined && b.siraNo === undefined) return 0
+          if (a.siraNo === undefined) return 1
+          if (b.siraNo === undefined) return -1
+          return a.siraNo - b.siraNo
+        })
+        if (hazirSorular.length > 0) {
+          sonucGruplar.push({
+            sonucId: g.sonucId,
+            sinavAdi: g.sinavAdi,
+            sinavTarihi: g.sinavTarihi,
+            kitapcik: g.kitapcik,
+            sorular: hazirSorular,
+          })
+          toplamSayac += hazirSorular.length
+        }
+      }
+
+      setSinavGruplari(sonucGruplar)
+      setToplamSoruSayisi(toplamSayac)
+      setSeciliSorular(new Set(sonucGruplar.flatMap((g) => g.sorular.map((s) => s.id))))
+      setDurum('hazir')
+    } catch (e) {
+      setHataMetni(e.message)
+      setDurum('hata')
+    }
+  }
 
   function soruSecimiDegistir(soruId) {
     setSeciliSorular((onceki) => {
@@ -464,7 +516,7 @@ export default function DersBazliHataKitapcigi() {
           )}
         </div>
 
-        {durum === 'yukleniyor' && (
+        {(durum === 'yukleniyor' || durum === 'kesiliyor') && (
           <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-8 text-center">
             <p className="text-gray-500">{ilerlemeMetni}</p>
           </div>
@@ -484,19 +536,98 @@ export default function DersBazliHataKitapcigi() {
           </div>
         )}
 
+        {/* FAZ 1 EKRANI: hangi sınavlar dahil edilsin — henüz hiçbir PDF
+            indirilmedi/kesilmedi, bu yüzden anında açılır. Başlık, bunun
+            HER sınavın "{ders}" dersini AYRI AYRI işleyip tek kitapçıkta
+            birleştirdiğini kullanıcı isteğiyle açıkça belirtiyor. */}
+        {durum === 'secim' && (
+          <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6">
+            <p className="font-bold text-lg text-navy mb-1">
+              {ders} — Hangi Sınavlar Kitapçığa Dahil Edilsin?
+            </p>
+            <p className="text-sm text-gray-500 mb-4">
+              {ogrenciAdi ? `${ogrenciAdi}'nin ` : ''}
+              {tur === 'Tümü' ? 'tüm türlerdeki' : tur + ' türündeki'} sınavlarından, "{ders}" dersinde yanlış/boş
+              sorusu olan <b>{gruplarHam.length} sınav</b> bulundu. Bu kitapçık, aşağıda işaretlediğiniz HER sınavın
+              "{ders}" dersini AYRI AYRI kesip tek bir yazdırılabilir dosyada art arda birleştirir. Sadece
+              işaretli sınavlar işlenir — istemediklerinizi şimdi çıkarırsanız kesme işlemi daha hızlı biter.
+            </p>
+            <div className="flex items-center justify-between mb-2">
+              <p className="text-xs font-semibold text-gray-500">Sınavlar</p>
+              <button
+                type="button"
+                onClick={sinavHepsiSecili ? sinavHicbiriniSecme : sinavHepsiniSec}
+                className="text-xs font-medium text-gray-500 border border-gray-200 rounded-full px-3 py-1 hover:bg-gray-50 transition-colors"
+              >
+                {sinavHepsiSecili ? 'Tümünü Kaldır' : 'Tümünü Seç'}
+              </button>
+            </div>
+            <div className="flex flex-col gap-1.5 mb-5">
+              {gruplarHam.map((grup) => {
+                const secili = secilenSonucIdler.has(grup.sonucId)
+                return (
+                  <label
+                    key={grup.sonucId}
+                    className={`flex items-center justify-between gap-2 px-3 py-2 rounded-lg border cursor-pointer transition-colors ${
+                      secili ? 'border-orange/30 bg-orange/5' : 'border-gray-100 hover:bg-gray-50'
+                    }`}
+                  >
+                    <span className="flex items-center gap-2">
+                      <input
+                        type="checkbox"
+                        checked={secili}
+                        onChange={() => sinavSecimiDegistir(grup.sonucId)}
+                        className="w-4 h-4"
+                      />
+                      <span className="text-sm text-gray-700">
+                        {grup.sinavAdi}
+                        {grup.sinavTarihi && (
+                          <span className="text-gray-400"> · {new Date(grup.sinavTarihi).toLocaleDateString('tr-TR')}</span>
+                        )}
+                        {grup.kitapcik && <span className="text-gray-400"> · Kitapçık {grup.kitapcik}</span>}
+                      </span>
+                    </span>
+                    <span className="text-xs text-gray-400 shrink-0">{grup.soruSonuclari.length} soru</span>
+                  </label>
+                )
+              })}
+            </div>
+            <button
+              type="button"
+              onClick={kitapciklariOlustur}
+              disabled={secilenSonucIdler.size === 0}
+              className="w-full bg-orange text-white font-semibold text-sm px-4 py-3 rounded-lg hover:opacity-90 transition-opacity disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              Kitapçığı Oluştur ({secilenSonucIdler.size} sınav)
+            </button>
+          </div>
+        )}
+
         {durum === 'hazir' && (
           <>
             <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6 mb-5">
-              <div className="flex items-center gap-3 mb-4">
-                <div className="bg-white rounded-lg p-1 shrink-0 border border-gray-100">
-                  <img src="/logo.png" alt="Savaş Akça Eğitim" className="w-10 h-10 object-contain" />
+              <div className="flex items-center justify-between gap-3 mb-4 flex-wrap">
+                <div className="flex items-center gap-3">
+                  <div className="bg-white rounded-lg p-1 shrink-0 border border-gray-100">
+                    <img src="/logo.png" alt="Savaş Akça Eğitim" className="w-10 h-10 object-contain" />
+                  </div>
+                  <div>
+                    <p className="font-bold text-lg text-navy">DERS HATA KİTAPÇIĞI</p>
+                    <p className="text-sm text-gray-500">
+                      {ders} · {tur === 'Tümü' ? 'Tüm Sınav Türleri' : tur}
+                    </p>
+                  </div>
                 </div>
-                <div>
-                  <p className="font-bold text-lg text-navy">DERS HATA KİTAPÇIĞI</p>
-                  <p className="text-sm text-gray-500">
-                    {ders} · {tur === 'Tümü' ? 'Tüm Sınav Türleri' : tur}
-                  </p>
-                </div>
+                {/* Kullanıcı isteğiyle: kesme bittikten sonra da sınav
+                    seçimine geri dönüp değiştirilebilsin (ör. yeni bir sınav
+                    eklendiğinde baştan başlamaya gerek kalmasın). */}
+                <button
+                  type="button"
+                  onClick={() => setDurum('secim')}
+                  className="no-print text-xs font-medium text-gray-500 border border-gray-200 rounded-full px-3 py-1.5 hover:bg-gray-50 transition-colors"
+                >
+                  ← Sınav Seçimine Dön
+                </button>
               </div>
               <table className="w-full text-sm border border-gray-200 rounded-lg overflow-hidden">
                 <tbody>
