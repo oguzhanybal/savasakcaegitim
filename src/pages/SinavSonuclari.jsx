@@ -32,7 +32,14 @@ export default function SinavSonuclari() {
   const [kayitliSonuclar, setKayitliSonuclar] = useState([])
   const [kayitliSonuclarYukleniyor, setKayitliSonuclarYukleniyor] = useState(false)
   const [silinenSonucId, setSilinenSonucId] = useState(null)
-  const [karnePdfIndiriliyorId, setKarnePdfIndiriliyorId] = useState(null)
+  // Detaylı Karne İndir: imzalı PDF adresleri artık TIKLAMA ANINDA değil,
+  // sonuçlar yüklenirken TOPLU olarak önceden çekiliyor ve gerçek bir <a
+  // href> olarak render ediliyor (aşağıya bkz.) — tıklamada window.open()
+  // çağırmak, bu await'ten SONRA (kullanıcı tıklamasıyla aynı senkron
+  // zincirin dışında) geldiği için Safari'de "açılır pencere engellendi"
+  // uyarısına yol açıyordu. Gerçek bir <a> linki bu sorunu tamamen ortadan
+  // kaldırıyor.
+  const [karneUrlMap, setKarneUrlMap] = useState({})
 
   useEffect(() => {
     supabase
@@ -79,14 +86,35 @@ export default function SinavSonuclari() {
       if (!puanMap.has(p.sonuc_id)) puanMap.set(p.sonuc_id, [])
       puanMap.get(p.sonuc_id).push(p)
     }
-    setKayitliSonuclar(
-      liste.map((s) => ({
-        ...s,
-        dersler: (dersMap.get(s.id) || []).slice().sort((a, b) => dersSiraPuani(a.ders_adi) - dersSiraPuani(b.ders_adi)),
-        puanlar: puanMap.get(s.id) || [],
-      }))
-    )
+    const yeniListe = liste.map((s) => ({
+      ...s,
+      dersler: (dersMap.get(s.id) || []).slice().sort((a, b) => dersSiraPuani(a.ders_adi) - dersSiraPuani(b.ders_adi)),
+      puanlar: puanMap.get(s.id) || [],
+    }))
+    setKayitliSonuclar(yeniListe)
     setKayitliSonuclarYukleniyor(false)
+
+    // Detaylı Karne İndir linkleri: TOPLU imzalı URL çekimi (bkz. yukarıdaki
+    // karneUrlMap açıklaması).
+    const pdfYollari = yeniListe.map((s) => s.karne_pdf_yolu).filter(Boolean)
+    if (pdfYollari.length > 0) {
+      supabase.storage
+        .from('sinav-sonuc-pdfleri')
+        .createSignedUrls(pdfYollari, 43200)
+        .then(({ data, error }) => {
+          if (error || !data) return
+          const yolToUrl = new Map(data.map((d) => [d.path, d.signedUrl]).filter(([p, u]) => p && u))
+          const yeniHarita = {}
+          for (const s of yeniListe) {
+            if (s.karne_pdf_yolu && yolToUrl.has(s.karne_pdf_yolu)) {
+              yeniHarita[s.id] = yolToUrl.get(s.karne_pdf_yolu)
+            }
+          }
+          setKarneUrlMap(yeniHarita)
+        })
+    } else {
+      setKarneUrlMap({})
+    }
   }
 
   useEffect(() => {
@@ -114,26 +142,6 @@ export default function SinavSonuclari() {
       alert('Silme hatası: ' + e.message)
     } finally {
       setSilinenSonucId(null)
-    }
-  }
-
-  // Öğrencinin orijinal "Konu Analizli Karne" PDF'ini (2 sayfa, özet + konu
-  // analizi + puan/sıralama) indirir — Storage bucket'ı private olduğu için
-  // önce kısa ömürlü (60 sn) imzalı bir bağlantı istiyoruz, sonra onu yeni
-  // sekmede açıyoruz.
-  async function karnePdfIndir(k) {
-    if (!k.karne_pdf_yolu) return
-    setKarnePdfIndiriliyorId(k.id)
-    try {
-      const { data, error } = await supabase.storage
-        .from('sinav-sonuc-pdfleri')
-        .createSignedUrl(k.karne_pdf_yolu, 60)
-      if (error) throw error
-      window.open(data.signedUrl, '_blank', 'noopener,noreferrer')
-    } catch (e) {
-      alert('PDF indirilemedi: ' + e.message)
-    } finally {
-      setKarnePdfIndiriliyorId(null)
     }
   }
 
@@ -202,17 +210,26 @@ export default function SinavSonuclari() {
                     </div>
                     <div className="flex items-center gap-2 flex-wrap justify-end">
                       {k.karne_pdf_yolu && (
-                        <button
-                          type="button"
-                          onClick={() => karnePdfIndir(k)}
-                          disabled={karnePdfIndiriliyorId === k.id}
-                          className="inline-flex items-center gap-1.5 text-xs font-bold bg-navy text-white px-3.5 py-1.5 rounded-full shadow-sm hover:opacity-90 disabled:opacity-40"
-                        >
-                          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                            <path d="M12 3v12m0 0l-4-4m4 4l4-4M4 20h16" />
-                          </svg>
-                          {karnePdfIndiriliyorId === k.id ? 'Açılıyor...' : 'Detaylı Karne İndir'}
-                        </button>
+                        karneUrlMap[k.id] ? (
+                          <a
+                            href={karneUrlMap[k.id]}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="inline-flex items-center gap-1.5 text-xs font-bold bg-navy text-white px-3.5 py-1.5 rounded-full shadow-sm hover:opacity-90"
+                          >
+                            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                              <path d="M12 3v12m0 0l-4-4m4 4l4-4M4 20h16" />
+                            </svg>
+                            Detaylı Karne İndir
+                          </a>
+                        ) : (
+                          <span className="inline-flex items-center gap-1.5 text-xs font-bold bg-navy text-white px-3.5 py-1.5 rounded-full shadow-sm opacity-40">
+                            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                              <path d="M12 3v12m0 0l-4-4m4 4l4-4M4 20h16" />
+                            </svg>
+                            Hazırlanıyor...
+                          </span>
+                        )
                       )}
                       <Link
                         to={`/hata-kitapcigi/${k.id}`}
