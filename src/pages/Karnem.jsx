@@ -198,7 +198,15 @@ export default function Karnem() {
   const [seciliId, setSeciliId] = useState('')
   const [sonuclar, setSonuclar] = useState([])
   const [loading, setLoading] = useState(true)
-  const [pdfIndiriliyorId, setPdfIndiriliyorId] = useState(null)
+  // Detaylı Karne İndir: imzalı PDF adresleri artık TIKLAMA ANINDA değil,
+  // sonuçlar yüklenirken TOPLU olarak önceden çekiliyor ve gerçek bir <a
+  // href> olarak render ediliyor (aşağıya bkz.). Önceki yöntem — tıklamada
+  // window.open('', '_blank') ile boş sekme açıp imzalı URL gelince adresini
+  // değiştirmek — normal Safari'de iOS popup engelini aşmak için işe
+  // yarıyordu, ama site ana ekrana eklenmiş (PWA/standalone) modda
+  // kullanılırken bu "boş sekme" hilesi çalışmıyor, kullanıcı boş bir sayfa
+  // görüyordu. Gerçek bir <a> linki, standalone modda da güvenilir çalışıyor.
+  const [karneUrlMap, setKarneUrlMap] = useState({})
   // Akordeon: sınav sayısı arttıkça sayfa çok uzayıp karışmasın diye SADECE
   // en son sınav (liste zaten created_at'e göre en yeniden en eskiye sıralı,
   // bkz. aşağıdaki .order('created_at', {ascending:false})) varsayılan
@@ -227,32 +235,6 @@ export default function Karnem() {
   // bazında ayrı seçim tutuluyor — id -> seçilen ders adı ('' = Tümü).
   const [tekliHKDersSecim, setTekliHKDersSecim] = useState({})
 
-  function karnePdfIndir(s) {
-    if (!s.karne_pdf_yolu) return
-    // iOS Safari, window.open() bir await'ten SONRA (kullanıcı tıklamasıyla
-    // aynı senkron çağrı zinciri dışında) çağrılırsa bunu sessizce
-    // engelliyor — hata da vermiyor, buton basılmış gibi görünüp hiçbir şey
-    // olmuyor. Çözüm: sekmeyi tıklama anında senkron olarak boş açıp,
-    // imzalı URL geldiğinde o sekmenin adresini değiştirmek.
-    const yeniSekme = window.open('', '_blank', 'noopener,noreferrer')
-    setPdfIndiriliyorId(s.id)
-    supabase.storage
-      .from('sinav-sonuc-pdfleri')
-      .createSignedUrl(s.karne_pdf_yolu, 60)
-      .then(({ data, error }) => {
-        if (error) throw error
-        if (yeniSekme) {
-          yeniSekme.location.href = data.signedUrl
-        } else {
-          window.open(data.signedUrl, '_blank', 'noopener,noreferrer')
-        }
-      })
-      .catch((e) => {
-        if (yeniSekme) yeniSekme.close()
-        alert('PDF indirilemedi: ' + e.message)
-      })
-      .finally(() => setPdfIndiriliyorId(null))
-  }
 
   useEffect(() => {
     if (!profile) return
@@ -375,6 +357,32 @@ export default function Karnem() {
         // olarak açık gelsin, geri kalanlar kapalı.
         setAcikId(gosterilecekSonuclar.length > 0 ? gosterilecekSonuclar[0].id : null)
         setLoading(false)
+
+        // Detaylı Karne İndir: imzalı PDF URL'leri TOPLU olarak, sayfa
+        // yüklenirken önceden çekiliyor (12 saat geçerli) — tıklama anında
+        // değil. Böylece buton gerçek bir <a href> linki olabiliyor, bu da
+        // iOS'ta site ana ekrana eklenmişken (PWA/standalone) da güvenilir
+        // çalışıyor (window.open tabanlı eski yöntem orada boş sayfa
+        // açıyordu).
+        const pdfYollari = gosterilecekSonuclar.map((s) => s.karne_pdf_yolu).filter(Boolean)
+        if (pdfYollari.length > 0) {
+          supabase.storage
+            .from('sinav-sonuc-pdfleri')
+            .createSignedUrls(pdfYollari, 43200)
+            .then(({ data, error }) => {
+              if (error || !data) return
+              const yolToUrl = new Map(data.map((d) => [d.path, d.signedUrl]).filter(([p, u]) => p && u))
+              const yeniHarita = {}
+              for (const s of gosterilecekSonuclar) {
+                if (s.karne_pdf_yolu && yolToUrl.has(s.karne_pdf_yolu)) {
+                  yeniHarita[s.id] = yolToUrl.get(s.karne_pdf_yolu)
+                }
+              }
+              setKarneUrlMap(yeniHarita)
+            })
+        } else {
+          setKarneUrlMap({})
+        }
       })
   }, [seciliId])
 
@@ -533,17 +541,27 @@ export default function Karnem() {
                       PDF — öğretmene branş dışı bilgi sızdırmamak için bu
                       buton öğretmenlere hiç gösterilmiyor. */}
                   {s.karne_pdf_yolu && !isOgretmen && (
-                    <button
-                      type="button"
-                      onClick={(e) => { e.stopPropagation(); karnePdfIndir(s) }}
-                      disabled={pdfIndiriliyorId === s.id}
-                      className="inline-flex items-center gap-1.5 text-xs font-bold bg-navy text-white px-3.5 py-1.5 rounded-full shadow-sm hover:opacity-90 disabled:opacity-40"
-                    >
-                      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                        <path d="M12 3v12m0 0l-4-4m4 4l4-4M4 20h16" />
-                      </svg>
-                      {pdfIndiriliyorId === s.id ? 'Açılıyor...' : 'Detaylı Karne İndir'}
-                    </button>
+                    karneUrlMap[s.id] ? (
+                      <a
+                        href={karneUrlMap[s.id]}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        onClick={(e) => e.stopPropagation()}
+                        className="inline-flex items-center gap-1.5 text-xs font-bold bg-navy text-white px-3.5 py-1.5 rounded-full shadow-sm hover:opacity-90"
+                      >
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                          <path d="M12 3v12m0 0l-4-4m4 4l4-4M4 20h16" />
+                        </svg>
+                        Detaylı Karne İndir
+                      </a>
+                    ) : (
+                      <span className="inline-flex items-center gap-1.5 text-xs font-bold bg-navy text-white px-3.5 py-1.5 rounded-full shadow-sm opacity-40">
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                          <path d="M12 3v12m0 0l-4-4m4 4l4-4M4 20h16" />
+                        </svg>
+                        Hazırlanıyor...
+                      </span>
+                    )
                   )}
                   {(s.toplam_yanlis || 0) + (s.toplam_bos || 0) > 0 && s.kitapcikHazirMi && (() => {
                     // Öğretmen için "Tümü" seçeneği YOK — s.dersler zaten
