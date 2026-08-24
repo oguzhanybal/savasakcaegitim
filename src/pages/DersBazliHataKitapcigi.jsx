@@ -409,6 +409,22 @@ export default function DersBazliHataKitapcigi() {
   function tumunuKaldir() {
     setSeciliSorular(new Set())
   }
+  // Kullanıcı isteğiyle eklendi: soru soru işaretlemek yerine, TEK sınavı
+  // (denemeyi) tek tıkla tamamen dahil et / tamamen çıkar. O sınavdaki
+  // sorulardan hepsi zaten seçiliyse hepsini kaldırıyor, değilse (hiçbiri
+  // veya bir kısmı seçiliyse) hepsini seçiyor.
+  function grupTumunuDegistir(grup) {
+    setSeciliSorular((onceki) => {
+      const yeni = new Set(onceki)
+      const hepsiSeciliMi = grup.sorular.every((s) => yeni.has(s.id))
+      if (hepsiSeciliMi) {
+        grup.sorular.forEach((s) => yeni.delete(s.id))
+      } else {
+        grup.sorular.forEach((s) => yeni.add(s.id))
+      }
+      return yeni
+    })
+  }
   const hepsiSecili = seciliSorular.size === toplamSoruSayisi && toplamSoruSayisi > 0
 
   return (
@@ -545,16 +561,26 @@ export default function DersBazliHataKitapcigi() {
               // tamamen düşer — ekranda hâlâ görünür (seçim yapılabilsin diye),
               // sadece çıktıya/PDF'e girmez.
               const grupSeciliSayisi = grup.sorular.filter((s) => seciliSorular.has(s.id)).length
+              const grupHepsiSecili = grupSeciliSayisi === grup.sorular.length
               return (
                 <div key={grup.sonucId} className={`mb-6 ${grupSeciliSayisi === 0 ? 'no-print' : ''}`}>
-                  <p className="sinav-baslik text-sm font-bold text-navy border-b border-navy/20 pb-1 mb-3">
-                    {grup.sinavAdi}
-                    {grup.sinavTarihi && (
-                      <span className="text-gray-400 font-normal"> · {new Date(grup.sinavTarihi).toLocaleDateString('tr-TR')}</span>
-                    )}
-                    {grup.kitapcik && <span className="text-gray-400 font-normal"> · Kitapçık {grup.kitapcik}</span>}
-                    <span className="no-print text-gray-400 font-normal"> · {grupSeciliSayisi}/{grup.sorular.length} seçili</span>
-                  </p>
+                  <div className="flex items-center justify-between flex-wrap gap-1 border-b border-navy/20 pb-1 mb-3">
+                    <p className="sinav-baslik text-sm font-bold text-navy">
+                      {grup.sinavAdi}
+                      {grup.sinavTarihi && (
+                        <span className="text-gray-400 font-normal"> · {new Date(grup.sinavTarihi).toLocaleDateString('tr-TR')}</span>
+                      )}
+                      {grup.kitapcik && <span className="text-gray-400 font-normal"> · Kitapçık {grup.kitapcik}</span>}
+                      <span className="no-print text-gray-400 font-normal"> · {grupSeciliSayisi}/{grup.sorular.length} seçili</span>
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() => grupTumunuDegistir(grup)}
+                      className="no-print text-[11px] font-medium text-gray-500 border border-gray-200 rounded-full px-2.5 py-1 hover:bg-gray-50 transition-colors shrink-0"
+                    >
+                      {grupHepsiSecili ? 'Bu Sınavı Kitapçıktan Çıkar' : 'Bu Sınavı Kitapçığa Dahil Et'}
+                    </button>
+                  </div>
                   {/* NOT: ne "grid" ne "flex" — ikisinde de Chrome/Safari'nin
                       yazdırma motorları break-inside:avoid'i çocuklarda güvenilir
                       uygulamıyor (Chrome'da grid'de, Safari/iOS'ta hem grid hem

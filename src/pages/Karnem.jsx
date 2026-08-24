@@ -495,6 +495,59 @@ export default function Karnem() {
         </p>
       )}
 
+      {/* Derse Göre Hata Kitapçığı: kullanıcı isteğiyle sayfanın en altından
+          buraya (sınav listesinin HEMEN ÜSTÜNE) taşındı — çok aşağıda
+          kaldığı için öğrenciler bu özelliğin var olduğunun farkında bile
+          değildi. */}
+      {!loading && sonuclar.length > 0 && (
+        <div className="mb-6 bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
+          <h2 className="font-semibold text-gray-700 mb-1">Derse Göre Hata Kitapçığı</h2>
+          <p className="text-xs text-gray-400 mb-4">
+            Seçilen dersteki, birden fazla sınavdaki TÜM yanlış/boş soruları tek bir yazdırılabilir kitapçıkta
+            birleştirir (ör. bütün TYT'lerdeki Kimya sorularını tek yerde toplar).
+          </p>
+          <div className="flex flex-wrap items-end gap-3">
+            <div>
+              <label className="block text-xs font-medium text-gray-500 mb-1">Ders</label>
+              <select
+                value={dersHKDers}
+                onChange={(e) => setDersHKDers(e.target.value)}
+                className="px-3 py-2 border border-gray-200 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue"
+              >
+                {/* Öğretmen sadece kendi branşının ders(ler)ini seçebilsin —
+                    aksi halde bu bulk indirici branş dışı derslerin de
+                    kitapçığını üretebilirdi. */}
+                {(isOgretmen ? DERS_SIRASI.filter((d) => dersGorebilir(d)) : DERS_SIRASI).map((d) => (
+                  <option key={d} value={d}>{d}</option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-gray-500 mb-1">Sınav Türü</label>
+              <select
+                value={dersHKTur}
+                onChange={(e) => setDersHKTur(e.target.value)}
+                className="px-3 py-2 border border-gray-200 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue"
+              >
+                <option value="TYT">TYT</option>
+                <option value="AYT">AYT</option>
+                <option value="Konu Analiz">Konu Analiz</option>
+                <option value="Diğer">Diğer</option>
+                <option value="Tümü">Tümü</option>
+              </select>
+            </div>
+            <Link
+              to={`/ders-hata-kitapcigi/${seciliId}/${encodeURIComponent(dersHKDers)}?tur=${encodeURIComponent(dersHKTur)}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="bg-orange text-white font-semibold text-sm px-4 py-2 rounded-lg hover:opacity-90 transition-opacity"
+            >
+              Oluştur
+            </Link>
+          </div>
+        </div>
+      )}
+
       {!loading && sonuclar.length > 0 && (
         <div className="space-y-5">
           {sonuclar.map((s) => {
@@ -676,55 +729,6 @@ export default function Karnem() {
             </div>
             )
           })}
-        </div>
-      )}
-
-      {!loading && sonuclar.length > 0 && (
-        <div className="mt-8 bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
-          <h2 className="font-semibold text-gray-700 mb-1">Derse Göre Hata Kitapçığı</h2>
-          <p className="text-xs text-gray-400 mb-4">
-            Seçilen dersteki, birden fazla sınavdaki TÜM yanlış/boş soruları tek bir yazdırılabilir kitapçıkta
-            birleştirir (ör. bütün TYT'lerdeki Kimya sorularını tek yerde toplar).
-          </p>
-          <div className="flex flex-wrap items-end gap-3">
-            <div>
-              <label className="block text-xs font-medium text-gray-500 mb-1">Ders</label>
-              <select
-                value={dersHKDers}
-                onChange={(e) => setDersHKDers(e.target.value)}
-                className="px-3 py-2 border border-gray-200 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue"
-              >
-                {/* Öğretmen sadece kendi branşının ders(ler)ini seçebilsin —
-                    aksi halde bu bulk indirici branş dışı derslerin de
-                    kitapçığını üretebilirdi. */}
-                {(isOgretmen ? DERS_SIRASI.filter((d) => dersGorebilir(d)) : DERS_SIRASI).map((d) => (
-                  <option key={d} value={d}>{d}</option>
-                ))}
-              </select>
-            </div>
-            <div>
-              <label className="block text-xs font-medium text-gray-500 mb-1">Sınav Türü</label>
-              <select
-                value={dersHKTur}
-                onChange={(e) => setDersHKTur(e.target.value)}
-                className="px-3 py-2 border border-gray-200 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue"
-              >
-                <option value="TYT">TYT</option>
-                <option value="AYT">AYT</option>
-                <option value="Konu Analiz">Konu Analiz</option>
-                <option value="Diğer">Diğer</option>
-                <option value="Tümü">Tümü</option>
-              </select>
-            </div>
-            <Link
-              to={`/ders-hata-kitapcigi/${seciliId}/${encodeURIComponent(dersHKDers)}?tur=${encodeURIComponent(dersHKTur)}`}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="bg-orange text-white font-semibold text-sm px-4 py-2 rounded-lg hover:opacity-90 transition-opacity"
-            >
-              Oluştur
-            </Link>
-          </div>
         </div>
       )}
 
