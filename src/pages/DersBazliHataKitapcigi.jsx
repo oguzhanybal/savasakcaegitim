@@ -146,6 +146,23 @@ export default function DersBazliHataKitapcigi() {
         if (kitapcikHatasi) throw kitapcikHatasi
         if (iptalEdildi) return
 
+        // Ders Bazlı Çözüm Videosu (bkz. migration_soru_video_linki.sql /
+        // SinavKitapciklari.jsx'teki "Video Linkleri" paneli) — bu sayfa zaten
+        // TEK bir derse (dersNorm) odaklandığı için, ilgili sınavlardan SADECE
+        // bu dersin linkini alıp sinav_id -> video_url haritası kuruyoruz.
+        const { data: dersVideoLinkleriHam } =
+          sinavIdleriBenzersiz.length > 0
+            ? await supabase
+                .from('sinav_ders_video_linkleri')
+                .select('sinav_id, ders_adi, video_url')
+                .in('sinav_id', sinavIdleriBenzersiz)
+            : { data: [] }
+        const dersVideoMap = new Map(
+          (dersVideoLinkleriHam || [])
+            .filter((d) => normalize(d.ders_adi) === dersNorm)
+            .map((d) => [d.sinav_id, d.video_url])
+        )
+
         const kitapcikBul = (sinavId, kitapcikTuru) =>
           (kitapciklarData || []).find((k) => k.sinav_id === sinavId && k.kitapcik === kitapcikTuru)
 
@@ -346,6 +363,9 @@ export default function DersBazliHataKitapcigi() {
               genislikPt: nihaiGenislikPt,
               yukseklikPt: nihaiYukseklikPt,
               siraNo: siraMap.get(anahtar),
+              // Çözüm Videosu (YouTube, ders bazlı) — bkz. migration_soru_video_linki.sql /
+              // SinavKitapciklari.jsx'teki "Video Linkleri" paneli.
+              videoUrl: dersVideoMap.get(g.sinavId) || null,
             })
           }
           if (iptalEdildi) return
@@ -595,6 +615,16 @@ export default function DersBazliHataKitapcigi() {
                             className="border border-gray-200 rounded"
                             style={{ maxWidth: '100%', width: `${Math.min(s.genislikPt, 250)}pt`, height: 'auto' }}
                           />
+                          {s.videoUrl && (
+                            <a
+                              href={s.videoUrl}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="mt-1 flex items-center gap-1 text-[10px] font-semibold text-red-600 hover:underline"
+                            >
+                              ▶ Çözüm Videosu
+                            </a>
+                          )}
                         </div>
                       )
                     })}

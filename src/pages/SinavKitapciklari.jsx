@@ -432,6 +432,13 @@ export default function SinavKitapciklari() {
   // oluşturulmuş, otomatik "Diğer" gelen) sınavları geriye dönük etiketlemek için.
   const [duzenlenenSinavTuru, setDuzenlenenSinavTuru] = useState('Diğer')
   const [sinavAdiKaydediliyor, setSinavAdiKaydediliyor] = useState(false)
+  // Ders Bazlı Çözüm Videosu (bkz. migration_soru_video_linki.sql) — hangi
+  // sınavın video linki paneli açık, o sınava ait mevcut linkler (ders_adi +
+  // video_url satırları) ve kaydetme durumu.
+  const [videoLinkSinavId, setVideoLinkSinavId] = useState(null)
+  const [videoLinkleri, setVideoLinkleri] = useState([])
+  const [videoLinkleriYukleniyor, setVideoLinkleriYukleniyor] = useState(false)
+  const [videoLinkleriKaydediliyor, setVideoLinkleriKaydediliyor] = useState(false)
   const [seciliSinavId, setSeciliSinavId] = useState('')
   const [yeniSinavAdi, setYeniSinavAdi] = useState('')
   const [yeniSinavTarihi, setYeniSinavTarihi] = useState('')
@@ -653,6 +660,77 @@ export default function SinavKitapciklari() {
       alert('Hata: ' + e.message)
     } finally {
       setSinavAdiKaydediliyor(false)
+    }
+  }
+
+  // DERS BAZLI ÇÖZÜM VİDEOSU (bkz. migration_soru_video_linki.sql) — soru
+  // soru değil, ders bazında TEK bir YouTube linki: bir sınavda 100+ soru
+  // olabildiği için soru soru link girmek admin için çok zahmetli olurdu.
+  // "Video Linkleri" butonuna basılınca o sınava ait kayıtlı linkler
+  // yüklenir, admin ders adı + link satırları ekleyip kaydeder.
+  async function videoLinkPaneliAcKapat(sinavId) {
+    if (videoLinkSinavId === sinavId) {
+      setVideoLinkSinavId(null)
+      return
+    }
+    setVideoLinkSinavId(sinavId)
+    setVideoLinkleri([])
+    setVideoLinkleriYukleniyor(true)
+    try {
+      const { data, error } = await supabase
+        .from('sinav_ders_video_linkleri')
+        .select('*')
+        .eq('sinav_id', sinavId)
+        .order('ders_adi')
+      if (error) throw error
+      setVideoLinkleri(
+        data && data.length > 0
+          ? data.map((d) => ({ gecici_id: d.id, ders_adi: d.ders_adi, video_url: d.video_url }))
+          : [{ gecici_id: `yeni-${Date.now()}`, ders_adi: '', video_url: '' }]
+      )
+    } catch (e) {
+      setHata('Video linkleri yüklenemedi: ' + e.message)
+    } finally {
+      setVideoLinkleriYukleniyor(false)
+    }
+  }
+
+  function videoLinkSatiriGuncelle(gecici_id, alanlar) {
+    setVideoLinkleri((liste) => liste.map((v) => (v.gecici_id === gecici_id ? { ...v, ...alanlar } : v)))
+  }
+  function videoLinkSatiriEkle() {
+    setVideoLinkleri((liste) => [...liste, { gecici_id: `yeni-${Date.now()}`, ders_adi: '', video_url: '' }])
+  }
+  function videoLinkSatiriSil(gecici_id) {
+    setVideoLinkleri((liste) => liste.filter((v) => v.gecici_id !== gecici_id))
+  }
+
+  async function videoLinkleriKaydet(sinavId) {
+    setVideoLinkleriKaydediliyor(true)
+    setHata('')
+    setBasari('')
+    try {
+      // Basitlik için: bu sınava ait TÜM eski satırlar silinip, dolu olan
+      // (hem ders adı hem link girilmiş) satırlar yeniden yazılıyor — aynı
+      // desen SinavKitapciklari'nin soru haritası kaydetmesinde de kullanılıyor.
+      await supabase.from('sinav_ders_video_linkleri').delete().eq('sinav_id', sinavId)
+      const gecerliSatirlar = videoLinkleri
+        .filter((v) => v.ders_adi.trim() && v.video_url.trim())
+        .map((v) => ({
+          sinav_id: sinavId,
+          ders_adi: ilkHarfleriBuyukYap(v.ders_adi.trim()),
+          video_url: v.video_url.trim(),
+        }))
+      if (gecerliSatirlar.length > 0) {
+        const { error } = await supabase.from('sinav_ders_video_linkleri').insert(gecerliSatirlar)
+        if (error) throw error
+      }
+      setBasari(`✓ ${gecerliSatirlar.length} ders için video linki kaydedildi.`)
+      setVideoLinkSinavId(null)
+    } catch (e) {
+      setHata('Video linkleri kaydedilemedi: ' + e.message)
+    } finally {
+      setVideoLinkleriKaydediliyor(false)
     }
   }
 
@@ -1415,6 +1493,7 @@ export default function SinavKitapciklari() {
                     </td>
                   </tr>
                 ) : (
+                  <>
                   <tr key={s.id} className="border-t border-gray-50">
                     <td className="px-4 py-2 font-medium text-gray-800">{s.sinav_adi}</td>
                     <td className="px-4 py-2 text-gray-500">
@@ -1433,6 +1512,12 @@ export default function SinavKitapciklari() {
                       {isYonetici && (
                         <>
                           <button
+                            onClick={() => videoLinkPaneliAcKapat(s.id)}
+                            className="text-purple-600 text-sm font-semibold hover:underline mr-4"
+                          >
+                            {videoLinkSinavId === s.id ? 'Video Linkleri ✕' : '▶ Video Linkleri'}
+                          </button>
+                          <button
                             onClick={() => sinavDuzenlemeyeBasla(s)}
                             className="text-navy text-sm font-semibold hover:underline mr-4"
                           >
@@ -1449,6 +1534,71 @@ export default function SinavKitapciklari() {
                       )}
                     </td>
                   </tr>
+                  {videoLinkSinavId === s.id && (
+                    <tr key={`${s.id}-video`} className="border-t border-gray-50 bg-purple-50/40">
+                      <td colSpan={4} className="px-4 py-4">
+                        <p className="text-sm font-semibold text-purple-700 mb-1">
+                          "{s.sinav_adi}" — Ders Bazlı Çözüm Videosu
+                        </p>
+                        <p className="text-xs text-gray-500 mb-3">
+                          Her ders için TEK bir YouTube linki girin (playlist linki de olabilir) — o dersteki
+                          TÜM yanlış/boş sorularda, Hata Kitapçığı'nda bu link "▶ Çözüm Videosu" olarak çıkar.
+                          Ders adının, kitapçıkta o ders için kullandığınız adla BİREBİR aynı olması gerekir.
+                        </p>
+                        {videoLinkleriYukleniyor ? (
+                          <p className="text-sm text-gray-400">Yükleniyor...</p>
+                        ) : (
+                          <>
+                            <div className="space-y-2 mb-3">
+                              {videoLinkleri.map((v) => (
+                                <div key={v.gecici_id} className="flex items-center gap-2 flex-wrap">
+                                  <input
+                                    list="ders-onerileri"
+                                    value={v.ders_adi}
+                                    onChange={(e) => videoLinkSatiriGuncelle(v.gecici_id, { ders_adi: e.target.value })}
+                                    placeholder="örn. Matematik"
+                                    className="w-40 px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-purple-400 bg-white"
+                                  />
+                                  <input
+                                    type="url"
+                                    value={v.video_url}
+                                    onChange={(e) => videoLinkSatiriGuncelle(v.gecici_id, { video_url: e.target.value })}
+                                    placeholder="https://youtube.com/..."
+                                    className="flex-1 min-w-[220px] px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-purple-400 bg-white"
+                                  />
+                                  <button
+                                    type="button"
+                                    onClick={() => videoLinkSatiriSil(v.gecici_id)}
+                                    className="text-red-500 text-xs font-semibold hover:underline"
+                                  >
+                                    Sil
+                                  </button>
+                                </div>
+                              ))}
+                            </div>
+                            <div className="flex items-center gap-3 flex-wrap">
+                              <button
+                                type="button"
+                                onClick={videoLinkSatiriEkle}
+                                className="text-sm text-purple-600 font-semibold hover:underline"
+                              >
+                                + Ders Ekle
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => videoLinkleriKaydet(s.id)}
+                                disabled={videoLinkleriKaydediliyor}
+                                className="bg-purple-600 text-white text-sm font-semibold px-4 py-2 rounded-lg hover:opacity-90 disabled:opacity-50"
+                              >
+                                {videoLinkleriKaydediliyor ? 'Kaydediliyor...' : 'Kaydet'}
+                              </button>
+                            </div>
+                          </>
+                        )}
+                      </td>
+                    </tr>
+                  )}
+                  </>
                 )
               )}
             </tbody>
