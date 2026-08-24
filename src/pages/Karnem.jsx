@@ -627,29 +627,31 @@ export default function Karnem() {
                       ? tekliHKDersSecim[s.id] || s.dersler[0]?.ders_adi || ''
                       : tekliHKDersSecim[s.id]
                     return (
-                      <>
+                      // Kullanıcı isteğiyle: ders seçimi ile "Hata Kitapçığını
+                      // Görüntüle" butonu bir ARAYA getirildi (ortak arka
+                      // planlı tek bir kapsül içinde) — önceden ikisi ayrı ayrı
+                      // durduğu için öğrenci/veli, ders seçip SONRA o dersin
+                      // kitapçığının oluşacağını anlamıyordu.
+                      <span className="inline-flex items-center gap-1.5 bg-orange/10 border border-orange/20 rounded-full pl-1 pr-1 py-1">
                         {/* Yönetici/veli/öğrenci için varsayılan "Tümü" — bu
                             sınavdaki tüm dersler birlikte. Seçilirse tek bir
                             ders (ör. sadece Türkçe) için ayrı kitapçık
                             indirilebiliyor; bkz. HataKitapcigi.jsx'teki
                             ?ders= filtresi. */}
                         {s.dersler && s.dersler.length > 1 && (
-                          <span className="inline-flex items-center gap-1.5">
-                            <span className="text-xs text-gray-400">Ders:</span>
-                            <select
-                              value={tekliHKDersSecim[s.id] || (isOgretmen ? dersFiltreDeger : '')}
-                              onClick={(e) => e.stopPropagation()}
-                              onChange={(e) =>
-                                setTekliHKDersSecim((onceki) => ({ ...onceki, [s.id]: e.target.value }))
-                              }
-                              className="text-xs border border-gray-200 rounded-full px-2.5 py-1.5 bg-white text-gray-600"
-                            >
-                              {!isOgretmen && <option value="">Tüm Dersler</option>}
-                              {s.dersler.map((d) => (
-                                <option key={d.id} value={d.ders_adi}>{d.ders_adi}</option>
-                              ))}
-                            </select>
-                          </span>
+                          <select
+                            value={tekliHKDersSecim[s.id] || (isOgretmen ? dersFiltreDeger : '')}
+                            onClick={(e) => e.stopPropagation()}
+                            onChange={(e) =>
+                              setTekliHKDersSecim((onceki) => ({ ...onceki, [s.id]: e.target.value }))
+                            }
+                            className="text-xs border border-orange/30 rounded-full pl-2.5 pr-1.5 py-1 bg-white text-gray-700 font-medium"
+                          >
+                            {!isOgretmen && <option value="">Tüm Dersler</option>}
+                            {s.dersler.map((d) => (
+                              <option key={d.id} value={d.ders_adi}>{d.ders_adi}</option>
+                            ))}
+                          </select>
                         )}
                         <Link
                           to={
@@ -664,7 +666,7 @@ export default function Karnem() {
                         >
                           Hata Kitapçığını Görüntüle
                         </Link>
-                      </>
+                      </span>
                     )
                   })()}
                 </div>
