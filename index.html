@@ -20,6 +20,14 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="default">
     <meta name="apple-mobile-web-app-title" content="Savaş Akça">
     <meta name="theme-color" content="#0f172a">
+    <!-- Vercel Web Analytics — ziyaretçi/sayfa görüntüleme sayacı. Site
+         Next.js değil Vite/React olduğu için @vercel/analytics npm paketi
+         yerine bu düz script yöntemi kullanılıyor (paket kurmaya gerek yok,
+         deploy olur olmaz otomatik çalışır). -->
+    <script>
+      window.va = window.va || function () { (window.vaq = window.vaq || []).push(arguments) }
+    </script>
+    <script defer src="/_vercel/insights/script.js"></script>
   </head>
   <body>
     <div id="root"></div>
