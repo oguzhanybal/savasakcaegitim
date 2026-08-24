@@ -520,6 +520,49 @@ export default function DersBazliHataKitapcigi() {
               </table>
             </div>
 
+            {/* Kullanıcı isteğiyle eklendi: hangi sınavların kitapçığa dahil
+                olduğunu görmek/değiştirmek için her sınavın sorularını tek
+                tek aşağı kaydırmak gerekmesin diye — TÜM sınavlar tek bir
+                listede, en üstte, tıkla-aç/kapa şeklinde gösteriliyor.
+                Aşağıdaki soru soru döküm hâlâ mevcut, sadece bu ek bir
+                kısayol. */}
+            {sinavGruplari.length > 1 && (
+              <div className="no-print bg-white rounded-2xl border border-gray-100 shadow-sm p-4 mb-5">
+                <p className="text-sm font-semibold text-gray-700 mb-3">Kitapçığa Dahil Olan Sınavlar</p>
+                <div className="flex flex-col gap-1.5">
+                  {sinavGruplari.map((grup) => {
+                    const grupSeciliSayisi = grup.sorular.filter((s) => seciliSorular.has(s.id)).length
+                    const grupHepsiSecili = grupSeciliSayisi === grup.sorular.length
+                    return (
+                      <label
+                        key={grup.sonucId}
+                        className="flex items-center justify-between gap-2 px-3 py-2 rounded-lg border border-gray-100 hover:bg-gray-50 cursor-pointer"
+                      >
+                        <span className="flex items-center gap-2">
+                          <input
+                            type="checkbox"
+                            checked={grupSeciliSayisi > 0}
+                            onChange={() => grupTumunuDegistir(grup)}
+                            className="w-4 h-4"
+                          />
+                          <span className="text-sm text-gray-700">
+                            {grup.sinavAdi}
+                            {grup.sinavTarihi && (
+                              <span className="text-gray-400"> · {new Date(grup.sinavTarihi).toLocaleDateString('tr-TR')}</span>
+                            )}
+                            {grup.kitapcik && <span className="text-gray-400"> · Kitapçık {grup.kitapcik}</span>}
+                          </span>
+                        </span>
+                        <span className="text-xs text-gray-400 shrink-0">
+                          {grupHepsiSecili ? `${grup.sorular.length} soru dahil` : grupSeciliSayisi === 0 ? 'Dahil değil' : `${grupSeciliSayisi}/${grup.sorular.length} soru dahil`}
+                        </span>
+                      </label>
+                    )
+                  })}
+                </div>
+              </div>
+            )}
+
             {eksikKitapciklar.length > 0 && (
               <div className="no-print bg-orange/10 border border-orange/20 rounded-2xl p-4 mb-5">
                 <p className="text-sm font-semibold text-orange mb-1">
