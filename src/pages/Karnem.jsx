@@ -640,7 +640,7 @@ export default function Karnem() {
                                 className="ml-2 inline-flex items-center gap-0.5 text-[11px] font-semibold text-red-600 hover:underline align-middle"
                                 title="Çözüm Videosu"
                               >
-                                ▶ Video
+                                ▶ Video Çözümleri
                               </a>
                             )}
                           </td>
