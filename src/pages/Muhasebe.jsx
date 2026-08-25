@@ -301,15 +301,15 @@ function SozlesmeEkleForm({ ogrenciId, onEklendi }) {
   const [gonderiliyor, setGonderiliyor] = useState(false)
   const [acik, setAcik] = useState(false)
 
-  // ÖZEL PLAN — veli aya göre farklı tutar ödeyecekse (ör. Ekim 500, Kasım
-  // 300), toplamı taksit sayısına eşit bölmek yerine her ayın kendi tutarı
-  // burada tek tek girilir. ozelPlanAcik false ise sistem eskisi gibi
-  // Toplam Tutar / Taksit Sayısı ile eşit böler.
+  // ÖZEL PLAN — veli aya (hatta güne) göre farklı tutar ödeyecekse (ör. 15
+  // Ekim 500, 20 Kasım 300), toplamı taksit sayısına eşit bölmek yerine her
+  // taksitin kendi TARİHİ ve TUTARI burada tek tek girilir. ozelPlanAcik
+  // false ise sistem eskisi gibi Toplam Tutar / Taksit Sayısı ile eşit böler.
   const [ozelPlanAcik, setOzelPlanAcik] = useState(false)
-  const [ozelTaksitler, setOzelTaksitler] = useState([{ ay: '', tutar: '' }])
+  const [ozelTaksitler, setOzelTaksitler] = useState([{ tarih: '', tutar: '' }])
 
   function ozelSatirEkle() {
-    setOzelTaksitler((prev) => [...prev, { ay: '', tutar: '' }])
+    setOzelTaksitler((prev) => [...prev, { tarih: '', tutar: '' }])
   }
   function ozelSatirSil(i) {
     setOzelTaksitler((prev) => (prev.length > 1 ? prev.filter((_, idx) => idx !== i) : prev))
@@ -324,18 +324,18 @@ function SozlesmeEkleForm({ ogrenciId, onEklendi }) {
     let kayit
     if (ozelPlanAcik) {
       const gecerliSatirlar = ozelTaksitler
-        .filter((s) => s.ay && Number(s.tutar) > 0)
+        .filter((s) => s.tarih && Number(s.tutar) > 0)
         .slice()
-        .sort((a, b) => a.ay.localeCompare(b.ay))
+        .sort((a, b) => a.tarih.localeCompare(b.tarih))
       if (gecerliSatirlar.length === 0) return
       kayit = {
         ogrenci_id: ogrenciId,
         kalem,
         toplam_tutar: gecerliSatirlar.reduce((t, s) => t + Number(s.tutar), 0),
         taksit_sayisi: gecerliSatirlar.length,
-        ilk_taksit_tarihi: `${gecerliSatirlar[0].ay}-01`,
+        ilk_taksit_tarihi: gecerliSatirlar[0].tarih,
         ozel_plan_mi: true,
-        ozel_taksitler: gecerliSatirlar.map((s) => ({ ay: s.ay, tutar: Number(s.tutar) })),
+        ozel_taksitler: gecerliSatirlar.map((s) => ({ tarih: s.tarih, tutar: Number(s.tutar) })),
         egitim_donemi: egitimDonemi.trim() || null,
         sinif_metni: sinifMetni.trim() ? ilkHarfleriBuyukYap(sinifMetni.trim()) : null,
         sozlesme_tarihi: sozlesmeTarihi || null,
@@ -363,7 +363,7 @@ function SozlesmeEkleForm({ ogrenciId, onEklendi }) {
       setTaksitSayisi('1')
       setIlkTaksitTarihi('')
       setOzelPlanAcik(false)
-      setOzelTaksitler([{ ay: '', tutar: '' }])
+      setOzelTaksitler([{ tarih: '', tutar: '' }])
       setSinifMetni('')
       setAcik(false)
       onEklendi()
@@ -452,16 +452,17 @@ function SozlesmeEkleForm({ ogrenciId, onEklendi }) {
       {ozelPlanAcik && (
         <div className="mt-3 pt-3 border-t border-gray-100">
           <p className="text-sm text-gray-500 mb-2">
-            Veli her ay farklı bir tutar ödeyecekse, toplamı eşit bölmek yerine her ayın tutarını burada tek tek
-            girin (ör. Ekim 500, Kasım 300). Toplam Tutar ve Taksit Sayısı bu satırlardan otomatik hesaplanır.
+            Veli her ay (hatta her gün) farklı bir tutar ödeyecekse, toplamı eşit bölmek yerine her taksitin
+            tarihini ve tutarını burada tek tek girin (ör. 15 Ekim 500₺, 20 Kasım 300₺). Toplam Tutar ve Taksit
+            Sayısı bu satırlardan otomatik hesaplanır.
           </p>
           <div className="space-y-2">
             {ozelTaksitler.map((s, i) => (
               <div key={i} className="flex gap-2 items-center">
                 <input
-                  type="month"
-                  value={s.ay}
-                  onChange={(e) => ozelSatirGuncelle(i, 'ay', e.target.value)}
+                  type="date"
+                  value={s.tarih}
+                  onChange={(e) => ozelSatirGuncelle(i, 'tarih', e.target.value)}
                   className="px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue"
                 />
                 <input
@@ -490,10 +491,10 @@ function SozlesmeEkleForm({ ogrenciId, onEklendi }) {
               onClick={ozelSatirEkle}
               className="text-navy font-semibold text-sm underline hover:no-underline"
             >
-              + Ay Ekle
+              + Taksit Ekle
             </button>
             <p className="text-sm font-semibold text-gray-700">
-              Toplam: {paraFormat(ozelToplam)} ({ozelTaksitler.filter((s) => s.ay && Number(s.tutar) > 0).length}{' '}
+              Toplam: {paraFormat(ozelToplam)} ({ozelTaksitler.filter((s) => s.tarih && Number(s.tutar) > 0).length}{' '}
               taksit)
             </p>
           </div>
