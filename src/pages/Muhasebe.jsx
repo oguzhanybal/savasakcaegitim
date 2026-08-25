@@ -301,25 +301,69 @@ function SozlesmeEkleForm({ ogrenciId, onEklendi }) {
   const [gonderiliyor, setGonderiliyor] = useState(false)
   const [acik, setAcik] = useState(false)
 
+  // ÖZEL PLAN — veli aya göre farklı tutar ödeyecekse (ör. Ekim 500, Kasım
+  // 300), toplamı taksit sayısına eşit bölmek yerine her ayın kendi tutarı
+  // burada tek tek girilir. ozelPlanAcik false ise sistem eskisi gibi
+  // Toplam Tutar / Taksit Sayısı ile eşit böler.
+  const [ozelPlanAcik, setOzelPlanAcik] = useState(false)
+  const [ozelTaksitler, setOzelTaksitler] = useState([{ ay: '', tutar: '' }])
+
+  function ozelSatirEkle() {
+    setOzelTaksitler((prev) => [...prev, { ay: '', tutar: '' }])
+  }
+  function ozelSatirSil(i) {
+    setOzelTaksitler((prev) => (prev.length > 1 ? prev.filter((_, idx) => idx !== i) : prev))
+  }
+  function ozelSatirGuncelle(i, alan, deger) {
+    setOzelTaksitler((prev) => prev.map((s, idx) => (idx === i ? { ...s, [alan]: deger } : s)))
+  }
+  const ozelToplam = ozelTaksitler.reduce((t, s) => t + (Number(s.tutar) || 0), 0)
+
   async function ekle(e) {
     e.preventDefault()
-    if (!toplamTutar || Number(toplamTutar) <= 0) return
+    let kayit
+    if (ozelPlanAcik) {
+      const gecerliSatirlar = ozelTaksitler
+        .filter((s) => s.ay && Number(s.tutar) > 0)
+        .slice()
+        .sort((a, b) => a.ay.localeCompare(b.ay))
+      if (gecerliSatirlar.length === 0) return
+      kayit = {
+        ogrenci_id: ogrenciId,
+        kalem,
+        toplam_tutar: gecerliSatirlar.reduce((t, s) => t + Number(s.tutar), 0),
+        taksit_sayisi: gecerliSatirlar.length,
+        ilk_taksit_tarihi: `${gecerliSatirlar[0].ay}-01`,
+        ozel_plan_mi: true,
+        ozel_taksitler: gecerliSatirlar.map((s) => ({ ay: s.ay, tutar: Number(s.tutar) })),
+        egitim_donemi: egitimDonemi.trim() || null,
+        sinif_metni: sinifMetni.trim() ? ilkHarfleriBuyukYap(sinifMetni.trim()) : null,
+        sozlesme_tarihi: sozlesmeTarihi || null,
+      }
+    } else {
+      if (!toplamTutar || Number(toplamTutar) <= 0) return
+      kayit = {
+        ogrenci_id: ogrenciId,
+        kalem,
+        toplam_tutar: Number(toplamTutar),
+        taksit_sayisi: Number(taksitSayisi) || 1,
+        ilk_taksit_tarihi: ilkTaksitTarihi || null,
+        ozel_plan_mi: false,
+        ozel_taksitler: null,
+        egitim_donemi: egitimDonemi.trim() || null,
+        sinif_metni: sinifMetni.trim() ? ilkHarfleriBuyukYap(sinifMetni.trim()) : null,
+        sozlesme_tarihi: sozlesmeTarihi || null,
+      }
+    }
     setGonderiliyor(true)
-    const { error } = await supabase.from('sozlesmeler').insert({
-      ogrenci_id: ogrenciId,
-      kalem,
-      toplam_tutar: Number(toplamTutar),
-      taksit_sayisi: Number(taksitSayisi) || 1,
-      ilk_taksit_tarihi: ilkTaksitTarihi || null,
-      egitim_donemi: egitimDonemi.trim() || null,
-      sinif_metni: sinifMetni.trim() ? ilkHarfleriBuyukYap(sinifMetni.trim()) : null,
-      sozlesme_tarihi: sozlesmeTarihi || null,
-    })
+    const { error } = await supabase.from('sozlesmeler').insert(kayit)
     setGonderiliyor(false)
     if (!error) {
       setToplamTutar('')
       setTaksitSayisi('1')
       setIlkTaksitTarihi('')
+      setOzelPlanAcik(false)
+      setOzelTaksitler([{ ay: '', tutar: '' }])
       setSinifMetni('')
       setAcik(false)
       onEklendi()
@@ -355,37 +399,107 @@ function SozlesmeEkleForm({ ogrenciId, onEklendi }) {
             <option>Deneme Kulübü</option>
           </select>
         </div>
-        <div className="flex-1 min-w-[140px]">
-          <label className="block text-sm font-medium text-gray-700 mb-1">Toplam Tutar (₺)</label>
-          <input
-            type="number"
-            min="0"
-            step="0.01"
-            value={toplamTutar}
-            onChange={(e) => setToplamTutar(e.target.value)}
-            className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue"
-          />
-        </div>
-        <div className="flex-1 min-w-[110px]">
-          <label className="block text-sm font-medium text-gray-700 mb-1">Taksit Sayısı</label>
-          <input
-            type="number"
-            min="1"
-            value={taksitSayisi}
-            onChange={(e) => setTaksitSayisi(e.target.value)}
-            className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue"
-          />
-        </div>
-        <div className="flex-1 min-w-[150px]">
-          <label className="block text-sm font-medium text-gray-700 mb-1">İlk Taksit Tarihi</label>
-          <input
-            type="date"
-            value={ilkTaksitTarihi}
-            onChange={(e) => setIlkTaksitTarihi(e.target.value)}
-            className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue"
-          />
+        {!ozelPlanAcik && (
+          <>
+            <div className="flex-1 min-w-[140px]">
+              <label className="block text-sm font-medium text-gray-700 mb-1">Toplam Tutar (₺)</label>
+              <input
+                type="number"
+                min="0"
+                step="0.01"
+                value={toplamTutar}
+                onChange={(e) => setToplamTutar(e.target.value)}
+                className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue"
+              />
+            </div>
+            <div className="flex-1 min-w-[110px]">
+              <label className="block text-sm font-medium text-gray-700 mb-1">Taksit Sayısı</label>
+              <input
+                type="number"
+                min="1"
+                value={taksitSayisi}
+                onChange={(e) => setTaksitSayisi(e.target.value)}
+                className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue"
+              />
+            </div>
+            <div className="flex-1 min-w-[150px]">
+              <label className="block text-sm font-medium text-gray-700 mb-1">İlk Taksit Tarihi</label>
+              <input
+                type="date"
+                value={ilkTaksitTarihi}
+                onChange={(e) => setIlkTaksitTarihi(e.target.value)}
+                className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue"
+              />
+            </div>
+          </>
+        )}
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-1">&nbsp;</label>
+          <button
+            type="button"
+            onClick={() => setOzelPlanAcik((v) => !v)}
+            className={`px-4 py-2 rounded-lg font-semibold text-sm border transition-colors ${
+              ozelPlanAcik
+                ? 'bg-orange text-white border-orange'
+                : 'bg-white text-gray-600 border-gray-200 hover:border-orange'
+            }`}
+          >
+            {ozelPlanAcik ? '✓ Özel Plan' : 'Özel Plan Kullan'}
+          </button>
         </div>
       </div>
+
+      {ozelPlanAcik && (
+        <div className="mt-3 pt-3 border-t border-gray-100">
+          <p className="text-sm text-gray-500 mb-2">
+            Veli her ay farklı bir tutar ödeyecekse, toplamı eşit bölmek yerine her ayın tutarını burada tek tek
+            girin (ör. Ekim 500, Kasım 300). Toplam Tutar ve Taksit Sayısı bu satırlardan otomatik hesaplanır.
+          </p>
+          <div className="space-y-2">
+            {ozelTaksitler.map((s, i) => (
+              <div key={i} className="flex gap-2 items-center">
+                <input
+                  type="month"
+                  value={s.ay}
+                  onChange={(e) => ozelSatirGuncelle(i, 'ay', e.target.value)}
+                  className="px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue"
+                />
+                <input
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  placeholder="Tutar (₺)"
+                  value={s.tutar}
+                  onChange={(e) => ozelSatirGuncelle(i, 'tutar', e.target.value)}
+                  className="flex-1 min-w-[110px] px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue"
+                />
+                <button
+                  type="button"
+                  onClick={() => ozelSatirSil(i)}
+                  disabled={ozelTaksitler.length <= 1}
+                  className="text-red-500 hover:text-red-700 disabled:opacity-30 disabled:cursor-not-allowed px-2 text-sm font-semibold"
+                >
+                  Sil
+                </button>
+              </div>
+            ))}
+          </div>
+          <div className="flex items-center justify-between mt-2">
+            <button
+              type="button"
+              onClick={ozelSatirEkle}
+              className="text-navy font-semibold text-sm underline hover:no-underline"
+            >
+              + Ay Ekle
+            </button>
+            <p className="text-sm font-semibold text-gray-700">
+              Toplam: {paraFormat(ozelToplam)} ({ozelTaksitler.filter((s) => s.ay && Number(s.tutar) > 0).length}{' '}
+              taksit)
+            </p>
+          </div>
+        </div>
+      )}
+
       <div className="flex flex-wrap gap-3 items-end mt-3 pt-3 border-t border-gray-100">
         <div className="flex-1 min-w-[130px]">
           <label className="block text-sm font-medium text-gray-700 mb-1">Sözleşme Tarihi</label>
@@ -1069,6 +1183,18 @@ export default function Muhasebe() {
   }
 
   function sozlesmeDuzenlemeyeBasla(s) {
+    // Özel plan (ay ay farklı tutar) sözleşmeler bu form üzerinden
+    // düzenlenemez — bu form Toplam Tutar/Taksit Sayısı'nı EŞİT bölerek
+    // ilk_taksit_tarihi'ne yazar, bu da özel plandaki ay/tutar satırlarıyla
+    // (ozel_taksitler) çelişip tutarsızlık yaratır. Bunun yerine sözleşmeyi
+    // silip aynı ayarlarla yeniden eklemeleri istenir.
+    if (s.ozel_plan_mi) {
+      alert(
+        'Bu sözleşme "Özel Plan" ile oluşturulmuş (ay ay farklı tutar). Bu ekrandan düzenlenemiyor — ' +
+          'değiştirmek için sözleşmeyi silip yeni tutarlarla tekrar ekleyin.'
+      )
+      return
+    }
     setSozlesmeDuzenlenenId(s.id)
     setDuzenleKalem(s.kalem)
     setDuzenleToplamTutar(String(s.toplam_tutar))
@@ -1459,7 +1585,14 @@ export default function Muhasebe() {
                   }
                   return (
                     <tr key={s.id} className="border-t border-gray-50">
-                      <td className="px-4 py-2 font-medium text-gray-800">{s.kalem}</td>
+                      <td className="px-4 py-2 font-medium text-gray-800">
+                        {s.kalem}
+                        {s.ozel_plan_mi && (
+                          <span className="ml-2 text-xs font-semibold px-2 py-0.5 rounded-full bg-orange/10 text-orange">
+                            Özel Plan
+                          </span>
+                        )}
+                      </td>
                       {faturaDigerleri.length > 0 && (
                         <td className="px-4 py-2 text-purple-700">{adSoyadBul(s.ogrenci_id)}</td>
                       )}
