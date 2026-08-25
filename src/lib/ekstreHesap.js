@@ -28,13 +28,6 @@ export function ayFarki(hedef, ilk) {
   return ayIndexOf(hedef) - ayIndexOf(ilk)
 }
 
-// ayIndexOf'un tersi — bir index'ten {yil, ay} nesnesine döner. Özel taksit
-// planında her taksitin kendi ayı olduğu için (eşit aralıklı değil) taksitleri
-// sıralayıp karşılaştırmak için index'e, index'ten de tekrar aya gidip gelmek
-// gerekiyor.
-function ayIndexToObj(index) {
-  return { yil: Math.floor(index / 12), ay: (index % 12) + 1 }
-}
 
 function tarihStr(y, m, d) {
   return `${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`
@@ -62,18 +55,26 @@ export function odemeToplamKalem(odemeler, kalemAdi, hedefAy) {
 // ============================================================================
 export function sozlesmeKalemHesapla(sozlesme, odemeler, seciliAy) {
   // ÖZEL PLAN — veli, standart "toplamı taksit sayısına eşit böl" yerine ayı
-  // ayına farklı tutar ödemek isterse (ör. Ekim 500, Kasım 300), sözleşmede
-  // ozel_plan_mi=true olur ve ozel_taksitler ([{ay:'YYYY-MM', tutar}, ...])
-  // kullanılır — taksitTutari sabit değil, her taksitin kendi tutarı vardır.
+  // ayına (hatta güne) farklı tutar ödemek isterse (ör. 15 Ekim 500, 20 Kasım
+  // 300), sözleşmede ozel_plan_mi=true olur ve ozel_taksitler
+  // ([{tarih:'YYYY-MM-DD', tutar}, ...]) kullanılır — taksitTutari sabit
+  // değil, her taksitin kendi tutarı VE kendi vade günü vardır.
   const ozelPlanMi =
     !!sozlesme.ozel_plan_mi && Array.isArray(sozlesme.ozel_taksitler) && sozlesme.ozel_taksitler.length > 0
 
-  let plan // kronolojik sıralı [{ayIndex, tutar}]
+  let plan // kronolojik sıralı [{ayIndex, tutar, tarih}]
   let taksitSayisi
   if (ozelPlanMi) {
     plan = sozlesme.ozel_taksitler
-      .map((k) => ({ ayIndex: ayIndexOf(ayCoz(k.ay)), tutar: Number(k.tutar) || 0 }))
-      .sort((a, b) => a.ayIndex - b.ayIndex)
+      .map((k) => {
+        // Geriye dönük uyumluluk: eski kayıtlarda sadece {ay:'YYYY-MM'}
+        // olabilir (gün seçimi eklenmeden önce), o zaman ayın 1'i kullanılır.
+        const tarih = k.tarih || (k.ay ? `${k.ay}-01` : null)
+        const ayStr = tarih ? tarih.slice(0, 7) : k.ay
+        return { ayIndex: ayIndexOf(ayCoz(ayStr)), tutar: Number(k.tutar) || 0, tarih }
+      })
+      .filter((k) => k.tarih)
+      .sort((a, b) => (a.tarih < b.tarih ? -1 : a.tarih > b.tarih ? 1 : 0))
     taksitSayisi = plan.length
     if (taksitSayisi === 0) return null
   } else {
@@ -162,8 +163,9 @@ export function sozlesmeKalemHesapla(sozlesme, odemeler, seciliAy) {
   let vade = null
   if (M < taksitSayisi) {
     if (ozelPlanMi) {
-      const { yil, ay } = ayIndexToObj(plan[M].ayIndex)
-      vade = new Date(yil, ay - 1, 1)
+      // Özel plan taksitlerinde vade artık ayın 1'i değil, veli/yönetici o
+      // satırda ne gün seçtiyse tam olarak o gün.
+      vade = new Date(plan[M].tarih)
     } else {
       vade = new Date(sozlesme.ilk_taksit_tarihi)
       vade.setMonth(vade.getMonth() + M)
@@ -514,10 +516,12 @@ export function taksitPlaniOlustur(sozlesme, odemeler) {
   if (ozelPlanMi) {
     plan = sozlesme.ozel_taksitler
       .map((k) => {
-        const { yil, ay } = ayCoz(k.ay)
-        return { ayIndex: ayIndexOf({ yil, ay }), tutar: Number(k.tutar) || 0, vade: new Date(yil, ay - 1, 1) }
+        // Geriye dönük uyumluluk: eski kayıtlarda sadece {ay:'YYYY-MM'} olabilir.
+        const tarih = k.tarih || (k.ay ? `${k.ay}-01` : null)
+        return tarih ? { tarih, tutar: Number(k.tutar) || 0, vade: new Date(tarih) } : null
       })
-      .sort((a, b) => a.ayIndex - b.ayIndex)
+      .filter(Boolean)
+      .sort((a, b) => (a.tarih < b.tarih ? -1 : a.tarih > b.tarih ? 1 : 0))
     if (plan.length === 0) return []
   } else {
     const taksitSayisi = Number(sozlesme.taksit_sayisi) || 0
