@@ -715,12 +715,18 @@ function OdevlerimListesi({ odevler, birdenFazlaCocukMu }) {
     return (
       <div className={`px-4 py-3 flex items-start justify-between gap-3 flex-wrap ${bugundenSonraMi ? 'bg-red-50' : ''}`}>
         <div>
-          <p className="font-medium text-gray-800">
-            {o.baslik}
-            {o.ders && <span className="text-gray-400 font-normal"> — {o.ders}</span>}
-            {birdenFazlaCocukMu && <span className="text-gray-400 font-normal"> ({o.ogrenci_adi})</span>}
+          <p className="font-medium text-gray-800 flex items-center flex-wrap gap-x-1">
+            <span>
+              {o.baslik}
+              {o.ders && <span className="text-gray-400 font-normal"> — {o.ders}</span>}
+            </span>
+            {birdenFazlaCocukMu && o.ogrenci_adi && (
+              <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-orange/10 text-orange whitespace-nowrap">
+                {o.ogrenci_adi}
+              </span>
+            )}
           </p>
-          {o.aciklama && <p className="text-sm text-gray-500 mt-0.5">{o.aciklama}</p>}
+          {o.aciklama && <p className="text-sm text-gray-500 mt-0.5 whitespace-pre-line">{o.aciklama}</p>}
           <p className="text-xs text-gray-400 mt-1">
             {o.ogretmen_adi ? `${o.ogretmen_adi} · ` : ''}
             {o.son_tarih
