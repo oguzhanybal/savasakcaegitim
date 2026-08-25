@@ -28,6 +28,14 @@ export function ayFarki(hedef, ilk) {
   return ayIndexOf(hedef) - ayIndexOf(ilk)
 }
 
+// ayIndexOf'un tersi — bir index'ten {yil, ay} nesnesine döner. Özel taksit
+// planında her taksitin kendi ayı olduğu için (eşit aralıklı değil) taksitleri
+// sıralayıp karşılaştırmak için index'e, index'ten de tekrar aya gidip gelmek
+// gerekiyor.
+function ayIndexToObj(index) {
+  return { yil: Math.floor(index / 12), ay: (index % 12) + 1 }
+}
+
 function tarihStr(y, m, d) {
   return `${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`
 }
@@ -53,14 +61,30 @@ export function odemeToplamKalem(odemeler, kalemAdi, hedefAy) {
 // Böylece ödenmeyen taksit otomatik olarak bir sonraki aya da taşınır.
 // ============================================================================
 export function sozlesmeKalemHesapla(sozlesme, odemeler, seciliAy) {
-  const taksitSayisi = Number(sozlesme.taksit_sayisi) || 0
-  const toplamTutar = Number(sozlesme.toplam_tutar) || 0
-  if (!sozlesme.ilk_taksit_tarihi || taksitSayisi <= 0) return null
+  // ÖZEL PLAN — veli, standart "toplamı taksit sayısına eşit böl" yerine ayı
+  // ayına farklı tutar ödemek isterse (ör. Ekim 500, Kasım 300), sözleşmede
+  // ozel_plan_mi=true olur ve ozel_taksitler ([{ay:'YYYY-MM', tutar}, ...])
+  // kullanılır — taksitTutari sabit değil, her taksitin kendi tutarı vardır.
+  const ozelPlanMi =
+    !!sozlesme.ozel_plan_mi && Array.isArray(sozlesme.ozel_taksitler) && sozlesme.ozel_taksitler.length > 0
 
-  const ilkTarih = new Date(sozlesme.ilk_taksit_tarihi)
-  const ilk = { yil: ilkTarih.getFullYear(), ay: ilkTarih.getMonth() + 1 }
-  const ilkIndex = ayIndexOf(ilk)
-  const taksitTutari = toplamTutar / taksitSayisi
+  let plan // kronolojik sıralı [{ayIndex, tutar}]
+  let taksitSayisi
+  if (ozelPlanMi) {
+    plan = sozlesme.ozel_taksitler
+      .map((k) => ({ ayIndex: ayIndexOf(ayCoz(k.ay)), tutar: Number(k.tutar) || 0 }))
+      .sort((a, b) => a.ayIndex - b.ayIndex)
+    taksitSayisi = plan.length
+    if (taksitSayisi === 0) return null
+  } else {
+    taksitSayisi = Number(sozlesme.taksit_sayisi) || 0
+    const toplamTutar = Number(sozlesme.toplam_tutar) || 0
+    if (!sozlesme.ilk_taksit_tarihi || taksitSayisi <= 0) return null
+    const ilkTarih0 = new Date(sozlesme.ilk_taksit_tarihi)
+    const ilkIndex0 = ayIndexOf({ yil: ilkTarih0.getFullYear(), ay: ilkTarih0.getMonth() + 1 })
+    const taksitTutari = toplamTutar / taksitSayisi
+    plan = Array.from({ length: taksitSayisi }, (_, i) => ({ ayIndex: ilkIndex0 + i, tutar: taksitTutari }))
+  }
 
   const { yil: seciliYil, ay: seciliAyNo } = ayCoz(seciliAy)
   const seciliIndex = ayIndexOf({ yil: seciliYil, ay: seciliAyNo })
@@ -88,27 +112,36 @@ export function sozlesmeKalemHesapla(sozlesme, odemeler, seciliAy) {
   // GERÇEKTEN o ayın son gününe ulaştıysa "bitmiş" sayılır.
   const ayBittiMi = seciliAy !== bugunAyStr || bugunStr >= ayinSonGunuStr
 
-  // Belirli bir hedef aya (dahil) kaç taksitin "sayıldığını" hesaplar — DÜZ AY
-  // BAZINDA (eski sistemdeki gibi): bir taksit, kendi ayı geldiği andan
-  // (ayın 1'inden) itibaren o AYIN TAMAMI boyunca borç sayılır — sadece kendi
-  // GÜNÜNÜ (ör. ayın 5'i ya da 20'si) beklemez. Gün hassasiyeti burada değil,
-  // SADECE yukarıdaki "ayBittiMi" tespitinde (ayın 28/29/30/31 günü doğru
-  // hesaplanıp bir sonraki ayın erken/geç eklenmemesi için) kullanılıyor.
-  function sayilanTaksit(hedefIndex) {
-    return Math.max(0, Math.min(taksitSayisi, hedefIndex - ilkIndex + 1))
+  // Belirli bir hedef aya (dahil) kaç taksitin "sayıldığını" ve bunların
+  // toplam tutarını hesaplar — DÜZ AY BAZINDA (eski sistemdeki gibi): bir
+  // taksit, kendi ayı geldiği andan (ayın 1'inden) itibaren o AYIN TAMAMI
+  // boyunca borç sayılır. Taksitler artık eşit tutarlı olmak zorunda
+  // olmadığı için (özel plan), tek tek toplanıyor.
+  function sayilanKisim(hedefIndex) {
+    const dahil = plan.filter((k) => k.ayIndex <= hedefIndex)
+    return { adet: dahil.length, toplam: dahil.reduce((t, k) => t + k.tutar, 0) }
   }
 
   const hedefIndex = ayBittiMi ? seciliIndex + 1 : seciliIndex
-  const G = sayilanTaksit(hedefIndex)
-  // Bir önceki ayın SONUNA kadar (düz ay bazında, gün kontrolü olmadan) kaç
-  // taksit kesinleşmiş/kapanmıştı — "bu ay yeni eklenen kısmı" bulmak için.
-  const oncekiAyTaksitSayisi = Math.max(0, Math.min(taksitSayisi, seciliIndex - 1 - ilkIndex + 1))
+  const { toplam: J } = sayilanKisim(hedefIndex)
+  // Bir önceki ayın SONUNA kadar (düz ay bazında, gün kontrolü olmadan) ne
+  // kadarı kesinleşmiş/kapanmıştı — "bu ay yeni eklenen kısmı" bulmak için.
+  const { toplam: oncekiJ } = sayilanKisim(seciliIndex - 1)
 
   const hedefAyObj = ayBittiMi ? ayEkle(seciliAy, 1) : { yil: seciliYil, ay: seciliAyNo }
   const odenen = odemeToplamKalem(odemeler, sozlesme.kalem, hedefAyObj)
 
-  const J = taksitTutari * G
-  const M = taksitTutari > 0 ? Math.min(taksitSayisi, Math.floor(odenen / taksitTutari)) : 0
+  // Ödemeler kümülatif olarak en eski taksitten başlayarak kapatılıyor —
+  // taksitler artık farklı tutarlı olabildiği için M (kaç taksit TAM
+  // ödendi), tek bir bölme yerine taksitleri sırayla tüketerek bulunuyor.
+  let M = 0
+  let kalanOdenenBudget = odenen
+  for (const k of plan) {
+    if (kalanOdenenBudget >= k.tutar - 0.01) {
+      kalanOdenenBudget -= k.tutar
+      M++
+    } else break
+  }
 
   const kalanToplam = Math.max(0, J - odenen)
   // Veli, o ana kadar borçlanandan FAZLA ödeme yaptıysa (ör. taksitini önden
@@ -121,15 +154,20 @@ export function sozlesmeKalemHesapla(sozlesme, odemeler, seciliAy) {
   // ya sadece bu ayın kendi taksiti (vadesi geldiyse), ya da (ay bittiyse)
   // hem bu ayın hem bir sonraki ayın taksiti birlikte. Kalan her şey daha
   // eski aylardan sürüklenen, hâlâ ödenmemiş borç.
-  const buAyTutar = Math.min(taksitTutari * Math.max(0, G - oncekiAyTaksitSayisi), kalanToplam)
+  const buAyTutar = Math.min(Math.max(0, J - oncekiJ), kalanToplam)
   const gecmisBorc = Math.max(0, kalanToplam - buAyTutar)
 
   if (kalanToplam <= 0 && fazlaOdeme <= 0.01) return null
 
   let vade = null
   if (M < taksitSayisi) {
-    vade = new Date(ilkTarih)
-    vade.setMonth(vade.getMonth() + M)
+    if (ozelPlanMi) {
+      const { yil, ay } = ayIndexToObj(plan[M].ayIndex)
+      vade = new Date(yil, ay - 1, 1)
+    } else {
+      vade = new Date(sozlesme.ilk_taksit_tarihi)
+      vade.setMonth(vade.getMonth() + M)
+    }
   }
 
   return {
@@ -467,23 +505,43 @@ export function odevBildirimMesajiOlustur({ kimeGonderiliyor, ogrenciAdi, ders, 
 // listeler. Hem veli hem yönetici bunu görebilir (Muhasebe sayfasında).
 // ============================================================================
 export function taksitPlaniOlustur(sozlesme, odemeler) {
-  const taksitSayisi = Number(sozlesme.taksit_sayisi) || 0
-  const toplamTutar = Number(sozlesme.toplam_tutar) || 0
-  if (!sozlesme.ilk_taksit_tarihi || taksitSayisi <= 0) return []
+  // ÖZEL PLAN — sozlesmeKalemHesapla ile aynı mantık: eşit bölme yerine her
+  // taksitin kendi (ay, tutar) çifti ozel_taksitler'den geliyor.
+  const ozelPlanMi =
+    !!sozlesme.ozel_plan_mi && Array.isArray(sozlesme.ozel_taksitler) && sozlesme.ozel_taksitler.length > 0
 
-  const ilkTarih = new Date(sozlesme.ilk_taksit_tarihi)
-  const taksitTutari = toplamTutar / taksitSayisi
+  let plan // kronolojik sıralı [{tutar, vade}]
+  if (ozelPlanMi) {
+    plan = sozlesme.ozel_taksitler
+      .map((k) => {
+        const { yil, ay } = ayCoz(k.ay)
+        return { ayIndex: ayIndexOf({ yil, ay }), tutar: Number(k.tutar) || 0, vade: new Date(yil, ay - 1, 1) }
+      })
+      .sort((a, b) => a.ayIndex - b.ayIndex)
+    if (plan.length === 0) return []
+  } else {
+    const taksitSayisi = Number(sozlesme.taksit_sayisi) || 0
+    const toplamTutar = Number(sozlesme.toplam_tutar) || 0
+    if (!sozlesme.ilk_taksit_tarihi || taksitSayisi <= 0) return []
+    const ilkTarih = new Date(sozlesme.ilk_taksit_tarihi)
+    const taksitTutari = toplamTutar / taksitSayisi
+    plan = Array.from({ length: taksitSayisi }, (_, i) => {
+      const vade = new Date(ilkTarih)
+      vade.setMonth(vade.getMonth() + i)
+      return { tutar: taksitTutari, vade }
+    })
+  }
+
   const bugun = new Date()
 
   // Bu kalem için bugüne kadar yapılmış TÜM ödemeler (devreden dahil, cutoff yok)
   const odenenToplam = odemeToplamKalem(odemeler, sozlesme.kalem, { yil: 9999, ay: 12 })
 
   const taksitler = []
-  for (let n = 1; n <= taksitSayisi; n++) {
-    const vade = new Date(ilkTarih)
-    vade.setMonth(vade.getMonth() + (n - 1))
-    const kumulatifOncekiGereken = taksitTutari * (n - 1)
-    const kumulatifGereken = taksitTutari * n
+  let kumulatifOncekiGereken = 0
+  for (let i = 0; i < plan.length; i++) {
+    const { tutar, vade } = plan[i]
+    const kumulatifGereken = kumulatifOncekiGereken + tutar
 
     // Ödemeler kümülatif olarak sırayla taksitleri kapatır (önce en eski taksit).
     // Bu taksite düşen kısım: bir önceki taksitlere kadar olan borç tamamen
@@ -492,9 +550,9 @@ export function taksitPlaniOlustur(sozlesme, odemeler) {
     // değer 10.000 çıkar ve kalanTutar 12.000 olur.
     const buTaksiteDusenOdenen = Math.min(
       Math.max(odenenToplam - kumulatifOncekiGereken, 0),
-      taksitTutari
+      tutar
     )
-    const kalanTutar = Math.max(taksitTutari - buTaksiteDusenOdenen, 0)
+    const kalanTutar = Math.max(tutar - buTaksiteDusenOdenen, 0)
 
     let durum
     if (odenenToplam >= kumulatifGereken - 0.01) durum = 'odendi'
@@ -502,7 +560,8 @@ export function taksitPlaniOlustur(sozlesme, odemeler) {
     else if (vade < bugun) durum = 'gecikti'
     else durum = 'bekliyor'
 
-    taksitler.push({ taksitNo: n, vade, tutar: taksitTutari, odenenTutar: buTaksiteDusenOdenen, kalanTutar, durum })
+    taksitler.push({ taksitNo: i + 1, vade, tutar, odenenTutar: buTaksiteDusenOdenen, kalanTutar, durum })
+    kumulatifOncekiGereken = kumulatifGereken
   }
   return taksitler
 }
@@ -523,19 +582,20 @@ export function taksitPlaniDetayliOlustur(sozlesme, odemeler) {
   const taksitler = taksitPlaniOlustur(sozlesme, odemeler)
   if (taksitler.length === 0) return taksitler
 
-  const taksitSayisi = Number(sozlesme.taksit_sayisi) || 0
-  const toplamTutar = Number(sozlesme.toplam_tutar) || 0
-  const taksitTutari = toplamTutar / taksitSayisi
-
   const kalemOdemeleri = (odemeler || [])
     .filter((o) => o.kalem && o.kalem.startsWith(sozlesme.kalem))
     .slice()
     .sort((a, b) => new Date(a.tarih) - new Date(b.tarih))
 
+  // Hedef kümülatif eşik artık her taksitin (t.tutar) kendi tutarı üzerinden
+  // birikimli olarak hesaplanıyor — özel planda taksitler eşit olmadığı için
+  // sabit taksitTutari*taksitNo çarpımı yerine taksitler.map ile birikiyor.
   let kumulatif = 0
   let odemeIndex = 0
+  let hedefKumulatif = 0
   return taksitler.map((t) => {
-    const hedef = taksitTutari * t.taksitNo
+    hedefKumulatif += t.tutar
+    const hedef = hedefKumulatif
     let sonOdemeTarihi = null
     while (odemeIndex < kalemOdemeleri.length && kumulatif < hedef - 0.01) {
       kumulatif += Number(kalemOdemeleri[odemeIndex].tutar)
