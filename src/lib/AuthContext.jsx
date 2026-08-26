@@ -20,6 +20,31 @@ export function AuthProvider({ children }) {
   // sonsuza kadar "Yükleniyor..." ekranında donuyor.
   const [zamanAsimiOldu, setZamanAsimiOldu] = useState(false)
 
+  // "Zil çalan bilgisayar" gibi hep açık kalan cihazlarda her sabah aynı
+  // sıkışmayla karşılaşılıyor ("Sayfayı Yenile" butonuna basmak işe
+  // yaramıyor, sadece tarayıcı verilerini silmek düzeltiyor"). Bunun nedeni:
+  // sıkışmaya yol açan supabase-js kilidi (yukarıdaki not) TEK BAŞINA hafif
+  // bir sorun olsa da, localStorage'da saklı oturum jetonu gece boyu
+  // beklerken süresi dolmaya yaklaşınca sayfa açılır açılmaz otomatik bir
+  // "jeton yenileme" tetikleniyor — kilitlenme TAM O ANDA oluyor. Sayfa
+  // sadece yenilenirse (F5) AYNI (süresi dolmaya yakın) jeton yeniden
+  // okunuyor ve kilitlenme HEMEN TEKRAR oluyor — kullanıcının "yenile işe
+  // yaramıyor" şikayeti bundan. "Tarayıcı verilerini sil" işe yarıyor çünkü
+  // o jetonu tamamen siliyor, yeniden giriş yapılınca TAZE bir jetonla
+  // başlanıyor. Aşağıdaki fonksiyon TAM OLARAK bunu (ama sadece supabase'in
+  // oturum anahtarını, diğer hiçbir siteye ait veriye dokunmadan) otomatik
+  // yapıyor — kullanıcının manuel "verileri sil" adımını tekrar tekrar
+  // yapmasına gerek kalmasın diye.
+  function supabaseOturumunuTemizle() {
+    try {
+      Object.keys(localStorage)
+        .filter((k) => k.startsWith('sb-') && k.includes('auth-token'))
+        .forEach((k) => localStorage.removeItem(k))
+    } catch {
+      // localStorage'a erişilemiyorsa (ör. gizli sekme kısıtı) sessizce geç
+    }
+  }
+
   useEffect(() => {
     let bitti = false
 
@@ -57,7 +82,10 @@ export function AuthProvider({ children }) {
     // en azından "bağlantı sorunu, tekrar dene" ekranı görünsün.
     const zamanAsimi = setTimeout(() => {
       setLoading((mevcutYukleniyorMu) => {
-        if (mevcutYukleniyorMu) setZamanAsimiOldu(true)
+        if (mevcutYukleniyorMu) {
+          supabaseOturumunuTemizle()
+          setZamanAsimiOldu(true)
+        }
         return false
       })
     }, 12000)
