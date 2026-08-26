@@ -344,9 +344,41 @@ export default function ZilSistemi() {
   // için aralık her seferinde tek dakikadan ibarettir, davranış değişmez.
   const sonKontrolRef = useRef(null)
 
-  // Her saniye: gösterilen saati güncelle, zil zamanı geldiyse çal.
+  // ---- Kontrol sayacı: NEDEN düz setInterval DEĞİL DE WEB WORKER ----
+  // "Öğretmen zilinde bazen öğrenci zili de çalışıyor" VE "zil bazen geç
+  // çalıyor" şikayetlerinin GERÇEK kök nedeni bulundu: Chrome gibi tarayıcılar,
+  // sekme arka planda/görünür değilken (başka bir pencere önde durduğunda,
+  // sekme küçültüldüğünde vb.) normal setInterval'i YAVAŞLATIYOR — birkaç
+  // dakika sonra "intensive throttling" denen kurala girip saniyede bir yerine
+  // dakikada BİR çalışacak hale getiriyor. Bu olduğunda yukarıdaki "aradan
+  // kaçırılan dakikaları geriye dönük tara" güvenlik önlemi devreye giriyor ve
+  // atlanan dakikaları TEK SEFERDE (aynı senkron döngüde) işliyordu. Öğrenci
+  // ve öğretmen zili arasında programda sadece 1 DAKİKA fark olduğundan
+  // (ör. 08:59 / 09:00), tam bu ikili aynı yakalamaya denk gelip art arda —
+  // ikincisi (öğretmen) gecikmeli — çalabiliyordu.
+  //
+  // Canlı sitedeki Zil Saatleri verisi teyit edildi: hiçbir ders/tür
+  // arasında saat çakışması YOK (kullanıcının da doğruladığı gibi) — yani
+  // "aynı anda çalan iki zil" sorunu asla PROGRAM hatasından değil, YUKARIDA
+  // açıklanan tarayıcı gecikmesi/yakalama senaryosundan kaynaklanıyor.
+  //
+  // ÇÖZÜM: sayaç artık ayrı bir Web Worker içinde çalışıyor. Worker'lar,
+  // tarayıcının "arka plandaki sekmenin ana thread zamanlayıcılarını
+  // yavaşlatma" kuralından MUAFTIR (bu, Chrome'un kendi throttling
+  // davranışının belgelenmiş bir istisnasıdır) — yani sekme arka planda ya
+  // da küçültülmüş olsa bile worker'dan gelen "tık" her saniye, tam
+  // zamanında gelmeye devam eder. Böylece "aradan kaçırılan dakika" senaryosu
+  // neredeyse hiç oluşmaz; dolayısıyla ne iki zilin art arda/gecikmeli
+  // çalması, ne de zilin genel olarak geç çalması söz konusu olur. Asıl
+  // kontrol/çalma mantığının TAMAMI yine ana sayfa (main thread) üzerinde
+  // çalışıyor — worker'ın tek görevi saniyede bir "şimdi" demek, DOM'a ya da
+  // uygulamanın verisine hiç dokunmuyor.
   useEffect(() => {
-    const id = setInterval(() => {
+    const workerKodu = 'setInterval(() => postMessage(1), 1000)'
+    const workerUrl = URL.createObjectURL(new Blob([workerKodu], { type: 'application/javascript' }))
+    const worker = new Worker(workerUrl)
+
+    worker.onmessage = () => {
       const suanki = new Date(suankiGercekZamanMs())
       setGosterilenSaat(suanki)
       // Susturma süresi dolduysa kendiliğinden kalksın.
@@ -395,8 +427,12 @@ export default function ZilSistemi() {
           })
         })
       }
-    }, 1000)
-    return () => clearInterval(id)
+    }
+
+    return () => {
+      worker.terminate()
+      URL.revokeObjectURL(workerUrl)
+    }
   }, [sunucuFarki, etkinMi, dersler, susturBitisMs, isZil])
 
   // ---- Uzaktan komutları kontrol et (ör. telefondan gönderilen manuel çal /
