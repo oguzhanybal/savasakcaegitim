@@ -23,6 +23,15 @@ export default function Sozlesme() {
   const [hata, setHata] = useState('')
   const [veliSecimi, setVeliSecimi] = useState('baba') // hem anne hem baba varsa hangisi gösterilsin
 
+  // Aynı öğrencinin AYRI bir "Kitap" sözleşmesi varsa (Muhasebe'de zaten
+  // eskiden beri desteklenen normal bir kalem), Kurs/Okul sözleşmesi
+  // görüntülenirken bu belgeye tarihe uygun şekilde dahil edilip
+  // edilmeyeceği sorulur — kitapSozlesme dolu ve kalem Kurs/Okul'sa, aşağıda
+  // no-print bir soru gösterilir. kitapDahilMi: null = henüz sorulmadı/karar
+  // verilmedi, true/false = admin cevapladı.
+  const [kitapSozlesme, setKitapSozlesme] = useState(null)
+  const [kitapDahilMi, setKitapDahilMi] = useState(null)
+
   useEffect(() => {
     async function yukle() {
       const { data: s, error: sHata } = await supabase.from('sozlesmeler').select('*').eq('id', sozlesmeId).single()
@@ -33,14 +42,25 @@ export default function Sozlesme() {
       }
       setSozlesme(s)
 
-      const [og, so, bba] = await Promise.all([
+      const [og, so, bba, kitapS] = await Promise.all([
         supabase.from('ogrenciler').select('*, veli:veli_profile_id(ad_soyad, telefon)').eq('id', s.ogrenci_id).single(),
         supabase.from('sinif_ogrenciler').select('siniflar(ad)').eq('ogrenci_id', s.ogrenci_id).limit(1),
         supabase.from('bire_bir_atamalari').select('id').eq('ogrenci_id', s.ogrenci_id).limit(1),
+        (s.kalem === 'Kurs' || s.kalem === 'Okul')
+          ? supabase
+              .from('sozlesmeler')
+              .select('*')
+              .eq('ogrenci_id', s.ogrenci_id)
+              .eq('kalem', 'Kitap')
+              .order('created_at', { ascending: false })
+              .limit(1)
+              .maybeSingle()
+          : Promise.resolve({ data: null }),
       ])
       setOgrenci(og.data || null)
       setSinifAdi(so.data?.[0]?.siniflar?.ad || '')
       setBireBirVarMi((bba.data || []).length > 0)
+      setKitapSozlesme(kitapS.data || null)
       setLoading(false)
     }
     yukle()
@@ -55,7 +75,7 @@ export default function Sozlesme() {
   if (loading) return <p className="p-6 text-gray-400">Yükleniyor...</p>
   if (hata || !sozlesme || !ogrenci) return <p className="p-6 text-gray-400">{hata || 'Kayıt bulunamadı.'}</p>
 
-  const taksitler = taksitPlaniOlustur(sozlesme, [])
+  const kursTaksitler = taksitPlaniOlustur(sozlesme, [])
   const toplamTutar = Number(sozlesme.toplam_tutar) || 0
   const finalSinif = sozlesme.sinif_metni || sinifAdi || (bireBirVarMi ? 'Bire Bir' : '—')
   const sozlesmeTarihiMetni = tarihFormat(sozlesme.sozlesme_tarihi || sozlesme.created_at?.slice(0, 10))
@@ -81,15 +101,25 @@ export default function Sozlesme() {
         : (ogrenci.veli?.telefon || '')
   }
 
-  // Kitap Bedeli — Kurs/Okul sözleşmesine "aynı sözleşmede birlikte" eklenen
-  // opsiyonel alan (bkz. Muhasebe.jsx SozlesmeEkleForm). Taksit planına dahil
-  // değildir, madde 15'teki "yayın bedeli peşin tahsil edilir" hükmüne uygun
-  // olarak ödeme tablosunda ayrı bir satır + genel toplama eklenen ayrı bir
-  // tutar olarak gösterilir. kitap_tutari 0/boşsa davranış TAMAMEN eskisi
-  // gibi kalır (geriye dönük uyumlu) — eski "Kitap" kalemiyle tek başına
-  // açılmış sözleşmeler de aynı şekilde çalışmaya devam eder.
-  const kitapTutari = Number(sozlesme.kitap_tutari) || 0
-  const yayinBedeli = kitapTutari > 0 ? kitapTutari : sozlesme.kalem === 'Kitap' ? toplamTutar : null
+  // Kitap sözleşmesi dahil edilsin mi? — sadece kitapSozlesme bulunduğunda VE
+  // admin "Evet" dediğinde true olur. Onaylanmışsa, o sözleşmenin taksit
+  // planı, KENDİ tarihleriyle, kurs taksitleriyle AYNI ödeme tablosunda
+  // tarihe göre sıralanıp birleştirilir (ekstra bir "peşin" satırı değil —
+  // kitap sözleşmesinin kendi taksit sayısı/tarihleri neyse öyle görünür).
+  const kitapDahil = kitapDahilMi === true && !!kitapSozlesme
+  const kitapTaksitler = kitapDahil ? taksitPlaniOlustur(kitapSozlesme, []) : []
+  const kitapTutari = kitapDahil ? Number(kitapSozlesme.toplam_tutar) || 0 : 0
+
+  // Kurs + (dahilse) Kitap taksitlerini tarihe göre tek bir kronolojik listede
+  // birleştirip yeniden numaralandırıyoruz — "tarihe uygun şekilde" birleşim.
+  const taksitler = [
+    ...kursTaksitler.map((t) => ({ ...t, kaynak: 'kurs' })),
+    ...kitapTaksitler.map((t) => ({ ...t, kaynak: 'kitap' })),
+  ]
+    .sort((a, b) => a.vade - b.vade)
+    .map((t, i) => ({ ...t, taksitNo: i + 1 }))
+
+  const yayinBedeli = kitapDahil ? kitapTutari : sozlesme.kalem === 'Kitap' ? toplamTutar : null
   const egitimBedeli = sozlesme.kalem === 'Kurs' || sozlesme.kalem === 'Okul' ? toplamTutar : null
   const genelToplam = toplamTutar + kitapTutari
 
@@ -160,6 +190,47 @@ export default function Sozlesme() {
           </div>
         )}
 
+        {/* Aynı öğrencinin ayrı bir "Kitap" sözleşmesi bulunduğunda, bu Kurs/
+            Okul sözleşmesine dahil edilip edilmeyeceği burada sorulur. Henüz
+            cevaplanmadıysa (kitapDahilMi === null) soru gösterilir; cevap
+            verildikten sonra durum + "değiştir" linki gösterilir. */}
+        {kitapSozlesme && kitapDahilMi === null && (
+          <div className="no-print bg-blue-50 border border-blue-200 rounded-xl p-4 mb-4 text-sm text-blue-800 flex flex-wrap items-center gap-3">
+            <span>
+              Bu öğrencinin ayrı bir <b>Kitap</b> sözleşmesi var: {paraFormat(kitapSozlesme.toplam_tutar)} (
+              {kitapSozlesme.taksit_sayisi} taksit, ilk taksit {tarihFormat(kitapSozlesme.ilk_taksit_tarihi)}). Bu
+              sözleşmeye (tarihe uygun şekilde) dahil edilsin mi?
+            </span>
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={() => setKitapDahilMi(true)}
+                className="px-3 py-1.5 rounded-lg font-medium bg-blue text-white hover:opacity-90 transition-opacity"
+              >
+                Evet, Dahil Et
+              </button>
+              <button
+                type="button"
+                onClick={() => setKitapDahilMi(false)}
+                className="px-3 py-1.5 rounded-lg font-medium bg-white border border-blue-200 text-blue-800 hover:bg-blue-100"
+              >
+                Hayır, Ayrı Kalsın
+              </button>
+            </div>
+          </div>
+        )}
+        {kitapSozlesme && kitapDahilMi !== null && (
+          <div className="no-print bg-gray-50 border border-gray-200 rounded-xl p-3 mb-4 text-sm text-gray-600 flex flex-wrap items-center gap-2">
+            <span>
+              Kitap sözleşmesi ({paraFormat(kitapSozlesme.toplam_tutar)}){' '}
+              {kitapDahilMi ? 'bu sözleşmeye dahil edildi.' : 'bu sözleşmeye dahil edilmedi.'}
+            </span>
+            <button type="button" onClick={() => setKitapDahilMi(null)} className="text-blue hover:underline">
+              Değiştir
+            </button>
+          </div>
+        )}
+
         {/* SAYFA 1 — Taraf bilgileri + mali hükümler */}
         <div className="sozlesme-sayfa bg-white rounded-2xl print:rounded-none shadow-sm print:shadow-none border border-gray-100 print:border-0 p-8 mb-6 print:mb-0">
           <div className="flex justify-between items-start mb-6">
@@ -225,19 +296,19 @@ export default function Sozlesme() {
                   </tr>
                 )}
                 {taksitler.map((t) => (
-                  <tr key={t.taksitNo} className="border-t border-gray-100">
-                    <td className="px-3 py-1.5">{t.taksitNo}</td>
+                  <tr key={`${t.kaynak}-${t.taksitNo}`} className={`border-t border-gray-100 ${t.kaynak === 'kitap' ? 'bg-blue-50/50' : ''}`}>
+                    <td className="px-3 py-1.5">
+                      {t.taksitNo}
+                      {t.kaynak === 'kitap' && (
+                        <span className="ml-1.5 text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-blue-100 text-blue-700 align-middle">
+                          Kitap
+                        </span>
+                      )}
+                    </td>
                     <td className="px-3 py-1.5 text-right">{paraFormat(t.tutar)}</td>
                     <td className="px-3 py-1.5 text-right">{t.vade.toLocaleDateString('tr-TR')}</td>
                   </tr>
                 ))}
-                {kitapTutari > 0 && (
-                  <tr className="border-t border-gray-100 bg-blue-50/50">
-                    <td className="px-3 py-1.5 font-medium">Kitap Bedeli</td>
-                    <td className="px-3 py-1.5 text-right">{paraFormat(kitapTutari)}</td>
-                    <td className="px-3 py-1.5 text-right text-gray-500">PEŞİN</td>
-                  </tr>
-                )}
                 <tr className="border-t border-gray-200 bg-orange/10">
                   <td className="px-3 py-2 font-bold text-orange">TOPLAM</td>
                   <td className="px-3 py-2 font-bold text-orange text-right">{paraFormat(genelToplam)}</td>
@@ -344,7 +415,7 @@ export default function Sozlesme() {
             <b>Madde 15:</b> Yayın bedeli (kitap, test, deneme sınavları vs.) {finalSinif} sınıfı için{' '}
             {yayinBedeli !== null ? paraFormat(yayinBedeli) : '……………………………'}'dir; eğitim bedeli ise{' '}
             {egitimBedeli !== null ? paraFormat(egitimBedeli) : '……………………………'}'dir. Toplam kurs ücreti{' '}
-            {kitapTutari > 0 ? paraFormat(genelToplam) : '……………………………'}'dir. Eğitim programları sınıf düzeyinde farklılık göstermektedir. Kayıt iptali
+            {kitapDahil ? paraFormat(genelToplam) : '……………………………'}'dir. Eğitim programları sınıf düzeyinde farklılık göstermektedir. Kayıt iptali
             gerektiren durumlarda, her öğrenci için yayın ücreti ve eğitim ücreti ayrı hesaplanır; eğitim ücreti
             verilen eğitim süresi doğrultusunda hesaplanarak veliden tahsil edilir. Yayın bedeli peşin tahsil edilir
             ve iadesi kesinlikle yapılamaz.
