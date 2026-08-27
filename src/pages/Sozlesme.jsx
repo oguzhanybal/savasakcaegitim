@@ -285,6 +285,7 @@ export default function Sozlesme() {
               <thead>
                 <tr className="bg-gray-50 text-left text-gray-600">
                   <th className="px-3 py-2 font-semibold w-16">Taksit</th>
+                  {kitapDahil && <th className="px-3 py-2 font-semibold w-24">Kalem</th>}
                   <th className="px-3 py-2 font-semibold text-right">Ödeme Tutarı</th>
                   <th className="px-3 py-2 font-semibold text-right">Vade Tarihi</th>
                 </tr>
@@ -292,25 +293,29 @@ export default function Sozlesme() {
               <tbody>
                 {taksitler.length === 0 && (
                   <tr>
-                    <td colSpan={3} className="px-3 py-2 text-center text-gray-400">Peşin ödeme — taksit planı yok.</td>
+                    <td colSpan={kitapDahil ? 4 : 3} className="px-3 py-2 text-center text-gray-400">Peşin ödeme — taksit planı yok.</td>
                   </tr>
                 )}
                 {taksitler.map((t) => (
-                  <tr key={`${t.kaynak}-${t.taksitNo}`} className={`border-t border-gray-100 ${t.kaynak === 'kitap' ? 'bg-blue-50/50' : ''}`}>
-                    <td className="px-3 py-1.5">
-                      {t.taksitNo}
-                      {t.kaynak === 'kitap' && (
-                        <span className="ml-1.5 text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-blue-100 text-blue-700 align-middle">
-                          Kitap
+                  <tr key={`${t.kaynak}-${t.taksitNo}`} className="border-t border-gray-100">
+                    <td className="px-3 py-1.5">{t.taksitNo}</td>
+                    {kitapDahil && (
+                      <td className="px-3 py-1.5">
+                        <span
+                          className={`text-xs font-semibold px-2 py-0.5 rounded-full ${
+                            t.kaynak === 'kitap' ? 'bg-blue-100 text-blue-700' : 'bg-orange/10 text-orange'
+                          }`}
+                        >
+                          {t.kaynak === 'kitap' ? 'Kitap' : sozlesme.kalem}
                         </span>
-                      )}
-                    </td>
+                      </td>
+                    )}
                     <td className="px-3 py-1.5 text-right">{paraFormat(t.tutar)}</td>
                     <td className="px-3 py-1.5 text-right">{t.vade.toLocaleDateString('tr-TR')}</td>
                   </tr>
                 ))}
                 <tr className="border-t border-gray-200 bg-orange/10">
-                  <td className="px-3 py-2 font-bold text-orange">TOPLAM</td>
+                  <td colSpan={kitapDahil ? 2 : 1} className="px-3 py-2 font-bold text-orange">TOPLAM</td>
                   <td className="px-3 py-2 font-bold text-orange text-right">{paraFormat(genelToplam)}</td>
                   <td className="px-3 py-2 font-bold text-orange text-right">
                     {taksitler.length > 1 ? 'TAKSİTLİ SATIŞ' : 'PEŞİN'}
