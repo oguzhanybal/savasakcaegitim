@@ -111,13 +111,15 @@ export default function Sozlesme() {
   const kitapTutari = kitapDahil ? Number(kitapSozlesme.toplam_tutar) || 0 : 0
 
   // Kurs + (dahilse) Kitap taksitlerini tarihe göre tek bir kronolojik listede
-  // birleştirip yeniden numaralandırıyoruz — "tarihe uygun şekilde" birleşim.
+  // birleştiriyoruz — "tarihe uygun şekilde" birleşim SADECE sıralama için;
+  // her satır KENDİ kaleminin taksit numarasını/sayısını korur (ör. Kitap tek
+  // taksitse "1/1" görünür, Kurs'un taksit numaralandırmasının bir parçası
+  // gibi "2/7" görünmez — ikisi ayrı ödeme planı, sadece aynı tabloda tarihe
+  // göre yan yana diziliyor).
   const taksitler = [
-    ...kursTaksitler.map((t) => ({ ...t, kaynak: 'kurs' })),
-    ...kitapTaksitler.map((t) => ({ ...t, kaynak: 'kitap' })),
-  ]
-    .sort((a, b) => a.vade - b.vade)
-    .map((t, i) => ({ ...t, taksitNo: i + 1 }))
+    ...kursTaksitler.map((t) => ({ ...t, kaynak: 'kurs', toplamSayi: sozlesme.taksit_sayisi })),
+    ...kitapTaksitler.map((t) => ({ ...t, kaynak: 'kitap', toplamSayi: kitapSozlesme?.taksit_sayisi })),
+  ].sort((a, b) => a.vade - b.vade)
 
   const yayinBedeli = kitapDahil ? kitapTutari : sozlesme.kalem === 'Kitap' ? toplamTutar : null
   const egitimBedeli = sozlesme.kalem === 'Kurs' || sozlesme.kalem === 'Okul' ? toplamTutar : null
@@ -298,7 +300,10 @@ export default function Sozlesme() {
                 )}
                 {taksitler.map((t) => (
                   <tr key={`${t.kaynak}-${t.taksitNo}`} className="border-t border-gray-100">
-                    <td className="px-3 py-1.5">{t.taksitNo}</td>
+                    <td className="px-3 py-1.5">
+                      {t.taksitNo}
+                      {kitapDahil && t.toplamSayi ? `/${t.toplamSayi}` : ''}
+                    </td>
                     {kitapDahil && (
                       <td className="px-3 py-1.5">
                         <span
