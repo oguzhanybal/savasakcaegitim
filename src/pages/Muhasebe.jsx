@@ -287,6 +287,11 @@ function SozlesmeEkleForm({ ogrenciId, onEklendi }) {
   const [toplamTutar, setToplamTutar] = useState('')
   const [taksitSayisi, setTaksitSayisi] = useState('1')
   const [ilkTaksitTarihi, setIlkTaksitTarihi] = useState('')
+  // Kitap Bedeli — Kurs/Okul sözleşmesiyle AYNI belgede (Sozlesme.jsx)
+  // gösterilsin diye eklenen opsiyonel alan. Taksit planına dahil edilmez;
+  // madde 15'teki "yayın bedeli peşin tahsil edilir" hükmüne uygun olarak
+  // sözleşmede ayrı bir satır + toplama eklenen ayrı bir tutar olarak basılır.
+  const [kitapTutari, setKitapTutari] = useState('')
   // Sözleşme yazdırılırken kullanılan ek bilgiler — öğrencinin o anki sınıf
   // durumu sonradan değişse bile bu sözleşmede sabit kalsın diye ayrıca
   // saklanıyor. Eğitim dönemi bir önceki sözleşmeden hatırlanabilsin diye
@@ -336,6 +341,7 @@ function SozlesmeEkleForm({ ogrenciId, onEklendi }) {
         ilk_taksit_tarihi: gecerliSatirlar[0].tarih,
         ozel_plan_mi: true,
         ozel_taksitler: gecerliSatirlar.map((s) => ({ tarih: s.tarih, tutar: Number(s.tutar) })),
+        kitap_tutari: Number(kitapTutari) || 0,
         egitim_donemi: egitimDonemi.trim() || null,
         sinif_metni: sinifMetni.trim() ? ilkHarfleriBuyukYap(sinifMetni.trim()) : null,
         sozlesme_tarihi: sozlesmeTarihi || null,
@@ -350,6 +356,7 @@ function SozlesmeEkleForm({ ogrenciId, onEklendi }) {
         ilk_taksit_tarihi: ilkTaksitTarihi || null,
         ozel_plan_mi: false,
         ozel_taksitler: null,
+        kitap_tutari: Number(kitapTutari) || 0,
         egitim_donemi: egitimDonemi.trim() || null,
         sinif_metni: sinifMetni.trim() ? ilkHarfleriBuyukYap(sinifMetni.trim()) : null,
         sozlesme_tarihi: sozlesmeTarihi || null,
@@ -364,6 +371,7 @@ function SozlesmeEkleForm({ ogrenciId, onEklendi }) {
       setIlkTaksitTarihi('')
       setOzelPlanAcik(false)
       setOzelTaksitler([{ tarih: '', tutar: '' }])
+      setKitapTutari('')
       setSinifMetni('')
       setAcik(false)
       onEklendi()
@@ -448,6 +456,25 @@ function SozlesmeEkleForm({ ogrenciId, onEklendi }) {
           </button>
         </div>
       </div>
+
+      {(kalem === 'Kurs' || kalem === 'Okul') && (
+        <div className="mt-3 pt-3 border-t border-gray-100">
+          <label className="block text-sm font-medium text-gray-700 mb-1">Kitap Bedeli (₺) — opsiyonel</label>
+          <input
+            type="number"
+            min="0"
+            step="0.01"
+            value={kitapTutari}
+            onChange={(e) => setKitapTutari(e.target.value)}
+            placeholder="Doldurulursa aynı sözleşmede ayrı satır olarak basılır"
+            className="w-full max-w-[260px] px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue"
+          />
+          <p className="text-xs text-gray-400 mt-1">
+            Bu tutar taksit planına dahil edilmez, sözleşmede kurs ücretinin yanında ayrı bir kalem (peşin) olarak
+            gösterilir.
+          </p>
+        </div>
+      )}
 
       {ozelPlanAcik && (
         <div className="mt-3 pt-3 border-t border-gray-100">
@@ -873,6 +900,7 @@ export default function Muhasebe() {
   const [duzenleToplamTutar, setDuzenleToplamTutar] = useState('')
   const [duzenleTaksitSayisi, setDuzenleTaksitSayisi] = useState('1')
   const [duzenleIlkTaksitTarihi, setDuzenleIlkTaksitTarihi] = useState('')
+  const [duzenleKitapTutari, setDuzenleKitapTutari] = useState('')
   const [duzenleEgitimDonemi, setDuzenleEgitimDonemi] = useState('')
   const [duzenleSinifMetni, setDuzenleSinifMetni] = useState('')
   const [duzenleSozlesmeTarihi, setDuzenleSozlesmeTarihi] = useState('')
@@ -1201,6 +1229,7 @@ export default function Muhasebe() {
     setDuzenleToplamTutar(String(s.toplam_tutar))
     setDuzenleTaksitSayisi(String(s.taksit_sayisi || 1))
     setDuzenleIlkTaksitTarihi(s.ilk_taksit_tarihi || '')
+    setDuzenleKitapTutari(s.kitap_tutari ? String(s.kitap_tutari) : '')
     setDuzenleEgitimDonemi(s.egitim_donemi || '')
     setDuzenleSinifMetni(s.sinif_metni || '')
     setDuzenleSozlesmeTarihi(s.sozlesme_tarihi || '')
@@ -1223,6 +1252,7 @@ export default function Muhasebe() {
         toplam_tutar: Number(duzenleToplamTutar),
         taksit_sayisi: Number(duzenleTaksitSayisi) || 1,
         ilk_taksit_tarihi: duzenleIlkTaksitTarihi || null,
+        kitap_tutari: Number(duzenleKitapTutari) || 0,
         egitim_donemi: duzenleEgitimDonemi.trim() || null,
         sinif_metni: duzenleSinifMetni.trim() ? ilkHarfleriBuyukYap(duzenleSinifMetni.trim()) : null,
         sozlesme_tarihi: duzenleSozlesmeTarihi || null,
@@ -1567,6 +1597,17 @@ export default function Muhasebe() {
                                 className="w-full px-2 py-1.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue"
                               />
                             </div>
+                            <div className="flex-1 min-w-[130px]">
+                              <label className="block text-xs font-medium text-gray-500 mb-1">Kitap Bedeli (₺, opsiyonel)</label>
+                              <input
+                                type="number"
+                                min="0"
+                                step="0.01"
+                                value={duzenleKitapTutari}
+                                onChange={(e) => setDuzenleKitapTutari(e.target.value)}
+                                className="w-full px-2 py-1.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue"
+                              />
+                            </div>
                           </div>
                           <div className="space-x-3">
                             <button
@@ -1591,6 +1632,11 @@ export default function Muhasebe() {
                         {s.ozel_plan_mi && (
                           <span className="ml-2 text-xs font-semibold px-2 py-0.5 rounded-full bg-orange/10 text-orange">
                             Özel Plan
+                          </span>
+                        )}
+                        {Number(s.kitap_tutari) > 0 && (
+                          <span className="ml-2 text-xs font-semibold px-2 py-0.5 rounded-full bg-blue-50 text-blue-700">
+                            + Kitap: {paraFormat(s.kitap_tutari)}
                           </span>
                         )}
                       </td>

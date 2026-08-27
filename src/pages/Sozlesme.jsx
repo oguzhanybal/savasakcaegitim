@@ -81,8 +81,17 @@ export default function Sozlesme() {
         : (ogrenci.veli?.telefon || '')
   }
 
-  const yayinBedeli = sozlesme.kalem === 'Kitap' ? toplamTutar : null
+  // Kitap Bedeli — Kurs/Okul sözleşmesine "aynı sözleşmede birlikte" eklenen
+  // opsiyonel alan (bkz. Muhasebe.jsx SozlesmeEkleForm). Taksit planına dahil
+  // değildir, madde 15'teki "yayın bedeli peşin tahsil edilir" hükmüne uygun
+  // olarak ödeme tablosunda ayrı bir satır + genel toplama eklenen ayrı bir
+  // tutar olarak gösterilir. kitap_tutari 0/boşsa davranış TAMAMEN eskisi
+  // gibi kalır (geriye dönük uyumlu) — eski "Kitap" kalemiyle tek başına
+  // açılmış sözleşmeler de aynı şekilde çalışmaya devam eder.
+  const kitapTutari = Number(sozlesme.kitap_tutari) || 0
+  const yayinBedeli = kitapTutari > 0 ? kitapTutari : sozlesme.kalem === 'Kitap' ? toplamTutar : null
   const egitimBedeli = sozlesme.kalem === 'Kurs' || sozlesme.kalem === 'Okul' ? toplamTutar : null
+  const genelToplam = toplamTutar + kitapTutari
 
   return (
     <div className="min-h-screen bg-cream py-8 px-4 print:bg-white print:py-0">
@@ -222,16 +231,23 @@ export default function Sozlesme() {
                     <td className="px-3 py-1.5 text-right">{t.vade.toLocaleDateString('tr-TR')}</td>
                   </tr>
                 ))}
+                {kitapTutari > 0 && (
+                  <tr className="border-t border-gray-100 bg-blue-50/50">
+                    <td className="px-3 py-1.5 font-medium">Kitap Bedeli</td>
+                    <td className="px-3 py-1.5 text-right">{paraFormat(kitapTutari)}</td>
+                    <td className="px-3 py-1.5 text-right text-gray-500">PEŞİN</td>
+                  </tr>
+                )}
                 <tr className="border-t border-gray-200 bg-orange/10">
                   <td className="px-3 py-2 font-bold text-orange">TOPLAM</td>
-                  <td className="px-3 py-2 font-bold text-orange text-right">{paraFormat(toplamTutar)}</td>
+                  <td className="px-3 py-2 font-bold text-orange text-right">{paraFormat(genelToplam)}</td>
                   <td className="px-3 py-2 font-bold text-orange text-right">
                     {taksitler.length > 1 ? 'TAKSİTLİ SATIŞ' : 'PEŞİN'}
                   </td>
                 </tr>
               </tbody>
             </table>
-            <p className="text-sm text-gray-600 mt-2">{tutarYaziyla(toplamTutar)}</p>
+            <p className="text-sm text-gray-600 mt-2">{tutarYaziyla(genelToplam)}</p>
           </div>
 
           <div className="grid grid-cols-2 gap-8 mt-16 text-sm">
@@ -328,7 +344,7 @@ export default function Sozlesme() {
             <b>Madde 15:</b> Yayın bedeli (kitap, test, deneme sınavları vs.) {finalSinif} sınıfı için{' '}
             {yayinBedeli !== null ? paraFormat(yayinBedeli) : '……………………………'}'dir; eğitim bedeli ise{' '}
             {egitimBedeli !== null ? paraFormat(egitimBedeli) : '……………………………'}'dir. Toplam kurs ücreti{' '}
-            ……………………………'dir. Eğitim programları sınıf düzeyinde farklılık göstermektedir. Kayıt iptali
+            {kitapTutari > 0 ? paraFormat(genelToplam) : '……………………………'}'dir. Eğitim programları sınıf düzeyinde farklılık göstermektedir. Kayıt iptali
             gerektiren durumlarda, her öğrenci için yayın ücreti ve eğitim ücreti ayrı hesaplanır; eğitim ücreti
             verilen eğitim süresi doğrultusunda hesaplanarak veliden tahsil edilir. Yayın bedeli peşin tahsil edilir
             ve iadesi kesinlikle yapılamaz.
