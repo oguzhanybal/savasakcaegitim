@@ -2025,8 +2025,16 @@ export default function DersProgrami() {
   // fonksiyonla (durumDegistir) birebir aynı davranış: "Geldi" zaten borç
   // eklenmiş bir kaydı "Gelmedi"ye çevirmek onay istiyor, diğer geçişler
   // istemiyor.
-  async function bireBirDurumDegistir(yoklamaId, mevcutDurum, yeniDurum) {
+  async function bireBirDurumDegistir(yoklamaId, mevcutDurum, yeniDurum, tarih) {
     if (mevcutDurum === yeniDurum) return
+    // İleri tarihli (henüz gerçekleşmemiş) bir dersin yoklamasını öğretmen
+    // doğrudan "Geldi"/"Gelmedi" diye işaretleyemesin — ders daha olmadan
+    // yoklama alınması anlamsız, ayrıca "Geldi" borç da ekliyor. Sadece bugün
+    // ya da geçmiş tarihli derslerde durum değiştirilebilir.
+    if (tarih && tarih > yerelBugunTarihi()) {
+      alert('Bu ders ileri tarihli, henüz yoklama alınamaz.')
+      return
+    }
     if (mevcutDurum === 'geldi' && yeniDurum === 'gelmedi') {
       if (!confirm('Bu ders "Geldi" olarak işaretliydi ve öğrenciye borç eklenmişti. "Gelmedi" yapmak istediğinize emin misiniz? (borç kaldırılacak)')) return
     }
@@ -2200,6 +2208,7 @@ export default function DersProgrami() {
         ...bireBirTekilSeanslarim.map((y) => ({
           id: `bb-${y.id}`,
           gun: gunNumaraTarihten(y.tarih),
+          tarih: y.tarih,
           baslangic_saat: y.baslangic_saat,
           bitis_saat: y.bitis_saat,
           ders_adi: `Bire Bir · ${y.ogrenci_adi || 'Öğrenci'}`,
@@ -2633,7 +2642,7 @@ export default function DersProgrami() {
                                   {d._durum !== 'geldi' && (
                                     <button
                                       type="button"
-                                      onClick={() => bireBirDurumDegistir(d._yoklamaId, d._durum, 'geldi')}
+                                      onClick={() => bireBirDurumDegistir(d._yoklamaId, d._durum, 'geldi', d.tarih)}
                                       className="text-[9px] font-semibold text-green-700 hover:underline"
                                     >
                                       Geldi
@@ -2642,7 +2651,7 @@ export default function DersProgrami() {
                                   {d._durum !== 'gelmedi' && (
                                     <button
                                       type="button"
-                                      onClick={() => bireBirDurumDegistir(d._yoklamaId, d._durum, 'gelmedi')}
+                                      onClick={() => bireBirDurumDegistir(d._yoklamaId, d._durum, 'gelmedi', d.tarih)}
                                       className="text-[9px] font-semibold text-red-600 hover:underline"
                                     >
                                       Gelmedi
@@ -2784,7 +2793,7 @@ export default function DersProgrami() {
                           {d._durum !== 'geldi' && (
                             <button
                               type="button"
-                              onClick={() => bireBirDurumDegistir(d._yoklamaId, d._durum, 'geldi')}
+                              onClick={() => bireBirDurumDegistir(d._yoklamaId, d._durum, 'geldi', d.tarih)}
                               className="text-xs font-semibold text-green-700 hover:underline"
                             >
                               Geldi
@@ -2793,7 +2802,7 @@ export default function DersProgrami() {
                           {d._durum !== 'gelmedi' && (
                             <button
                               type="button"
-                              onClick={() => bireBirDurumDegistir(d._yoklamaId, d._durum, 'gelmedi')}
+                              onClick={() => bireBirDurumDegistir(d._yoklamaId, d._durum, 'gelmedi', d.tarih)}
                               className="text-xs font-semibold text-red-600 hover:underline"
                             >
                               Gelmedi
