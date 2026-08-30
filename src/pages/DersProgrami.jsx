@@ -2716,11 +2716,15 @@ export default function DersProgrami() {
                       className={`px-4 py-3 flex flex-col sm:flex-row sm:items-center justify-between gap-2 ${satirRengi}`}
                     >
                       <div className="min-w-0">
-                        <p className={`font-medium ${baslikRengi} break-words`}>{baslik}</p>
-                        <p className="text-xs text-gray-400">
-                          {sinifAdiGoster ? d.sinif_adi : ''}
-                          {d.ogretmen_adi ? `${sinifAdiGoster ? ' · ' : ''}${d.ogretmen_adi}` : ''}
-                        </p>
+                        {d.sinif_adi && (
+                          <p className={`text-base font-bold ${baslikRengi} break-words`}>{d.sinif_adi}</p>
+                        )}
+                        {(d.ders_adi || d.ogretmen_brans) && (
+                          <p className={`text-sm font-medium ${baslikRengi} break-words`}>{d.ders_adi || d.ogretmen_brans}</p>
+                        )}
+                        {d.ogretmen_adi && (
+                          <p className="text-xs text-gray-400">{d.ogretmen_adi}</p>
+                        )}
                         {birdenFazlaCocukMu && d.sinif_id && sinifIdCocukAdlari.get(d.sinif_id) && (
                           <p className="text-xs text-blue-500 font-medium">
                             {sinifIdCocukAdlari.get(d.sinif_id).join(', ')}
