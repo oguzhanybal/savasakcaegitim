@@ -32,25 +32,39 @@ function gunNumarasi(tarihStr) {
 // Ders Programı'nda öğretmenin kendi dersinin yanındaki "Yoklama / Konu"
 // butonuna tıklanınca açılan popup — o dersin yoklamasını almak VE o sınıfta
 // o an işlenen konuyu işaretlemek TEK ekrandan yapılabilsin diye (ayrıca
-// Yoklama Al sayfasına gitmeye gerek kalmadan). "tarih" prop'u varsayılan
-// olarak o dersin haftanın hangi gününe denk geldiğine göre en yakın (bugün
-// ya da bugünden önceki en yakın) tarih olarak hesaplanıp geliyor (bkz.
-// DersProgrami.jsx: enYakinGunTarihi) — kullanıcı burada isterse değiştirebilir.
-export default function YoklamaKonuModal({ dersProgramiId, sinifId, sinifAdi, dersAdi, tarih, gun, profile, onClose }) {
+// Yoklama Al sayfasına gitmeye gerek kalmadan).
+//
+// BÜYÜK DÜZELTME: burada eskiden serbestçe değiştirilebilen bir "Tarih"
+// kutusu vardı — öğretmen istediği GEÇMİŞ tarihi seçip buradan yoklama
+// alabiliyordu (o gün dersin gerçekten olup olmadığına bakılmaksızın, sadece
+// hafta içindeki hangi güne denk geldiğine bakan bir kontrolle). Kullanıcı
+// isteğiyle: bu popup ARTIK SADECE BUGÜNÜN yoklamasını almak için var, tarih
+// kutusu tamamen kaldırıldı. Geçmişe dönük eksik/unutulan bir yoklamayı
+// tamamlamak için öğretmen zaten ayrı "Geçmiş Yoklama" sayfasını kullanıyor
+// — o akışa hiç dokunulmadı, oradan devam edilebiliyor. Eğer tıklanan ders
+// saati bugünün gününe denk gelmiyorsa (ör. hafta programında başka bir
+// günün dersine tıklandıysa), burada yoklama alma formu hiç gösterilmiyor,
+// bunun yerine kullanıcı Geçmiş Yoklama'ya yönlendiriliyor.
+export default function YoklamaKonuModal({ dersProgramiId, sinifId, sinifAdi, dersAdi, gun, profile, onClose }) {
   const [ogrenciler, setOgrenciler] = useState([])
   const [yoklamaDurumu, setYoklamaDurumu] = useState({})
   const [loading, setLoading] = useState(true)
   const [kaydediliyor, setKaydediliyor] = useState(false)
   const [kaydedildi, setKaydedildi] = useState(false)
-  const [seciliTarih, setSeciliTarih] = useState(tarih)
+
+  const bugun = yerelBugunTarihi()
+  const gunUygunMu = !gun || gunNumarasi(bugun) === gun
 
   useEffect(() => {
-    if (!sinifId) return
+    if (!sinifId || !gunUygunMu) {
+      setLoading(false)
+      return
+    }
     setLoading(true)
     setKaydedildi(false)
     Promise.all([
       supabase.from('sinif_ogrenciler').select('ogrenciler(id, ad_soyad)').eq('sinif_id', sinifId),
-      supabase.from('yoklama').select('*').eq('ders_programi_id', dersProgramiId).eq('tarih', seciliTarih),
+      supabase.from('yoklama').select('*').eq('ders_programi_id', dersProgramiId).eq('tarih', bugun),
     ]).then(([so, y]) => {
       setOgrenciler((so.data || []).map((r) => r.ogrenciler).filter(Boolean))
       const mevcut = {}
@@ -60,7 +74,8 @@ export default function YoklamaKonuModal({ dersProgramiId, sinifId, sinifAdi, de
       setYoklamaDurumu(mevcut)
       setLoading(false)
     })
-  }, [sinifId, dersProgramiId, seciliTarih])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sinifId, dersProgramiId, gunUygunMu])
 
   function isaretle(ogrenciId, geldi) {
     setYoklamaDurumu((prev) => ({ ...prev, [ogrenciId]: geldi }))
@@ -79,7 +94,7 @@ export default function YoklamaKonuModal({ dersProgramiId, sinifId, sinifAdi, de
       body: JSON.stringify({
         sinifAdi,
         saatMetni: dersAdi,
-        tarih: seciliTarih,
+        tarih: bugun,
         ogretmenAdi: profile?.ad_soyad,
         gelenSayisi: kayitlar.length - gelmeyenIsimler.length,
         gelmeyenSayisi: gelmeyenIsimler.length,
@@ -89,19 +104,12 @@ export default function YoklamaKonuModal({ dersProgramiId, sinifId, sinifAdi, de
   }
 
   async function kaydet() {
-    // Öğretmen tarihi elle ileri bir güne değiştirip (Tarih input'unda max
-    // olsa da bazı tarayıcılarda elle yazılabiliyor) o dersin daha
-    // gerçekleşmemiş yoklamasını almaya çalışabilir — bunu burada da
-    // (input'taki max'a ek olarak) kesin şekilde engelliyoruz.
-    if (seciliTarih > yerelBugunTarihi()) {
-      alert('Bu ders ileri tarihli, henüz yoklama alınamaz.')
-      return
-    }
-    // Seçilen tarih, bu dersin programlandığı günle uyuşmuyorsa (ör. ders
-    // sadece Çarşamba yapılıyorsa ve seçilen tarih bir Salıysa) kaydetmeyi
-    // reddet — o gün bu ders hiç yapılmamış demektir.
-    if (gun && gunNumarasi(seciliTarih) !== gun) {
-      alert(`Bu ders sadece ${GUNLER[gun]} günleri yapılıyor, seçtiğiniz tarih (${seciliTarih}) o güne denk gelmiyor.`)
+    // Tarih artık her zaman bugün (kutu kaldırıldı) — yine de bu ders bugünün
+    // gününe denk gelmiyorsa (gunUygunMu false) son bir güvenlik olarak
+    // kaydetmeyi reddediyoruz; normalde bu durumda zaten form hiç
+    // gösterilmiyor.
+    if (!gunUygunMu) {
+      alert(`Bu ders sadece ${GUNLER[gun]} günleri yapılıyor, bugün yoklaması alınamaz.`)
       return
     }
     setKaydediliyor(true)
@@ -109,7 +117,7 @@ export default function YoklamaKonuModal({ dersProgramiId, sinifId, sinifAdi, de
       sinif_id: sinifId,
       ders_programi_id: dersProgramiId,
       ogrenci_id: o.id,
-      tarih: seciliTarih,
+      tarih: bugun,
       geldi: yoklamaDurumu[o.id] ?? true,
     }))
     const { error } = await supabase
@@ -142,29 +150,14 @@ export default function YoklamaKonuModal({ dersProgramiId, sinifId, sinifAdi, de
 
         <div className="p-4 space-y-5">
           <div>
-            <label className="block text-xs font-medium text-gray-500 mb-1">Tarih</label>
-            <input
-              type="date"
-              value={seciliTarih}
-              max={yerelBugunTarihi()}
-              onChange={(e) => {
-                const yeniTarih = e.target.value
-                if (gun && yeniTarih && gunNumarasi(yeniTarih) !== gun) {
-                  alert(`Bu ders sadece ${GUNLER[gun]} günleri yapılıyor, seçtiğiniz tarih o güne denk gelmiyor.`)
-                  return
-                }
-                setSeciliTarih(yeniTarih)
-              }}
-              className="px-3 py-2 border border-gray-200 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue"
-            />
-            {gun && (
-              <p className="text-[11px] text-gray-400 mt-1">Bu ders sadece {GUNLER[gun]} günleri yapılıyor.</p>
-            )}
-          </div>
-
-          <div>
             <h3 className="font-semibold text-gray-700 mb-2 text-sm">Yoklama</h3>
-            {loading ? (
+            {!gunUygunMu ? (
+              <p className="text-sm text-amber-700 bg-amber-50 border border-amber-100 rounded-lg px-3 py-2.5">
+                Bu ders sadece <strong>{GUNLER[gun]}</strong> günleri yapılıyor, bugün değil. Buradan sadece bugünün
+                yoklaması alınabilir — geçmiş bir tarihe ait eksik/unutulan yoklamayı tamamlamak için{' '}
+                <strong>Geçmiş Yoklama</strong> sayfasını kullanabilirsiniz.
+              </p>
+            ) : loading ? (
               <p className="text-gray-400 text-sm">Yükleniyor...</p>
             ) : ogrenciler.length === 0 ? (
               <p className="text-gray-400 text-sm">Bu sınıfa henüz öğrenci eklenmemiş.</p>
