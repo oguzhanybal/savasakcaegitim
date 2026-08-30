@@ -7,6 +7,7 @@ import { saatGoster } from '../lib/saatFormat'
 import MusaitlikTablosu from '../components/MusaitlikTablosu'
 import YoklamaKonuModal from '../components/YoklamaKonuModal'
 import GunlukProgramListesi from '../components/GunlukProgramListesi'
+import HaftalikProgramGoruntule from '../components/HaftalikProgramGoruntule'
 
 const GUNLER = ['', 'Pazartesi', 'Salı', 'Çarşamba', 'Perşembe', 'Cuma', 'Cumartesi', 'Pazar']
 const GUNLER_KISA = ['', 'Pzt', 'Sal', 'Çar', 'Per', 'Cum', 'Cmt', 'Paz']
@@ -2340,6 +2341,13 @@ export default function DersProgrami() {
             >
               Günlük Program Listesi
             </button>
+            <button
+              type="button"
+              onClick={() => setYonetimGorunum('haftalik')}
+              className={`px-3 py-1.5 font-medium transition-colors ${yonetimGorunum === 'haftalik' ? 'bg-navy text-white' : 'text-gray-600 hover:bg-gray-50'}`}
+            >
+              Haftalık Program
+            </button>
           </div>
 
           {yonetimGorunum === 'ekle' && (
@@ -2481,6 +2489,10 @@ export default function DersProgrami() {
               yoklamalar={bireBirYoklamalar}
               ogrenciAdMap={ogrenciAdMap}
             />
+          )}
+
+          {yonetimGorunum === 'haftalik' && (
+            <HaftalikProgramGoruntule program={program} siniflar={siniflar} ogretmenler={ogretmenler} />
           )}
         </>
       )}
@@ -2826,6 +2838,7 @@ export default function DersProgrami() {
           sinifId={yoklamaModalDers.sinif_id}
           sinifAdi={yoklamaModalDers.sinif_adi}
           dersAdi={yoklamaModalDers.ders_adi}
+          gun={yoklamaModalDers.gun}
           tarih={enYakinGunTarihi(yoklamaModalDers.gun)}
           profile={profile}
           onClose={() => setYoklamaModalDers(null)}
