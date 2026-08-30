@@ -2,6 +2,15 @@ import { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import KonuTakipBolumu from './KonuTakipBolumu'
 
+// Bugünün tarihini "YYYY-MM-DD" olarak YEREL saate göre üretir (toISOString
+// KULLANMIYORUZ — Türkiye UTC+3 gece yarısına yakın saatlerde bir gün geriye
+// kayabiliyor). DersProgrami.jsx/BireBir.jsx'teki aynı isimli fonksiyonla
+// birebir aynı desen.
+function yerelBugunTarihi() {
+  const n = new Date()
+  return `${n.getFullYear()}-${String(n.getMonth() + 1).padStart(2, '0')}-${String(n.getDate()).padStart(2, '0')}`
+}
+
 // Ders Programı'nda öğretmenin kendi dersinin yanındaki "Yoklama / Konu"
 // butonuna tıklanınca açılan popup — o dersin yoklamasını almak VE o sınıfta
 // o an işlenen konuyu işaretlemek TEK ekrandan yapılabilsin diye (ayrıca
@@ -62,6 +71,14 @@ export default function YoklamaKonuModal({ dersProgramiId, sinifId, sinifAdi, de
   }
 
   async function kaydet() {
+    // Öğretmen tarihi elle ileri bir güne değiştirip (Tarih input'unda max
+    // olsa da bazı tarayıcılarda elle yazılabiliyor) o dersin daha
+    // gerçekleşmemiş yoklamasını almaya çalışabilir — bunu burada da
+    // (input'taki max'a ek olarak) kesin şekilde engelliyoruz.
+    if (seciliTarih > yerelBugunTarihi()) {
+      alert('Bu ders ileri tarihli, henüz yoklama alınamaz.')
+      return
+    }
     setKaydediliyor(true)
     const kayitlar = ogrenciler.map((o) => ({
       sinif_id: sinifId,
@@ -104,6 +121,7 @@ export default function YoklamaKonuModal({ dersProgramiId, sinifId, sinifAdi, de
             <input
               type="date"
               value={seciliTarih}
+              max={yerelBugunTarihi()}
               onChange={(e) => setSeciliTarih(e.target.value)}
               className="px-3 py-2 border border-gray-200 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue"
             />
