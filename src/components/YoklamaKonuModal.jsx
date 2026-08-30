@@ -2,6 +2,8 @@ import { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import KonuTakipBolumu from './KonuTakipBolumu'
 
+const GUNLER = ['', 'Pazartesi', 'Salı', 'Çarşamba', 'Perşembe', 'Cuma', 'Cumartesi', 'Pazar']
+
 // Bugünün tarihini "YYYY-MM-DD" olarak YEREL saate göre üretir (toISOString
 // KULLANMIYORUZ — Türkiye UTC+3 gece yarısına yakın saatlerde bir gün geriye
 // kayabiliyor). DersProgrami.jsx/BireBir.jsx'teki aynı isimli fonksiyonla
@@ -11,6 +13,22 @@ function yerelBugunTarihi() {
   return `${n.getFullYear()}-${String(n.getMonth() + 1).padStart(2, '0')}-${String(n.getDate()).padStart(2, '0')}`
 }
 
+// Bir "YYYY-MM-DD" tarihinin haftanın hangi gününe denk geldiğini, uygulamanın
+// GENELİNDE kullanılan 1=Pazartesi...7=Pazar numaralandırmasıyla döndürür
+// (DersProgrami.jsx'teki gunNumaraTarihten ile birebir aynı mantık). BÜYÜK
+// HATA DÜZELTMESİ: bu modal önceden tarih kutusuna girilen tarihi hiç
+// doğrulamıyordu — öğretmen "max" (bugün) sınırı içindeki HERHANGİ bir geçmiş
+// tarihi seçip, o dersin GERÇEKTEN o gün var olup olmadığına bakılmaksızın
+// yoklama alabiliyordu (ör. dersin sadece Çarşamba yapıldığı bir sınıfta bir
+// Salı günü seçilip yoklama kaydedilebiliyordu). Artık seçilen tarihin gün
+// numarası, bu ders saatinin programlandığı günle (gun prop'u) uyuşmuyorsa
+// hem tarih değişikliği hem kaydetme reddediliyor.
+function gunNumarasi(tarihStr) {
+  if (!tarihStr) return null
+  const g = new Date(tarihStr + 'T12:00:00').getDay()
+  return g === 0 ? 7 : g
+}
+
 // Ders Programı'nda öğretmenin kendi dersinin yanındaki "Yoklama / Konu"
 // butonuna tıklanınca açılan popup — o dersin yoklamasını almak VE o sınıfta
 // o an işlenen konuyu işaretlemek TEK ekrandan yapılabilsin diye (ayrıca
@@ -18,7 +36,7 @@ function yerelBugunTarihi() {
 // olarak o dersin haftanın hangi gününe denk geldiğine göre en yakın (bugün
 // ya da bugünden önceki en yakın) tarih olarak hesaplanıp geliyor (bkz.
 // DersProgrami.jsx: enYakinGunTarihi) — kullanıcı burada isterse değiştirebilir.
-export default function YoklamaKonuModal({ dersProgramiId, sinifId, sinifAdi, dersAdi, tarih, profile, onClose }) {
+export default function YoklamaKonuModal({ dersProgramiId, sinifId, sinifAdi, dersAdi, tarih, gun, profile, onClose }) {
   const [ogrenciler, setOgrenciler] = useState([])
   const [yoklamaDurumu, setYoklamaDurumu] = useState({})
   const [loading, setLoading] = useState(true)
@@ -79,6 +97,13 @@ export default function YoklamaKonuModal({ dersProgramiId, sinifId, sinifAdi, de
       alert('Bu ders ileri tarihli, henüz yoklama alınamaz.')
       return
     }
+    // Seçilen tarih, bu dersin programlandığı günle uyuşmuyorsa (ör. ders
+    // sadece Çarşamba yapılıyorsa ve seçilen tarih bir Salıysa) kaydetmeyi
+    // reddet — o gün bu ders hiç yapılmamış demektir.
+    if (gun && gunNumarasi(seciliTarih) !== gun) {
+      alert(`Bu ders sadece ${GUNLER[gun]} günleri yapılıyor, seçtiğiniz tarih (${seciliTarih}) o güne denk gelmiyor.`)
+      return
+    }
     setKaydediliyor(true)
     const kayitlar = ogrenciler.map((o) => ({
       sinif_id: sinifId,
@@ -122,9 +147,19 @@ export default function YoklamaKonuModal({ dersProgramiId, sinifId, sinifAdi, de
               type="date"
               value={seciliTarih}
               max={yerelBugunTarihi()}
-              onChange={(e) => setSeciliTarih(e.target.value)}
+              onChange={(e) => {
+                const yeniTarih = e.target.value
+                if (gun && yeniTarih && gunNumarasi(yeniTarih) !== gun) {
+                  alert(`Bu ders sadece ${GUNLER[gun]} günleri yapılıyor, seçtiğiniz tarih o güne denk gelmiyor.`)
+                  return
+                }
+                setSeciliTarih(yeniTarih)
+              }}
               className="px-3 py-2 border border-gray-200 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue"
             />
+            {gun && (
+              <p className="text-[11px] text-gray-400 mt-1">Bu ders sadece {GUNLER[gun]} günleri yapılıyor.</p>
+            )}
           </div>
 
           <div>
