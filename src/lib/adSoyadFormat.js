@@ -9,7 +9,7 @@ const BAGLAC_KUCUK_YAZILANLAR = new Set(['ve', 'ile', 'da', 'de', 'veya', 'ya', 
 // olmalı). Anahtar küçük harfli hâli (karşılaştırma için), değer ekranda
 // gösterilecek asıl (büyük) hâli.
 const ISTISNA_BUYUK_YAZILANLAR = new Map(
-  ['TYT', 'YKS', 'AYT', 'MSÜ', 'TÖDER', 'ÖZDEBİR'].map((k) => [k.toLocaleLowerCase('tr-TR'), k])
+  ['TYT', 'YKS', 'AYT', 'MSÜ', 'TÖDER', 'ÖZDEBİR', 'TM', 'MF', 'TS'].map((k) => [k.toLocaleLowerCase('tr-TR'), k])
 )
 
 // Ad-soyad alanlarını, kullanıcı ne şekilde yazarsa yazsın otomatik olarak
