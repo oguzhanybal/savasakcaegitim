@@ -2042,6 +2042,13 @@ function TekSeferlikDerslerListesi({ yoklamalar, atamalar, onDegisti, sadeceOgre
   // (henüz borç yokken) onay istemiyoruz.
   async function durumDegistir(y, yeniDurum) {
     if (y.durum === yeniDurum) return
+    // İleri tarihli (henüz gerçekleşmemiş) bir dersin yoklamasını doğrudan
+    // "Geldi"/"Gelmedi" diye işaretlemeyi engelliyoruz — ders daha
+    // olmadan yoklama alınması anlamsız, ayrıca "Geldi" borç da ekliyor.
+    if (y.tarih && y.tarih > yerelBugunTarihi()) {
+      alert('Bu ders ileri tarihli, henüz yoklama alınamaz.')
+      return
+    }
     if (y.durum === 'geldi' && yeniDurum === 'gelmedi') {
       if (!confirm('Bu ders "Geldi" olarak işaretliydi ve öğrenciye borç eklenmişti. "Gelmedi" yapmak istediğinize emin misiniz? (borç kaldırılacak)')) return
     }
