@@ -49,6 +49,16 @@ export function adSoyadDuzelt(metin) {
           if (parca === '-' || parca === '/' || parca === '+' || parca === '(' || parca === ')' || !parca) {
             return parca
           }
+          // "mf-1", "11-tm", "tm/ykş" gibi ayraçla bölünmüş birleşik adlarda
+          // (ör. sınıf adı "MF-1", "11-TM") ayraçtan sonraki parça da istisna
+          // kelimeyse (TM/MF/TS/YKS/...) onu da tam büyük yazmamız gerekiyor —
+          // yoksa yukarıdaki tam-kelime kontrolü sadece "mf" veya "tm" TEK
+          // BAŞINA yazıldığında eşleşiyor, "mf-1" bütün olarak eşleşmediği
+          // için parça bazında da ayrıca kontrol ediyoruz.
+          const parcaKucuk = parca.toLocaleLowerCase('tr-TR')
+          if (ISTISNA_BUYUK_YAZILANLAR.has(parcaKucuk)) {
+            return ISTISNA_BUYUK_YAZILANLAR.get(parcaKucuk)
+          }
           const ilkHarf = parca.charAt(0).toLocaleUpperCase('tr-TR')
           const geriKalan = parca.slice(1).toLocaleLowerCase('tr-TR')
           return ilkHarf + geriKalan
