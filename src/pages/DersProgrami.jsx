@@ -2839,7 +2839,6 @@ export default function DersProgrami() {
           sinifAdi={yoklamaModalDers.sinif_adi}
           dersAdi={yoklamaModalDers.ders_adi}
           gun={yoklamaModalDers.gun}
-          tarih={enYakinGunTarihi(yoklamaModalDers.gun)}
           profile={profile}
           onClose={() => setYoklamaModalDers(null)}
         />
