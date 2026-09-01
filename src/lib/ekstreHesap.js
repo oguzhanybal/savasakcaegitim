@@ -125,9 +125,21 @@ export function sozlesmeKalemHesapla(sozlesme, odemeler, seciliAy) {
 
   const hedefIndex = ayBittiMi ? seciliIndex + 1 : seciliIndex
   const { toplam: J } = sayilanKisim(hedefIndex)
-  // Bir önceki ayın SONUNA kadar (düz ay bazında, gün kontrolü olmadan) ne
-  // kadarı kesinleşmiş/kapanmıştı — "bu ay yeni eklenen kısmı" bulmak için.
-  const { toplam: oncekiJ } = sayilanKisim(seciliIndex - 1)
+  // "Bu ay yeni eklenen kısmı" bulmak için kıyaslama noktası: ay HENÜZ
+  // bitmediyse (seçili ay hâlâ devam ediyorsa) bir önceki ayın sonuna kadar
+  // kesinleşmiş olan — böylece seçili ayın kendi taksiti "yeni" sayılır.
+  // BÜYÜK HATA DÜZELTMESİ: ay BİTTİYSE (geçmiş/kapanmış bir ayın ekstresine
+  // bakılıyorsa) kıyaslama noktası bir önceki ay DEĞİL, seçili ayın KENDİSİ
+  // olmalı — çünkü o zaman J zaten bir sonraki ayı da (önizleme olarak)
+  // içeriyor (hedefIndex = seciliIndex+1). Eskiden burada da seciliIndex-1
+  // kullanılıyordu, bu da seçili ayın KENDİ taksitini de "yeni eklenen" (Bu
+  // Ayın Tutarı) sütununa yazıp Geçmiş Borç'u sıfırlıyordu — oysa seçili ay
+  // artık bittiği (dolayısıyla o ayın taksiti de vadesi geçmiş sayıldığı)
+  // için o taksit ARTIK "Geçmiş Borç", sadece bir sonraki ayın önizlemesi
+  // "Bu Ayın Tutarı" olmalı (kullanıcının Ağustos ekstresinde Eylül'ü de
+  // gösterip 30+30 şeklinde ayırma isteğiyle bulundu).
+  const oncekiIndex = ayBittiMi ? seciliIndex : seciliIndex - 1
+  const { toplam: oncekiJ } = sayilanKisim(oncekiIndex)
 
   const hedefAyObj = ayBittiMi ? ayEkle(seciliAy, 1) : { yil: seciliYil, ay: seciliAyNo }
   const odenen = odemeToplamKalem(odemeler, sozlesme.kalem, hedefAyObj)
