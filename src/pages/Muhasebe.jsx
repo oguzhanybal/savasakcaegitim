@@ -911,9 +911,12 @@ export default function Muhasebe() {
       setLoading(false)
       // Aşağıdaki tüm içerik seciliId dolu olmadan HİÇ görünmüyor (yönetici
       // elle seçim yapsın diye böyle tasarlandı) — veli için bunu bekletmeden
-      // otomatik ilk (genelde tek) çocuğunu seçili getiriyoruz, sayfa boş
-      // görünmesin.
-      if (profile.rol !== 'yonetici' && liste.length > 0) {
+      // otomatik TEK çocuğunu seçili getiriyoruz, sayfa boş görünmesin.
+      // Velinin birden fazla çocuğu varsa OTOMATİK SEÇMİYORUZ — kutu boş
+      // gelsin, veli kendi elleriyle hangi çocuğu görüntüleyeceğini seçsin
+      // (aksi halde ilk çocuk sessizce seçili geliyor, veli fark etmeden
+      // yanlış çocuğun ekstresine bakabiliyordu).
+      if (profile.rol !== 'yonetici' && liste.length === 1) {
         setSeciliId(liste[0].id)
       }
     })
@@ -1317,7 +1320,7 @@ export default function Muhasebe() {
             }}
             onFocus={() => setOgrenciOneriAcik(true)}
             onBlur={() => setTimeout(() => setOgrenciOneriAcik(false), 150)}
-            placeholder="Yazarak arayın ya da listeden seçin..."
+            placeholder={isYonetici ? 'Yazarak arayın ya da listeden seçin...' : 'Öğrenci Seçin'}
             autoComplete="off"
             className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue"
           />
@@ -1355,6 +1358,10 @@ export default function Muhasebe() {
             ? 'Görüntülenecek öğrenci kaydı bulunamadı.'
             : 'Size bağlı bir öğrenci bulunamadı. Lütfen okul yönetimiyle iletişime geçin.'}
         </p>
+      )}
+
+      {!isYonetici && !seciliId && ogrenciler.length > 1 && !loading && (
+        <p className="text-gray-400">Devam etmek için yukarıdan çocuğunuzu seçin.</p>
       )}
 
       {isYonetici && !seciliId && ogrenciler.length > 0 && !loading && (
