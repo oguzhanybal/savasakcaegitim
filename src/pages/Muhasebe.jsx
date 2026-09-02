@@ -1,9 +1,13 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
+import { createRoot } from 'react-dom/client'
+import { flushSync } from 'react-dom'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../lib/AuthContext'
 import { ilkHarfleriBuyukYap } from '../lib/adSoyadFormat'
 import BireBirDersDokumu from '../components/BireBirDersDokumu'
+import SozlesmeSayfalari from '../components/SozlesmeSayfalari'
+import { sozlesmeVerisiHazirla } from '../lib/sozlesmeHesapla'
 import {
   taksitPlaniOlustur,
   taksitPlaniDetayliOlustur,
@@ -19,8 +23,9 @@ import {
   telefonNormallestir,
   makbuzWhatsappMesajiOlustur,
   makbuzTaksitBilgisiBul,
+  sozlesmeWhatsappMesajiOlustur,
 } from '../lib/ekstreHesap'
-import { makbuzPdfOlustur, odemePlaniPdfOlustur } from '../lib/pdfOlustur'
+import { makbuzPdfOlustur, odemePlaniPdfOlustur, sozlesmePdfOlustur } from '../lib/pdfOlustur'
 
 function paraFormat(n) {
   return new Intl.NumberFormat('tr-TR', { style: 'currency', currency: 'TRY' }).format(n || 0)
@@ -859,6 +864,9 @@ export default function Muhasebe() {
   // olan tek satırın anahtarını tutar (Toplu Ekstre'deki "gonderiliyor" ile
   // aynı desen).
   const [makbuzGonderiliyor, setMakbuzGonderiliyor] = useState(null)
+  // "Sözleşme WhatsApp'tan Gönder" için — makbuzGonderiliyor ile AYNI desen,
+  // anahtar burada `${sozlesmeId}-${taraf}`.
+  const [sozlesmeGonderiliyor, setSozlesmeGonderiliyor] = useState(null)
   // "Ödeme Planı PDF İndir" butonuna basılınca — PDF hazırlanana kadar
   // butonu devre dışı bırakmak için.
   const [odemePlaniIndiriliyor, setOdemePlaniIndiriliyor] = useState(false)
@@ -1120,6 +1128,139 @@ export default function Muhasebe() {
       )
     } finally {
       setMakbuzGonderiliyor(null)
+    }
+  }
+
+  // "Anneye Gönder"/"Babaya Gönder" (Sözleşmeler tablosu) tıklanınca: bu
+  // sözleşmenin PDF'ini (sozlesmePdfOlustur — bkz. o dosyadaki yorum: ekrandaki
+  // SozlesmeSayfalari GÖRÜNTÜSÜ html2canvas ile PDF'e çevriliyor, madde
+  // metinleri jsPDF ile yeniden YAZILMIYOR) üretip makbuzdaki AYNI
+  // kısa-link + WhatsApp deseniyle gönderir.
+  //
+  // Sözleşme sayfaları EKRANA hiç basılmadan üretilmesi gerekiyor (Sozlesme.jsx
+  // sayfasına gitmeden, doğrudan bu tablodan tek tıkla) — bunun için
+  // react-dom/client'ın createRoot'uyla, body'e eklenen GÖRÜNMEZ (position:
+  // fixed; left:-9999px — ekran dışında ama gerçek layout/boyutlarıyla, ki
+  // html2canvas doğru görüntüyü yakalayabilsin) bir konteynerde geçici olarak
+  // render ediyoruz, PDF üretilir üretilmez konteyneri kaldırıyoruz.
+  //
+  // kitapDahilMi burada HER ZAMAN null (dahil etme) — Sozlesme.jsx'teki
+  // interaktif "Evet, Dahil Et" sorusu burada sorulamadığı için, admin ayrı
+  // bir tercih belirtmeden otomatik birleştirme yapılmıyor (sayfayı elle
+  // açıp "Evet" demediği sürece aynı sonuç zaten budur).
+  async function sozlesmeWhatsappGonder(sozlesme, taraf) {
+    const anahtar = `${sozlesme.id}-${taraf}`
+    const kendisi = ogrenciler.find((x) => x.id === sozlesme.ogrenci_id)
+    if (!kendisi) {
+      alert('Öğrenci bulunamadı.')
+      return
+    }
+    const telefon = telefonNormallestir(taraf === 'anne' ? kendisi.anne_telefon : kendisi.baba_telefon)
+    if (!telefon) {
+      alert(`Bu öğrencinin ${taraf === 'anne' ? 'anne' : 'baba'} telefonu kayıtlı değil.`)
+      return
+    }
+    setSozlesmeGonderiliyor(anahtar)
+    let host = null
+    let root = null
+    try {
+      // Sozlesme.jsx'in kendi useEffect'iyle BİREBİR AYNI sorgular — sayfayı
+      // elle açıp bakıldığında görülenle burada üretilenin farklı çıkmaması için.
+      const [og, so, bba, kitapS] = await Promise.all([
+        supabase
+          .from('ogrenciler')
+          .select('*, veli:veli_profile_id(ad_soyad, telefon)')
+          .eq('id', sozlesme.ogrenci_id)
+          .single(),
+        supabase.from('sinif_ogrenciler').select('siniflar(ad)').eq('ogrenci_id', sozlesme.ogrenci_id).limit(1),
+        supabase.from('bire_bir_atamalari').select('id').eq('ogrenci_id', sozlesme.ogrenci_id).limit(1),
+        sozlesme.kalem === 'Kurs' || sozlesme.kalem === 'Okul'
+          ? supabase
+              .from('sozlesmeler')
+              .select('*')
+              .eq('ogrenci_id', sozlesme.ogrenci_id)
+              .eq('kalem', 'Kitap')
+              .order('created_at', { ascending: false })
+              .limit(1)
+              .maybeSingle()
+          : Promise.resolve({ data: null }),
+      ])
+      if (og.error || !og.data) throw new Error('Öğrenci bilgileri alınamadı: ' + (og.error?.message || ''))
+
+      const veri = sozlesmeVerisiHazirla({
+        sozlesme,
+        ogrenci: og.data,
+        sinifAdi: so.data?.[0]?.siniflar?.ad || '',
+        bireBirVarMi: (bba.data || []).length > 0,
+        kitapSozlesme: kitapS.data || null,
+        kitapDahilMi: null,
+        veliSecimi: 'baba',
+      })
+
+      host = document.createElement('div')
+      host.style.position = 'fixed'
+      host.style.left = '-9999px'
+      host.style.top = '0'
+      host.style.width = '800px'
+      document.body.appendChild(host)
+      root = createRoot(host)
+      flushSync(() => {
+        root.render(
+          <SozlesmeSayfalari
+            sozlesme={sozlesme}
+            ogrenci={og.data}
+            veliAdSoyad={veri.veliAdSoyad}
+            iletisim={veri.iletisim}
+            finalSinif={veri.finalSinif}
+            sozlesmeTarihiMetni={veri.sozlesmeTarihiMetni}
+            egitimDonemi={veri.egitimDonemi}
+            taksitler={veri.taksitler}
+            kitapDahil={veri.kitapDahil}
+            genelToplam={veri.genelToplam}
+            yayinBedeli={veri.yayinBedeli}
+            egitimBedeli={veri.egitimBedeli}
+          />
+        )
+      })
+      // Logo görseli gibi kaynakların yerleşimi oturması için bir sonraki
+      // iki çizim karesini bekliyoruz (html2canvas görsellerin kendisini
+      // zaten bekliyor, bu sadece layout'un oturduğundan emin olmak için).
+      await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)))
+
+      const sayfaElemanlari = Array.from(host.querySelectorAll('.sozlesme-sayfa'))
+      if (sayfaElemanlari.length === 0) throw new Error('Sözleşme sayfaları oluşturulamadı.')
+
+      const pdfBlob = await sozlesmePdfOlustur({ sayfaElemanlari })
+      const dosyaYolu = `${sozlesme.ogrenci_id}/${sozlesme.id}.pdf`
+      const { error: yuklemeHatasi } = await supabase.storage
+        .from('sozlesme-pdf')
+        .upload(dosyaYolu, pdfBlob, { upsert: true, contentType: 'application/pdf' })
+      if (yuklemeHatasi) throw yuklemeHatasi
+
+      const kod = kisaKodUret()
+      const { error: kisaLinkHatasi } = await supabase
+        .from('kisa_linkler')
+        .insert({ kod, bucket: 'sozlesme-pdf', dosya_yolu: dosyaYolu, baslik: `${og.data.ad_soyad} — ${sozlesme.kalem} Sözleşmesi` })
+      if (kisaLinkHatasi) throw kisaLinkHatasi
+      const kisaLink = `https://savasakcaportal.com/api/e?k=${kod}`
+
+      const mesaj = sozlesmeWhatsappMesajiOlustur({
+        ogrenciAdi: og.data.ad_soyad,
+        kalem: sozlesme.kalem,
+        toplamTutar: veri.genelToplam,
+        pdfLink: kisaLink,
+      })
+      window.open(`https://wa.me/${telefon}?text=${encodeURIComponent(mesaj)}`, '_blank')
+    } catch (err) {
+      alert(
+        'Sözleşme gönderilirken bir hata oluştu: ' +
+          (err.message || String(err)) +
+          '\n\nEğer "sozlesme-pdf" bucket veya "kisa_linkler" tablosu bulunamadı gibi bir hata görüyorsanız, bu özelliğin kurulumu için verilen SQL dosyasını Supabase\'te çalıştırmanız gerekiyor.'
+      )
+    } finally {
+      if (root) root.unmount()
+      if (host) document.body.removeChild(host)
+      setSozlesmeGonderiliyor(null)
     }
   }
 
@@ -1613,6 +1754,33 @@ export default function Muhasebe() {
                             <Link to={`/sozlesme/${s.id}`} target="_blank" className="text-blue text-sm hover:underline">
                               Görüntüle / Yazdır
                             </Link>
+                            {(() => {
+                              const sahibi = ogrenciler.find((x) => x.id === s.ogrenci_id)
+                              const anneVarMi = !!telefonNormallestir(sahibi?.anne_telefon)
+                              const babaVarMi = !!telefonNormallestir(sahibi?.baba_telefon)
+                              return (
+                                <>
+                                  {anneVarMi && (
+                                    <button
+                                      onClick={() => sozlesmeWhatsappGonder(s, 'anne')}
+                                      disabled={sozlesmeGonderiliyor === `${s.id}-anne`}
+                                      className="text-green-600 text-sm hover:underline disabled:opacity-50"
+                                    >
+                                      {sozlesmeGonderiliyor === `${s.id}-anne` ? 'Gönderiliyor...' : 'Anneye Gönder'}
+                                    </button>
+                                  )}
+                                  {babaVarMi && (
+                                    <button
+                                      onClick={() => sozlesmeWhatsappGonder(s, 'baba')}
+                                      disabled={sozlesmeGonderiliyor === `${s.id}-baba`}
+                                      className="text-green-600 text-sm hover:underline disabled:opacity-50"
+                                    >
+                                      {sozlesmeGonderiliyor === `${s.id}-baba` ? 'Gönderiliyor...' : 'Babaya Gönder'}
+                                    </button>
+                                  )}
+                                </>
+                              )
+                            })()}
                             <button onClick={() => sozlesmeDuzenlemeyeBasla(s)} className="text-navy text-sm hover:underline">
                               Düzenle
                             </button>
