@@ -7,7 +7,7 @@ import { useAuth } from '../lib/AuthContext'
 import { ilkHarfleriBuyukYap } from '../lib/adSoyadFormat'
 import BireBirDersDokumu from '../components/BireBirDersDokumu'
 import SozlesmeSayfalari from '../components/SozlesmeSayfalari'
-import { sozlesmeVerisiHazirla } from '../lib/sozlesmeHesapla'
+import { sozlesmeVerisiHazirla, tarihFormat } from '../lib/sozlesmeHesapla'
 import {
   taksitPlaniOlustur,
   taksitPlaniDetayliOlustur,
@@ -1144,10 +1144,13 @@ export default function Muhasebe() {
   // html2canvas doğru görüntüyü yakalayabilsin) bir konteynerde geçici olarak
   // render ediyoruz, PDF üretilir üretilmez konteyneri kaldırıyoruz.
   //
-  // kitapDahilMi burada HER ZAMAN null (dahil etme) — Sozlesme.jsx'teki
-  // interaktif "Evet, Dahil Et" sorusu burada sorulamadığı için, admin ayrı
-  // bir tercih belirtmeden otomatik birleştirme yapılmıyor (sayfayı elle
-  // açıp "Evet" demediği sürece aynı sonuç zaten budur).
+  // Ayrı bir Kitap sözleşmesi VARSA (Kurs/Okul sözleşmesi gönderilirken),
+  // Sozlesme.jsx'teki interaktif "Evet, Dahil Et" sorusuyla AYNI karar burada
+  // bir confirm() penceresiyle admin'e soruluyor: "Tamam" = birleşik PDF
+  // gönder, "İptal" = ayrı (sadece bu sözleşme) gönder. Kitap sözleşmesi
+  // yoksa (veya gönderilen satır zaten "Kitap" kaleminin kendisiyse) soru
+  // hiç sorulmuyor — sozlesmeVerisiHazirla zaten kitapSozlesme dolu
+  // olmadığında birleştirmiyor.
   async function sozlesmeWhatsappGonder(sozlesme, taraf) {
     const anahtar = `${sozlesme.id}-${taraf}`
     const kendisi = ogrenciler.find((x) => x.id === sozlesme.ogrenci_id)
@@ -1187,13 +1190,24 @@ export default function Muhasebe() {
       ])
       if (og.error || !og.data) throw new Error('Öğrenci bilgileri alınamadı: ' + (og.error?.message || ''))
 
+      // Ayrı bir Kitap sözleşmesi bulunduysa, admin'e Sozlesme.jsx'teki
+      // "Evet, Dahil Et" sorusunun aynısı bir confirm() penceresiyle
+      // soruluyor: Tamam = birleşik PDF, İptal = sadece bu sözleşme.
+      const kitap = kitapS.data || null
+      let kitapDahilMi = false
+      if (kitap) {
+        kitapDahilMi = window.confirm(
+          `Bu öğrencinin ayrı bir Kitap sözleşmesi var: ${paraFormat(kitap.toplam_tutar)} (${kitap.taksit_sayisi} taksit, ilk taksit ${tarihFormat(kitap.ilk_taksit_tarihi)}).\n\nBu sözleşmeye dahil edilsin mi?\n\nTamam = Birleşik gönder · İptal = Ayrı gönder`
+        )
+      }
+
       const veri = sozlesmeVerisiHazirla({
         sozlesme,
         ogrenci: og.data,
         sinifAdi: so.data?.[0]?.siniflar?.ad || '',
         bireBirVarMi: (bba.data || []).length > 0,
-        kitapSozlesme: kitapS.data || null,
-        kitapDahilMi: null,
+        kitapSozlesme: kitap,
+        kitapDahilMi,
         veliSecimi: 'baba',
       })
 
@@ -1240,14 +1254,17 @@ export default function Muhasebe() {
       const kod = kisaKodUret()
       const { error: kisaLinkHatasi } = await supabase
         .from('kisa_linkler')
-        .insert({ kod, bucket: 'sozlesme-pdf', dosya_yolu: dosyaYolu, baslik: `${og.data.ad_soyad} — ${sozlesme.kalem} Sözleşmesi` })
+        .insert({
+          kod,
+          bucket: 'sozlesme-pdf',
+          dosya_yolu: dosyaYolu,
+          baslik: `${og.data.ad_soyad} — ${sozlesme.kalem}${veri.kitapDahil ? ' + Kitap' : ''} Sözleşmesi`,
+        })
       if (kisaLinkHatasi) throw kisaLinkHatasi
       const kisaLink = `https://savasakcaportal.com/api/e?k=${kod}`
 
       const mesaj = sozlesmeWhatsappMesajiOlustur({
         ogrenciAdi: og.data.ad_soyad,
-        kalem: sozlesme.kalem,
-        toplamTutar: veri.genelToplam,
         pdfLink: kisaLink,
       })
       window.open(`https://wa.me/${telefon}?text=${encodeURIComponent(mesaj)}`, '_blank')
