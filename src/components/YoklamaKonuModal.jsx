@@ -45,7 +45,7 @@ function gunNumarasi(tarihStr) {
 // saati bugünün gününe denk gelmiyorsa (ör. hafta programında başka bir
 // günün dersine tıklandıysa), burada yoklama alma formu hiç gösterilmiyor,
 // bunun yerine kullanıcı Geçmiş Yoklama'ya yönlendiriliyor.
-export default function YoklamaKonuModal({ dersProgramiId, sinifId, sinifAdi, dersAdi, gun, profile, onClose }) {
+export default function YoklamaKonuModal({ dersProgramiId, sinifId, sinifAdi, dersAdi, gun, profile, onClose, onKaydedildi }) {
   const [ogrenciler, setOgrenciler] = useState([])
   const [yoklamaDurumu, setYoklamaDurumu] = useState({})
   const [loading, setLoading] = useState(true)
@@ -129,6 +129,13 @@ export default function YoklamaKonuModal({ dersProgramiId, sinifId, sinifAdi, de
     } else {
       setKaydedildi(true)
       bildirimGonder(kayitlar)
+      // Ders Programı sayfasındaki "Alındı" rozeti, sayfa yenilenmeden
+      // ANINDA görünsün diye — önceden bu callback yoktu, öğretmen
+      // yoklamayı kaydettikten sonra rozetin görünmesi için sayfayı elle
+      // yenilemek zorunda kalıyordu (kafa karıştırıyordu: "kaydedildi mi,
+      // kaydedilmedi mi?"). Parent (DersProgrami.jsx), kendi
+      // "buHaftaYoklamaAlinanlar" Set'ine bu dersi hemen ekliyor.
+      onKaydedildi?.(dersProgramiId, bugun)
     }
   }
 
