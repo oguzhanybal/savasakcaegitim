@@ -363,13 +363,8 @@ export function makbuzWhatsappMesajiOlustur({ ogrenciAdi, tarihMetni, kalemler, 
 // "Anneye Gönder"/"Babaya Gönder" butonları için, makbuzWhatsappMesajiOlustur
 // ile AYNI desen.
 // ============================================================================
-export function sozlesmeWhatsappMesajiOlustur({ ogrenciAdi, kalem, toplamTutar, pdfLink }) {
-  return (
-    `Değerli Velimiz, \n${ogrenciAdi} için ${kalem} sözleşmeniz ekte, tutar: ` +
-    `*₺${Number(toplamTutar || 0).toLocaleString('tr-TR', { minimumFractionDigits: 2 })}*.\n\n` +
-    `Sözleşme: ${pdfLink}\n\n` +
-    `Teşekkür ederiz.`
-  )
+export function sozlesmeWhatsappMesajiOlustur({ ogrenciAdi, pdfLink }) {
+  return `Değerli Velimiz, ${ogrenciAdi} için sözleşmeniz ektedir.\n\n${pdfLink}`
 }
 
 export function whatsappLinkOlustur(ogrenci, seciliAy, buAyTutar, kalanTutar) {
