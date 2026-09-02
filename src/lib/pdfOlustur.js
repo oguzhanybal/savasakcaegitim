@@ -36,6 +36,22 @@ export function jspdfYukle() {
   return jspdfYuklemePromise
 }
 
+// html2canvas'ı da (jspdfYukle ile AYNI CDN-üzerinden-yükleme deseni) —
+// sözleşme PDF'i için kullanılıyor, bkz. sozlesmePdfOlustur.
+let html2canvasYuklemePromise = null
+export function html2canvasYukle() {
+  if (window.html2canvas) return Promise.resolve(window.html2canvas)
+  if (html2canvasYuklemePromise) return html2canvasYuklemePromise
+  html2canvasYuklemePromise = new Promise((resolve, reject) => {
+    const script = document.createElement('script')
+    script.src = 'https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js'
+    script.onload = () => resolve(window.html2canvas)
+    script.onerror = () => reject(new Error('html2canvas yüklenemedi (internet bağlantınızı kontrol edin).'))
+    document.head.appendChild(script)
+  })
+  return html2canvasYuklemePromise
+}
+
 // --- Türkçe karakter desteği --------------------------------------------
 // jsPDF'in dahili 14 standart fontu (helvetica dahil) sadece WinAnsi/Latin-1
 // alt kümesini destekliyor — Ç, Ö, Ü sorunsuz basılıyor ama İ, ı, Ş, ş, Ğ, ğ
@@ -742,5 +758,39 @@ export async function odemePlaniPdfOlustur({ ogrenciAdi, sozlesmePlanlari, aylik
     footStyles: { fillColor: GRI_ACIK, textColor: 30, fontStyle: 'bold', font },
   })
 
+  return doc.output('blob')
+}
+
+// ============================================================================
+// SÖZLEŞME PDF — makbuz/ekstre PDF'lerinin AKSİNE, sözleşme metni jsPDF ile
+// satır satır yeniden ÇİZİLMİYOR: 2 sayfalık, 23 maddelik hukuki metnin
+// jsPDF'in elle-konumlandırmalı metin API'siyle yeniden yazılması (satır
+// kayması/yanlış bölünme gibi) hata riski taşıdığından, bunun yerine EKRANDA
+// ZATEN DOĞRU görünen sözleşme sayfaları (SozlesmeSayfalari bileşeni,
+// Sozlesme.jsx'in kullandığı BİREBİR AYNI JSX) html2canvas ile GÖRÜNTÜYE
+// çevrilip, her sayfa görüntüsü kendi ölçüsünde bir PDF sayfasına gömülüyor.
+// sayfaElemanlari: DOM elementleri dizisi (bkz. Muhasebe.jsx ->
+// sozlesmeWhatsappGonder — SozlesmeSayfalari, ekranın dışında ama gerçek
+// boyutlarıyla render edilip buraya .sozlesme-sayfa elementleri olarak
+// geçiriliyor).
+// ============================================================================
+export async function sozlesmePdfOlustur({ sayfaElemanlari }) {
+  const jsPDF = await jspdfYukle()
+  const html2canvas = await html2canvasYukle()
+  const PX_MM = 25.4 / 96 // CSS piksel (96 dpi varsayımıyla) -> milimetre
+
+  let doc = null
+  for (const el of sayfaElemanlari) {
+    const canvas = await html2canvas(el, { scale: 2, useCORS: true, backgroundColor: '#ffffff' })
+    const genislikMm = el.offsetWidth * PX_MM
+    const yukseklikMm = el.offsetHeight * PX_MM
+    const resim = canvas.toDataURL('image/jpeg', 0.92)
+    if (!doc) {
+      doc = new jsPDF({ unit: 'mm', format: [genislikMm, yukseklikMm] })
+    } else {
+      doc.addPage([genislikMm, yukseklikMm])
+    }
+    doc.addImage(resim, 'JPEG', 0, 0, genislikMm, yukseklikMm)
+  }
   return doc.output('blob')
 }

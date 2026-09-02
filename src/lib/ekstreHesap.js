@@ -358,6 +358,20 @@ export function makbuzWhatsappMesajiOlustur({ ogrenciAdi, tarihMetni, kalemler, 
   )
 }
 
+// ============================================================================
+// SÖZLEŞME WHATSAPP MESAJI — Muhasebe.jsx'teki Sözleşmeler tablosundaki
+// "Anneye Gönder"/"Babaya Gönder" butonları için, makbuzWhatsappMesajiOlustur
+// ile AYNI desen.
+// ============================================================================
+export function sozlesmeWhatsappMesajiOlustur({ ogrenciAdi, kalem, toplamTutar, pdfLink }) {
+  return (
+    `Değerli Velimiz, \n${ogrenciAdi} için ${kalem} sözleşmeniz ekte, tutar: ` +
+    `*₺${Number(toplamTutar || 0).toLocaleString('tr-TR', { minimumFractionDigits: 2 })}*.\n\n` +
+    `Sözleşme: ${pdfLink}\n\n` +
+    `Teşekkür ederiz.`
+  )
+}
+
 export function whatsappLinkOlustur(ogrenci, seciliAy, buAyTutar, kalanTutar) {
   const telefon = telefonNormallestir(ogrenci.telefon)
   if (!telefon) return null
