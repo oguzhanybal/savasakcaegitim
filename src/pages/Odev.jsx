@@ -175,7 +175,7 @@ function GoogleDriveBaglanti() {
 // sonra, ilgili öğrencilerin/velilerin telefonu varsa WhatsApp bildirim
 // linkleri gösterilir (mevcut Bire Bir hatırlatma panelindeki mantığın aynısı).
 // ============================================================================
-function OdevVerForm({ ogrenciler, ogretmenProfileId, varsayilanDers, onEklendi }) {
+function OdevVerForm({ ogrenciler, siniflarListesi, sinifOgrenciMap, ogretmenProfileId, varsayilanDers, onEklendi }) {
   const [hedefTuru, setHedefTuru] = useState('tek') // 'tek' | 'toplu'
   const [seciliOgrenci, setSeciliOgrenci] = useState('')
   const [seciliOgrenciler, setSeciliOgrenciler] = useState([])
@@ -223,13 +223,13 @@ function OdevVerForm({ ogrenciler, ogretmenProfileId, varsayilanDers, onEklendi 
     )
   }, [ogrenciler, arama])
 
-  // Ogrenciler.jsx'te girilen "sinif_ve_alan" (ör. "9-A") alanına göre, sistemde
-  // kayıtlı BENZERSİZ sınıf adlarının listesi — hoca tek tek öğrenci aramak
-  // yerine doğrudan "9-A" seçip o sınıftaki TÜM öğrencileri tek tıkla ekleyebilsin.
-  const siniflar = useMemo(() => {
-    const set = new Set(ogrenciler.map((o) => o.sinif_ve_alan).filter(Boolean))
-    return Array.from(set).sort((a, b) => a.localeCompare(b, 'tr'))
-  }, [ogrenciler])
+  // "Sınıfa göre ekle" — Sınıflar sayfasında (siniflar/sinif_ogrenciler tabloları,
+  // ör. "TM-1", "MF-2") tanımlı GERÇEK sınıf listesi ve öğrenci kayıtları
+  // kullanılıyor; öğrenci kaydındaki serbest metin "sinif_ve_alan" (ör.
+  // "Mezun-Sayısal") alanı SADECE etiket/görüntüleme amaçlı, buradaki toplu
+  // seçime karışmıyor — o alan öğrenci kaydedilirken ne yazıldıysa öyle kalsın
+  // diye kasıtlı olarak dokunulmuyor.
+  const siniflar = siniflarListesi || []
 
   function ogrenciSecimiDegistir(id) {
     setSeciliOgrenciler((s) => (s.includes(id) ? s.filter((x) => x !== id) : [...s, id]))
@@ -241,10 +241,11 @@ function OdevVerForm({ ogrenciler, ogretmenProfileId, varsayilanDers, onEklendi 
 
   // Seçilen sınıftaki TÜM öğrencileri, o ana kadar seçilmiş olanlara EKLER
   // (var olan seçimi silmez) — başka bir sınıftan da öğrenci eklemek isterse
-  // ikinci bir sınıf daha seçebilsin diye.
-  function sinifSec(sinif) {
-    if (!sinif) return
-    const idler = ogrenciler.filter((o) => o.sinif_ve_alan === sinif).map((o) => o.id)
+  // ikinci bir sınıf daha seçebilsin diye. sinifId, Sınıflar sayfasındaki
+  // gerçek sınıfın id'si (sinif_ogrenciler eşleştirme tablosundan gelir).
+  function sinifSec(sinifId) {
+    if (!sinifId) return
+    const idler = (sinifOgrenciMap && sinifOgrenciMap[sinifId]) || []
     setSeciliOgrenciler((s) => Array.from(new Set([...s, ...idler])))
   }
 
@@ -404,8 +405,8 @@ function OdevVerForm({ ogrenciler, ogretmenProfileId, varsayilanDers, onEklendi 
             >
               <option value="">Sınıfa göre ekle (tüm sınıf tek tıkla)...</option>
               {siniflar.map((s) => (
-                <option key={s} value={s}>
-                  {s}
+                <option key={s.id} value={s.id}>
+                  {s.ad}
                 </option>
               ))}
             </select>
@@ -1003,17 +1004,28 @@ export default function Odev() {
   const isVeliYaDaOgrenci = profile?.rol === 'veli' || profile?.rol === 'ogrenci'
 
   const [ogrenciler, setOgrenciler] = useState([])
+  const [siniflarListesi, setSiniflarListesi] = useState([])
+  const [sinifOgrenciMap, setSinifOgrenciMap] = useState({})
   const [ogretmenler, setOgretmenler] = useState([])
   const [odevler, setOdevler] = useState([])
   const [birdenFazlaCocukMu, setBirdenFazlaCocukMu] = useState(false)
   const [loading, setLoading] = useState(true)
   const ilkYuklemeTamamRef = useRef(false)
 
+  // "Sınıfa göre ekle" — bkz. OdevVerForm'daki sinifSec yorumu. İçinde
+  // bulunulan eğitim yılı burada SABİT: Siniflar.jsx'teki varsayılan yılla
+  // (seciliYil='2026-2027') aynı — yeni eğitim yılına geçildiğinde ikisi
+  // birlikte güncellenmeli.
+  const AKTIF_EGITIM_YILI = '2026-2027'
+
   function veriyiYenile() {
     if (!ilkYuklemeTamamRef.current) setLoading(true)
     Promise.all([
       isYonetici || isOgretmen
         ? supabase.from('ogrenciler').select('id, ad_soyad, sinif_ve_alan').order('ad_soyad')
+        : Promise.resolve({ data: [] }),
+      isYonetici || isOgretmen
+        ? supabase.from('siniflar').select('id, ad').eq('egitim_yili', AKTIF_EGITIM_YILI).order('ad')
         : Promise.resolve({ data: [] }),
       isYonetici
         ? supabase
@@ -1043,8 +1055,10 @@ export default function Odev() {
       isYonetici
         ? supabase.from('profiles').select('id, ad_soyad').eq('rol', 'ogretmen').order('ad_soyad')
         : Promise.resolve({ data: [] }),
-    ]).then(([o, od, kendiCocuklarSonuc, ogr]) => {
+    ]).then(async ([o, s, od, kendiCocuklarSonuc, ogr]) => {
       setOgrenciler(o.data || [])
+      const sinifListesi = s.data || []
+      setSiniflarListesi(sinifListesi)
       setOdevler(
         (od.data || []).map((d) => ({
           ...d,
@@ -1059,6 +1073,27 @@ export default function Odev() {
         ).length
         setBirdenFazlaCocukMu(cocukSayisi > 1)
       }
+
+      // Sınıfların öğrenci kayıtları — hangi sınıfta hangi öğrencilerin olduğunu
+      // (sinif_ogrenciler eşleştirme tablosundan) tek seferde çekip sinif_id ->
+      // [ogrenci_id, ...] şeklinde bir haritaya çeviriyoruz (Siniflar.jsx'teki
+      // öğrenci sayısı hesaplamasıyla aynı desen).
+      const sinifIdleri = sinifListesi.map((x) => x.id)
+      if (sinifIdleri.length > 0) {
+        const { data: kayitlar } = await supabase
+          .from('sinif_ogrenciler')
+          .select('sinif_id, ogrenci_id')
+          .in('sinif_id', sinifIdleri)
+        const harita = {}
+        ;(kayitlar || []).forEach((k) => {
+          if (!harita[k.sinif_id]) harita[k.sinif_id] = []
+          harita[k.sinif_id].push(k.ogrenci_id)
+        })
+        setSinifOgrenciMap(harita)
+      } else {
+        setSinifOgrenciMap({})
+      }
+
       ilkYuklemeTamamRef.current = true
       setLoading(false)
     })
@@ -1080,6 +1115,8 @@ export default function Odev() {
           {isYonetici && <GoogleDriveBaglanti />}
           <OdevVerForm
             ogrenciler={ogrenciler}
+            siniflarListesi={siniflarListesi}
+            sinifOgrenciMap={sinifOgrenciMap}
             ogretmenProfileId={profile.id}
             varsayilanDers={isOgretmen ? profile?.brans || '' : ''}
             onEklendi={veriyiYenile}
