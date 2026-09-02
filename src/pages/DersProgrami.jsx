@@ -65,9 +65,18 @@ function enYakinGunTarihi(gun) {
 
 // enYakinGunTarihi'nin TERSİ — GERİYE değil İLERİYE bakar: bu haftanın günü
 // bugünse bugün, geçtiyse GELECEK haftanın aynı günü (bugün dahil, en fazla 6
-// gün sonraki). "Alındı" rozetinin hangi TARİHE ait olduğunu belirlemek için
-// kullanılıyor — öğretmen "Pazartesi" bölümüne baktığında, o hafta içindeki
-// GEÇMİŞ bir Pazartesi'yi değil, önündeki/gelecek Pazartesi'yi kastediyor.
+// gün sonraki). ÖNCEDEN "Alındı" rozetinin tarihini belirlemek için
+// kullanılıyordu, ama bu YANLIŞTI: YoklamaKonuModal yoklamayı HER ZAMAN
+// "bugün" için kaydediyor (en_yakın/geçmiş gün, asla gelecek bir tarih için
+// değil) — rozet kontrolü ileriye bakan bu fonksiyonla yapılınca, bir günün
+// dersi (ör. Pazartesi) o hafta içinde geçtikten sonra (Salı, Çarşamba...
+// programa tekrar bakıldığında) rozet GELECEK haftanın Pazartesi'sini
+// arıyor, bu haftanın (zaten yoklaması alınmış) Pazartesi'siyle hiç
+// eşleşmiyor ve rozet kayboluyormuş gibi görünüyordu (kullanıcının fark
+// ettiği hata). Rozet kontrolü artık enYakinGunTarihi kullanıyor — bu
+// fonksiyon şu an burada başka hiçbir yerde kullanılmıyor, ama gelecekte
+// "bu ders sırada ne zaman" gibi ileriye dönük bir hesap gerekirse diye
+// duruyor.
 function sonrakiGunTarihi(gun) {
   const n = new Date()
   const bugunGunNo = ((n.getDay() + 6) % 7) + 1
@@ -2621,7 +2630,7 @@ export default function DersProgrami() {
                               </p>
                               {isOgretmen && d.sinif_id && (
                                 <div className="mt-1 flex items-center gap-1">
-                                  {buHaftaYoklamaAlinanlar.has(`${d.id}|${sonrakiGunTarihi(d.gun)}`) && (
+                                  {buHaftaYoklamaAlinanlar.has(`${d.id}|${enYakinGunTarihi(d.gun)}`) && (
                                     <span className="text-[9px] font-semibold bg-green-100 text-green-700 px-1.5 py-0.5 rounded-full shrink-0">
                                       Alındı
                                     </span>
@@ -2773,7 +2782,7 @@ export default function DersProgrami() {
                       )}
                       {isOgretmen && d.sinif_id && (
                         <div className="flex items-center gap-2 flex-wrap shrink-0">
-                          {buHaftaYoklamaAlinanlar.has(`${d.id}|${sonrakiGunTarihi(d.gun)}`) && (
+                          {buHaftaYoklamaAlinanlar.has(`${d.id}|${enYakinGunTarihi(d.gun)}`) && (
                             <span className="text-xs font-semibold bg-green-100 text-green-700 px-2 py-1 rounded-full">
                               Alındı
                             </span>
@@ -2841,6 +2850,12 @@ export default function DersProgrami() {
           gun={yoklamaModalDers.gun}
           profile={profile}
           onClose={() => setYoklamaModalDers(null)}
+          // Yoklama kaydedilir kaydedilmez "Alındı" rozeti sayfa yenilenmeden
+          // görünsün diye — bkz. YoklamaKonuModal.jsx'teki kaydet() içindeki
+          // onKaydedildi çağrısı ve açıklaması.
+          onKaydedildi={(dersProgramiId, tarih) =>
+            setBuHaftaYoklamaAlinanlar((prev) => new Set(prev).add(`${dersProgramiId}|${tarih}`))
+          }
         />
       )}
     </div>
