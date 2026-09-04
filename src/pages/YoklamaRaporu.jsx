@@ -279,6 +279,13 @@ export default function YoklamaRaporu() {
   const [seciliOgrenci, setSeciliOgrenci] = useState(null) // { id, ad_soyad } | null
   const [ogrenciKayitlari, setOgrenciKayitlari] = useState([])
   const [ogrenciLoading, setOgrenciLoading] = useState(false)
+  // Öğrencinin ŞU AN kayıtlı olduğu sınıf(lar) — sinif_ogrenciler tablosundan.
+  // Bir öğrenci sınıf değiştirdiyse eski yoklamaları hâlâ eski sinif_id'yle
+  // kayıtlı kalır (bu doğru — o an gerçekten o dersteydi); ama özet ekranda
+  // bunları ayrı ayrı göstermek yerine "şu an hangi sınıftaysa orada"
+  // TEK toplam altında birleştiriyoruz (kullanıcı isteğiyle — sınıf
+  // değişikliğinde yoklamaların "saçmalamaması" için).
+  const [guncelSiniflar, setGuncelSiniflar] = useState([])
   // "Gelmedi" sayısına tıklanınca hangi satırın (öğrenci adı ya da sınıf adı)
   // detayı açık — kullanıcı isteğiyle: "3 gelmedi görünüyor, tıklayınca
   // gelmediği saatler çıksın".
@@ -314,6 +321,20 @@ export default function YoklamaRaporu() {
       clearTimeout(zamanlayici)
     }
   }, [aramaMetni, seciliOgrenci])
+
+  useEffect(() => {
+    if (!seciliOgrenci) {
+      setGuncelSiniflar([])
+      return
+    }
+    supabase
+      .from('sinif_ogrenciler')
+      .select('siniflar(ad)')
+      .eq('ogrenci_id', seciliOgrenci.id)
+      .then(({ data }) => {
+        setGuncelSiniflar((data || []).map((d) => d.siniflar?.ad).filter(Boolean))
+      })
+  }, [seciliOgrenci])
 
   useEffect(() => {
     if (!seciliOgrenci) {
@@ -398,19 +419,18 @@ export default function YoklamaRaporu() {
   const sinavOzetListesi = Object.entries(sinavOzet).sort((a, b) => a[0].localeCompare(b[0], 'tr'))
 
   // Öğrenci arama modu: seçilen sınıftan bağımsız, o öğrencinin TÜM
-  // kayıtlarını sınıf bazında özetler — böylece bir öğrencinin bir kısım
-  // yoklamasının farklı/eski bir sınıfa kayıtlı kaldığı hemen görülür.
+  // kayıtları TEK bir toplamda birleşiyor (kullanıcı isteğiyle — eskiden
+  // sınıf sınıf ayrı gösteriliyordu, bir öğrenci sınıf değiştirdiğinde
+  // "saçma" görünüyordu). Hangi dersin hangi sınıfta geçtiği bilgisi
+  // kaybolmuyor — aşağıdaki "Detaylı Geçmiş" tablosunda Sınıf sütununda
+  // duruyor — ama özet artık tek satır.
   const ogrenciNormalKayitlar = ogrenciKayitlari.filter((k) => !k.ders_programi?.sinav_mi)
-  const ogrenciSinifOzet = {}
-  ogrenciNormalKayitlar.forEach((k) => {
-    const ad = k.siniflar?.ad || 'Bilinmeyen Sınıf'
-    if (!ogrenciSinifOzet[ad]) ogrenciSinifOzet[ad] = { geldi: 0, gelmedi: 0 }
-    if (k.geldi) ogrenciSinifOzet[ad].geldi += 1
-    else ogrenciSinifOzet[ad].gelmedi += 1
-  })
-  const ogrenciSinifOzetListesi = Object.entries(ogrenciSinifOzet).sort((a, b) => a[0].localeCompare(b[0], 'tr'))
   const ogrenciToplamGeldi = ogrenciNormalKayitlar.filter((k) => k.geldi).length
   const ogrenciToplamGelmedi = ogrenciNormalKayitlar.length - ogrenciToplamGeldi
+  const ogrenciGecmisSiniflar = [...new Set(ogrenciNormalKayitlar.map((k) => k.siniflar?.ad).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'tr'))
+  const gelmedigunleriToplam = genisletilenSatir === '__ogrenci_toplam__'
+    ? ogrenciNormalKayitlar.filter((k) => !k.geldi).sort((a, b) => b.tarih.localeCompare(a.tarih))
+    : []
 
   return (
     <div>
@@ -679,84 +699,52 @@ export default function YoklamaRaporu() {
 
       {seciliOgrenci && !ogrenciLoading && ogrenciKayitlari.length > 0 && (
         <>
-          <p className="text-sm text-gray-500 mb-4">
-            <span className="font-semibold text-gray-700">{seciliOgrenci.ad_soyad}</span> — toplam {ogrenciNormalKayitlar.length} ders kaydı,{' '}
-            <span className="text-green-600 font-semibold">{ogrenciToplamGeldi} geldi</span>,{' '}
-            <span className="text-red-500 font-semibold">{ogrenciToplamGelmedi} gelmedi</span>
-            {ogrenciSinifOzetListesi.length > 1 && (
-              <span className="text-gray-400"> — {ogrenciSinifOzetListesi.length} farklı sınıfa kayıtlı yoklaması var, aşağıda sınıf sınıf ayrılmış</span>
+          <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-4 mb-8">
+            <p className="text-sm text-gray-500">
+              <span className="font-semibold text-gray-700">{seciliOgrenci.ad_soyad}</span>
+              {guncelSiniflar.length > 0 && (
+                <span className="text-gray-400"> — şu an {guncelSiniflar.join(', ')} sınıfında</span>
+              )}
+            </p>
+            <p className="text-sm text-gray-500 mt-1">
+              Toplam {ogrenciNormalKayitlar.length} ders kaydı,{' '}
+              <span className="text-green-600 font-semibold">{ogrenciToplamGeldi} geldi</span>,{' '}
+              {ogrenciToplamGelmedi > 0 ? (
+                <button
+                  type="button"
+                  onClick={() => setGenisletilenSatir(genisletilenSatir === '__ogrenci_toplam__' ? null : '__ogrenci_toplam__')}
+                  className="text-red-500 font-semibold underline decoration-dotted underline-offset-2 hover:text-red-600"
+                  title="Gelmediği saatleri göster"
+                >
+                  {ogrenciToplamGelmedi} gelmedi
+                </button>
+              ) : (
+                <span className="text-gray-400 font-semibold">0 gelmedi</span>
+              )}
+              {ogrenciGecmisSiniflar.length > 1 && (
+                <span className="text-gray-400"> — sınıf değiştirmiş olabilir, eski kayıtları da bu toplama dahil ({ogrenciGecmisSiniflar.join(', ')})</span>
+              )}
+            </p>
+            {genisletilenSatir === '__ogrenci_toplam__' && (
+              <div className="mt-3 pt-3 border-t border-gray-100">
+                <p className="text-xs font-semibold text-gray-600 mb-1.5">Gelmediği dersler:</p>
+                <ul className="text-xs text-gray-600 space-y-1">
+                  {gelmedigunleriToplam.map((k) => {
+                    const d = new Date(k.tarih)
+                    return (
+                      <li key={k.id}>
+                        {d.toLocaleDateString('tr-TR')} <span className="text-gray-400">({GUNLER[((d.getDay() + 6) % 7) + 1]})</span>
+                        {' — '}
+                        {k.siniflar?.ad && <span className="font-medium">{k.siniflar.ad}</span>}
+                        {k.siniflar?.ad && ' · '}
+                        {k.ders_programi?.ders_adi || 'Ders'}
+                        {k.ders_programi?.profiles?.ad_soyad && ` (${k.ders_programi.profiles.ad_soyad})`}
+                      </li>
+                    )
+                  })}
+                </ul>
+              </div>
             )}
-          </p>
-
-          <h2 className="font-semibold text-gray-700 mb-3">Sınıf Bazlı Özet</h2>
-          <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-x-auto overscroll-x-contain mb-8" style={{ touchAction: 'pan-x pan-y' }}>
-            <table className="text-sm min-w-[480px] w-full">
-              <thead>
-                <tr className="bg-navy text-white text-left">
-                  <th className="px-4 py-3 font-semibold whitespace-nowrap">Sınıf</th>
-                  <th className="px-4 py-3 font-semibold text-center whitespace-nowrap">Geldi</th>
-                  <th className="px-4 py-3 font-semibold text-center whitespace-nowrap">Gelmedi</th>
-                  <th className="px-4 py-3 font-semibold text-center whitespace-nowrap">Devamsızlık Oranı</th>
-                </tr>
-              </thead>
-              <tbody>
-                {ogrenciSinifOzetListesi.map(([ad, s]) => {
-                  const toplam = s.geldi + s.gelmedi
-                  const oran = toplam > 0 ? Math.round((s.gelmedi / toplam) * 100) : 0
-                  const acik = genisletilenSatir === ad
-                  const gelmedigunleri = acik
-                    ? ogrenciNormalKayitlar
-                        .filter((k) => !k.geldi && (k.siniflar?.ad || 'Bilinmeyen Sınıf') === ad)
-                        .sort((a, b) => b.tarih.localeCompare(a.tarih))
-                    : []
-                  return (
-                    <Fragment key={ad}>
-                      <tr className={acik ? 'bg-red-50/60' : ''}>
-                        <td className="px-4 py-3 font-medium text-gray-800 whitespace-nowrap">{ad}</td>
-                        <td className="px-4 py-3 text-center text-green-600 font-semibold whitespace-nowrap">{s.geldi}</td>
-                        <td className="px-4 py-3 text-center whitespace-nowrap">
-                          {s.gelmedi > 0 ? (
-                            <button
-                              type="button"
-                              onClick={() => setGenisletilenSatir(acik ? null : ad)}
-                              className="text-red-500 font-semibold underline decoration-dotted underline-offset-2 hover:text-red-600"
-                              title="Gelmediği saatleri göster"
-                            >
-                              {s.gelmedi}
-                            </button>
-                          ) : (
-                            <span className="text-gray-400 font-semibold">0</span>
-                          )}
-                        </td>
-                        <td className="px-4 py-3 text-center whitespace-nowrap">
-                          <span className={`font-semibold ${oran > 20 ? 'text-red-500' : 'text-gray-600'}`}>%{oran}</span>
-                        </td>
-                      </tr>
-                      {acik && (
-                        <tr>
-                          <td colSpan={4} className="px-4 py-3 bg-red-50 border-t border-b border-red-100">
-                            <p className="text-xs font-semibold text-gray-600 mb-1.5">{ad} — gelmediği dersler:</p>
-                            <ul className="text-xs text-gray-600 space-y-1">
-                              {gelmedigunleri.map((k) => {
-                                const d = new Date(k.tarih)
-                                return (
-                                  <li key={k.id}>
-                                    {d.toLocaleDateString('tr-TR')} <span className="text-gray-400">({GUNLER[((d.getDay() + 6) % 7) + 1]})</span>
-                                    {' — '}
-                                    {k.ders_programi?.ders_adi || 'Ders'}
-                                    {k.ders_programi?.profiles?.ad_soyad && ` (${k.ders_programi.profiles.ad_soyad})`}
-                                  </li>
-                                )
-                              })}
-                            </ul>
-                          </td>
-                        </tr>
-                      )}
-                    </Fragment>
-                  )
-                })}
-              </tbody>
-            </table>
           </div>
 
           <h2 className="font-semibold text-gray-700 mb-3">Detaylı Geçmiş (Son Kayıtlar)</h2>
