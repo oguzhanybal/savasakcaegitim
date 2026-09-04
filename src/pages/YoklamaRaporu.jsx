@@ -313,6 +313,9 @@ export default function YoklamaRaporu() {
   // detayı açık — kullanıcı isteğiyle: "3 gelmedi görünüyor, tıklayınca
   // gelmediği saatler çıksın".
   const [genisletilenSatir, setGenisletilenSatir] = useState(null)
+  // "Detaylı Geçmiş" tablosu çok uzayabildiği için (yüzlerce satır)
+  // kullanıcı isteğiyle varsayılan KAPALI geliyor — "Detaya Ulaş" ile açılır.
+  const [detayGoster, setDetayGoster] = useState(false)
 
   useEffect(() => {
     supabase.from('siniflar').select('*').then(({ data }) => {
@@ -668,53 +671,64 @@ export default function YoklamaRaporu() {
             </>
           )}
 
-          <h2 className="font-semibold text-gray-700 mb-3">Detaylı Geçmiş (Son Kayıtlar)</h2>
-          <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-x-auto overscroll-x-contain" style={{ touchAction: 'pan-x pan-y' }}>
-            <table className="text-sm min-w-[640px] w-full">
-              <thead>
-                <tr className="bg-navy text-white text-left">
-                  <th className="px-4 py-3 font-semibold whitespace-nowrap">Tarih</th>
-                  <th className="px-4 py-3 font-semibold whitespace-nowrap">Öğrenci</th>
-                  {!seciliOgretmen && <th className="px-4 py-3 font-semibold">Ders / Öğretmen</th>}
-                  <th className="px-4 py-3 font-semibold whitespace-nowrap">Durum</th>
-                </tr>
-              </thead>
-              <tbody>
-                {kayitlarGosterilen.slice(0, 100).map((k, i) => {
-                  const d = new Date(k.tarih)
-                  const gunAdi = GUNLER[((d.getDay() + 6) % 7) + 1]
-                  return (
-                    <tr key={k.id} className={i % 2 ? 'bg-gray-50' : ''}>
-                      <td className="px-4 py-3 text-gray-600 whitespace-nowrap">
-                        {d.toLocaleDateString('tr-TR')} <span className="text-gray-400">({gunAdi})</span>
-                      </td>
-                      <td className="px-4 py-3 font-medium text-gray-800 whitespace-nowrap">{k.ogrenciler?.ad_soyad}</td>
-                      {!seciliOgretmen && (
-                        <td className="px-4 py-3 text-gray-600 whitespace-nowrap">
-                          {k.ders_programi?.ders_adi || '—'}
-                          {k.ders_programi?.profiles?.ad_soyad && (
-                            <span className="text-gray-400"> — {k.ders_programi.profiles.ad_soyad}</span>
-                          )}
-                          {k.ders_programi?.sinav_mi && (
-                            <span className="ml-1.5 px-1.5 py-0.5 rounded-full text-[10px] font-semibold bg-orange-100 text-orange-700">
-                              {SINAV_TURU_ETIKET[k.ders_programi.sinav_turu] || 'Sınav'}
-                            </span>
-                          )}
-                        </td>
-                      )}
-                      <td className="px-4 py-3 whitespace-nowrap">
-                        <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${
-                          k.geldi ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'
-                        }`}>
-                          {k.geldi ? 'Geldi' : 'Gelmedi'}
-                        </span>
-                      </td>
-                    </tr>
-                  )
-                })}
-              </tbody>
-            </table>
+          <div className="flex items-center justify-between mb-3">
+            <h2 className="font-semibold text-gray-700">Detaylı Geçmiş (Son Kayıtlar)</h2>
+            <button
+              type="button"
+              onClick={() => setDetayGoster((v) => !v)}
+              className="text-sm text-blue font-medium hover:underline"
+            >
+              {detayGoster ? 'Gizle' : 'Detaya Ulaş'}
+            </button>
           </div>
+          {detayGoster && (
+            <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-x-auto overscroll-x-contain" style={{ touchAction: 'pan-x pan-y' }}>
+              <table className="text-sm min-w-[640px] w-full">
+                <thead>
+                  <tr className="bg-navy text-white text-left">
+                    <th className="px-4 py-3 font-semibold whitespace-nowrap">Tarih</th>
+                    <th className="px-4 py-3 font-semibold whitespace-nowrap">Öğrenci</th>
+                    {!seciliOgretmen && <th className="px-4 py-3 font-semibold">Ders / Öğretmen</th>}
+                    <th className="px-4 py-3 font-semibold whitespace-nowrap">Durum</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {kayitlarGosterilen.slice(0, 100).map((k, i) => {
+                    const d = new Date(k.tarih)
+                    const gunAdi = GUNLER[((d.getDay() + 6) % 7) + 1]
+                    return (
+                      <tr key={k.id} className={i % 2 ? 'bg-gray-50' : ''}>
+                        <td className="px-4 py-3 text-gray-600 whitespace-nowrap">
+                          {d.toLocaleDateString('tr-TR')} <span className="text-gray-400">({gunAdi})</span>
+                        </td>
+                        <td className="px-4 py-3 font-medium text-gray-800 whitespace-nowrap">{k.ogrenciler?.ad_soyad}</td>
+                        {!seciliOgretmen && (
+                          <td className="px-4 py-3 text-gray-600 whitespace-nowrap">
+                            {k.ders_programi?.ders_adi || '—'}
+                            {k.ders_programi?.profiles?.ad_soyad && (
+                              <span className="text-gray-400"> — {k.ders_programi.profiles.ad_soyad}</span>
+                            )}
+                            {k.ders_programi?.sinav_mi && (
+                              <span className="ml-1.5 px-1.5 py-0.5 rounded-full text-[10px] font-semibold bg-orange-100 text-orange-700">
+                                {SINAV_TURU_ETIKET[k.ders_programi.sinav_turu] || 'Sınav'}
+                              </span>
+                            )}
+                          </td>
+                        )}
+                        <td className="px-4 py-3 whitespace-nowrap">
+                          <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${
+                            k.geldi ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'
+                          }`}>
+                            {k.geldi ? 'Geldi' : 'Gelmedi'}
+                          </span>
+                        </td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
         </>
       )}
 
@@ -774,51 +788,62 @@ export default function YoklamaRaporu() {
             )}
           </div>
 
-          <h2 className="font-semibold text-gray-700 mb-3">Detaylı Geçmiş (Son Kayıtlar)</h2>
-          <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-x-auto overscroll-x-contain" style={{ touchAction: 'pan-x pan-y' }}>
-            <table className="text-sm min-w-[640px] w-full">
-              <thead>
-                <tr className="bg-navy text-white text-left">
-                  <th className="px-4 py-3 font-semibold whitespace-nowrap">Tarih</th>
-                  <th className="px-4 py-3 font-semibold whitespace-nowrap">Sınıf</th>
-                  <th className="px-4 py-3 font-semibold">Ders / Öğretmen</th>
-                  <th className="px-4 py-3 font-semibold whitespace-nowrap">Durum</th>
-                </tr>
-              </thead>
-              <tbody>
-                {ogrenciKayitlari.slice(0, 100).map((k, i) => {
-                  const d = new Date(k.tarih)
-                  const gunAdi = GUNLER[((d.getDay() + 6) % 7) + 1]
-                  return (
-                    <tr key={k.id} className={i % 2 ? 'bg-gray-50' : ''}>
-                      <td className="px-4 py-3 text-gray-600 whitespace-nowrap">
-                        {d.toLocaleDateString('tr-TR')} <span className="text-gray-400">({gunAdi})</span>
-                      </td>
-                      <td className="px-4 py-3 font-medium text-gray-800 whitespace-nowrap">{k.siniflar?.ad || '—'}</td>
-                      <td className="px-4 py-3 text-gray-600 whitespace-nowrap">
-                        {k.ders_programi?.ders_adi || '—'}
-                        {k.ders_programi?.profiles?.ad_soyad && (
-                          <span className="text-gray-400"> — {k.ders_programi.profiles.ad_soyad}</span>
-                        )}
-                        {k.ders_programi?.sinav_mi && (
-                          <span className="ml-1.5 px-1.5 py-0.5 rounded-full text-[10px] font-semibold bg-orange-100 text-orange-700">
-                            {SINAV_TURU_ETIKET[k.ders_programi.sinav_turu] || 'Sınav'}
-                          </span>
-                        )}
-                      </td>
-                      <td className="px-4 py-3 whitespace-nowrap">
-                        <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${
-                          k.geldi ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'
-                        }`}>
-                          {k.geldi ? 'Geldi' : 'Gelmedi'}
-                        </span>
-                      </td>
-                    </tr>
-                  )
-                })}
-              </tbody>
-            </table>
+          <div className="flex items-center justify-between mb-3">
+            <h2 className="font-semibold text-gray-700">Detaylı Geçmiş (Son Kayıtlar)</h2>
+            <button
+              type="button"
+              onClick={() => setDetayGoster((v) => !v)}
+              className="text-sm text-blue font-medium hover:underline"
+            >
+              {detayGoster ? 'Gizle' : 'Detaya Ulaş'}
+            </button>
           </div>
+          {detayGoster && (
+            <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-x-auto overscroll-x-contain" style={{ touchAction: 'pan-x pan-y' }}>
+              <table className="text-sm min-w-[640px] w-full">
+                <thead>
+                  <tr className="bg-navy text-white text-left">
+                    <th className="px-4 py-3 font-semibold whitespace-nowrap">Tarih</th>
+                    <th className="px-4 py-3 font-semibold whitespace-nowrap">Sınıf</th>
+                    <th className="px-4 py-3 font-semibold">Ders / Öğretmen</th>
+                    <th className="px-4 py-3 font-semibold whitespace-nowrap">Durum</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {ogrenciKayitlari.slice(0, 100).map((k, i) => {
+                    const d = new Date(k.tarih)
+                    const gunAdi = GUNLER[((d.getDay() + 6) % 7) + 1]
+                    return (
+                      <tr key={k.id} className={i % 2 ? 'bg-gray-50' : ''}>
+                        <td className="px-4 py-3 text-gray-600 whitespace-nowrap">
+                          {d.toLocaleDateString('tr-TR')} <span className="text-gray-400">({gunAdi})</span>
+                        </td>
+                        <td className="px-4 py-3 font-medium text-gray-800 whitespace-nowrap">{k.siniflar?.ad || '—'}</td>
+                        <td className="px-4 py-3 text-gray-600 whitespace-nowrap">
+                          {k.ders_programi?.ders_adi || '—'}
+                          {k.ders_programi?.profiles?.ad_soyad && (
+                            <span className="text-gray-400"> — {k.ders_programi.profiles.ad_soyad}</span>
+                          )}
+                          {k.ders_programi?.sinav_mi && (
+                            <span className="ml-1.5 px-1.5 py-0.5 rounded-full text-[10px] font-semibold bg-orange-100 text-orange-700">
+                              {SINAV_TURU_ETIKET[k.ders_programi.sinav_turu] || 'Sınav'}
+                            </span>
+                          )}
+                        </td>
+                        <td className="px-4 py-3 whitespace-nowrap">
+                          <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${
+                            k.geldi ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'
+                          }`}>
+                            {k.geldi ? 'Geldi' : 'Gelmedi'}
+                          </span>
+                        </td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
         </>
       )}
     </div>
