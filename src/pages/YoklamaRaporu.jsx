@@ -316,6 +316,16 @@ export default function YoklamaRaporu() {
   // "Detaylı Geçmiş" tablosu çok uzayabildiği için (yüzlerce satır)
   // kullanıcı isteğiyle varsayılan KAPALI geliyor — "Detaya Ulaş" ile açılır.
   const [detayGoster, setDetayGoster] = useState(false)
+  // Sınıf bazlı "Öğrenci Bazlı Özet" tablosu için — o sınıfta ŞU AN kayıtlı
+  // öğrencilerin TÜM (geçmiş sınıflar dahil) yoklama kayıtları. Kullanıcı
+  // isteğiyle: bir öğrenci sınıf değiştirdiyse, eski sınıftaki kayıtları
+  // kaybolmasın, yeni (şu anki) sınıfın özetine dahil edilsin — "eski
+  // sınıftaki kayıtlar yeni sınıftaki kayıtlarla toplansın, yeni sınıfı
+  // seçtiğimde orada görünsün". Bu, aşağıdaki "kayitlar" (o sınıfın
+  // GERÇEKTEN yapılmış derslerinin listesi — Detaylı Geçmiş, Sınav
+  // Katılımı, Öğretmen filtresi için) state'inden AYRI ve BAĞIMSIZ tutulur;
+  // sadece özet SAYILARI için kullanılır.
+  const [ozetKayitlari, setOzetKayitlari] = useState([])
 
   useEffect(() => {
     supabase.from('siniflar').select('*').then(({ data }) => {
@@ -404,6 +414,40 @@ export default function YoklamaRaporu() {
       })
   }, [seciliSinif])
 
+  // Özet tablosu için: seçili sınıfta ŞU AN kayıtlı öğrencileri bul, sonra
+  // bu öğrencilerin TÜM sınıflardaki (geçmiş dahil) yoklama kayıtlarını
+  // çek. Yukarıdaki "kayitlar" (sadece bu sınıfın kendi ders_programi
+  // saatleri, sinif_id eşleşmesiyle) ile karıştırılmasın — o, Detaylı
+  // Geçmiş/Sınav Katılımı/Öğretmen filtresi için hâlâ olduğu gibi çalışıyor.
+  useEffect(() => {
+    if (!seciliSinif) {
+      setOzetKayitlari([])
+      return
+    }
+    let iptal = false
+    ;(async () => {
+      const { data: roster } = await supabase
+        .from('sinif_ogrenciler')
+        .select('ogrenci_id')
+        .eq('sinif_id', seciliSinif)
+      const ogrenciIdler = [...new Set((roster || []).map((r) => r.ogrenci_id))]
+      if (ogrenciIdler.length === 0) {
+        if (!iptal) setOzetKayitlari([])
+        return
+      }
+      const { data } = await tumSatirlariGetir(() =>
+        supabase
+          .from('yoklama')
+          .select('id, tarih, ogrenci_id, geldi, ogrenciler(ad_soyad), siniflar(ad), ders_programi(ders_adi, sinav_mi, ogretmen_profile_id, profiles:ogretmen_profile_id(ad_soyad))')
+          .in('ogrenci_id', ogrenciIdler)
+      )
+      if (!iptal) setOzetKayitlari(data || [])
+    })()
+    return () => {
+      iptal = true
+    }
+  }, [seciliSinif])
+
   // Bu sınıfta en az bir yoklama kaydına sahip, birbirinden farklı öğretmenler
   // — dropdown'da "Tümü"nün altında listelensin diye.
   const ogretmenlerMap = new Map()
@@ -424,13 +468,26 @@ export default function YoklamaRaporu() {
   const normalKayitlar = kayitlarGosterilen.filter((k) => !k.ders_programi?.sinav_mi)
   const sinavKayitlari = kayitlarGosterilen.filter((k) => k.ders_programi?.sinav_mi)
 
+  // "Öğrenci Bazlı Özet" — yukarıdaki "kayitlar" (sadece bu sınıfın kendi
+  // derslerinin sinif_id'siyle eşleşen kayıtları) DEĞİL, "ozetKayitlari"
+  // (bu sınıfta ŞU AN kayıtlı öğrencilerin TÜM sınıflardaki kayıtları)
+  // kullanılıyor — kullanıcı isteğiyle: bir öğrenci sınıf değiştirdiyse,
+  // eski sınıftaki kayıtları kaybolmasın, şu an hangi sınıftaysa onun
+  // özetine dahil olsun. Öğretmen filtresi burada da uygulanıyor (bir
+  // öğretmen seçiliyse, sadece O öğretmenin verdiği derslerin kaydı sayılır
+  // — öğrenci geçmiş sınıfındaysa bile).
+  const ozetKayitlariFiltreli = seciliOgretmen
+    ? ozetKayitlari.filter((k) => k.ders_programi?.ogretmen_profile_id === seciliOgretmen)
+    : ozetKayitlari
   const ozet = {}
-  normalKayitlar.forEach((k) => {
-    const ad = k.ogrenciler?.ad_soyad || 'Bilinmeyen'
-    if (!ozet[ad]) ozet[ad] = { geldi: 0, gelmedi: 0 }
-    if (k.geldi) ozet[ad].geldi += 1
-    else ozet[ad].gelmedi += 1
-  })
+  ozetKayitlariFiltreli
+    .filter((k) => !k.ders_programi?.sinav_mi)
+    .forEach((k) => {
+      const ad = k.ogrenciler?.ad_soyad || 'Bilinmeyen'
+      if (!ozet[ad]) ozet[ad] = { geldi: 0, gelmedi: 0 }
+      if (k.geldi) ozet[ad].geldi += 1
+      else ozet[ad].gelmedi += 1
+    })
   const ozetListesi = Object.entries(ozet).sort((a, b) => a[0].localeCompare(b[0], 'tr'))
 
   // Sınav Katılımı özeti — öğrenci × sınav türü bazında kaç sınava girmiş
@@ -572,8 +629,8 @@ export default function YoklamaRaporu() {
                   // Gelmediği saatler — "3 gelmedi" yazısına tıklayınca hangi
                   // tarih/derste gelmediğini göstermek için (kullanıcı isteğiyle).
                   const gelmedigunleri = acik
-                    ? normalKayitlar
-                        .filter((k) => !k.geldi && (k.ogrenciler?.ad_soyad || 'Bilinmeyen') === ad)
+                    ? ozetKayitlariFiltreli
+                        .filter((k) => !k.ders_programi?.sinav_mi && !k.geldi && (k.ogrenciler?.ad_soyad || 'Bilinmeyen') === ad)
                         .sort((a, b) => b.tarih.localeCompare(a.tarih))
                     : []
                   return (
@@ -610,6 +667,9 @@ export default function YoklamaRaporu() {
                                   <li key={k.id}>
                                     {d.toLocaleDateString('tr-TR')} <span className="text-gray-400">({GUNLER[((d.getDay() + 6) % 7) + 1]})</span>
                                     {' — '}
+                                    {k.siniflar?.ad && k.siniflar.ad !== siniflar.find((s) => s.id === seciliSinif)?.ad && (
+                                      <span className="font-medium">{k.siniflar.ad} · </span>
+                                    )}
                                     {k.ders_programi?.ders_adi || 'Ders'}
                                     {k.ders_programi?.profiles?.ad_soyad && ` (${k.ders_programi.profiles.ad_soyad})`}
                                   </li>
