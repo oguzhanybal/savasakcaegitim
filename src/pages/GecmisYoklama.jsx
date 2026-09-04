@@ -71,6 +71,7 @@ async function sayfalayarakGetir(queryOlustur, sayfaBoyutu = 1000) {
 
 export default function GecmisYoklama() {
   const { profile } = useAuth()
+  const isYonetici = profile?.rol === 'yonetici'
   const [siniflar, setSiniflar] = useState([])
   const [ogretmenler, setOgretmenler] = useState([])
   const [seciliSinif, setSeciliSinif] = useState('') // '' = Tümü
@@ -84,6 +85,15 @@ export default function GecmisYoklama() {
   const [yoklamaKayitlari, setYoklamaKayitlari] = useState({})
   const [yukleniyorOgrenci, setYukleniyorOgrenci] = useState(false)
   const [kaydediliyor, setKaydediliyor] = useState(false)
+  // "Bu yoklamayı tamamen sil" için — bir öğretmen yanlış sınıfa/derse
+  // yoklama aldığında (ör. yanlış tıklama), o dersin o güne ait TÜM
+  // yoklama satırlarını kalıcı olarak kaldırmak için. Sadece yöneticiye
+  // (isYonetici) gösterilir; kaydet() gibi ders_programi_id+tarih
+  // eşleşmesine göre çalışır, tekil öğrenci satırı değil TÜM dersin o
+  // günkü kaydını siler (kullanıcı isteğiyle: yanlış sınıfa alınan
+  // yoklama admin panelinden düzeltilsin, Supabase'e SQL ile inmeye gerek
+  // kalmasın).
+  const [siliniyor, setSiliniyor] = useState(false)
 
   useEffect(() => {
     supabase.from('siniflar').select('*').then(({ data }) => setSiniflar(data || []))
@@ -334,6 +344,47 @@ export default function GecmisYoklama() {
     setSeciliOge(null)
   }
 
+  // Yanlışlıkla alınmış bir yoklamayı (yanlış sınıf/ders seçilmiş vs.)
+  // kalıcı olarak kaldırır — bu dersin bu güne ait TÜM öğrenci satırlarını
+  // siler. Sadece yöneticiye gösterilir, geri alınamaz, bu yüzden onay
+  // penceresinde tarih/sınıf/ders/öğrenci sayısı açıkça gösteriliyor.
+  async function sil() {
+    if (!seciliOge) return
+    const ogrenciSayisi = Object.keys(yoklamaKayitlari).length
+    const onay = confirm(
+      `${tarihUzunFormat(seciliOge.tarih)} tarihli, ${sinifAdi(seciliOge.ders.sinif_id)} sınıfının ` +
+        `${seciliOge.ders.ders_adi || 'bu'} dersi yoklamasını SİLMEK istediğinize emin misiniz?\n\n` +
+        `${ogrenciSayisi} öğrencinin bu derse ait kaydı KALICI OLARAK kaldırılacak. Bu işlem geri alınamaz.`
+    )
+    if (!onay) return
+    setSiliniyor(true)
+    const { error } = await supabase
+      .from('yoklama')
+      .delete()
+      .eq('ders_programi_id', seciliOge.ders.id)
+      .eq('tarih', seciliOge.tarih)
+    setSiliniyor(false)
+    if (error) {
+      alert('Hata: ' + error.message)
+      return
+    }
+    alert('Yoklama silindi.')
+    setYoklamaKayitlari({})
+    // Gün listesindeki ilgili satırı hemen "Alınmadı" yap (kaydet()'teki
+    // AYNI yerel-güncelleme deseni).
+    setGunListesi((prev) =>
+      prev.map((g) =>
+        g.tarih !== seciliOge.tarih
+          ? g
+          : {
+              ...g,
+              dersler: g.dersler.map((d) => (d.ders.id === seciliOge.ders.id ? { ...d, alindiMi: false } : d)),
+            }
+      )
+    )
+    setSeciliOge(null)
+  }
+
   const seciliGunVerisi = seciliGun ? gunListesi.find((g) => g.tarih === seciliGun) : null
 
   return (
@@ -505,7 +556,7 @@ export default function GecmisYoklama() {
                   )
                 })}
               </div>
-              <div className="px-4 py-4 bg-gray-50 border-t border-gray-100">
+              <div className="px-4 py-4 bg-gray-50 border-t border-gray-100 flex items-center justify-between flex-wrap gap-3">
                 <button
                   onClick={kaydet}
                   disabled={kaydediliyor}
@@ -513,6 +564,15 @@ export default function GecmisYoklama() {
                 >
                   {kaydediliyor ? 'Kaydediliyor...' : 'Yoklamayı Kaydet'}
                 </button>
+                {isYonetici && Object.keys(yoklamaKayitlari).length > 0 && (
+                  <button
+                    onClick={sil}
+                    disabled={siliniyor}
+                    className="text-red-600 text-sm font-medium hover:underline disabled:opacity-50"
+                  >
+                    {siliniyor ? 'Siliniyor...' : 'Bu yoklamayı tamamen sil (yanlış alındıysa)'}
+                  </button>
+                )}
               </div>
             </div>
           )}
