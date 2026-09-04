@@ -227,13 +227,15 @@ export default function Yoklamalarim() {
 
   return (
     <div className="max-w-3xl mx-auto">
-      <div className="flex items-center justify-between gap-3 flex-wrap mb-6">
-        <h1 className="text-xl font-bold text-navy">Yoklamalarım</h1>
-        {seciciGoster && (
+      <h1 className="text-xl font-bold text-navy mb-6">Yoklamalarım</h1>
+
+      {seciciGoster && (
+        <div className="mb-6 max-w-sm">
+          <label className="block text-sm font-medium text-gray-700 mb-1">Öğrenci Seçin</label>
           <select
             value={seciliId}
             onChange={(e) => setSeciliId(e.target.value)}
-            className="border border-gray-200 rounded-lg px-3 py-2 text-sm"
+            className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue bg-white"
           >
             {ogrenciler.map((o) => (
               <option key={o.id} value={o.id}>
@@ -241,8 +243,8 @@ export default function Yoklamalarim() {
               </option>
             ))}
           </select>
-        )}
-      </div>
+        </div>
+      )}
 
       {loading && !ilkYuklemeTamam && <p className="text-gray-400">Yükleniyor...</p>}
 

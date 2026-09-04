@@ -1305,7 +1305,29 @@ export default function Muhasebe() {
         )}
       </div>
 
-      {seciciGoster && (
+      {/* Kullanıcı isteğiyle: veli/öğrenci için artık DersProgrami.jsx'teki gibi
+          basit bir açılır liste (<select>) kullanılıyor — önceki yazarak-arama
+          kutusu, kutuda bir isim yazılıyken (ör. "Mehmet Ege Eyduran") diğer
+          çocuğu (Zehra) görebilmek için önce metni SİLMEYİ gerektiriyordu, bu
+          da kafa karıştırıyordu. Yönetici tarafı DEĞİŞMEDİ — onlarca/yüzlerce
+          öğrenci arasından yazarak aramak orada hâlâ gerekli/faydalı. */}
+      {seciciGoster && !isYonetici && (
+        <div className="mb-6 max-w-sm">
+          <label className="block text-sm font-medium text-gray-700 mb-1">Öğrenci Seçin</label>
+          <select
+            value={seciliId}
+            onChange={(e) => setSeciliId(e.target.value)}
+            className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue bg-white"
+          >
+            <option value="">Öğrenci Seçin</option>
+            {ogrenciler.map((o) => (
+              <option key={o.id} value={o.id}>{o.ad_soyad}</option>
+            ))}
+          </select>
+        </div>
+      )}
+
+      {seciciGoster && isYonetici && (
         <div className="mb-6 relative max-w-sm">
           <label className="block text-sm font-medium text-gray-700 mb-1">Öğrenci Seçin</label>
           <input
@@ -1318,7 +1340,7 @@ export default function Muhasebe() {
             }}
             onFocus={() => setOgrenciOneriAcik(true)}
             onBlur={() => setTimeout(() => setOgrenciOneriAcik(false), 150)}
-            placeholder={isYonetici ? 'Yazarak arayın ya da listeden seçin...' : 'Öğrenci Seçin'}
+            placeholder="Yazarak arayın ya da listeden seçin..."
             autoComplete="off"
             className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue"
           />

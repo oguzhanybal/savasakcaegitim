@@ -1009,6 +1009,8 @@ export default function Odev() {
   const [ogretmenler, setOgretmenler] = useState([])
   const [odevler, setOdevler] = useState([])
   const [birdenFazlaCocukMu, setBirdenFazlaCocukMu] = useState(false)
+  const [cocuklarim, setCocuklarim] = useState([])
+  const [seciliCocukId, setSeciliCocukId] = useState('')
   const [loading, setLoading] = useState(true)
   const ilkYuklemeTamamRef = useRef(false)
 
@@ -1048,7 +1050,7 @@ export default function Odev() {
       // anlamak amacıyla — Muhasebe.jsx/DersProgrami.jsx'teki AYNI kanıtlanmış
       // yöntem: tüm kaydı çekip istemci tarafında filtrele (RLS zaten kısıtlıyor).
       isVeliYaDaOgrenci
-        ? supabase.from('ogrenciler').select('id, veli_profile_id, ogrenci_profile_id')
+        ? supabase.from('ogrenciler').select('id, ad_soyad, veli_profile_id, ogrenci_profile_id')
         : Promise.resolve({ data: [] }),
       // Sadece yönetici için: "Öğretmen Ödev Takibi" raporunda satır başına
       // gösterilecek öğretmen listesi.
@@ -1068,10 +1070,14 @@ export default function Odev() {
       )
       setOgretmenler(ogr.data || [])
       if (isVeliYaDaOgrenci) {
-        const cocukSayisi = (kendiCocuklarSonuc.data || []).filter(
+        const cocukListesi = (kendiCocuklarSonuc.data || []).filter(
           (c) => c.veli_profile_id === profile.id || c.ogrenci_profile_id === profile.id
-        ).length
-        setBirdenFazlaCocukMu(cocukSayisi > 1)
+        )
+        setBirdenFazlaCocukMu(cocukListesi.length > 1)
+        setCocuklarim(cocukListesi)
+        if (!ilkYuklemeTamamRef.current) {
+          setSeciliCocukId(cocukListesi.length === 1 ? cocukListesi[0].id : '')
+        }
       }
 
       // Sınıfların öğrenci kayıtları — hangi sınıfta hangi öğrencilerin olduğunu
@@ -1126,8 +1132,35 @@ export default function Odev() {
         </>
       )}
 
-      {isVeliYaDaOgrenci && (
-        <OdevlerimListesi odevler={odevler} birdenFazlaCocukMu={birdenFazlaCocukMu} />
+      {isVeliYaDaOgrenci && birdenFazlaCocukMu && (
+        <div className="mb-6 max-w-sm">
+          <label className="block text-sm font-medium text-gray-700 mb-1">Öğrenci Seçin</label>
+          <select
+            value={seciliCocukId}
+            onChange={(e) => setSeciliCocukId(e.target.value)}
+            className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue bg-white"
+          >
+            <option value="">Öğrenci Seçin</option>
+            {cocuklarim.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.ad_soyad}
+              </option>
+            ))}
+          </select>
+        </div>
+      )}
+
+      {isVeliYaDaOgrenci && birdenFazlaCocukMu && !seciliCocukId && (
+        <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6">
+          <p className="text-gray-400">Devam etmek için yukarıdan bir öğrenci seçin.</p>
+        </div>
+      )}
+
+      {isVeliYaDaOgrenci && (!birdenFazlaCocukMu || seciliCocukId) && (
+        <OdevlerimListesi
+          odevler={birdenFazlaCocukMu ? odevler.filter((o) => o.ogrenci_id === seciliCocukId) : odevler}
+          birdenFazlaCocukMu={false}
+        />
       )}
     </div>
   )
