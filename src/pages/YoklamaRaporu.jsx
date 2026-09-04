@@ -20,6 +20,29 @@ function saatKisalt(s) {
   return s ? s.slice(0, 5) : s
 }
 
+// Supabase (PostgREST) tek istekte EN FAZLA 1000 satır döndürür — bunun
+// üzerine .range() ile sayfalama yapılmazsa fazlası sessizce kesilir (hata
+// vermez, sadece eksik veri döner). Büyüyen sınıflarda (ör. TM-1: 9 öğrenci
+// × ~137 kayıt = 1132, 1000'i aşıyor) bu yüzden "Öğrenci Bazlı Özet"
+// tablosu gerçek sayının altında kalıyordu — veritabanında kayıp yoktu,
+// sorun buradaki sorgunun sayfalama yapmamasıydı (kullanıcıyla birlikte
+// TM-1 üzerinden tespit edildi). Bu yardımcı fonksiyon 1000'erlik
+// sayfalar halinde TÜM satırları çekene kadar devam eder.
+async function tumSatirlariGetir(sorguOlustur) {
+  const SAYFA_BOYUTU = 1000
+  let tumVeri = []
+  let basla = 0
+  // eslint-disable-next-line no-constant-condition
+  while (true) {
+    const { data, error } = await sorguOlustur().range(basla, basla + SAYFA_BOYUTU - 1)
+    if (error) return { data: null, error }
+    tumVeri = tumVeri.concat(data || [])
+    if (!data || data.length < SAYFA_BOYUTU) break
+    basla += SAYFA_BOYUTU
+  }
+  return { data: tumVeri, error: null }
+}
+
 // Bugünün tarihini "YYYY-MM-DD" olarak YEREL saate göre üretir — diğer
 // sayfalardaki (DersProgrami.jsx, BireBirDersDokumu.jsx vb.) aynı desen,
 // toISOString KULLANMIYORUZ çünkü UTC+3'te gece yarısına yakın saatlerde bir
@@ -342,11 +365,13 @@ export default function YoklamaRaporu() {
       return
     }
     setOgrenciLoading(true)
-    supabase
-      .from('yoklama')
-      .select('*, siniflar(ad), ders_programi(id, ders_adi, ogretmen_profile_id, sinav_mi, sinav_turu, profiles:ogretmen_profile_id(ad_soyad, brans))')
-      .eq('ogrenci_id', seciliOgrenci.id)
-      .order('tarih', { ascending: false })
+    tumSatirlariGetir(() =>
+      supabase
+        .from('yoklama')
+        .select('*, siniflar(ad), ders_programi(id, ders_adi, ogretmen_profile_id, sinav_mi, sinav_turu, profiles:ogretmen_profile_id(ad_soyad, brans))')
+        .eq('ogrenci_id', seciliOgrenci.id)
+        .order('tarih', { ascending: false })
+    )
       .then(({ data }) => {
         setOgrenciKayitlari(data || [])
         setOgrenciLoading(false)
@@ -363,11 +388,13 @@ export default function YoklamaRaporu() {
     if (!seciliSinif) return
     setLoading(true)
     setSeciliOgretmen('')
-    supabase
-      .from('yoklama')
-      .select('*, ogrenciler(ad_soyad), ders_programi(id, ders_adi, ogretmen_profile_id, sinav_mi, sinav_turu, profiles:ogretmen_profile_id(ad_soyad, brans))')
-      .eq('sinif_id', seciliSinif)
-      .order('tarih', { ascending: false })
+    tumSatirlariGetir(() =>
+      supabase
+        .from('yoklama')
+        .select('*, ogrenciler(ad_soyad), ders_programi(id, ders_adi, ogretmen_profile_id, sinav_mi, sinav_turu, profiles:ogretmen_profile_id(ad_soyad, brans))')
+        .eq('sinif_id', seciliSinif)
+        .order('tarih', { ascending: false })
+    )
       .then(({ data }) => {
         setKayitlar(data || [])
         setLoading(false)
