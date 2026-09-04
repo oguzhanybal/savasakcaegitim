@@ -65,18 +65,9 @@ function enYakinGunTarihi(gun) {
 
 // enYakinGunTarihi'nin TERSİ — GERİYE değil İLERİYE bakar: bu haftanın günü
 // bugünse bugün, geçtiyse GELECEK haftanın aynı günü (bugün dahil, en fazla 6
-// gün sonraki). ÖNCEDEN "Alındı" rozetinin tarihini belirlemek için
-// kullanılıyordu, ama bu YANLIŞTI: YoklamaKonuModal yoklamayı HER ZAMAN
-// "bugün" için kaydediyor (en_yakın/geçmiş gün, asla gelecek bir tarih için
-// değil) — rozet kontrolü ileriye bakan bu fonksiyonla yapılınca, bir günün
-// dersi (ör. Pazartesi) o hafta içinde geçtikten sonra (Salı, Çarşamba...
-// programa tekrar bakıldığında) rozet GELECEK haftanın Pazartesi'sini
-// arıyor, bu haftanın (zaten yoklaması alınmış) Pazartesi'siyle hiç
-// eşleşmiyor ve rozet kayboluyormuş gibi görünüyordu (kullanıcının fark
-// ettiği hata). Rozet kontrolü artık enYakinGunTarihi kullanıyor — bu
-// fonksiyon şu an burada başka hiçbir yerde kullanılmıyor, ama gelecekte
-// "bu ders sırada ne zaman" gibi ileriye dönük bir hesap gerekirse diye
-// duruyor.
+// gün sonraki). "Alındı" rozetinin hangi TARİHE ait olduğunu belirlemek için
+// kullanılıyor — öğretmen "Pazartesi" bölümüne baktığında, o hafta içindeki
+// GEÇMİŞ bir Pazartesi'yi değil, önündeki/gelecek Pazartesi'yi kastediyor.
 function sonrakiGunTarihi(gun) {
   const n = new Date()
   const bugunGunNo = ((n.getDay() + 6) % 7) + 1
@@ -1571,6 +1562,19 @@ export default function DersProgrami() {
   // gösterebilmek amacıyla sinif_id -> [çocuk adı, ...] eşlemesi. Sadece
   // veli/öğrenci + birden fazla çocuk durumunda doldurulur (bkz. veriyiYenile).
   const [sinifIdCocukAdlari, setSinifIdCocukAdlari] = useState(new Map())
+  // sinifIdCocukAdlari'nin id sürümü — sinif_id -> [ogrenci_id, ...]. Kullanıcı
+  // isteğiyle eklendi: birden fazla çocuğu olan veli artık "Ders Programı" ve
+  // "Bire Bir" sekmelerinin İKİSİNDE de yukarıdan TEK bir çocuk seçiyor (bkz.
+  // seciliCocukId), programın hepsi karışık görünmüyor. Bu Map, seçilen çocuğun
+  // ogrenci_id'sine göre kendiProgram'ı sinif_id üzerinden filtrelemek için.
+  const [sinifIdCocukIdleri, setSinifIdCocukIdleri] = useState(new Map())
+  // Veli/öğrencinin çocuk/kendi listesi ({id, ad_soyad}) — yukarıdaki seçim
+  // kutusunu doldurmak için. Tek çocuk varsa seçim kutusu hiç gösterilmiyor
+  // (otomatik seçiliyor), birden fazlaysa ilk yüklemede BOŞ bırakılıyor —
+  // Muhasebe.jsx'teki "Çocuğunuzu Seçin" düzeltmesiyle AYNI kural: veli
+  // yanlışlıkla ilk çocuğun programına bakıp onu doğru sanmasın diye.
+  const [cocuklarim, setCocuklarim] = useState([])
+  const [seciliCocukId, setSeciliCocukId] = useState('')
   const [taslaklar, setTaslaklar] = useState([])
   const [loading, setLoading] = useState(true)
   const [gorunum, setGorunum] = useState('tablo')
@@ -1738,6 +1742,7 @@ export default function DersProgrami() {
         // kısıtlanmış geliyor — burada da AYNI kanıtlanmış yöntemle
         // (id eşleşmesi) istemci tarafında ayrıca süzülüyor.
         const yeniSinifIdCocukAdlari = new Map()
+        const yeniSinifIdCocukIdleri = new Map()
         for (const kayit of so.data || []) {
           if (!cocukIdleri.includes(kayit.ogrenci_id)) continue
           const ad = cocukAdMap.get(kayit.ogrenci_id)
@@ -1745,8 +1750,20 @@ export default function DersProgrami() {
           const mevcut = yeniSinifIdCocukAdlari.get(kayit.sinif_id) || []
           if (!mevcut.includes(ad)) mevcut.push(ad)
           yeniSinifIdCocukAdlari.set(kayit.sinif_id, mevcut)
+          const mevcutId = yeniSinifIdCocukIdleri.get(kayit.sinif_id) || []
+          if (!mevcutId.includes(kayit.ogrenci_id)) mevcutId.push(kayit.ogrenci_id)
+          yeniSinifIdCocukIdleri.set(kayit.sinif_id, mevcutId)
         }
         setSinifIdCocukAdlari(yeniSinifIdCocukAdlari)
+        setSinifIdCocukIdleri(yeniSinifIdCocukIdleri)
+        setCocuklarim(cocukListesi)
+        // Sadece İLK yüklemede varsayılan uygula (tek çocuksa otomatik seç,
+        // birden fazlaysa boş bırak) — sonraki veriyiYenile çağrılarında
+        // (ör. bir işlem sonrası) kullanıcının az önce seçtiği çocuğu ezip
+        // sıfırlamasın diye ilkYuklemeTamamRef kontrolü kullanılıyor.
+        if (!ilkYuklemeTamamRef.current) {
+          setSeciliCocukId(cocukIdleri.length === 1 ? cocukIdleri[0] : '')
+        }
         Promise.all([
           supabase
             .from('bire_bir_atamalari')
@@ -2230,7 +2247,19 @@ export default function DersProgrami() {
           _durum: y.durum,
         })),
       ]
-    : program
+    : // Kullanıcı isteğiyle: birden fazla çocuğu olan veli/öğrenci için sınıf
+      // programı artık YUKARIDAKİ seçim kutusunda seçilen TEK çocuğa göre
+      // filtreleniyor — önceden "program" (RLS'nin döndürdüğü, velinin TÜM
+      // çocuklarının sınıf derslerini içeren liste) hiç filtrelenmeden
+      // gösteriliyordu, bu da iki çocuğu farklı sınıflardaysa ikisinin
+      // programının TEK bir haftalık tabloda karışık görünmesine yol
+      // açıyordu. Henüz bir çocuk seçilmediyse (cocukSecimiGerekli) boş dizi
+      // döner — aşağıdaki "yukarıdan bir öğrenci seçin" mesajı gösterilir.
+      isVeliYaDaOgrenci && birdenFazlaCocukMu
+      ? seciliCocukId
+        ? program.filter((p) => p.sinif_id && (sinifIdCocukIdleri.get(p.sinif_id) || []).includes(seciliCocukId))
+        : []
+      : program
 
   const gunlereGore = GUNLER.map((_, gun) =>
     kendiProgram
@@ -2254,6 +2283,10 @@ export default function DersProgrami() {
   // Program Listesi" sekmeleri var, aynı bilgiyi tekrar aşağıda kalabalık
   // bir haftalık tabloyla göstermek gereksizdi.
   const sinifProgramiGoster = isYonetici ? false : !isVeliYaDaOgrenci || veliSekme === 'program'
+  // Birden fazla çocuğu olan veli/öğrenci henüz yukarıdan bir çocuk seçmediyse
+  // — ne sınıf programı ne de Bire Bir listesi gösterilir, bunun yerine
+  // "yukarıdan bir öğrenci seçin" uyarısı çıkar (bkz. kendiProgram tanımı).
+  const cocukSecimiGerekli = isVeliYaDaOgrenci && birdenFazlaCocukMu && !seciliCocukId
 
   // Bugünün gün numarası (1=Pazartesi...7=Pazar) — hem Tablo'da o günün
   // sütun başlığını turuncu yapmak hem de sayfa açılır açılmaz o güne
@@ -2326,6 +2359,32 @@ export default function DersProgrami() {
           )}
         </div>
       </div>
+
+      {/* Kullanıcı isteğiyle: birden fazla çocuğu olan veli/öğrenci için tek
+          bir seçim kutusu — HEM "Ders Programı" HEM "Bire Bir" sekmesini
+          birlikte filtreler (Muhasebe.jsx'teki "Çocuğunuzu Seçin" ile aynı
+          isimlendirme: "Öğrenci Seçin"). Tek çocuk varsa hiç gösterilmiyor. */}
+      {isVeliYaDaOgrenci && birdenFazlaCocukMu && (
+        <div className="mb-6 max-w-sm">
+          <label className="block text-sm font-medium text-gray-700 mb-1">Öğrenci Seçin</label>
+          <select
+            value={seciliCocukId}
+            onChange={(e) => setSeciliCocukId(e.target.value)}
+            className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue bg-white"
+          >
+            <option value="">Öğrenci Seçin</option>
+            {cocuklarim.map((c) => (
+              <option key={c.id} value={c.id}>{c.ad_soyad}</option>
+            ))}
+          </select>
+        </div>
+      )}
+
+      {cocukSecimiGerekli && (
+        <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6">
+          <p className="text-gray-400">Devam etmek için yukarıdan bir öğrenci seçin.</p>
+        </div>
+      )}
 
       {isOgretmen && (
         <div className="bg-blue-50 border border-blue-100 text-blue-800 text-xs rounded-lg px-3 py-2 mb-4">
@@ -2506,17 +2565,21 @@ export default function DersProgrami() {
         </>
       )}
 
-      {isVeliYaDaOgrenci && veliSekme === 'birebir' && (
+      {isVeliYaDaOgrenci && veliSekme === 'birebir' && !cocukSecimiGerekli && (
         <BireBirDerslerimBolumu
-          haftalikDersler={bireBirDerslerim}
-          tekSeferlikDersler={tekSeferlikDerslerim}
-          birdenFazlaCocukMu={birdenFazlaCocukMu}
+          // Kullanıcı isteğiyle: Bire Bir listesi de yukarıdaki seçim kutusuna
+          // göre TEK çocuğa filtreleniyor — artık tek çocuk gösterildiği için
+          // birdenFazlaCocukMu'yu false geçiyoruz, kart başına tekrar eden
+          // (artık gereksiz) öğrenci adı etiketi de böylece kalkıyor.
+          haftalikDersler={birdenFazlaCocukMu ? bireBirDerslerim.filter((d) => d.ogrenci_id === seciliCocukId) : bireBirDerslerim}
+          tekSeferlikDersler={birdenFazlaCocukMu ? tekSeferlikDerslerim.filter((d) => d.ogrenci_id === seciliCocukId) : tekSeferlikDerslerim}
+          birdenFazlaCocukMu={false}
         />
       )}
 
       {loading && <p className="text-gray-400">Yükleniyor...</p>}
 
-      {sinifProgramiGoster && !loading && kendiProgram.length === 0 && (
+      {sinifProgramiGoster && !loading && !cocukSecimiGerekli && kendiProgram.length === 0 && (
         <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6">
           <p className="text-gray-400">Görüntülenecek ders programı bulunamadı.</p>
         </div>
@@ -2620,17 +2683,16 @@ export default function DersProgrami() {
                                 <p className="text-[11px] text-gray-500 leading-tight">{d.sinif_adi}</p>
                               )}
                               {d.ogretmen_adi && <p className="text-[11px] text-gray-400 leading-tight">{d.ogretmen_adi}</p>}
-                              {birdenFazlaCocukMu && d.sinif_id && sinifIdCocukAdlari.get(d.sinif_id) && (
-                                <p className="text-[11px] text-blue-500 font-medium leading-tight">
-                                  {sinifIdCocukAdlari.get(d.sinif_id).join(', ')}
-                                </p>
-                              )}
+                              {/* Kullanıcı isteğiyle: artık yukarıda TEK bir öğrenci seçiliyken bu
+                                  kartların hepsi zaten o öğrenciye ait — her kartın altında adını
+                                  tekrar basmak (eskiden birdenFazlaCocukMu true iken burada
+                                  gösteriliyordu) gereksiz kalabalık oluyordu, kaldırıldı. */}
                               <p className="text-[10px] text-gray-400 leading-tight">
                                 {saatGoster(d.baslangic_saat)}–{saatGoster(d.bitis_saat)}
                               </p>
                               {isOgretmen && d.sinif_id && (
                                 <div className="mt-1 flex items-center gap-1">
-                                  {buHaftaYoklamaAlinanlar.has(`${d.id}|${enYakinGunTarihi(d.gun)}`) && (
+                                  {buHaftaYoklamaAlinanlar.has(`${d.id}|${sonrakiGunTarihi(d.gun)}`) && (
                                     <span className="text-[9px] font-semibold bg-green-100 text-green-700 px-1.5 py-0.5 rounded-full shrink-0">
                                       Alındı
                                     </span>
@@ -2755,11 +2817,8 @@ export default function DersProgrami() {
                         {d.ogretmen_adi && (
                           <p className="text-xs text-gray-400">{d.ogretmen_adi}</p>
                         )}
-                        {birdenFazlaCocukMu && d.sinif_id && sinifIdCocukAdlari.get(d.sinif_id) && (
-                          <p className="text-xs text-blue-500 font-medium">
-                            {sinifIdCocukAdlari.get(d.sinif_id).join(', ')}
-                          </p>
-                        )}
+                        {/* Kullanıcı isteğiyle: yukarıdaki seçim kutusuyla artık tek öğrenci
+                            gösterildiği için kart başına tekrar eden ad etiketi kaldırıldı. */}
                         <p className="text-sm text-gray-500">
                           {saatGoster(d.baslangic_saat)} – {saatGoster(d.bitis_saat)}
                         </p>
@@ -2782,7 +2841,7 @@ export default function DersProgrami() {
                       )}
                       {isOgretmen && d.sinif_id && (
                         <div className="flex items-center gap-2 flex-wrap shrink-0">
-                          {buHaftaYoklamaAlinanlar.has(`${d.id}|${enYakinGunTarihi(d.gun)}`) && (
+                          {buHaftaYoklamaAlinanlar.has(`${d.id}|${sonrakiGunTarihi(d.gun)}`) && (
                             <span className="text-xs font-semibold bg-green-100 text-green-700 px-2 py-1 rounded-full">
                               Alındı
                             </span>
@@ -2850,12 +2909,6 @@ export default function DersProgrami() {
           gun={yoklamaModalDers.gun}
           profile={profile}
           onClose={() => setYoklamaModalDers(null)}
-          // Yoklama kaydedilir kaydedilmez "Alındı" rozeti sayfa yenilenmeden
-          // görünsün diye — bkz. YoklamaKonuModal.jsx'teki kaydet() içindeki
-          // onKaydedildi çağrısı ve açıklaması.
-          onKaydedildi={(dersProgramiId, tarih) =>
-            setBuHaftaYoklamaAlinanlar((prev) => new Set(prev).add(`${dersProgramiId}|${tarih}`))
-          }
         />
       )}
     </div>

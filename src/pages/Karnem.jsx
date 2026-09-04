@@ -461,9 +461,7 @@ export default function Karnem() {
 
       {seciciGoster && (
         <div className="mb-6">
-          <label className="block text-sm font-medium text-gray-700 mb-1">
-            {isYonetici || isOgretmen ? 'Öğrenci Seçin' : 'Çocuğunuzu Seçin'}
-          </label>
+          <label className="block text-sm font-medium text-gray-700 mb-1">Öğrenci Seçin</label>
           <select
             value={seciliId}
             onChange={(e) => setSeciliId(e.target.value)}
