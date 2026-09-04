@@ -170,6 +170,31 @@ export default function SinifDetay() {
     setOgrenciEkleniyor(true)
     const kayitlar = seciliOgrenciler.map((id) => ({ sinif_id: sinifId, ogrenci_id: id }))
     const { error } = await supabase.from('sinif_ogrenciler').insert(kayitlar)
+    // ÖNEMLİ: yukarıdaki "sinif_ogrenciler" hâlâ SADECE "şu an kim bu
+    // sınıfta" bilgisini tutuyor — GEÇMİŞ tarihli bir yoklamayı (Geçmiş
+    // Yoklama sayfası) alırken bu bilgi yetersiz kalıyordu: bugün eklenen
+    // bir öğrenci, aylar önceki bir tarihe de "sanki hep buradaymış gibi"
+    // görünüyordu (kullanıcı isteğiyle fark edildi). Bunu çözmek için AYRI
+    // bir "sinif_ogrenciler_gecmisi" tablosuna da bu öğrencinin BUGÜNDEN
+    // itibaren başladığı kaydediliyor — Geçmiş Yoklama artık sınıf
+    // listesini buradan, tarihe göre süzerek okuyor. Bu ikinci yazma
+    // başarısız olursa ana işlemi (öğrenciyi sınıfa ekleme) geri almıyoruz,
+    // sadece kullanıcıyı bilgilendiriyoruz.
+    if (!error) {
+      const gecmisKayitlar = seciliOgrenciler.map((id) => ({
+        sinif_id: sinifId,
+        ogrenci_id: id,
+        baslangic_tarihi: yerelBugunTarihi(),
+        bitis_tarihi: null,
+      }))
+      const { error: gecmisHata } = await supabase.from('sinif_ogrenciler_gecmisi').insert(gecmisKayitlar)
+      if (gecmisHata) {
+        alert(
+          'Öğrenci(ler) sınıfa eklendi ama geçmiş kaydı oluşturulamadı (Geçmiş Yoklama\'da bu öğrenciler için ' +
+            'geçmiş tarihler yanlış görünebilir): ' + gecmisHata.message
+        )
+      }
+    }
     setOgrenciEkleniyor(false)
     if (!error) {
       setSeciliOgrenciler([])
@@ -183,8 +208,29 @@ export default function SinifDetay() {
   async function ogrenciCikar(ogrenciId) {
     if (!confirm('Bu öğrenciyi sınıftan çıkarmak istediğinize emin misiniz?')) return
     const { error } = await supabase.from('sinif_ogrenciler').delete().eq('sinif_id', sinifId).eq('ogrenci_id', ogrenciId)
-    if (!error) yukle()
-    else alert('Hata: ' + error.message)
+    if (!error) {
+      // Az önceki "ogrencileriEkle" içindeki yorumla aynı sebep: bu
+      // öğrencinin sınıfta GEÇMİŞTE gerçekten var olduğu bilgisi kaybolmasın
+      // diye (Geçmiş Yoklama onu artık göstermesin diye DEĞİL — tam tersi,
+      // eski tarihler için hâlâ göstersin diye) "sinif_ogrenciler_gecmisi"
+      // tablosundaki açık (bitis_tarihi boş) kaydı bugünün tarihiyle
+      // kapatıyoruz, silmiyoruz.
+      const { error: gecmisHata } = await supabase
+        .from('sinif_ogrenciler_gecmisi')
+        .update({ bitis_tarihi: yerelBugunTarihi() })
+        .eq('sinif_id', sinifId)
+        .eq('ogrenci_id', ogrenciId)
+        .is('bitis_tarihi', null)
+      if (gecmisHata) {
+        alert(
+          'Öğrenci sınıftan çıkarıldı ama geçmiş kaydı kapatılamadı (önemli değil, sadece bilginize): ' +
+            gecmisHata.message
+        )
+      }
+      yukle()
+    } else {
+      alert('Hata: ' + error.message)
+    }
   }
 
   function gunSecToggle(g) {

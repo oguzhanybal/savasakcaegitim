@@ -270,10 +270,28 @@ export default function GecmisYoklama() {
     }
     setYukleniyorOgrenci(true)
     Promise.all([
-      supabase.from('sinif_ogrenciler').select('ogrenciler(id, ad_soyad)').eq('sinif_id', seciliOge.ders.sinif_id),
+      // ÖNEMLİ: burada "sinif_ogrenciler" (ŞU ANKİ liste) DEĞİL,
+      // "sinif_ogrenciler_gecmisi" kullanılıyor — o SEÇİLİ TARİHTE
+      // (seciliOge.tarih) gerçekten bu sınıfta kayıtlı olan öğrencileri
+      // getirir. Aksi halde: sonradan eklenen bir öğrenci aylar önceki bir
+      // güne de "varmış" gibi görünüyordu, sınıfı değiştiren bir öğrenci ise
+      // eski sınıfının geçmiş tarihlerinde hiç görünmüyordu (kullanıcı
+      // isteğiyle düzeltildi). baslangic_tarihi/bitis_tarihi NULL ise sınır
+      // yok demektir (bu tablo eklenmeden ÖNCEki eski kayıtlar için).
+      supabase
+        .from('sinif_ogrenciler_gecmisi')
+        .select('ogrenciler(id, ad_soyad)')
+        .eq('sinif_id', seciliOge.ders.sinif_id)
+        .or(`baslangic_tarihi.is.null,baslangic_tarihi.lte.${seciliOge.tarih}`)
+        .or(`bitis_tarihi.is.null,bitis_tarihi.gte.${seciliOge.tarih}`),
       supabase.from('yoklama').select('*').eq('ders_programi_id', seciliOge.ders.id).eq('tarih', seciliOge.tarih),
     ]).then(([so, y]) => {
-      const liste = (so.data || []).map((r) => r.ogrenciler).filter(Boolean)
+      // Aynı öğrenci için (nadiren) birden fazla geçmiş satırı eşleşirse
+      // (ör. sınıftan çıkıp aynı gün tekrar eklenmişse) tekilleştir.
+      const gorulen = new Set()
+      const liste = (so.data || [])
+        .map((r) => r.ogrenciler)
+        .filter((o) => o && !gorulen.has(o.id) && gorulen.add(o.id))
       setOgrenciler(liste)
       const mevcut = {}
       ;(y.data || []).forEach((k) => {
