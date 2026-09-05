@@ -2560,7 +2560,7 @@ export default function DersProgrami() {
           )}
 
           {yonetimGorunum === 'haftalik' && (
-            <HaftalikProgramGoruntule program={program} siniflar={siniflar} ogretmenler={ogretmenler} />
+            <HaftalikProgramGoruntule program={program} siniflar={siniflar} ogretmenler={ogretmenler} atamalar={bireBirAtamalar} />
           )}
         </>
       )}
