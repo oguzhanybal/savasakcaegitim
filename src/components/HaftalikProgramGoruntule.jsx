@@ -17,16 +17,35 @@ function saatKisalt(s) {
   return s ? s.slice(0, 5) : s
 }
 
-export default function HaftalikProgramGoruntule({ program, siniflar, ogretmenler }) {
+export default function HaftalikProgramGoruntule({ program, siniflar, ogretmenler, atamalar }) {
   const [tip, setTip] = useState('sinif') // 'sinif' | 'ogretmen'
   const [seciliId, setSeciliId] = useState('')
 
+  // Öğretmen seçiliyken, sınıf derslerinin yanına o öğretmenin Bire Bir
+  // atamalarını da (haftalık tekrar eden, bire_bir_atamalari tablosundan)
+  // ekliyoruz — kullanıcı isteğiyle: "öğretmen seçince bire bir dersleri de
+  // çıksın", aksi halde öğretmenin haftalık programı eksik görünüyordu. Sınıf
+  // derslerinden ayırt edilsin diye ders_adi yerine öğrencinin adı, alt
+  // satırda da "Bire Bir" etiketi gösteriliyor (bkz. render'daki
+  // tip === 'ogretmen' ? d.sinif_adi kullanımı — zaten var olan alana
+  // "Bire Bir" yazarak eşleniyor, yeni bir dal açmaya gerek kalmadı).
   const filtreliDersler = useMemo(() => {
     if (!seciliId) return []
-    return (program || []).filter((d) =>
+    const sinifDersleri = (program || []).filter((d) =>
       tip === 'sinif' ? d.sinif_id === seciliId : d.ogretmen_profile_id === seciliId
     )
-  }, [program, tip, seciliId])
+    if (tip !== 'ogretmen') return sinifDersleri
+    const bireBirDersleri = (atamalar || [])
+      .filter((a) => a.ogretmen_profile_id === seciliId && a.aktif !== false)
+      .map((a) => ({
+        id: `bb-${a.id}`,
+        gun: a.gun,
+        baslangic_saat: a.baslangic_saat,
+        ders_adi: a.ogrenci_adi || 'Öğrenci',
+        sinif_adi: 'Bire Bir',
+      }))
+    return [...sinifDersleri, ...bireBirDersleri]
+  }, [program, atamalar, tip, seciliId])
 
   const gunlereGore = useMemo(
     () =>
