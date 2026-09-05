@@ -152,8 +152,35 @@ export default function GunlukProgramListesi({ program, programTum, ogretmenler,
     const tarihe = tarihIcinAktifProgram(programTum || program, tarih)
     const slotAnahtari = (d) => `${d.gun}|${saatKisalt(d.baslangic_saat)}|${d.sinif_id}`
     const kapsananlar = new Set(tarihe.filter((d) => d.sinif_id).map(slotAnahtari))
+    // ÖNEMLİ DÜZELTME 3: yedek eskiden SADECE slotu kontrol ediyordu — "bu
+    // sınıf+gün+saat için tarihsel bir satır yoksa güncel satırı göster".
+    // Ama yeni açılan bir sınıfın (henüz geçmişte HİÇ satırı olmayan) ders
+    // programı satırı da aynı gün numarasına denk geldiğinde bu koşulu
+    // sağlıyordu — sonuç: geçen haftaya (o sınıf daha kurulmadan önceki bir
+    // tarihe) dönülünce, o zaman var OLMAYAN yepyeni bir sınıfın hocası o
+    // günde dersi varmış gibi görünüyordu (kullanıcının fark ettiği hata —
+    // "yeni sınıflar girdi, geçmişe dönünce onlar da görünüyor"). Düzeltme:
+    // yedek artık SADECE seçilen tarihte o sınıfın (sinif_id'nin) programTum
+    // içinde GERÇEKTEN var olduğu (en az bir satırının esasTarih'i <= tarih
+    // olduğu) durumlarda devreye giriyor — yani sınıf o tarihte zaten
+    // kurulmuştu, sadece o SLOT için (öğretmen değişikliği vb. yüzünden) o an
+    // hiçbir satır kapsamıyor. Sınıfın kendisi o tarihte hiç yoksa (yepyeni),
+    // yedek hiç uygulanmıyor — böylece hem eski "boşluk" düzeltmesi (bkz.
+    // yukarıdaki BOŞLUK YEDEĞİ notu) korunuyor hem de bu yeni hata önleniyor.
+    const gecmisteVarOlanSiniflar = new Set(
+      (programTum || program || [])
+        .filter((d) => {
+          const esasTarih = d.baslangic_tarihi || tarihStrYerel(d.created_at)
+          return !esasTarih || esasTarih <= tarih
+        })
+        .map((d) => d.sinif_id)
+    )
     const guncelYedek = (program || []).filter(
-      (d) => d.sinif_id && d.gun === gun && !kapsananlar.has(slotAnahtari(d))
+      (d) =>
+        d.sinif_id &&
+        d.gun === gun &&
+        !kapsananlar.has(slotAnahtari(d)) &&
+        gecmisteVarOlanSiniflar.has(d.sinif_id)
     )
     return guncelYedek.length > 0 ? [...tarihe, ...guncelYedek] : tarihe
   }, [programTum, program, tarih, gun])
