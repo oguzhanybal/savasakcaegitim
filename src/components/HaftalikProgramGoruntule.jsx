@@ -10,6 +10,18 @@ import { saatGoster } from '../lib/saatFormat'
 // gösteren salt-okunur bir tablo. Günlük Müsaitlik'e (hücreye tıklayıp ders
 // ekleme) DOKUNULMADI, o olduğu gibi duruyor — bu sadece ayrı, ek bir
 // GÖRÜNTÜLEME aracı.
+//
+// BİRE BİR DERSLER — kullanıcı isteğiyle: önce bire_bir_atamalari (haftalık
+// TEKRAR EDEN atama) tablosundan besleniyordu, ama kullanıcı bunun gerçek
+// kullanımı yansıtmadığını belirtti: "her hafta değişiyor, bu hafta olanları
+// görelim, gelecek hafta da gelecek hafta olanları". Yani bire bir dersler
+// çoğunlukla haftalık sabit bir ATAMA değil, her hafta ayrı ayrı GİRİLEN,
+// TARİHLİ kayıtlar (bire_bir_yoklama). Bu yüzden öğretmen görünümü artık bir
+// HAFTA SEÇİCİ (◀ Bu Hafta ▶) içeriyor: seçili haftanın Pazartesi-Cumartesi
+// tarihlerine denk gelen bire_bir_yoklama kayıtları gösteriliyor. Yine de
+// GERÇEKTEN haftalık tekrar eden bir atama varsa (aktif=true) o da aynı
+// haftaya YANSITILIYOR — ama sadece o slot için o haftaya ait tarihli bir
+// kayıt YOKSA (aksi halde aynı ders iki kez görünürdü).
 
 const GUNLER = ['', 'Pazartesi', 'Salı', 'Çarşamba', 'Perşembe', 'Cuma', 'Cumartesi', 'Pazar']
 
@@ -17,35 +29,80 @@ function saatKisalt(s) {
   return s ? s.slice(0, 5) : s
 }
 
-export default function HaftalikProgramGoruntule({ program, siniflar, ogretmenler, atamalar }) {
+function yerelTarih(d) {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+}
+
+// Verilen tarihin ait olduğu haftanın PAZARTESİ'sini döner.
+function haftaninPazartesisi(tarih) {
+  const d = new Date(tarih)
+  const gun = d.getDay() // 0=Pazar, 1=Pazartesi, ..., 6=Cumartesi
+  const fark = gun === 0 ? -6 : 1 - gun
+  d.setDate(d.getDate() + fark)
+  return d
+}
+
+function tarihKisaGoster(tarihStr) {
+  return new Date(tarihStr + 'T12:00:00').toLocaleDateString('tr-TR', { day: '2-digit', month: 'long' })
+}
+
+export default function HaftalikProgramGoruntule({ program, siniflar, ogretmenler, atamalar, bireBirYoklamalar, ogrenciler }) {
   const [tip, setTip] = useState('sinif') // 'sinif' | 'ogretmen'
   const [seciliId, setSeciliId] = useState('')
+  // Sadece öğretmen görünümünde anlamlı — 0: bu hafta, 1: gelecek hafta,
+  // -1: geçen hafta vb. Sınıf/öğretmen değişince veya tip değişince şaşırtıcı
+  // olmasın diye sıfırlanıyor.
+  const [haftaOfset, setHaftaOfset] = useState(0)
 
-  // Öğretmen seçiliyken, sınıf derslerinin yanına o öğretmenin Bire Bir
-  // atamalarını da (haftalık tekrar eden, bire_bir_atamalari tablosundan)
-  // ekliyoruz — kullanıcı isteğiyle: "öğretmen seçince bire bir dersleri de
-  // çıksın", aksi halde öğretmenin haftalık programı eksik görünüyordu. Sınıf
-  // derslerinden ayırt edilsin diye ders_adi yerine öğrencinin adı, alt
-  // satırda da "Bire Bir" etiketi gösteriliyor (bkz. render'daki
-  // tip === 'ogretmen' ? d.sinif_adi kullanımı — zaten var olan alana
-  // "Bire Bir" yazarak eşleniyor, yeni bir dal açmaya gerek kalmadı).
+  const haftaGunTarihleri = useMemo(() => {
+    const pazartesi = haftaninPazartesisi(new Date())
+    pazartesi.setDate(pazartesi.getDate() + haftaOfset * 7)
+    return [0, 1, 2, 3, 4, 5].map((i) => {
+      const d = new Date(pazartesi)
+      d.setDate(d.getDate() + i)
+      return yerelTarih(d)
+    })
+  }, [haftaOfset])
+
+  function ogrenciAdi(ogrenciId) {
+    return ogrenciler?.find((o) => o.id === ogrenciId)?.ad_soyad || 'Öğrenci'
+  }
+
+  // Öğretmen seçiliyken, sınıf derslerinin yanına o öğretmenin seçili
+  // HAFTAYA ait bire bir derslerini de ekliyoruz (bkz. yukarıdaki not).
   const filtreliDersler = useMemo(() => {
     if (!seciliId) return []
     const sinifDersleri = (program || []).filter((d) =>
       tip === 'sinif' ? d.sinif_id === seciliId : d.ogretmen_profile_id === seciliId
     )
     if (tip !== 'ogretmen') return sinifDersleri
-    const bireBirDersleri = (atamalar || [])
+
+    const tarihliBireBir = (bireBirYoklamalar || [])
+      .filter((y) => y.ogretmen_profile_id === seciliId && haftaGunTarihleri.includes(y.tarih))
+      .map((y) => ({
+        id: `bby-${y.id}`,
+        gun: haftaGunTarihleri.indexOf(y.tarih) + 1,
+        baslangic_saat: y.baslangic_saat,
+        ders_adi: y.ogrenci_id ? ogrenciAdi(y.ogrenci_id) : y.tur === 'soru_cozumu' ? 'Soru Çözümü' : 'Bire Bir',
+        sinif_adi: 'Bire Bir',
+      }))
+    // Aynı gün+saat için zaten tarihli bir kayıt varsa, altta o SLOT için
+    // haftalık atamayı ikinci kez göstermeyelim (kullanıcı isteğiyle
+    // eklenen "GERÇEKTEN alınmış olan öncelikli" deseni — GecmisYoklama.jsx
+    // ve BugunkuYoklamaDurumu'ndaki AYNI mantık).
+    const doluSlotlar = new Set(tarihliBireBir.map((d) => `${d.gun}|${saatKisalt(d.baslangic_saat)}`))
+    const atamaBireBir = (atamalar || [])
       .filter((a) => a.ogretmen_profile_id === seciliId && a.aktif !== false)
+      .filter((a) => !doluSlotlar.has(`${a.gun}|${saatKisalt(a.baslangic_saat)}`))
       .map((a) => ({
-        id: `bb-${a.id}`,
+        id: `bba-${a.id}`,
         gun: a.gun,
         baslangic_saat: a.baslangic_saat,
         ders_adi: a.ogrenci_adi || 'Öğrenci',
         sinif_adi: 'Bire Bir',
       }))
-    return [...sinifDersleri, ...bireBirDersleri]
-  }, [program, atamalar, tip, seciliId])
+    return [...sinifDersleri, ...tarihliBireBir, ...atamaBireBir]
+  }, [program, atamalar, bireBirYoklamalar, ogrenciler, tip, seciliId, haftaGunTarihleri])
 
   const gunlereGore = useMemo(
     () =>
@@ -84,6 +141,7 @@ export default function HaftalikProgramGoruntule({ program, siniflar, ogretmenle
             onClick={() => {
               setTip('sinif')
               setSeciliId('')
+              setHaftaOfset(0)
             }}
             className={`px-3 py-1.5 font-medium transition-colors ${
               tip === 'sinif' ? 'bg-navy text-white' : 'text-gray-600 hover:bg-gray-100'
@@ -96,6 +154,7 @@ export default function HaftalikProgramGoruntule({ program, siniflar, ogretmenle
             onClick={() => {
               setTip('ogretmen')
               setSeciliId('')
+              setHaftaOfset(0)
             }}
             className={`px-3 py-1.5 font-medium transition-colors ${
               tip === 'ogretmen' ? 'bg-navy text-white' : 'text-gray-600 hover:bg-gray-100'
@@ -124,12 +183,52 @@ export default function HaftalikProgramGoruntule({ program, siniflar, ogretmenle
                 ))}
           </select>
         </div>
+
+        {tip === 'ogretmen' && seciliId && (
+          <div className="flex items-center gap-1.5">
+            <button
+              type="button"
+              onClick={() => setHaftaOfset((h) => h - 1)}
+              className="px-2 py-1.5 rounded-lg text-sm bg-white border border-gray-200 text-gray-600 hover:bg-gray-50"
+              title="Önceki hafta"
+            >
+              ◀
+            </button>
+            <span className="text-sm text-gray-600 font-medium whitespace-nowrap px-1">
+              {haftaOfset === 0 ? 'Bu Hafta' : haftaOfset === 1 ? 'Gelecek Hafta' : haftaOfset === -1 ? 'Geçen Hafta' : null}
+              {Math.abs(haftaOfset) <= 1 ? (
+                <span className="text-gray-400 font-normal"> ({tarihKisaGoster(haftaGunTarihleri[0])} – {tarihKisaGoster(haftaGunTarihleri[5])})</span>
+              ) : (
+                <>{tarihKisaGoster(haftaGunTarihleri[0])} – {tarihKisaGoster(haftaGunTarihleri[5])}</>
+              )}
+            </span>
+            <button
+              type="button"
+              onClick={() => setHaftaOfset((h) => h + 1)}
+              className="px-2 py-1.5 rounded-lg text-sm bg-white border border-gray-200 text-gray-600 hover:bg-gray-50"
+              title="Sonraki hafta"
+            >
+              ▶
+            </button>
+            {haftaOfset !== 0 && (
+              <button
+                type="button"
+                onClick={() => setHaftaOfset(0)}
+                className="text-xs text-blue hover:underline ml-1"
+              >
+                Bu haftaya dön
+              </button>
+            )}
+          </div>
+        )}
       </div>
 
       {!seciliId && <p className="text-gray-400 text-sm">Yukarıdan bir {tip === 'sinif' ? 'sınıf' : 'öğretmen'} seçin.</p>}
 
       {seciliId && filtreliDersler.length === 0 && (
-        <p className="text-gray-400 text-sm">{secilenAd || 'Seçilen'} için programlanmış ders bulunamadı.</p>
+        <p className="text-gray-400 text-sm">
+          {secilenAd || 'Seçilen'} için {tip === 'ogretmen' ? 'bu haftaya ait' : 'programlanmış'} ders bulunamadı.
+        </p>
       )}
 
       {seciliId && filtreliDersler.length > 0 && (
