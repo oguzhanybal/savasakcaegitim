@@ -52,7 +52,7 @@ const AKTIF_EGITIM_YILI = '2026-2027' // Odev.jsx/Siniflar.jsx'teki ile aynı sa
 // koordinatları % olarak konumlandırma) — ama bu sayfa için AYRI bir kopya,
 // var olan dosyaya hiç dokunulmadı.
 // ============================================================================
-function KutuKatmani({ sayfaGoruntusu, sorularBuSayfada, seciliGeciciId, cizimModu, onKutuTiklandi, onCizimBitti }) {
+function KutuKatmani({ sayfaGoruntusu, sorularBuSayfada, seciliGeciciId, cizimModu, cizimMesaji, onKutuTiklandi, onCizimBitti }) {
   const [cizilen, setCizilen] = useState(null) // {x0,y0,x1,y1} doğal koordinatlarda
   const kapRef = useRef(null)
 
@@ -140,7 +140,7 @@ function KutuKatmani({ sayfaGoruntusu, sorularBuSayfada, seciliGeciciId, cizimMo
       )}
       {cizimModu && (
         <div className="absolute top-2 left-1/2 -translate-x-1/2 bg-orange text-white text-xs font-semibold px-3 py-1 rounded-full shadow animate-pulse pointer-events-none">
-          Bir sorunun köşesinden diğer köşesine sürükleyerek kutu çizin
+          {cizimMesaji || 'Bir sorunun köşesinden diğer köşesine sürükleyerek kutu çizin'}
         </div>
       )}
     </div>
@@ -284,6 +284,14 @@ function KitapDuzenle({ kitap, onGeriDon, onKitapGuncellendi, onSeciliSorularlaT
   const [sorularYukleniyor, setSorularYukleniyor] = useState(true)
   const [seciliGeciciId, setSeciliGeciciId] = useState(null)
   const [cizimModu, setCizimModu] = useState(false)
+  // "Seçili Kutuyu Yeniden Çiz" modu — kullanıcı isteğiyle eklendi ("otomatik
+  // yap dediğimizde düzenle çıksa düzenlerken elle tekrar kutuyu çizsek"):
+  // otomatik tespitin bazı sorularda üstü tam almayan/yanlış hizalı bir kutu
+  // ürettiği durumlarda, o kutuyu SİLİP YENİDEN oluşturmak yerine, seçili
+  // kutunun koordinatlarını doğrudan elle çizilen yeni bir dikdörtgenle
+  // DEĞİŞTİRMEK için. Normal "Elle Kutu Çiz" (cizimModu) ile karıştırılmasın
+  // diye ayrı bir state — ikisi birbirini dışlar (biri açılınca diğeri kapanır).
+  const [yenidenCizimModu, setYenidenCizimModu] = useState(false)
   const [analizEdiliyor, setAnalizEdiliyor] = useState(false)
   const [analizIlerleme, setAnalizIlerleme] = useState(0)
   const [kaydediliyor, setKaydediliyor] = useState(false)
@@ -397,6 +405,15 @@ function KitapDuzenle({ kitap, onGeriDon, onKitapGuncellendi, onSeciliSorularlaT
     })
   }
   function cizimBitti(kutu) {
+    // Yeniden çizim modundaysa VE hâlâ geçerli bir seçili soru varsa: yeni
+    // bağımsız bir soru EKLEMEK yerine, seçili sorunun koordinatlarını yeni
+    // çizilen dikdörtgenle DEĞİŞTİR (etiketi/ders/konu/soru_no aynen kalır —
+    // sadece kutunun konumu düzeltiliyor).
+    if (yenidenCizimModu && seciliGeciciId) {
+      soruGuncelle(seciliGeciciId, { x: kutu.x, y: kutu.y, genislik: kutu.genislik, yukseklik: kutu.yukseklik })
+      setYenidenCizimModu(false)
+      return
+    }
     const yeni = {
       gecici_id: crypto.randomUUID(),
       kitap_id: kitap.id,
@@ -621,13 +638,25 @@ function KitapDuzenle({ kitap, onGeriDon, onKitapGuncellendi, onSeciliSorularlaT
                 </button>
                 <button
                   type="button"
-                  onClick={() => setCizimModu((v) => !v)}
+                  onClick={() => {
+                    setCizimModu((v) => !v)
+                    setYenidenCizimModu(false) // iki mod birbirini dışlar
+                  }}
                   className={`text-xs font-semibold px-3 py-1.5 rounded-full ${
                     cizimModu ? 'bg-orange text-white' : 'border border-gray-200 text-gray-600 hover:bg-gray-50'
                   }`}
                 >
                   {cizimModu ? 'Çizmeyi Bitir' : 'Elle Kutu Çiz'}
                 </button>
+                {yenidenCizimModu && (
+                  <button
+                    type="button"
+                    onClick={() => setYenidenCizimModu(false)}
+                    className="text-xs font-semibold px-3 py-1.5 rounded-full bg-orange text-white"
+                  >
+                    Yeniden Çizmeyi İptal Et
+                  </button>
+                )}
               </div>
             </div>
             <div className="overflow-auto flex justify-center bg-gray-50 rounded-lg p-2">
@@ -635,7 +664,12 @@ function KitapDuzenle({ kitap, onGeriDon, onKitapGuncellendi, onSeciliSorularlaT
                 sayfaGoruntusu={sayfaGoruntusu}
                 sorularBuSayfada={sorularBuSayfada}
                 seciliGeciciId={seciliGeciciId}
-                cizimModu={cizimModu}
+                cizimModu={cizimModu || yenidenCizimModu}
+                cizimMesaji={
+                  yenidenCizimModu
+                    ? 'Seçili kutunun yeni konumunu köşeden köşeye sürükleyerek çizin'
+                    : undefined
+                }
                 onKutuTiklandi={setSeciliGeciciId}
                 onCizimBitti={cizimBitti}
               />
@@ -718,6 +752,18 @@ function KitapDuzenle({ kitap, onGeriDon, onKitapGuncellendi, onSeciliSorularlaT
                     className="w-full px-2 py-1.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue"
                   />
                 </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setCizimModu(false) // iki mod birbirini dışlar
+                    setYenidenCizimModu((v) => !v)
+                  }}
+                  className={`text-xs font-semibold rounded-lg px-3 py-1.5 w-full ${
+                    yenidenCizimModu ? 'bg-orange text-white' : 'border border-gray-200 text-gray-600 hover:bg-gray-50'
+                  }`}
+                >
+                  {yenidenCizimModu ? 'Çiziyorsunuz — köşeden köşeye sürükleyin' : 'Seçili Kutuyu Yeniden Çiz'}
+                </button>
                 <button
                   type="button"
                   onClick={() => soruSil(seciliSoru.gecici_id)}
