@@ -25,14 +25,21 @@ import { KONU_DERSLERI } from '../lib/konuDersleri'
 import {
   pdfBelgesiAc,
   sayfayiGoruntuyeCevir,
-  soruNumarasiWorkerOlustur,
-  soruNumarasiWorkerKapat,
-  sayfadaSoruNumaralariniTespitEt,
   girintiliAdaylariEle,
   ardisikDiziyeGoreFiltrele,
   sutunSiralaTahmini,
   baslangicKutulariUret,
 } from '../lib/kitapcikOcr'
+// Soru numarası OCR'ı ("12." VEYA "12)" tanıma) kitapcikOcr.js'ten DEĞİL, bu
+// sayfaya özel kitapOcr.js'ten alınıyor — bkz. o dosyadaki açıklama (Sınav
+// Kitapçıkları/Hata Raporu sistemi kitapcikOcr.js'i kullandığı için orada
+// değişiklik yapılmadı, burada genişletilmiş bir kopyası var).
+import {
+  kitapMetinKatmanindanSoruNumaralariniTespitEt,
+  kitapSoruNumarasiWorkerOlustur,
+  kitapSoruNumarasiWorkerKapat,
+  kitapSayfasindaSoruNumaralariniTespitEt,
+} from '../lib/kitapOcr'
 import { testPdfOlustur } from '../lib/kitapPdf'
 
 const MAKSIMUM_KITAP_BOYUTU = 150 * 1024 * 1024 // 150 MB — ücretsiz 1 GB'lık Storage kotasını gözeten makul bir üst sınır
@@ -379,25 +386,55 @@ function KitapDuzenle({ kitap, onGeriDon, onKitapGuncellendi }) {
   }
 
   async function sayfaAnaliziYap() {
-    if (!sayfaGoruntusu) return
+    if (!sayfaGoruntusu || !belge) return
     setAnalizEdiliyor(true)
     setAnalizIlerleme(0)
     setHata('')
     let worker = null
     try {
-      worker = await soruNumarasiWorkerOlustur()
-      const adaylarHam = await sayfadaSoruNumaralariniTespitEt(
-        worker,
-        sayfaGoruntusu.canvas,
+      // ÖNCE PDF'in gerçek metin katmanından tespit deniyoruz — kitap
+      // TARANMIŞ/fotoğraflanmış değil, dijital (seçilebilir metinli) bir
+      // PDF ise bu, OCR'a hiç gerek kalmadan anlık ve neredeyse %100 doğru
+      // sonuç verir (canlıda "ENS Türkçe Soru Bankası" ile doğrulandı —
+      // OCR'ın 6 sorudan sadece 1'ini bulabildiği bir sayfada bu yöntem
+      // 6'sını da doğru buldu). Metin katmanı yoksa (gerçek tarama), bu
+      // yöntem hiçbir aday bulamaz ve aşağıda OCR'a düşülür.
+      const metinAdaylari = await kitapMetinKatmanindanSoruNumaralariniTespitEt(
+        belge,
+        sayfaNo,
+        Number(kitap.olcek) || 3,
         sayfaGoruntusu.genislik,
-        sayfaGoruntusu.yukseklik,
-        (oran) => setAnalizIlerleme(oran)
+        sayfaGoruntusu.yukseklik
       )
-      const girintisizler = girintiliAdaylariEle(adaylarHam, sayfaGoruntusu.genislik)
-      const sutunlu = sutunSiralaTahmini(girintisizler, sayfaGoruntusu.genislik)
-      const filtreli = ardisikDiziyeGoreFiltrele(sutunlu)
-      const kullanilacaklar = filtreli.length > 0 ? filtreli : sutunlu
-      const kutular = baslangicKutulariUret(kullanilacaklar, sayfaGoruntusu.genislik, sayfaGoruntusu.yukseklik)
+      setAnalizIlerleme(1)
+
+      let kutular = []
+      if (metinAdaylari.length > 0) {
+        // Metin katmanı verisi zaten çok temiz/kesin olduğu için (yanlış
+        // pozitifler bant/girinti filtreleriyle elendi), OCR'a özgü
+        // "ardışık dizi" güvenlik filtresi burada UYGULANMIYOR — aksi halde
+        // bir sayfada 1-2 soru gibi kısa (3'ten az) bir dizi varsa (ör. bir
+        // ünitenin son sayfası) bu geçerli sorular yanlışlıkla elenebilirdi.
+        const girintisizler = girintiliAdaylariEle(metinAdaylari, sayfaGoruntusu.genislik)
+        const sutunlu = sutunSiralaTahmini(girintisizler, sayfaGoruntusu.genislik)
+        kutular = baslangicKutulariUret(sutunlu, sayfaGoruntusu.genislik, sayfaGoruntusu.yukseklik)
+      } else {
+        // YEDEK: metin katmanı yok (taranmış/fotoğraflanmış kitap) — OCR ile dene.
+        worker = await kitapSoruNumarasiWorkerOlustur()
+        const adaylarHam = await kitapSayfasindaSoruNumaralariniTespitEt(
+          worker,
+          sayfaGoruntusu.canvas,
+          sayfaGoruntusu.genislik,
+          sayfaGoruntusu.yukseklik,
+          (oran) => setAnalizIlerleme(oran)
+        )
+        const girintisizler = girintiliAdaylariEle(adaylarHam, sayfaGoruntusu.genislik)
+        const sutunlu = sutunSiralaTahmini(girintisizler, sayfaGoruntusu.genislik)
+        const filtreli = ardisikDiziyeGoreFiltrele(sutunlu)
+        const kullanilacaklar = filtreli.length > 0 ? filtreli : sutunlu
+        kutular = baslangicKutulariUret(kullanilacaklar, sayfaGoruntusu.genislik, sayfaGoruntusu.yukseklik)
+      }
+
       if (kutular.length === 0) {
         setHata('Bu sayfada otomatik olarak soru bulunamadı — "Elle Kutu Çiz" ile kendiniz işaretleyebilirsiniz.')
       }
@@ -419,7 +456,7 @@ function KitapDuzenle({ kitap, onGeriDon, onKitapGuncellendi }) {
     } catch (e) {
       setHata('Otomatik tespit hatası: ' + e.message)
     } finally {
-      if (worker) await soruNumarasiWorkerKapat(worker)
+      if (worker) await kitapSoruNumarasiWorkerKapat(worker)
       setAnalizEdiliyor(false)
     }
   }
@@ -931,112 +968,137 @@ function TestOlusturSekmesi() {
           Henüz hiçbir kitaptan soru işaretlenmedi — önce "Kitaplarım" sekmesinden bir kitap yükleyip soru kesin.
         </p>
       ) : (
-        <div className="grid grid-cols-1 lg:grid-cols-[1fr_360px] gap-5">
-          <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-4">
-            <div className="flex flex-wrap gap-2 mb-3">
-              <select value={kitapFiltre} onChange={(e) => setKitapFiltre(e.target.value)} className="px-3 py-1.5 border border-gray-200 rounded-lg text-sm bg-white">
-                <option value="">Tüm Kitaplar</option>
-                {kitapListesi.map((k) => (
-                  <option key={k.id} value={k.id}>
-                    {k.ad}
-                  </option>
-                ))}
-              </select>
-              <select value={dersFiltre} onChange={(e) => setDersFiltre(e.target.value)} className="px-3 py-1.5 border border-gray-200 rounded-lg text-sm bg-white">
-                <option value="">Tüm Dersler</option>
-                {dersListesi.map((d) => (
-                  <option key={d} value={d}>
-                    {d}
-                  </option>
-                ))}
-              </select>
-              <input
-                value={arama}
-                onChange={(e) => setArama(e.target.value)}
-                placeholder="Konu ara..."
-                className="flex-1 min-w-[140px] px-3 py-1.5 border border-gray-200 rounded-lg text-sm"
-              />
-            </div>
-            <div className="divide-y divide-gray-50 max-h-[60vh] overflow-y-auto">
-              {filtrelenmisSorular.map((s) => (
-                <label key={s.id} className="flex items-center gap-2 py-2 text-sm cursor-pointer hover:bg-gray-50 px-1 rounded">
-                  <input type="checkbox" checked={seciliMi(s.id)} onChange={() => seciminiDegistir(s)} />
-                  <span className="flex-1">
-                    <span className="font-medium text-gray-700">{s.ders_adi || 'Etiketsiz'}</span>
-                    {s.konu && <span className="text-gray-400"> · {s.konu}</span>}
-                    <span className="text-gray-400"> · {s.kitaplar?.ad}</span>
-                    <span className="text-gray-300"> · s.{s.sayfa_no}</span>
-                  </span>
-                </label>
-              ))}
-              {filtrelenmisSorular.length === 0 && <p className="text-xs text-gray-400 py-4">Filtreye uyan soru yok.</p>}
-            </div>
-          </div>
-
-          <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-4 h-fit">
-            <h3 className="font-semibold text-gray-700 mb-2">Seçilen Sorular ({seciliSorular.length})</h3>
-            <div className="space-y-1 max-h-48 overflow-y-auto mb-3">
-              {seciliSorular.map((s, i) => (
-                <div key={s.id} className="flex items-center justify-between gap-2 text-xs bg-gray-50 rounded-lg px-2 py-1.5">
-                  <span className="truncate">
-                    {i + 1}. {s.ders_adi || 'Etiketsiz'} {s.konu ? `· ${s.konu}` : ''}
-                  </span>
-                  <button type="button" onClick={() => siradanCikar(s.id)} className="text-red-500 hover:text-red-700 shrink-0">
-                    ✕
-                  </button>
-                </div>
-              ))}
-              {seciliSorular.length === 0 && <p className="text-xs text-gray-400">Soldan soru seçin.</p>}
-            </div>
-
-            <input
-              value={testBasligi}
-              onChange={(e) => setTestBasligi(e.target.value)}
-              placeholder="Test başlığı (örn. Geometri Tekrar Testi)"
-              className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm mb-2"
-            />
-
-            <button
-              type="button"
-              onClick={pdfUret}
-              disabled={seciliSorular.length === 0 || uretimDurumu === 'uretiliyor'}
-              className="w-full bg-navy text-white font-semibold px-4 py-2 rounded-lg text-sm hover:opacity-90 disabled:opacity-40 mb-2"
-            >
-              {uretimDurumu === 'uretiliyor' ? `Oluşturuluyor... %${Math.round(ilerleme * 100)}` : 'Test PDF\'i Oluştur'}
-            </button>
-
-            {hata && <p className="text-xs text-red-600 mb-2">{hata}</p>}
-            {gonderSonucu && <p className="text-xs text-green-700 mb-2">{gonderSonucu}</p>}
-
-            {uretimDurumu === 'hazir' && pdfUrl && (
-              <div className="border-t border-gray-100 pt-3">
-                <a
-                  href={pdfUrl}
-                  download={`${testBasligi || 'test'}.pdf`}
-                  className="block text-center text-sm font-semibold border border-gray-200 rounded-lg px-3 py-2 hover:bg-gray-50 mb-2"
+        <>
+          {/* Adım 1 ve 2: önce (istenirse) ders seçilir, sonra teste bir başlık
+              verilir — soru seçimi bundan SONRA yapılır (kullanıcı isteğiyle
+              sıralama netleştirildi: eskiden ders filtresi soru listesinin
+              yanındaki sıradan bir filtreydi, test başlığı da en sonda kalıyordu). */}
+          <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-4 mb-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <label className="block text-xs font-semibold text-gray-500 mb-1">1) Ders (opsiyonel)</label>
+                <select
+                  value={dersFiltre}
+                  onChange={(e) => setDersFiltre(e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm bg-white"
                 >
-                  PDF'i İndir
-                </a>
-                <button
-                  type="button"
-                  onClick={() => setGonderPaneliAcik((v) => !v)}
-                  className="w-full bg-orange text-white font-semibold px-4 py-2 rounded-lg text-sm hover:opacity-90"
-                >
-                  Öğrenciye Ödev Olarak Gönder
-                </button>
-                {gonderPaneliAcik && (
-                  <OdevHedefSecici
-                    ogrenciler={ogrenciler}
-                    siniflarListesi={siniflarListesi}
-                    sinifOgrenciMap={sinifOgrenciMap}
-                    gonderiliyor={gonderiliyor}
-                    onGonder={odevOlarakGonder}
-                  />
-                )}
+                  <option value="">Tüm Dersler</option>
+                  {dersListesi.map((d) => (
+                    <option key={d} value={d}>
+                      {d}
+                    </option>
+                  ))}
+                </select>
               </div>
-            )}
+              <div>
+                <label className="block text-xs font-semibold text-gray-500 mb-1">2) Test Başlığı</label>
+                <input
+                  value={testBasligi}
+                  onChange={(e) => setTestBasligi(e.target.value)}
+                  placeholder="örn. Geometri Tekrar Testi"
+                  className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm"
+                />
+              </div>
+            </div>
           </div>
-        </div>
+
+          <div className="grid grid-cols-1 lg:grid-cols-[1fr_360px] gap-5">
+            <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-4">
+              <h3 className="font-semibold text-gray-700 mb-1">3) İstediğiniz Kadar Soru Seçin</h3>
+              <p className="text-xs text-gray-400 mb-3">
+                Yukarıda ders seçtiyseniz liste otomatik daraldı — isterseniz kitaba göre de daraltabilir ya da konuya göre
+                arayabilirsiniz.
+              </p>
+              <div className="flex flex-wrap gap-2 mb-3">
+                <select value={kitapFiltre} onChange={(e) => setKitapFiltre(e.target.value)} className="px-3 py-1.5 border border-gray-200 rounded-lg text-sm bg-white">
+                  <option value="">Tüm Kitaplar</option>
+                  {kitapListesi.map((k) => (
+                    <option key={k.id} value={k.id}>
+                      {k.ad}
+                    </option>
+                  ))}
+                </select>
+                <input
+                  value={arama}
+                  onChange={(e) => setArama(e.target.value)}
+                  placeholder="Konu ara..."
+                  className="flex-1 min-w-[140px] px-3 py-1.5 border border-gray-200 rounded-lg text-sm"
+                />
+              </div>
+              <div className="divide-y divide-gray-50 max-h-[60vh] overflow-y-auto">
+                {filtrelenmisSorular.map((s) => (
+                  <label key={s.id} className="flex items-center gap-2 py-2 text-sm cursor-pointer hover:bg-gray-50 px-1 rounded">
+                    <input type="checkbox" checked={seciliMi(s.id)} onChange={() => seciminiDegistir(s)} />
+                    <span className="flex-1">
+                      <span className="font-medium text-gray-700">{s.ders_adi || 'Etiketsiz'}</span>
+                      {s.konu && <span className="text-gray-400"> · {s.konu}</span>}
+                      <span className="text-gray-400"> · {s.kitaplar?.ad}</span>
+                      <span className="text-gray-300"> · s.{s.sayfa_no}</span>
+                    </span>
+                  </label>
+                ))}
+                {filtrelenmisSorular.length === 0 && <p className="text-xs text-gray-400 py-4">Filtreye uyan soru yok.</p>}
+              </div>
+            </div>
+
+            <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-4 h-fit">
+              <h3 className="font-semibold text-gray-700 mb-2">Seçilen Sorular ({seciliSorular.length})</h3>
+              <div className="space-y-1 max-h-48 overflow-y-auto mb-3">
+                {seciliSorular.map((s, i) => (
+                  <div key={s.id} className="flex items-center justify-between gap-2 text-xs bg-gray-50 rounded-lg px-2 py-1.5">
+                    <span className="truncate">
+                      {i + 1}. {s.ders_adi || 'Etiketsiz'} {s.konu ? `· ${s.konu}` : ''}
+                    </span>
+                    <button type="button" onClick={() => siradanCikar(s.id)} className="text-red-500 hover:text-red-700 shrink-0">
+                      ✕
+                    </button>
+                  </div>
+                ))}
+                {seciliSorular.length === 0 && <p className="text-xs text-gray-400">Soldan soru seçin.</p>}
+              </div>
+
+              <button
+                type="button"
+                onClick={pdfUret}
+                disabled={seciliSorular.length === 0 || uretimDurumu === 'uretiliyor'}
+                className="w-full bg-navy text-white font-semibold px-4 py-2 rounded-lg text-sm hover:opacity-90 disabled:opacity-40 mb-2"
+              >
+                {uretimDurumu === 'uretiliyor' ? `Oluşturuluyor... %${Math.round(ilerleme * 100)}` : '4) Testi Oluştur'}
+              </button>
+
+              {hata && <p className="text-xs text-red-600 mb-2">{hata}</p>}
+              {gonderSonucu && <p className="text-xs text-green-700 mb-2">{gonderSonucu}</p>}
+
+              {uretimDurumu === 'hazir' && pdfUrl && (
+                <div className="border-t border-gray-100 pt-3">
+                  <a
+                    href={pdfUrl}
+                    download={`${testBasligi || 'test'}.pdf`}
+                    className="block text-center text-sm font-semibold border border-gray-200 rounded-lg px-3 py-2 hover:bg-gray-50 mb-2"
+                  >
+                    PDF'i İndir
+                  </a>
+                  <button
+                    type="button"
+                    onClick={() => setGonderPaneliAcik((v) => !v)}
+                    className="w-full bg-orange text-white font-semibold px-4 py-2 rounded-lg text-sm hover:opacity-90"
+                  >
+                    Öğrenciye Ödev Olarak Gönder
+                  </button>
+                  {gonderPaneliAcik && (
+                    <OdevHedefSecici
+                      ogrenciler={ogrenciler}
+                      siniflarListesi={siniflarListesi}
+                      sinifOgrenciMap={sinifOgrenciMap}
+                      gonderiliyor={gonderiliyor}
+                      onGonder={odevOlarakGonder}
+                    />
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
+        </>
       )}
     </div>
   )
