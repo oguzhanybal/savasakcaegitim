@@ -42,6 +42,7 @@ import SifreSifirla from './pages/SifreSifirla'
 import GirisKayitlari from './pages/GirisKayitlari'
 import SifremiDegistir from './pages/SifremiDegistir'
 import Odev from './pages/Odev'
+import KitapYukle from './pages/KitapYukle'
 import OgrenciZamanCizelgesi from './pages/OgrenciZamanCizelgesi'
 import YedekAl from './pages/YedekAl'
 import ZilSistemi from './pages/ZilSistemi'
@@ -419,6 +420,14 @@ function AnaUygulama() {
             element={
               <Korumali izinliRoller={['yonetici', 'ogretmen', 'veli', 'ogrenci']}>
                 <Odev />
+              </Korumali>
+            }
+          />
+          <Route
+            path="kitap-yukle"
+            element={
+              <Korumali izinliRoller={['yonetici']}>
+                <KitapYukle />
               </Korumali>
             }
           />
