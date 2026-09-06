@@ -68,6 +68,10 @@ function menuOlustur(rol, kendiProfileId, hatirlatmaSayisi) {
         ],
       },
       { tur: 'link', to: '/odev', label: 'Ödevler' },
+      // Sınav Kitapçıkları/Hata Raporu sisteminden TAMAMEN AYRI, yeni bir
+      // özellik: kitap yükleyip soru kesme + testten ödev oluşturma
+      // (kullanıcı isteğiyle eklendi).
+      { tur: 'link', to: '/kitap-yukle', label: 'Kitap Yükle' },
       {
         tur: 'grup',
         label: 'Yoklama',
