@@ -179,6 +179,10 @@ function OdevVerForm({ ogrenciler, siniflarListesi, sinifOgrenciMap, ogretmenPro
   const [hedefTuru, setHedefTuru] = useState('tek') // 'tek' | 'toplu'
   const [seciliOgrenci, setSeciliOgrenci] = useState('')
   const [seciliOgrenciler, setSeciliOgrenciler] = useState([])
+  // Toplu modda "Sınıfa göre ekle" ile eklenen sınıfların id listesi — SADECE
+  // görsel geri bildirim (hoca sınıfı seçtiğini net görsün) için tutuluyor,
+  // gönderim sırasında kullanılmıyor (gönderilen asıl liste seciliOgrenciler).
+  const [seciliSiniflar, setSeciliSiniflar] = useState([])
   const [arama, setArama] = useState('')
   const [ders, setDers] = useState(varsayilanDers || '')
   const [baslik, setBaslik] = useState('')
@@ -239,18 +243,30 @@ function OdevVerForm({ ogrenciler, siniflarListesi, sinifOgrenciMap, ogretmenPro
     setSeciliOgrenciler((s) => Array.from(new Set([...s, ...filtreliOgrenciler.map((o) => o.id)])))
   }
 
-  // Seçilen sınıftaki TÜM öğrencileri, o ana kadar seçilmiş olanlara EKLER
-  // (var olan seçimi silmez) — başka bir sınıftan da öğrenci eklemek isterse
-  // ikinci bir sınıf daha seçebilsin diye. sinifId, Sınıflar sayfasındaki
-  // gerçek sınıfın id'si (sinif_ogrenciler eşleştirme tablosundan gelir).
+  // "Sınıfa göre ekle" — bir sınıf BUTONUNA basılınca o sınıftaki TÜM
+  // öğrenciler seçime EKLENİR ve buton dolu/koyu renge döner (hoca sınıfı
+  // gerçekten seçtiğini görsün diye — eskiden dropdown hemen boşa dönüp
+  // hocanın kafasını karıştırıyordu). Aynı butona TEKRAR basılırsa (toggle),
+  // o sınıfa ait öğrenciler seçimden ÇIKARILIR. Başka bir sınıf da eklemek
+  // isterse ikinci bir sınıf butonuna daha basabilir, var olan seçim silinmez.
+  // sinifId, Sınıflar sayfasındaki gerçek sınıfın id'si (sinif_ogrenciler
+  // eşleştirme tablosundan gelir).
   function sinifSec(sinifId) {
     if (!sinifId) return
     const idler = (sinifOgrenciMap && sinifOgrenciMap[sinifId]) || []
-    setSeciliOgrenciler((s) => Array.from(new Set([...s, ...idler])))
+    setSeciliSiniflar((s) => {
+      if (s.includes(sinifId)) {
+        setSeciliOgrenciler((mevcut) => mevcut.filter((id) => !idler.includes(id)))
+        return s.filter((x) => x !== sinifId)
+      }
+      setSeciliOgrenciler((mevcut) => Array.from(new Set([...mevcut, ...idler])))
+      return [...s, sinifId]
+    })
   }
 
   function secimiTemizle() {
     setSeciliOgrenciler([])
+    setSeciliSiniflar([])
   }
 
   async function gonder(e) {
@@ -339,6 +355,7 @@ function OdevVerForm({ ogrenciler, siniflarListesi, sinifOgrenciMap, ogretmenPro
       if (dosyaInputRef.current) dosyaInputRef.current.value = ''
       setSeciliOgrenci('')
       setSeciliOgrenciler([])
+      setSeciliSiniflar([])
       onEklendi()
     } catch (err) {
       setHata('Hata: ' + err.message)
@@ -394,28 +411,47 @@ function OdevVerForm({ ogrenciler, siniflarListesi, sinifOgrenciMap, ogretmenPro
           <label className="block text-sm font-medium text-gray-700 mb-1">
             Öğrenciler ({seciliOgrenciler.length} seçili)
           </label>
-          <div className="flex flex-wrap gap-2 mb-2">
-            <select
-              value=""
-              onChange={(e) => {
-                sinifSec(e.target.value)
-                e.target.value = ''
-              }}
-              className="px-3 py-2 border border-gray-200 rounded-lg bg-white text-sm focus:outline-none focus:ring-2 focus:ring-blue"
-            >
-              <option value="">Sınıfa göre ekle (tüm sınıf tek tıkla)...</option>
-              {siniflar.map((s) => (
-                <option key={s.id} value={s.id}>
+          <p className="text-xs text-gray-500 mb-1.5">
+            Sınıfa göre ekle (tıklayınca tüm sınıf eklenir, buton koyu renge döner — tekrar tıklayınca kaldırılır):
+          </p>
+          <div className="flex flex-wrap gap-1.5 mb-2">
+            {siniflar.length === 0 && <span className="text-xs text-gray-400">Tanımlı sınıf bulunamadı.</span>}
+            {siniflar.map((s) => {
+              const sinifSecili = seciliSiniflar.includes(s.id)
+              return (
+                <button
+                  key={s.id}
+                  type="button"
+                  onClick={() => sinifSec(s.id)}
+                  className={`px-3 py-1.5 rounded-lg text-sm font-semibold border transition-colors ${
+                    sinifSecili
+                      ? 'bg-navy text-white border-navy'
+                      : 'bg-white border-gray-200 text-gray-600 hover:bg-gray-100'
+                  }`}
+                >
                   {s.ad}
-                </option>
-              ))}
-            </select>
+                  {sinifSecili ? ' (Eklendi)' : ''}
+                </button>
+              )
+            })}
+          </div>
+          {seciliSiniflar.length > 0 && (
+            <p className="text-xs text-green-700 font-medium mb-2">
+              Eklenen sınıf{seciliSiniflar.length > 1 ? 'lar' : ''}:{' '}
+              {siniflar
+                .filter((s) => seciliSiniflar.includes(s.id))
+                .map((s) => s.ad)
+                .join(', ')}
+              . Öğrencileri aşağıdaki listede işaretli göreceksiniz.
+            </p>
+          )}
+          <div className="mb-2">
             <input
               type="text"
               value={arama}
               onChange={(e) => setArama(e.target.value)}
               placeholder="Ya da isme göre tek tek ara..."
-              className="flex-1 min-w-[180px] px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue"
+              className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue"
             />
           </div>
           <div className="flex gap-3 mb-2 text-xs">
@@ -560,7 +596,156 @@ function OdevVerForm({ ogrenciler, siniflarListesi, sinifOgrenciMap, ogretmenPro
 // sadece kendi verdiklerini görür — bu ayrım zaten RLS'te de var, burada ekstra
 // bir filtreye gerek yok, sorgu zaten doğru satırları döndürüyor).
 // ============================================================================
+function OdevDurumButonlari({ o, durumDegistir }) {
+  return (
+    <div className="flex items-center gap-1.5 flex-wrap">
+      <button
+        type="button"
+        onClick={() => durumDegistir(o, 'yapti')}
+        className={`px-2 py-1 rounded-lg text-xs font-semibold transition-colors ${
+          o.durum === 'yapti' ? 'bg-green-600 text-white' : 'bg-green-100 text-green-700 hover:bg-green-200'
+        }`}
+      >
+        Yaptı
+      </button>
+      <button
+        type="button"
+        onClick={() => durumDegistir(o, 'yapmadi')}
+        className={`px-2 py-1 rounded-lg text-xs font-semibold transition-colors ${
+          o.durum === 'yapmadi' ? 'bg-red-600 text-white' : 'bg-red-100 text-red-700 hover:bg-red-200'
+        }`}
+      >
+        Yapmadı
+      </button>
+      {o.durum !== 'bekliyor' && (
+        <button
+          type="button"
+          onClick={() => durumDegistir(o, 'bekliyor')}
+          title="Bekliyor durumuna geri al"
+          className="text-gray-400 text-xs hover:underline"
+        >
+          Sıfırla
+        </button>
+      )}
+    </div>
+  )
+}
+
+// Bireysel Ödevler tablosundaki tek bir satır (atama_grubu_id boş olan ödevler).
+function OdevSatiri({ o, isYonetici, durumDegistir, sil }) {
+  const linkBilgi = odevDosyaLinkBilgisi(o)
+  return (
+    <tr className="border-t border-gray-50">
+      <td className="px-4 py-2 font-medium text-gray-800">{o.ogrenci_adi || '—'}</td>
+      <td className="px-4 py-2 text-gray-500">{o.ders || '—'}</td>
+      <td className="px-4 py-2">
+        {o.baslik}
+        {linkBilgi && (
+          <>
+            {' '}
+            <a href={linkBilgi.url} target="_blank" rel="noreferrer" className="text-blue text-xs hover:underline">
+              ({linkBilgi.etiket})
+            </a>
+          </>
+        )}
+      </td>
+      {isYonetici && <td className="px-4 py-2 text-gray-500">{o.ogretmen_adi || '—'}</td>}
+      <td className="px-4 py-2 text-gray-500">
+        {o.son_tarih ? new Date(o.son_tarih + 'T12:00:00').toLocaleDateString('tr-TR') : '—'}
+      </td>
+      <td className="px-4 py-2">
+        <OdevDurumButonlari o={o} durumDegistir={durumDegistir} />
+      </td>
+      <td className="px-4 py-2">
+        <button onClick={() => sil(o)} className="text-red-500 text-sm hover:underline">
+          Sil
+        </button>
+      </td>
+    </tr>
+  )
+}
+
+// Sınıf/Toplu Ödevler sütunundaki TEK bir grup kartı — aynı atama_grubu_id'yi
+// paylaşan tüm satırlar (yani tek bir "sınıfa ödev ver" işleminde eklenen tüm
+// öğrenciler) burada TEK bir kart olarak özetlenir; karta tıklayınca öğrenci
+// öğrenci açılıp/kapanır (kullanıcı isteğiyle: sınıf ödevleri artık bireysel
+// ödevlerle karışık, düz bir liste yerine ayrı ve gruplu gösteriliyor).
+function SinifOdevGrubu({ grubId, items, isYonetici, durumDegistir, sil, acik, onToggle }) {
+  const ilk = items[0]
+  const linkBilgi = odevDosyaLinkBilgisi(ilk)
+  const yaptiSayisi = items.filter((o) => o.durum === 'yapti').length
+  const yapmadiSayisi = items.filter((o) => o.durum === 'yapmadi').length
+  const bekliyorSayisi = items.length - yaptiSayisi - yapmadiSayisi
+
+  return (
+    <div className="border border-gray-100 rounded-xl overflow-hidden">
+      <button
+        type="button"
+        onClick={onToggle}
+        className="w-full flex items-center justify-between gap-3 px-4 py-3 bg-gray-50 hover:bg-gray-100 text-left transition-colors"
+      >
+        <div className="min-w-0">
+          <p className="font-medium text-gray-800 truncate">
+            {ilk.baslik}
+            {linkBilgi && <span className="text-blue text-xs font-normal"> ({linkBilgi.etiket})</span>}
+          </p>
+          <p className="text-xs text-gray-500 truncate">
+            {ilk.ders || '—'} · {items.length} öğrenci
+            {isYonetici && ilk.ogretmen_adi ? ` · ${ilk.ogretmen_adi}` : ''}
+            {ilk.son_tarih ? ` · Son tarih: ${new Date(ilk.son_tarih + 'T12:00:00').toLocaleDateString('tr-TR')}` : ''}
+          </p>
+        </div>
+        <div className="flex items-center gap-1.5 flex-shrink-0 flex-wrap justify-end">
+          <span className="text-xs font-semibold text-green-700 bg-green-100 px-2 py-1 rounded-lg">{yaptiSayisi} yaptı</span>
+          <span className="text-xs font-semibold text-red-700 bg-red-100 px-2 py-1 rounded-lg">{yapmadiSayisi} yapmadı</span>
+          {bekliyorSayisi > 0 && (
+            <span className="text-xs font-semibold text-gray-500 bg-gray-200 px-2 py-1 rounded-lg">{bekliyorSayisi} bekliyor</span>
+          )}
+          <span className="text-navy text-xs font-semibold whitespace-nowrap ml-1">
+            {acik ? 'Gizle' : 'Öğrencileri Gör'}
+          </span>
+        </div>
+      </button>
+      {acik && (
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm min-w-[480px]">
+            <thead>
+              <tr className="text-left text-gray-500">
+                <th className="px-4 py-2 font-medium">Öğrenci</th>
+                <th className="px-4 py-2 font-medium">Durum</th>
+                <th className="px-4 py-2 font-medium">İşlemler</th>
+              </tr>
+            </thead>
+            <tbody>
+              {items.map((o) => (
+                <tr key={o.id} className="border-t border-gray-50">
+                  <td className="px-4 py-2 font-medium text-gray-800">{o.ogrenci_adi || '—'}</td>
+                  <td className="px-4 py-2">
+                    <OdevDurumButonlari o={o} durumDegistir={durumDegistir} />
+                  </td>
+                  <td className="px-4 py-2">
+                    <button onClick={() => sil(o)} className="text-red-500 text-sm hover:underline">
+                      Sil
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  )
+}
+
+// Sınıfa/toplu verilen ödevler (atama_grubu_id dolu) ile tek tek verilen
+// ödevler (atama_grubu_id boş) artık ayrı ayrı gösteriliyor — SOLDA sınıf/toplu
+// ödevler (gruplanmış, tıklayınca açılan kartlar), SAĞDA bireysel ödevler
+// (eskisi gibi düz tablo). Amaç: bir hoca sınıfa ödev verdiğinde bunun ayrı ve
+// net göründüğünü, bireysel ödevlerle karışmadığını görebilsin (kullanıcı isteği).
 function VerilenOdevlerListesi({ odevler, isYonetici, onDegisti }) {
+  const [acikGruplar, setAcikGruplar] = useState({})
+
   async function sil(o) {
     if (!confirm(`"${o.baslik}" ödevini silmek istediğinize emin misiniz?`)) return
     if (o.dosya_yolu) {
@@ -586,94 +771,87 @@ function VerilenOdevlerListesi({ odevler, isYonetici, onDegisti }) {
     else onDegisti()
   }
 
+  function grupToggle(grubId) {
+    setAcikGruplar((s) => ({ ...s, [grubId]: !s[grubId] }))
+  }
+
+  const gruplar = useMemo(() => {
+    const harita = {}
+    odevler.forEach((o) => {
+      if (!o.atama_grubu_id) return
+      if (!harita[o.atama_grubu_id]) harita[o.atama_grubu_id] = []
+      harita[o.atama_grubu_id].push(o)
+    })
+    return Object.entries(harita).map(([grubId, items]) => ({ grubId, items }))
+  }, [odevler])
+
+  const bireysel = useMemo(() => odevler.filter((o) => !o.atama_grubu_id), [odevler])
+
   return (
-    <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-x-auto mb-6" style={{ touchAction: 'pan-x pan-y' }}>
-      <div className="px-4 py-3 border-b border-gray-100 bg-gray-50">
-        <h2 className="font-semibold text-gray-700">{isYonetici ? 'Verilen Tüm Ödevler' : 'Verdiğim Ödevler'}</h2>
-      </div>
-      <table className="w-full text-sm min-w-[640px]">
-        <thead>
-          <tr className="text-left text-gray-500">
-            <th className="px-4 py-2 font-medium">Öğrenci</th>
-            <th className="px-4 py-2 font-medium">Ders</th>
-            <th className="px-4 py-2 font-medium">Başlık</th>
-            {isYonetici && <th className="px-4 py-2 font-medium">Öğretmen</th>}
-            <th className="px-4 py-2 font-medium">Son Tarih</th>
-            <th className="px-4 py-2 font-medium">Durum</th>
-            <th className="px-4 py-2 font-medium">İşlemler</th>
-          </tr>
-        </thead>
-        <tbody>
-          {odevler.length === 0 && (
-            <tr>
-              <td colSpan={isYonetici ? 7 : 6} className="px-4 py-4 text-center text-gray-400">
-                Henüz ödev girilmedi.
-              </td>
-            </tr>
-          )}
-          {odevler.map((o) => {
-            const linkBilgi = odevDosyaLinkBilgisi(o)
-            return (
-              <tr key={o.id} className="border-t border-gray-50">
-                <td className="px-4 py-2 font-medium text-gray-800">{o.ogrenci_adi || '—'}</td>
-                <td className="px-4 py-2 text-gray-500">{o.ders || '—'}</td>
-                <td className="px-4 py-2">
-                  {o.baslik}
-                  {linkBilgi && (
-                    <>
-                      {' '}
-                      <a href={linkBilgi.url} target="_blank" rel="noreferrer" className="text-blue text-xs hover:underline">
-                        ({linkBilgi.etiket})
-                      </a>
-                    </>
-                  )}
-                </td>
-                {isYonetici && <td className="px-4 py-2 text-gray-500">{o.ogretmen_adi || '—'}</td>}
-                <td className="px-4 py-2 text-gray-500">
-                  {o.son_tarih ? new Date(o.son_tarih + 'T12:00:00').toLocaleDateString('tr-TR') : '—'}
-                </td>
-                <td className="px-4 py-2">
-                  <div className="flex items-center gap-1.5 flex-wrap">
-                    <button
-                      type="button"
-                      onClick={() => durumDegistir(o, 'yapti')}
-                      className={`px-2 py-1 rounded-lg text-xs font-semibold transition-colors ${
-                        o.durum === 'yapti' ? 'bg-green-600 text-white' : 'bg-green-100 text-green-700 hover:bg-green-200'
-                      }`}
-                    >
-                      Yaptı
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => durumDegistir(o, 'yapmadi')}
-                      className={`px-2 py-1 rounded-lg text-xs font-semibold transition-colors ${
-                        o.durum === 'yapmadi' ? 'bg-red-600 text-white' : 'bg-red-100 text-red-700 hover:bg-red-200'
-                      }`}
-                    >
-                      Yapmadı
-                    </button>
-                    {o.durum !== 'bekliyor' && (
-                      <button
-                        type="button"
-                        onClick={() => durumDegistir(o, 'bekliyor')}
-                        title="Bekliyor durumuna geri al"
-                        className="text-gray-400 text-xs hover:underline"
-                      >
-                        Sıfırla
-                      </button>
-                    )}
-                  </div>
-                </td>
-                <td className="px-4 py-2">
-                  <button onClick={() => sil(o)} className="text-red-500 text-sm hover:underline">
-                    Sil
-                  </button>
-                </td>
+    <div className="mb-6">
+      <h2 className="font-semibold text-gray-700 mb-3">{isYonetici ? 'Verilen Tüm Ödevler' : 'Verdiğim Ödevler'}</h2>
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-start">
+        <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+          <div className="px-4 py-3 border-b border-gray-100 bg-gray-50">
+            <h3 className="font-semibold text-gray-700">Sınıf / Toplu Ödevler</h3>
+            <p className="text-xs text-gray-400 mt-0.5">
+              Sınıfa göre toplu verilen ödevler — bir karta tıklayınca öğrenciler tek tek görünür.
+            </p>
+          </div>
+          <div className="p-3 space-y-2">
+            {gruplar.length === 0 && (
+              <p className="px-1 py-3 text-center text-sm text-gray-400">Henüz sınıfa/toplu ödev verilmedi.</p>
+            )}
+            {gruplar.map(({ grubId, items }) => (
+              <SinifOdevGrubu
+                key={grubId}
+                grubId={grubId}
+                items={items}
+                isYonetici={isYonetici}
+                durumDegistir={durumDegistir}
+                sil={sil}
+                acik={!!acikGruplar[grubId]}
+                onToggle={() => grupToggle(grubId)}
+              />
+            ))}
+          </div>
+        </div>
+
+        <div
+          className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-x-auto"
+          style={{ touchAction: 'pan-x pan-y' }}
+        >
+          <div className="px-4 py-3 border-b border-gray-100 bg-gray-50">
+            <h3 className="font-semibold text-gray-700">Bireysel Ödevler</h3>
+            <p className="text-xs text-gray-400 mt-0.5">Tek tek, öğrenci bazında verilen ödevler.</p>
+          </div>
+          <table className="w-full text-sm min-w-[560px]">
+            <thead>
+              <tr className="text-left text-gray-500">
+                <th className="px-4 py-2 font-medium">Öğrenci</th>
+                <th className="px-4 py-2 font-medium">Ders</th>
+                <th className="px-4 py-2 font-medium">Başlık</th>
+                {isYonetici && <th className="px-4 py-2 font-medium">Öğretmen</th>}
+                <th className="px-4 py-2 font-medium">Son Tarih</th>
+                <th className="px-4 py-2 font-medium">Durum</th>
+                <th className="px-4 py-2 font-medium">İşlemler</th>
               </tr>
-            )
-          })}
-        </tbody>
-      </table>
+            </thead>
+            <tbody>
+              {bireysel.length === 0 && (
+                <tr>
+                  <td colSpan={isYonetici ? 7 : 6} className="px-4 py-4 text-center text-gray-400">
+                    Henüz bireysel ödev girilmedi.
+                  </td>
+                </tr>
+              )}
+              {bireysel.map((o) => (
+                <OdevSatiri key={o.id} o={o} isYonetici={isYonetici} durumDegistir={durumDegistir} sil={sil} />
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
     </div>
   )
 }
