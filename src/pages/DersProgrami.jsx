@@ -2793,10 +2793,12 @@ export default function DersProgrami() {
                 ) : (
                 <div className="divide-y divide-gray-50">
                   {dersler.map((d) => {
-                    // Başlıkta önce ders adı, o da yoksa öğretmenin branşı gösterilir —
-                    // sınıf adı başlık olarak öne çıkmıyor, sadece başlıktan farklıysa
-                    // silik bir alt satırda gösteriliyor (bkz. Tablo görünümündeki
-                    // aynı desen).
+                    // Kullanıcı isteğiyle başlık sırası ROLE GÖRE değişiyor:
+                    // - Öğretmen kendi programına baktığında en üstte SINIF adı
+                    //   görünsün istiyor (hangi sınıfa girdiğini görmek asıl amaç).
+                    // - Veli/öğrenci kendi programına baktığında ise en üstte DERS
+                    //   adı, altında sınıf adı görünsün istiyor.
+                    // Bu yüzden aşağıda isVeliYaDaOgrenci'ye göre iki ayrı sıralama var.
                     const baslik = d.ders_adi || d.ogretmen_brans || d.sinif_adi
                     const sinifAdiGoster = d.sinif_adi && d.sinif_adi !== baslik
                     // Tablo görünümündeki AYNI renk teması (task: mobilde "bir açık bir
@@ -2815,11 +2817,24 @@ export default function DersProgrami() {
                       className={`px-4 py-3 flex flex-col sm:flex-row sm:items-center justify-between gap-2 ${satirRengi}`}
                     >
                       <div className="min-w-0">
-                        {d.sinif_adi && (
-                          <p className={`text-base font-bold ${baslikRengi} break-words`}>{d.sinif_adi}</p>
-                        )}
-                        {(d.ders_adi || d.ogretmen_brans) && (
-                          <p className={`text-sm font-medium ${baslikRengi} break-words`}>{d.ders_adi || d.ogretmen_brans}</p>
+                        {isVeliYaDaOgrenci ? (
+                          <>
+                            {(d.ders_adi || d.ogretmen_brans) && (
+                              <p className={`text-base font-bold ${baslikRengi} break-words`}>{d.ders_adi || d.ogretmen_brans}</p>
+                            )}
+                            {d.sinif_adi && (
+                              <p className={`text-sm font-medium ${baslikRengi} break-words`}>{d.sinif_adi}</p>
+                            )}
+                          </>
+                        ) : (
+                          <>
+                            {d.sinif_adi && (
+                              <p className={`text-base font-bold ${baslikRengi} break-words`}>{d.sinif_adi}</p>
+                            )}
+                            {(d.ders_adi || d.ogretmen_brans) && (
+                              <p className={`text-sm font-medium ${baslikRengi} break-words`}>{d.ders_adi || d.ogretmen_brans}</p>
+                            )}
+                          </>
                         )}
                         {d.ogretmen_adi && (
                           <p className="text-xs text-gray-400">{d.ogretmen_adi}</p>
