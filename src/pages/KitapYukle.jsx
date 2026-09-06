@@ -273,7 +273,7 @@ function KitapYukleFormu({ onYuklendi }) {
 // KİTAP DÜZENLE — bir kitabın sayfalarını gösterip soru kutularını
 // oluşturma/düzenleme/etiketleme ekranı.
 // ============================================================================
-function KitapDuzenle({ kitap, onGeriDon, onKitapGuncellendi }) {
+function KitapDuzenle({ kitap, onGeriDon, onKitapGuncellendi, onSeciliSorularlaTestOlustur }) {
   const [belge, setBelge] = useState(null)
   const [belgeYukleniyor, setBelgeYukleniyor] = useState(true)
   const [hata, setHata] = useState('')
@@ -288,6 +288,13 @@ function KitapDuzenle({ kitap, onGeriDon, onKitapGuncellendi }) {
   const [analizIlerleme, setAnalizIlerleme] = useState(0)
   const [kaydediliyor, setKaydediliyor] = useState(false)
   const [kaydedildiMesaji, setKaydedildiMesaji] = useState('')
+  // Ders/Konu/Soru No etiketlemesi TAMAMEN OPSİYONEL — hoca hiç etiketlemeden
+  // sadece kutucuklarla (checkbox) istediği kadar soruyu işaretleyip doğrudan
+  // Test Oluştur'a aktarabilsin diye eklendi (kullanıcı isteği: "her birinde
+  // konu seçmeyecek ... seçtiği 20 soru varsa bunu test olarak oluşturacak").
+  // Bu seçim SAYFALAR ARASI kalıcıdır (gecici_id bazlı bir Set) — hoca birkaç
+  // sayfa gezip her sayfadan birkaç soru işaretleyebilir.
+  const [secilenIdler, setSecilenIdler] = useState(() => new Set())
 
   const toplamSayfa = belge?.numPages || kitap.sayfa_sayisi || 1
 
@@ -367,6 +374,27 @@ function KitapDuzenle({ kitap, onGeriDon, onKitapGuncellendi }) {
   function soruSil(gecici_id) {
     setSorular((liste) => liste.filter((s) => s.gecici_id !== gecici_id))
     if (seciliGeciciId === gecici_id) setSeciliGeciciId(null)
+    setSecilenIdler((s) => {
+      if (!s.has(gecici_id)) return s
+      const yeni = new Set(s)
+      yeni.delete(gecici_id)
+      return yeni
+    })
+  }
+  function secimDegistir(gecici_id) {
+    setSecilenIdler((s) => {
+      const yeni = new Set(s)
+      if (yeni.has(gecici_id)) yeni.delete(gecici_id)
+      else yeni.add(gecici_id)
+      return yeni
+    })
+  }
+  function sayfadakileriHepsiniSec() {
+    setSecilenIdler((s) => {
+      const yeni = new Set(s)
+      sorularBuSayfada.forEach((q) => yeni.add(q.gecici_id))
+      return yeni
+    })
   }
   function cizimBitti(kutu) {
     const yeni = {
@@ -486,11 +514,27 @@ function KitapDuzenle({ kitap, onGeriDon, onKitapGuncellendi }) {
       }
       setKaydedildiMesaji(`Kaydedildi — toplam ${sorular.length} soru.`)
       onKitapGuncellendi?.()
+      return true
     } catch (e) {
       setHata('Kaydetme hatası: ' + e.message)
+      return false
     } finally {
       setKaydediliyor(false)
     }
+  }
+
+  // Seçilen (checkbox'lı) soruları, hiç Ders/Konu etiketlemeye ZORLAMADAN
+  // doğrudan Test Oluştur sekmesine aktarır. Önce mevcut tüm değişiklikleri
+  // (yeni tespit edilen/çizilen kutular, varsa yapılan etiketler) kaydediyoruz
+  // — aksi halde sekme değişince kaydedilmemiş işaretlemeler kaybolurdu.
+  async function secilenlerleTestOlustur() {
+    if (secilenIdler.size === 0 || !onSeciliSorularlaTestOlustur) return
+    const basarili = await kaydet()
+    if (!basarili) return // kaydet() hata mesajını zaten gösterdi, sekme değiştirmiyoruz
+    const secilenSorular = sorular
+      .filter((s) => secilenIdler.has(s.gecici_id))
+      .map((s) => ({ ...s, id: s.gecici_id, kitaplar: kitap }))
+    onSeciliSorularlaTestOlustur(secilenSorular)
   }
 
   const etiketliSayisi = sorular.filter((s) => s.ders_adi).length
@@ -501,10 +545,23 @@ function KitapDuzenle({ kitap, onGeriDon, onKitapGuncellendi }) {
         <button type="button" onClick={onGeriDon} className="text-sm text-gray-500 hover:text-gray-700 hover:underline">
           ← Kitaplarıma Dön
         </button>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap justify-end">
           <span className="text-xs text-gray-400">
             {sorular.length} soru işaretlendi ({etiketliSayisi} etiketli)
           </span>
+          {secilenIdler.size > 0 && (
+            <>
+              <span className="text-xs font-semibold text-orange">{secilenIdler.size} soru seçili</span>
+              <button
+                type="button"
+                onClick={secilenlerleTestOlustur}
+                disabled={kaydediliyor}
+                className="bg-orange text-white font-semibold px-3 py-2 rounded-lg text-xs hover:opacity-90 disabled:opacity-40"
+              >
+                {kaydediliyor ? 'Kaydediliyor...' : 'Seçilenlerle Test Oluştur →'}
+              </button>
+            </>
+          )}
           <button
             type="button"
             onClick={kaydet}
@@ -586,7 +643,18 @@ function KitapDuzenle({ kitap, onGeriDon, onKitapGuncellendi }) {
           </div>
 
           <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-4 h-fit">
-            <h3 className="font-semibold text-gray-700 mb-3">Bu Sayfadaki Sorular ({sorularBuSayfada.length})</h3>
+            <div className="flex items-center justify-between mb-1">
+              <h3 className="font-semibold text-gray-700">Bu Sayfadaki Sorular ({sorularBuSayfada.length})</h3>
+              {sorularBuSayfada.length > 0 && (
+                <button type="button" onClick={sayfadakileriHepsiniSec} className="text-[11px] font-semibold text-blue hover:underline shrink-0">
+                  Tümünü Seç
+                </button>
+              )}
+            </div>
+            <p className="text-[11px] text-gray-400 mb-3">
+              Ders/Konu etiketlemesi opsiyoneldir — kutucukla işaretleyip üstteki "Seçilenlerle Test Oluştur" ile hiç
+              etiketlemeden doğrudan test oluşturabilirsiniz.
+            </p>
             {sorularBuSayfada.length === 0 && (
               <p className="text-xs text-gray-400 mb-3">
                 Henüz kutu yok — üstteki "Otomatik Tespit Et" ya da "Elle Kutu Çiz" ile ekleyin.
@@ -594,18 +662,26 @@ function KitapDuzenle({ kitap, onGeriDon, onKitapGuncellendi }) {
             )}
             <div className="space-y-1 mb-4 max-h-40 overflow-y-auto">
               {sorularBuSayfada.map((s) => (
-                <button
-                  key={s.gecici_id}
-                  type="button"
-                  onClick={() => setSeciliGeciciId(s.gecici_id)}
-                  className={`w-full text-left px-2 py-1.5 rounded-lg text-xs ${
-                    s.gecici_id === seciliGeciciId ? 'bg-orange/10 text-orange font-semibold' : 'hover:bg-gray-50 text-gray-600'
-                  }`}
-                >
-                  {s.soru_no ? `${s.soru_no}. ` : '— '}
-                  {s.ders_adi || 'Etiketsiz'}
-                  {s.konu ? ` · ${s.konu}` : ''}
-                </button>
+                <div key={s.gecici_id} className="flex items-center gap-1.5">
+                  <input
+                    type="checkbox"
+                    checked={secilenIdler.has(s.gecici_id)}
+                    onChange={() => secimDegistir(s.gecici_id)}
+                    className="shrink-0 cursor-pointer"
+                    title="Test oluşturmak için seç"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setSeciliGeciciId(s.gecici_id)}
+                    className={`flex-1 min-w-0 text-left px-2 py-1.5 rounded-lg text-xs truncate ${
+                      s.gecici_id === seciliGeciciId ? 'bg-orange/10 text-orange font-semibold' : 'hover:bg-gray-50 text-gray-600'
+                    }`}
+                  >
+                    {s.soru_no ? `${s.soru_no}. ` : '— '}
+                    {s.ders_adi || 'Etiketsiz'}
+                    {s.konu ? ` · ${s.konu}` : ''}
+                  </button>
+                </div>
               ))}
             </div>
 
@@ -809,7 +885,7 @@ function OdevHedefSecici({ ogrenciler, siniflarListesi, sinifOgrenciMap, gonderi
 // ============================================================================
 // TEST OLUŞTUR SEKMESİ
 // ============================================================================
-function TestOlusturSekmesi() {
+function TestOlusturSekmesi({ initialSeciliSorular, onInitialSeciliSorularTuketildi }) {
   const { profile } = useAuth()
   const [tumSorular, setTumSorular] = useState([])
   const [yukleniyor, setYukleniyor] = useState(true)
@@ -818,6 +894,21 @@ function TestOlusturSekmesi() {
   const [arama, setArama] = useState('')
   const [seciliSorular, setSeciliSorular] = useState([])
   const [testBasligi, setTestBasligi] = useState('')
+  const [aktarilanMesaji, setAktarilanMesaji] = useState('')
+
+  // KitapDuzenle ekranından "Seçilenlerle Test Oluştur" ile gelen sorular —
+  // hoca hiç ders/konu etiketlemeden, sadece kutucukla işaretleyip buraya
+  // doğrudan aktarabiliyor (bkz. KitapYukle'deki kitapDenTesteAktar).
+  useEffect(() => {
+    if (initialSeciliSorular && initialSeciliSorular.length > 0) {
+      setSeciliSorular(initialSeciliSorular)
+      setAktarilanMesaji(
+        `Kitap düzenleme ekranından ${initialSeciliSorular.length} soru aktarıldı — dilerseniz aşağıdan ekleyip çıkarabilir, bir test başlığı girip oluşturabilirsiniz.`
+      )
+      onInitialSeciliSorularTuketildi?.()
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialSeciliSorular])
 
   const [uretimDurumu, setUretimDurumu] = useState('bos') // bos | uretiliyor | hazir | hata
   const [ilerleme, setIlerleme] = useState(0)
@@ -969,6 +1060,11 @@ function TestOlusturSekmesi() {
         </p>
       ) : (
         <>
+          {aktarilanMesaji && (
+            <p className="text-sm text-green-700 bg-green-50 border border-green-200 rounded-lg px-3 py-2 mb-4">
+              ✓ {aktarilanMesaji}
+            </p>
+          )}
           {/* Adım 1 ve 2: önce (istenirse) ders seçilir, sonra teste bir başlık
               verilir — soru seçimi bundan SONRA yapılır (kullanıcı isteğiyle
               sıralama netleştirildi: eskiden ders filtresi soru listesinin
@@ -1113,6 +1209,17 @@ export default function KitapYukle() {
   const [yukleniyor, setYukleniyor] = useState(true)
   const [seciliKitap, setSeciliKitap] = useState(null)
   const [hata, setHata] = useState('')
+  // KitapDuzenle'de "Seçilenlerle Test Oluştur" ile aktarılan sorular — Test
+  // Oluştur sekmesi açılınca bir kerelik ön-seçim olarak kullanılır, sonra
+  // sıfırlanır (bkz. TestOlusturSekmesi'ndeki initialSeciliSorular efekti).
+  const [testIcinOnSecili, setTestIcinOnSecili] = useState(null)
+
+  function kitapDenTesteAktar(sorularListesi) {
+    setTestIcinOnSecili(sorularListesi)
+    setSeciliKitap(null)
+    setSekme('test-olustur')
+    kitaplariYenile()
+  }
 
   function kitaplariYenile() {
     setYukleniyor(true)
@@ -1153,6 +1260,7 @@ export default function KitapYukle() {
           kitaplariYenile()
         }}
         onKitapGuncellendi={kitaplariYenile}
+        onSeciliSorularlaTestOlustur={kitapDenTesteAktar}
       />
     )
   }
@@ -1239,7 +1347,10 @@ export default function KitapYukle() {
           )}
         </>
       ) : (
-        <TestOlusturSekmesi />
+        <TestOlusturSekmesi
+          initialSeciliSorular={testIcinOnSecili}
+          onInitialSeciliSorularTuketildi={() => setTestIcinOnSecili(null)}
+        />
       )}
     </div>
   )
