@@ -62,10 +62,22 @@ export async function kitapMetinKatmanindanSoruNumaralariniTespitEt(belge, sayfa
   for (const item of textContent.items) {
     const metin = (item.str || '').trim()
     if (!/^\d{1,3}[.)]?$/.test(metin)) continue
-    // item.transform[4], [5]: PDF kullanıcı uzayında (taban çizgisi) konum —
-    // viewport.convertToViewportPoint bunu render edilen canvas'ın piksel
-    // uzayına (ölçek + döndürme + y ekseni çevirisi dahil) doğru şekilde çevirir.
-    const [x, y] = viewport.convertToViewportPoint(item.transform[4], item.transform[5])
+    // item.transform[4], [5]: PDF kullanıcı uzayında TABAN ÇİZGİSİ (baseline)
+    // konumu — viewport.convertToViewportPoint bunu render edilen canvas'ın
+    // piksel uzayına (ölçek + döndürme + y ekseni çevirisi dahil) doğru
+    // şekilde çevirir. AMA bu, rakamın ALT kenarına yakın bir nokta —
+    // baslangicKutulariUret (kitapcikOcr.js) "y"nin OCR'daki gibi rakamın
+    // ÜST kenarı (w.bbox.y0) olmasını bekliyor ve kutunun üstünü
+    // "simdi.y - 6" ile belirliyor. Taban çizgisini olduğu gibi versek kutu
+    // sorunun birkaç punto AŞAĞISINDAN başlıyor — yani sorunun (ve varsa
+    // numarasının) üst kısmı kutunun DIŞINDA kalıyordu (kullanıcının
+    // bildirdiği "bir tık sorunun üstünü almıyor" hatası). Bunu düzeltmek
+    // için taban çizgisinden, karakterin (yaklaşık) yüksekliği kadar YUKARI
+    // çıkıp asıl üst kenarı buluyoruz — rakamlarda çıkıntı/kuyruk (descender)
+    // olmadığı için bu yaklaşım pratikte çok isabetli.
+    const [x, yTaban] = viewport.convertToViewportPoint(item.transform[4], item.transform[5])
+    const glifYuksekligiPdfBirimi = item.height || Math.abs(item.transform[3]) || 0
+    const y = yTaban - glifYuksekligiPdfBirimi * olcek
     if (y < ustSinir || y > altSinir) continue
     const bantIcinde = bantlar.some((b) => x >= b.x0 - 4 && x <= b.x1)
     if (!bantIcinde) continue
