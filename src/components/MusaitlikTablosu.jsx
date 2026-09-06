@@ -829,8 +829,17 @@ export default function MusaitlikTablosu({
       // gösteriyor, isim düz yazılıyor (canlı hücrelerle aynı biçimde).
       let etiket
       if (t.tur === 'sinif') {
+        // ÖNEMLİ DÜZELTME: öncelik ters yazılmıştı — canlı ders hücrelerinde
+        // (yukarıdaki dersProgrami döngüsündeki aynı isimli "etiket" — bkz. o
+        // satırdaki yorum) HANGİ SINIFA girildiği önce gösteriliyor, ders adı
+        // sadece sınıf adı yoksa yedek oluyor. Burada bunun TERSİ yazılmıştı:
+        // ders adı boşken (varsayılan) sınıf adı görünüyordu, ama kullanıcı
+        // ders adını (ör. "TYT-Matematik"i "AYT-Matematik" yapmak için)
+        // değiştirir değiştirmez sınıf adı hücreden tamamen kayboluyordu —
+        // "hangi sınıfa eklediğimi göremiyorum" şikayetinin kaynağı buydu.
+        // Artık canlı hücrelerle BİREBİR aynı öncelik kullanılıyor.
         const sinifAdi = (siniflar || []).find((s) => s.id === v.sinif_id)?.ad
-        etiket = v.ders_adi || sinifAdi || 'Sınıf'
+        etiket = sinifAdi || v.ders_adi || 'Sınıf'
       } else if (t.tur === 'soru_cozumu') {
         etiket = 'Soru Çözümü'
       } else {
