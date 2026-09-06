@@ -24,6 +24,33 @@ function canvasKirp(canvas, x, y, genislik, yukseklik) {
   return yeni
 }
 
+// Bir canvas'ı, PDF'e gömülmeden ÖNCE hedef piksel boyutuna küçültür.
+// ÖNEMLİ (kullanıcının bildirdiği "2 sayfalık PDF 145 MB" hatasının kök
+// nedeni): kitap sayfaları admin ekranında YÜKSEK bir ölçekte (kitap.olcek,
+// genelde 3 — bazı kitaplarda sayfa boyutu da olağandışı büyük olduğundan
+// bu, binlerce piksel eninde/boyunda devasa bir canvas anlamına gelebiliyor)
+// render ediliyor; bu YÜKSEK çözünürlük otomatik tespit/OCR doğruluğu için
+// gerekli. AMA test PDF'inde bu kırpılmış görüntü, PDF içinde sadece küçük
+// bir sütun genişliğinde (birkaç cm) GÖSTERİLİYOR — doc.addImage'a verilen
+// w/h sadece GÖRÜNTÜLEME boyutunu belirliyor, PNG'nin kendi piksel verisini
+// KüÇÜLTMÜYOR; yani ekranda küçük görünse bile PDF'e binlerce piksellik HAM
+// veri gömülüyordu (birkaç soru bile onlarca/yüzlerce MB tutabiliyordu).
+// Burada, gömülecek görüntüyü PDF'teki GERÇEK gösterim boyutunun (punto)
+// makul bir baskı çözünürlüğüne (punto başına ~3 piksel ≈ 216 DPI — hem
+// ekranda hem yazıcıda net) karşılık gelen piksel boyutuna küçültüyoruz.
+function baskiIcinKucult(canvas, hedefGenislikPuan, hedefYukseklikPuan, punoBasinaPiksel = 3) {
+  const hedefG = Math.max(1, Math.round(hedefGenislikPuan * punoBasinaPiksel))
+  const hedefY = Math.max(1, Math.round(hedefYukseklikPuan * punoBasinaPiksel))
+  // Zaten hedeften küçük/yakınsa (ör. kaynak kitap düşük çözünürlükte
+  // yüklenmişse) büyütmeye gerek yok, olduğu gibi kullan.
+  if (canvas.width <= hedefG * 1.05 && canvas.height <= hedefY * 1.05) return canvas
+  const kucuk = document.createElement('canvas')
+  kucuk.width = hedefG
+  kucuk.height = hedefY
+  kucuk.getContext('2d').drawImage(canvas, 0, 0, hedefG, hedefY)
+  return kucuk
+}
+
 // sorular: [{ kitap: {id, pdf_yolu, olcek}, sayfa_no, x, y, genislik, yukseklik, ders_adi, konu, soru_no }]
 // ilerlemeCallback(oran) — 0..1 arası, admin'e "X/Y soru işlendi" göstermek için.
 //
@@ -90,6 +117,19 @@ export async function testPdfOlustur(sorular, ilerlemeCallback) {
     const s = sorular[i]
     if (ilerlemeCallback) ilerlemeCallback((i + 1) / sorular.length)
 
+    // Etiket SADECE gerçekten anlamlı bir şey varsa (soru no / ders / konu)
+    // yazılır — kullanıcı isteğiyle kaldırılan otomatik "1.2.3..." numaralama
+    // ve etiketsiz sorularda kitap adının tek başına tekrar tekrar yazılması
+    // hem gereksiz yer kaplıyor hem de bazı durumlarda kırpılan görüntünün
+    // (kutu tam hizalanmadığında) hemen üstüne binip soruyu "kapatıyormuş"
+    // gibi görünüyordu. Etiketlenmemiş bir soru için bu satır TAMAMEN
+    // atlanır — o soru sadece kırpılmış görüntüsüyle sayfaya konur, ekstra
+    // dikey boşluk da harcanmaz (bu da sayfa başına daha çok soru sığmasına
+    // yardımcı olur).
+    const etiketParcalari = [s.soru_no ? `${s.soru_no}.` : null, s.ders_adi, s.konu].filter(Boolean)
+    const etiketVar = etiketParcalari.length > 0
+    const etiketAlaniYuksekligi = etiketVar ? etiketYuksekligi + etiketBosluk : 0
+
     const sayfaCanvas = await sayfaCanvasGetir(s.kitap, s.sayfa_no)
     let kirpilan = canvasKirp(sayfaCanvas, s.x, s.y, s.genislik, s.yukseklik)
     // Kutu genelde bir sonraki sorunun başladığı yere kadar (fazla boşluklu)
@@ -100,14 +140,14 @@ export async function testPdfOlustur(sorular, ilerlemeCallback) {
     if (olcek > enFazlaBuyutmeOrani) olcek = enFazlaBuyutmeOrani
     let gosterilenGenislik = kirpilan.width * olcek
     let gosterilenYukseklik = kirpilan.height * olcek
-    let gerekliYukseklik = etiketYuksekligi + etiketBosluk + gosterilenYukseklik + altBosluk
+    let gerekliYukseklik = etiketAlaniYuksekligi + gosterilenYukseklik + altBosluk
 
     // Tek bir soru, TAM boş bir sütunun tamamına bile sığmayacak kadar
     // uzunsa (çok nadir — ör. yanlışlıkla çok büyük bir alan kesilmişse),
     // sayfanın tam boyuna sığacak şekilde orantılı olarak küçültüyoruz —
     // yoksa sonsuz döngüde hep "sığmıyor, yeni sayfa" derdik.
     if (gerekliYukseklik > enKucukAlanKazanci) {
-      const kucultmeOrani = (enKucukAlanKazanci - etiketYuksekligi - etiketBosluk - altBosluk) / gosterilenYukseklik
+      const kucultmeOrani = (enKucukAlanKazanci - etiketAlaniYuksekligi - altBosluk) / gosterilenYukseklik
       gosterilenGenislik *= kucultmeOrani
       gosterilenYukseklik *= kucultmeOrani
       gerekliYukseklik = enKucukAlanKazanci
@@ -129,20 +169,18 @@ export async function testPdfOlustur(sorular, ilerlemeCallback) {
     const x = kenar + sutunIndex * (sutunGenisligi + sutunAraligi)
     let y = sutunYler[sutunIndex]
 
-    doc.setFontSize(9)
-    doc.setTextColor(107, 114, 128)
-    const etiket = [
-      s.soru_no ? `${s.soru_no}.` : `${i + 1}.`,
-      s.ders_adi,
-      s.konu,
-      s.kitap?.ad,
-    ]
-      .filter(Boolean)
-      .join('  ·  ')
-    doc.text(etiket, x, y + 9, { maxWidth: sutunGenisligi })
-    y += etiketYuksekligi + etiketBosluk
+    if (etiketVar) {
+      const etiket = [...etiketParcalari, s.kitap?.ad].filter(Boolean).join('  ·  ')
+      doc.setFontSize(9)
+      doc.setTextColor(107, 114, 128)
+      doc.text(etiket, x, y + 9, { maxWidth: sutunGenisligi })
+      y += etiketAlaniYuksekligi
+    }
 
-    const resim = kirpilan.toDataURL('image/png')
+    // Gömülecek görüntüyü PDF'teki gerçek gösterim boyutuna göre küçült —
+    // bkz. baskiIcinKucult açıklaması (dosya boyutu patlamasının kök nedeni).
+    const gomulecekCanvas = baskiIcinKucult(kirpilan, gosterilenGenislik, gosterilenYukseklik)
+    const resim = gomulecekCanvas.toDataURL('image/png')
     // Görüntü sütun genişliğinden darsa (küçültme sınırına takılıp tam
     // dolduramadıysa) sütun içinde ortalanır.
     const resimX = x + Math.max(0, (sutunGenisligi - gosterilenGenislik) / 2)
