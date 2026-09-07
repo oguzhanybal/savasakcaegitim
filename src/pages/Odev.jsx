@@ -682,14 +682,24 @@ function SinifOdevGrubu({ grubId, items, isYonetici, durumDegistir, sil, acik, o
       <button
         type="button"
         onClick={onToggle}
-        className="w-full flex items-center justify-between gap-3 px-4 py-3 bg-gray-50 hover:bg-gray-100 text-left transition-colors"
+        className="w-full flex items-center flex-wrap justify-between gap-x-3 gap-y-2 px-4 py-3 bg-gray-50 hover:bg-gray-100 text-left transition-colors"
       >
-        <div className="min-w-0">
-          <p className="font-medium text-gray-800 truncate">
+        {/* ÖNEMLİ (kullanıcı isteği — mobilde bildirildi): burada eskiden
+            "truncate" (tek satır + "...") kullanılıyordu ve dar telefon
+            ekranlarında hem ödev başlığı hem de ders/konu bilgisi kesilip
+            görünmez oluyordu — ve bu kutunun kendisi kaydırılamadığı için
+            (üstteki header'ın kendisi bir yatay scroll alanı DEĞİL) kesilen
+            kısmı görmenin hiçbir yolu yoktu. Artık metin TEK SATIRA
+            SIKIŞTIRILMIYOR — gerekirse alt satıra sarıyor, böylece hoca hangi
+            ders/konuda ödev verdiğini kaydırmaya gerek kalmadan HER ZAMAN
+            tam olarak görebiliyor. min-w-0 hâlâ gerekli — yoksa flex öğesi
+            kardeşini (sağdaki rozetler) sayfa dışına iter. */}
+        <div className="min-w-0 flex-1 basis-40">
+          <p className="font-medium text-gray-800 break-words">
             {ilk.baslik}
             {linkBilgi && <span className="text-blue text-xs font-normal"> ({linkBilgi.etiket})</span>}
           </p>
-          <p className="text-xs text-gray-500 truncate">
+          <p className="text-xs text-gray-500 break-words">
             {ilk.ders || '—'} · {items.length} öğrenci
             {isYonetici && ilk.ogretmen_adi ? ` · ${ilk.ogretmen_adi}` : ''}
             {ilk.son_tarih ? ` · Son tarih: ${new Date(ilk.son_tarih + 'T12:00:00').toLocaleDateString('tr-TR')}` : ''}
@@ -707,7 +717,12 @@ function SinifOdevGrubu({ grubId, items, isYonetici, durumDegistir, sil, acik, o
         </div>
       </button>
       {acik && (
-        <div className="overflow-x-auto">
+        // touchAction: 'pan-x pan-y' — bu dosyadaki "Bireysel Ödevler" tablosunda
+        // (aşağıda) AYNI mobil kaydırma sorunu için zaten kullanılan, kanıtlanmış
+        // düzeltme: sadece "overflow-x-auto" CSS'i telefonlarda dokunmatik yatay
+        // kaydırmayı garanti etmiyor, bu satır olmadan tablo sağa kayınca
+        // "Yaptı/Yapmadı/Sil" sütunu ekranın dışında kesilip kalıyordu.
+        <div className="overflow-x-auto" style={{ touchAction: 'pan-x pan-y' }}>
           <table className="w-full text-sm min-w-[480px]">
             <thead>
               <tr className="text-left text-gray-500">
