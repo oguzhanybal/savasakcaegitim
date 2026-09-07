@@ -63,17 +63,24 @@ function enYakinGunTarihi(gun) {
   return `${hedef.getFullYear()}-${String(hedef.getMonth() + 1).padStart(2, '0')}-${String(hedef.getDate()).padStart(2, '0')}`
 }
 
-// enYakinGunTarihi'nin TERSİ — GERİYE değil İLERİYE bakar: bu haftanın günü
-// bugünse bugün, geçtiyse GELECEK haftanın aynı günü (bugün dahil, en fazla 6
-// gün sonraki). "Alındı" rozetinin hangi TARİHE ait olduğunu belirlemek için
-// kullanılıyor — öğretmen "Pazartesi" bölümüne baktığında, o hafta içindeki
-// GEÇMİŞ bir Pazartesi'yi değil, önündeki/gelecek Pazartesi'yi kastediyor.
-function sonrakiGunTarihi(gun) {
-  const n = new Date()
-  const bugunGunNo = ((n.getDay() + 6) % 7) + 1
-  let fark = gun - bugunGunNo
-  if (fark < 0) fark += 7
-  const hedef = new Date(n.getFullYear(), n.getMonth(), n.getDate() + fark)
+// "Alındı" rozetinin hangi TARİHE ait olduğunu belirlemek için kullanılıyor.
+// ÖNCEDEN burada "sonrakiGunTarihi" vardı — SADECE ileriye bakan (bugünse
+// bugün, geçtiyse HER ZAMAN gelecek haftanın aynı günü) bir hesaptı. Bu,
+// haftanın İÇİNDE ama bugünden ÖNCE kalmış bir günün (ör. bugün Salıysa, bu
+// haftanın Pazartesi'si) yoklaması alınmış olsa bile rozetin hiç
+// görünmemesine yol açıyordu — çünkü kontrol edilen tarih bu haftanın değil,
+// GELECEK haftanın Pazartesi'siydi (kullanıcının bildirdiği hata: "bugün salı,
+// programda pazartesiye bakıyorsa ve yoklama alınmışsa yine alındı görünsün").
+// Artık HER ZAMAN BU HAFTANIN (Pazartesi'sinden başlayan) kendi tarihini
+// döndürüyoruz — geçmiş ya da gelecek fark etmez, o hafta içindeki GERÇEK
+// takvim tarihi. Aşağıdaki yoklama sorgusu da zaten bu haftanın Pazartesi'sinden
+// itibaren çekiliyor (bkz. veriyiYenile içindeki "pazartesi" parametresi), o
+// yüzden bu değişiklik farklı bir haftanın yoklamasının yanlışlıkla
+// karışmasına yol açmaz — sadece AYNI haftanın doğru gününü hedefler.
+function buHaftaGunTarihi(gun) {
+  const { pazartesi } = haftaninPazartesiVePazari()
+  const [yil, ay, gunSayi] = pazartesi.split('-').map(Number)
+  const hedef = new Date(yil, ay - 1, gunSayi + (gun - 1))
   return `${hedef.getFullYear()}-${String(hedef.getMonth() + 1).padStart(2, '0')}-${String(hedef.getDate()).padStart(2, '0')}`
 }
 
@@ -1644,17 +1651,17 @@ export default function DersProgrami() {
   // olduğunu tutar — "Yoklama / Konu İşle" butonunun yanında "Alındı" rozeti
   // göstermek için kullanılıyor. "ders_programi" haftalık tekrar eden bir
   // şablon olduğu için (belirli bir tarihe değil güne bağlı), aşağıdaki
-  // "Pazartesi" gibi bölümler HER ZAMAN "gelecek/önümüzdeki Pazartesi"yi
-  // temsil ediyor (bkz. sonrakiGunTarihi). ÖNEMLİ HATA DÜZELTMESİ: bu Set
-  // ÖNCEDEN sadece "ders_programi_id" ile anahtarlanıyordu — sorgu penceresi
-  // (bu haftanın Pazartesi'sinden, en az bugünden +6 gün sonrasına kadar)
-  // AYNI haftalık slotun HEM bu haftaki (zaten geçmiş, yoklaması alınmış)
-  // HEM gelecek haftaki (henüz gelmemiş) örneğini kapsayabildiği için, id
-  // tek başına ikisini ayırt edemiyordu — geçmiş Pazartesi'nin yoklaması
-  // alınınca, henüz gelmemiş GELECEK Pazartesi de yanlışlıkla "Alındı"
-  // görünüyordu (kullanıcının fark ettiği hata). Artık "id|tarih" anahtarıyla
-  // tutuluyor, rozet kontrolü de o dersin GERÇEKTEN temsil ettiği tarihe
-  // (sonrakiGunTarihi) göre yapılıyor.
+  // "Pazartesi" gibi bölümler HER ZAMAN "bu haftanın Pazartesi'si"ni temsil
+  // ediyor (bkz. buHaftaGunTarihi) — bugünden önce olsa da olmasa da. ÖNEMLİ
+  // HATA DÜZELTMESİ: bu Set ÖNCEDEN sadece "ders_programi_id" ile
+  // anahtarlanıyordu — sorgu penceresi (bu haftanın Pazartesi'sinden, en az
+  // bugünden +6 gün sonrasına kadar) AYNI haftalık slotun HEM bu haftaki
+  // (zaten geçmiş, yoklaması alınmış) HEM gelecek haftaki (henüz gelmemiş)
+  // örneğini kapsayabildiği için, id tek başına ikisini ayırt edemiyordu —
+  // geçmiş Pazartesi'nin yoklaması alınınca, henüz gelmemiş GELECEK
+  // Pazartesi de yanlışlıkla "Alındı" görünüyordu. Artık "id|tarih"
+  // anahtarıyla tutuluyor, rozet kontrolü de o dersin GERÇEKTEN temsil
+  // ettiği (bu haftanın) tarihine (buHaftaGunTarihi) göre yapılıyor.
   const [buHaftaYoklamaAlinanlar, setBuHaftaYoklamaAlinanlar] = useState(new Set())
   // Öğretmen kendi ders programındaki bir derse tıklayınca (Tablo/Liste
   // görünümünde "Yoklama / Konu" butonu) burada o dersin ders_programi
@@ -2700,7 +2707,7 @@ export default function DersProgrami() {
                               </p>
                               {isOgretmen && d.sinif_id && (
                                 <div className="mt-1 flex items-center gap-1">
-                                  {buHaftaYoklamaAlinanlar.has(`${d.id}|${sonrakiGunTarihi(d.gun)}`) && (
+                                  {buHaftaYoklamaAlinanlar.has(`${d.id}|${buHaftaGunTarihi(d.gun)}`) && (
                                     <span className="text-[9px] font-semibold bg-green-100 text-green-700 px-1.5 py-0.5 rounded-full shrink-0">
                                       Alındı
                                     </span>
@@ -2864,7 +2871,7 @@ export default function DersProgrami() {
                       )}
                       {isOgretmen && d.sinif_id && (
                         <div className="flex items-center gap-2 flex-wrap shrink-0">
-                          {buHaftaYoklamaAlinanlar.has(`${d.id}|${sonrakiGunTarihi(d.gun)}`) && (
+                          {buHaftaYoklamaAlinanlar.has(`${d.id}|${buHaftaGunTarihi(d.gun)}`) && (
                             <span className="text-xs font-semibold bg-green-100 text-green-700 px-2 py-1 rounded-full">
                               Alındı
                             </span>
@@ -2932,6 +2939,15 @@ export default function DersProgrami() {
           gun={yoklamaModalDers.gun}
           profile={profile}
           onClose={() => setYoklamaModalDers(null)}
+          // KULLANICI İSTEĞİ (regresyon düzeltmesi): bu callback önceden hiç
+          // bağlanmamıştı — YoklamaKonuModal yoklamayı kaydedince
+          // onKaydedildi'yi çağırıyordu ama burada boş kalıyordu, bu yüzden
+          // "Alındı" rozeti sayfa yenilenmeden (yeniden veriyiYenile()
+          // çalışmadan) hiç görünmüyordu. Artık modal kaydedince o dersi
+          // ANINDA buHaftaYoklamaAlinanlar Set'ine ekliyoruz.
+          onKaydedildi={(dersProgramiId, tarih) =>
+            setBuHaftaYoklamaAlinanlar((s) => new Set(s).add(`${dersProgramiId}|${tarih}`))
+          }
         />
       )}
     </div>
