@@ -51,8 +51,11 @@ function baskiIcinKucult(canvas, hedefGenislikPuan, hedefYukseklikPuan, punoBasi
   return kucuk
 }
 
-// sorular: [{ kitap: {id, pdf_yolu, olcek}, sayfa_no, x, y, genislik, yukseklik, ders_adi, konu, soru_no }]
+// sorular: [{ kitap: {id, pdf_yolu, olcek}, sayfa_no, x, y, genislik, yukseklik, ders_adi, konu, soru_no, cevap }]
 // ilerlemeCallback(oran) — 0..1 arası, admin'e "X/Y soru işlendi" göstermek için.
+// testBasligi (opsiyonel): kullanıcı isteğiyle eklendi ("test başlığı seçince
+// de pdfte görünsün") — girilmişse SADECE ilk sayfanın en üstüne, ortalanmış
+// ve kalın olarak yazılır (bir "testmaker" uygulamasındaki gibi).
 //
 // SAYFA DÜZENİ (kullanıcı isteğiyle değişti): ÖNCEDEN her soru görüntüsü
 // SAYFA GENİŞLİĞİNİN TAMAMINA gerilip tek bir sütun halinde alt alta
@@ -65,7 +68,7 @@ function baskiIcinKucult(canvas, hedefGenislikPuan, hedefYukseklikPuan, punoBasi
 // sütun genişliğine sığacak şekilde (gerekirse hafifçe büyütülüp/küçültülüp)
 // yerleştirilir, o an en az dolu olan sütuna eklenir — böylece sayfa başına
 // çok daha fazla soru sığar ve yazıcıdan çıkarıldığında kâğıt israfı olmaz.
-export async function testPdfOlustur(sorular, ilerlemeCallback) {
+export async function testPdfOlustur(sorular, ilerlemeCallback, testBasligi) {
   const jsPDF = await jspdfYukle()
   const doc = new jsPDF({ unit: 'pt', format: 'a4' })
   const sayfaGenisligi = doc.internal.pageSize.getWidth()
@@ -108,27 +111,40 @@ export async function testPdfOlustur(sorular, ilerlemeCallback) {
   // Her sütunun o anki doluluk (y) konumu — yeni sayfaya geçildiğinde sıfırlanır.
   let sutunYler = new Array(sutunSayisi).fill(kenar)
 
+  // Test başlığı SADECE ilk sayfanın üstüne yazılır (sonraki sayfalarda
+  // tekrarlanmaz) — üstteki alan bu kadar sütunların başlangıç y'sinden düşülür.
+  const baslikAlaniYuksekligi = 34
+  if (testBasligi && testBasligi.trim()) {
+    doc.setFontSize(15)
+    doc.setFont(undefined, 'bold')
+    doc.setTextColor(15, 23, 42)
+    doc.text(testBasligi.trim(), sayfaGenisligi / 2, kenar + 12, { align: 'center' })
+    doc.setFont(undefined, 'normal')
+    doc.setTextColor(0, 0, 0)
+    sutunYler = new Array(sutunSayisi).fill(kenar + baslikAlaniYuksekligi)
+  }
+
   function yeniSayfaBaslat() {
     doc.addPage()
-    sutunYler = new Array(sutunSayisi).fill(kenar)
+    sutunYler = new Array(sutunSayisi).fill(kenar) // başlık sadece ilk sayfada tekrarlanmaz
   }
 
   for (let i = 0; i < sorular.length; i++) {
     const s = sorular[i]
     if (ilerlemeCallback) ilerlemeCallback((i + 1) / sorular.length)
 
-    // Etiket SADECE gerçekten anlamlı bir şey varsa (soru no / ders / konu)
-    // yazılır — kullanıcı isteğiyle kaldırılan otomatik "1.2.3..." numaralama
-    // ve etiketsiz sorularda kitap adının tek başına tekrar tekrar yazılması
-    // hem gereksiz yer kaplıyor hem de bazı durumlarda kırpılan görüntünün
-    // (kutu tam hizalanmadığında) hemen üstüne binip soruyu "kapatıyormuş"
-    // gibi görünüyordu. Etiketlenmemiş bir soru için bu satır TAMAMEN
-    // atlanır — o soru sadece kırpılmış görüntüsüyle sayfaya konur, ekstra
-    // dikey boşluk da harcanmaz (bu da sayfa başına daha çok soru sığmasına
-    // yardımcı olur).
-    const etiketParcalari = [s.soru_no ? `${s.soru_no}.` : null, s.ders_adi, s.konu].filter(Boolean)
-    const etiketVar = etiketParcalari.length > 0
-    const etiketAlaniYuksekligi = etiketVar ? etiketYuksekligi + etiketBosluk : 0
+    // Kullanıcı isteğiyle (2. istek turu) otomatik sıra numarası GERİ
+    // GETİRİLDİ — "pdfte soru seçti ya otomatik yazsın birinci soru ikinci
+    // soru üçüncü soru diye". ÖNCEKİ turda bu tamamen kaldırılmıştı çünkü o
+    // zamanki kutu-hizalama hatası yüzünden etiket sorunun üzerine BİNİYORDU.
+    // Artık her soru için (etiketli olsun olmasın) ayrı bir dikey alan
+    // (etiketAlaniYuksekligi) HER ZAMAN ayrılıyor, bu yüzden üzerine binme
+    // riski yok. Sıra numarası: admin elle bir "Soru No" girmişse ONU,
+    // girmemişse bu test PDF'indeki YERLEŞİM SIRASINI (i+1) kullanır.
+    const siraNo = s.soru_no || i + 1
+    const etiketParcalari = [`${siraNo}.`, s.ders_adi, s.konu].filter(Boolean)
+    const etiketVar = true
+    const etiketAlaniYuksekligi = etiketYuksekligi + etiketBosluk
 
     const sayfaCanvas = await sayfaCanvasGetir(s.kitap, s.sayfa_no)
     let kirpilan = canvasKirp(sayfaCanvas, s.x, s.y, s.genislik, s.yukseklik)
@@ -187,6 +203,50 @@ export async function testPdfOlustur(sorular, ilerlemeCallback) {
     doc.addImage(resim, 'PNG', resimX, y, gosterilenGenislik, gosterilenYukseklik)
 
     sutunYler[sutunIndex] = y + gosterilenYukseklik + altBosluk
+  }
+
+  // ============================================================================
+  // CEVAP ANAHTARI — kullanıcı isteğiyle eklendi: her sorunun doğru cevabı
+  // (A/B/C/D/E) sorunun ÜZERİNDE/YANINDA DEĞİL, testin EN SONUNA, tek bir
+  // "Cevap Anahtarı" sayfasında, yukarıdaki İLE AYNI sıra numaralarıyla
+  // (siraNo) eşleşecek şekilde listelenir. Hiçbir soruya cevap girilmemişse
+  // (öğretmen bu alanı hiç kullanmadıysa) bu sayfa HİÇ eklenmez — eski
+  // testler ve cevap girmeyen kullanıcılar için çıktı değişmez.
+  // ============================================================================
+  const cevapliVarMi = sorular.some((s) => s.cevap)
+  if (cevapliVarMi) {
+    doc.addPage()
+    const cSutunSayisi = 5
+    const cSutunGenisligi = (sayfaGenisligi - kenar * 2) / cSutunSayisi
+    const cSatirYuksekligi = 24
+    let cY = kenar
+    let cSutun = 0
+
+    doc.setFontSize(16)
+    doc.setFont(undefined, 'bold')
+    doc.setTextColor(15, 23, 42)
+    doc.text('CEVAP ANAHTARI', sayfaGenisligi / 2, cY + 14, { align: 'center' })
+    doc.setFont(undefined, 'normal')
+    doc.setTextColor(30, 41, 59)
+    cY += 40
+
+    doc.setFontSize(11)
+    for (let i = 0; i < sorular.length; i++) {
+      const s = sorular[i]
+      if (cSutun === 0 && cY > sayfaYuksekligi - kenar - cSatirYuksekligi) {
+        doc.addPage()
+        cY = kenar
+      }
+      const siraNo = s.soru_no || i + 1
+      const cevap = (s.cevap || '-').toString().toUpperCase()
+      const x = kenar + cSutun * cSutunGenisligi
+      doc.text(`${siraNo}. ${cevap}`, x, cY + 14)
+      cSutun++
+      if (cSutun >= cSutunSayisi) {
+        cSutun = 0
+        cY += cSatirYuksekligi
+      }
+    }
   }
 
   return doc.output('blob')
