@@ -730,8 +730,9 @@ function KitapDuzenle({ kitap, onGeriDon, onKitapGuncellendi, onSeciliSorularlaT
               )}
             </div>
             <p className="text-[11px] text-gray-400 mb-3">
-              Ders/Konu etiketlemesi opsiyoneldir — kutucukla işaretleyip üstteki "Seçilenlerle Test Oluştur" ile hiç
-              etiketlemeden doğrudan test oluşturabilirsiniz.
+              Ders/Konu/Soru No hiçbiri ZORUNLU DEĞİL — bu ekranda sadece istediğiniz soruları kutucukla işaretleyip
+              (isterseniz her birine "Doğru Cevap" da girip) üstteki "Seçilenlerle Test Oluştur" ile devam edin;
+              testin adını ve dersini TEK SEFERDE bir sonraki ekranda gireceksiniz.
             </p>
             {sorularBuSayfada.length === 0 && (
               <p className="text-xs text-gray-400 mb-3">
@@ -766,7 +767,7 @@ function KitapDuzenle({ kitap, onGeriDon, onKitapGuncellendi, onSeciliSorularlaT
             {seciliSoru ? (
               <div className="border-t border-gray-100 pt-3 space-y-2">
                 <div>
-                  <label className="block text-xs font-medium text-gray-500 mb-1">Ders</label>
+                  <label className="block text-xs font-medium text-gray-500 mb-1">Ders (opsiyonel)</label>
                   <input
                     list="kitap-ders-listesi"
                     value={seciliSoru.ders_adi || ''}
