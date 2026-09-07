@@ -368,7 +368,21 @@ function OdevVerForm({ ogrenciler, siniflarListesi, sinifOgrenciMap, ogretmenPro
     <form onSubmit={gonder} className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5 mb-6">
       <p className="font-semibold text-gray-700 mb-3">Ödev Ver</p>
 
+      {/* Kullanıcı isteğiyle: sıra ve isimlendirme değişti — SOLDA artık
+          sınıfa/topluca ödev verme (daha sık kullanılan akış), SAĞDA tek
+          öğrenci. Eski "Birden Fazla Öğrenci (Toplu)" etiketi de daha net
+          olsun diye "Sınıfa Ödev Ver" oldu — davranış (hedefTuru='toplu')
+          aynı, bu sekmede hâlâ istenirse tek tek öğrenci de eklenebiliyor. */}
       <div className="flex gap-1.5 mb-3">
+        <button
+          type="button"
+          onClick={() => setHedefTuru('toplu')}
+          className={`px-3 py-1.5 rounded-lg text-sm font-semibold transition-colors ${
+            hedefTuru === 'toplu' ? 'bg-navy text-white' : 'bg-white border border-gray-200 text-gray-600 hover:bg-gray-100'
+          }`}
+        >
+          Sınıfa Ödev Ver
+        </button>
         <button
           type="button"
           onClick={() => setHedefTuru('tek')}
@@ -377,15 +391,6 @@ function OdevVerForm({ ogrenciler, siniflarListesi, sinifOgrenciMap, ogretmenPro
           }`}
         >
           Tek Öğrenci
-        </button>
-        <button
-          type="button"
-          onClick={() => setHedefTuru('toplu')}
-          className={`px-3 py-1.5 rounded-lg text-sm font-semibold transition-colors ${
-            hedefTuru === 'toplu' ? 'bg-navy text-white' : 'bg-white border border-gray-200 text-gray-600 hover:bg-gray-100'
-          }`}
-        >
-          Birden Fazla Öğrenci (Toplu)
         </button>
       </div>
 
@@ -670,12 +675,28 @@ function OdevSatiri({ o, isYonetici, durumDegistir, sil }) {
 // öğrenciler) burada TEK bir kart olarak özetlenir; karta tıklayınca öğrenci
 // öğrenci açılıp/kapanır (kullanıcı isteğiyle: sınıf ödevleri artık bireysel
 // ödevlerle karışık, düz bir liste yerine ayrı ve gruplu gösteriliyor).
-function SinifOdevGrubu({ grubId, items, isYonetici, durumDegistir, sil, acik, onToggle }) {
+function SinifOdevGrubu({ grubId, items, isYonetici, durumDegistir, sil, acik, onToggle, ogrenciSinifAdMap }) {
   const ilk = items[0]
   const linkBilgi = odevDosyaLinkBilgisi(ilk)
   const yaptiSayisi = items.filter((o) => o.durum === 'yapti').length
   const yapmadiSayisi = items.filter((o) => o.durum === 'yapmadi').length
   const bekliyorSayisi = items.length - yaptiSayisi - yapmadiSayisi
+  // Kullanıcı isteği: "toplu ödevlerde sınıfın adı yazmıyor" — bu grup
+  // hangi ogrenci_id'lere ödev verildiyse, o öğrencilerin GERÇEKTEN kayıtlı
+  // olduğu sınıf(lar)ı (Sınıflar sayfasındaki sinif_ogrenciler eşleşmesinden,
+  // ogrenciSinifAdMap üzerinden) bulup gösteriyoruz. "odevler" tablosu
+  // hangi sınıf butonuyla eklendiğini AYRICA saklamıyor (ve "Sınıfa Ödev
+  // Ver" sekmesinde elle de öğrenci eklenebildiği için tek bir sınıfa
+  // bağlamak her zaman doğru olmayabilir) — bu yüzden en güvenilir yöntem,
+  // gruptaki öğrencilerin GERÇEKTEN hangi sınıf(lar)da olduğuna bakmak.
+  // Birden fazla farklı sınıftan öğrenci varsa hepsi virgülle listelenir.
+  const sinifAdlari = useMemo(() => {
+    const set = new Set()
+    items.forEach((o) => {
+      ;(ogrenciSinifAdMap?.[o.ogrenci_id] || []).forEach((ad) => set.add(ad))
+    })
+    return Array.from(set)
+  }, [items, ogrenciSinifAdMap])
 
   return (
     <div className="border border-gray-100 rounded-xl overflow-hidden">
@@ -700,6 +721,7 @@ function SinifOdevGrubu({ grubId, items, isYonetici, durumDegistir, sil, acik, o
             {linkBilgi && <span className="text-blue text-xs font-normal"> ({linkBilgi.etiket})</span>}
           </p>
           <p className="text-xs text-gray-500 break-words">
+            {sinifAdlari.length > 0 && <span className="font-medium text-gray-600">{sinifAdlari.join(', ')} · </span>}
             {ilk.ders || '—'} · {items.length} öğrenci
             {isYonetici && ilk.ogretmen_adi ? ` · ${ilk.ogretmen_adi}` : ''}
             {ilk.son_tarih ? ` · Son tarih: ${new Date(ilk.son_tarih + 'T12:00:00').toLocaleDateString('tr-TR')}` : ''}
@@ -758,7 +780,7 @@ function SinifOdevGrubu({ grubId, items, isYonetici, durumDegistir, sil, acik, o
 // ödevler (gruplanmış, tıklayınca açılan kartlar), SAĞDA bireysel ödevler
 // (eskisi gibi düz tablo). Amaç: bir hoca sınıfa ödev verdiğinde bunun ayrı ve
 // net göründüğünü, bireysel ödevlerle karışmadığını görebilsin (kullanıcı isteği).
-function VerilenOdevlerListesi({ odevler, isYonetici, onDegisti }) {
+function VerilenOdevlerListesi({ odevler, isYonetici, onDegisti, ogrenciSinifAdMap }) {
   const [acikGruplar, setAcikGruplar] = useState({})
 
   async function sil(o) {
@@ -827,6 +849,7 @@ function VerilenOdevlerListesi({ odevler, isYonetici, onDegisti }) {
                 sil={sil}
                 acik={!!acikGruplar[grubId]}
                 onToggle={() => grupToggle(grubId)}
+                ogrenciSinifAdMap={ogrenciSinifAdMap}
               />
             ))}
           </div>
@@ -1303,6 +1326,22 @@ export default function Odev() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
+  // sinifOgrenciMap (sinif_id -> [ogrenci_id,...]) TERSİNE çevrilmiş hali:
+  // ogrenci_id -> [sinif adı,...]. "Sınıf / Toplu Ödevler" kartlarında hangi
+  // sınıfa verildiğini göstermek için kullanılıyor (bkz. SinifOdevGrubu).
+  const ogrenciSinifAdMap = useMemo(() => {
+    const harita = {}
+    Object.entries(sinifOgrenciMap).forEach(([sinifId, ogrenciIdleri]) => {
+      const sinif = siniflarListesi.find((s) => s.id === sinifId)
+      if (!sinif) return
+      ogrenciIdleri.forEach((ogrenciId) => {
+        if (!harita[ogrenciId]) harita[ogrenciId] = []
+        harita[ogrenciId].push(sinif.ad)
+      })
+    })
+    return harita
+  }, [sinifOgrenciMap, siniflarListesi])
+
   if (loading) return <p className="text-gray-400">Yükleniyor...</p>
 
   return (
@@ -1321,7 +1360,12 @@ export default function Odev() {
             onEklendi={veriyiYenile}
           />
           {isYonetici && <OgretmenOdevTakibi odevler={odevler} ogretmenler={ogretmenler} />}
-          <VerilenOdevlerListesi odevler={odevler} isYonetici={isYonetici} onDegisti={veriyiYenile} />
+          <VerilenOdevlerListesi
+            odevler={odevler}
+            isYonetici={isYonetici}
+            onDegisti={veriyiYenile}
+            ogrenciSinifAdMap={ogrenciSinifAdMap}
+          />
         </>
       )}
 
