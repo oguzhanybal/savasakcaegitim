@@ -52,7 +52,17 @@ const AKTIF_EGITIM_YILI = '2026-2027' // Odev.jsx/Siniflar.jsx'teki ile aynı sa
 // koordinatları % olarak konumlandırma) — ama bu sayfa için AYRI bir kopya,
 // var olan dosyaya hiç dokunulmadı.
 // ============================================================================
-function KutuKatmani({ sayfaGoruntusu, sorularBuSayfada, seciliGeciciId, cizimModu, cizimMesaji, onKutuTiklandi, onCizimBitti }) {
+function KutuKatmani({
+  sayfaGoruntusu,
+  sorularBuSayfada,
+  seciliGeciciId,
+  cizimModu,
+  cizimMesaji,
+  secilenIdler,
+  onKutuTiklandi,
+  onCizimBitti,
+  onSecimCikar,
+}) {
   const [cizilen, setCizilen] = useState(null) // {x0,y0,x1,y1} doğal koordinatlarda
   const kapRef = useRef(null)
 
@@ -118,12 +128,29 @@ function KutuKatmani({ sayfaGoruntusu, sorularBuSayfada, seciliGeciciId, cizimMo
           style={yuzdeStil(s)}
         >
           <span
-            className={`absolute -top-5 left-0 text-[10px] font-semibold px-1 rounded whitespace-nowrap ${
+            className={`absolute -top-5 left-0 flex items-center gap-1 text-[10px] font-semibold px-1 rounded whitespace-nowrap ${
               s.gecici_id === seciliGeciciId ? 'bg-orange text-white' : 'bg-white/90 text-gray-600 border border-gray-200'
             }`}
           >
             {s.soru_no ? `${s.soru_no}. ` : ''}
             {s.ders_adi || 'Etiketsiz'}
+            {/* Kullanıcı isteği: otomatik/elle tespit sonrası TÜM sorular
+                varsayılan olarak testte seçili sayılır (bkz. sayfaAnaliziYap/
+                cizimBitti) — bir soruyu kutunun kendi üzerinden, sol listeye
+                gitmeden, tek tıkla testten çıkarmak için bu "✕". */}
+            {secilenIdler?.has(s.gecici_id) && onSecimCikar && (
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation()
+                  onSecimCikar(s.gecici_id)
+                }}
+                title="Bu soruyu testten çıkar"
+                className="pointer-events-auto text-red-500 hover:text-red-700 font-bold leading-none"
+              >
+                ✕
+              </button>
+            )}
           </span>
         </div>
       ))}
@@ -425,9 +452,12 @@ function KitapDuzenle({ kitap, onGeriDon, onKitapGuncellendi, onSeciliSorularlaT
       ders_adi: '',
       konu: '',
       soru_no: null,
+      cevap: null,
     }
     setSorular((liste) => [...liste, yeni])
     setSeciliGeciciId(yeni.gecici_id)
+    // Elle çizilen soru da (otomatik tespit gibi) varsayılan olarak seçili sayılır.
+    setSecilenIdler((s) => new Set(s).add(yeni.gecici_id))
   }
 
   async function sayfaAnaliziYap() {
@@ -494,10 +524,21 @@ function KitapDuzenle({ kitap, onGeriDon, onKitapGuncellendi, onSeciliSorularlaT
         ders_adi: '',
         konu: '',
         soru_no: null,
+        cevap: null,
       }))
       // Mevcut kutulara EKLENİR, üzerine yazılmaz — admin daha önce elle
       // düzelttiği/etiketlediği bir kutuyu kaybetmesin diye.
       setSorular((liste) => [...liste, ...yeniler])
+      // Kullanıcı isteği: "otomatik seçti ya orada tümü işaretli olsun ama
+      // üstünde bu soruyu çıkar gibi bir şey çıksın" — otomatik tespit
+      // edilen TÜM sorular varsayılan olarak test için SEÇİLİ sayılır;
+      // hoca istemediğini tek tıkla (kutunun üzerindeki ✕ ya da soldaki
+      // kutucuk ile) çıkarır, tek tek işaretlemek zorunda kalmaz.
+      setSecilenIdler((s) => {
+        const yeni = new Set(s)
+        yeniler.forEach((y) => yeni.add(y.gecici_id))
+        return yeni
+      })
     } catch (e) {
       setHata('Otomatik tespit hatası: ' + e.message)
     } finally {
@@ -520,6 +561,7 @@ function KitapDuzenle({ kitap, onGeriDon, onKitapGuncellendi, onSeciliSorularlaT
           ders_adi: s.ders_adi || null,
           konu: s.konu || null,
           soru_no: s.soru_no || null,
+          cevap: s.cevap || null,
           sayfa_no: s.sayfa_no,
           x: s.x,
           y: s.y,
@@ -670,8 +712,10 @@ function KitapDuzenle({ kitap, onGeriDon, onKitapGuncellendi, onSeciliSorularlaT
                     ? 'Seçili kutunun yeni konumunu köşeden köşeye sürükleyerek çizin'
                     : undefined
                 }
+                secilenIdler={secilenIdler}
                 onKutuTiklandi={setSeciliGeciciId}
                 onCizimBitti={cizimBitti}
+                onSecimCikar={secimDegistir}
               />
             </div>
           </div>
@@ -751,6 +795,30 @@ function KitapDuzenle({ kitap, onGeriDon, onKitapGuncellendi, onSeciliSorularlaT
                     onChange={(e) => soruGuncelle(seciliSoru.gecici_id, { soru_no: e.target.value ? Number(e.target.value) : null })}
                     className="w-full px-2 py-1.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue"
                   />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-500 mb-1">Doğru Cevap (opsiyonel)</label>
+                  <div className="flex gap-1">
+                    {['A', 'B', 'C', 'D', 'E'].map((harf) => (
+                      <button
+                        key={harf}
+                        type="button"
+                        onClick={() =>
+                          soruGuncelle(seciliSoru.gecici_id, { cevap: seciliSoru.cevap === harf ? null : harf })
+                        }
+                        className={`flex-1 text-xs font-semibold rounded-lg py-1.5 border ${
+                          seciliSoru.cevap === harf
+                            ? 'bg-navy text-white border-navy'
+                            : 'border-gray-200 text-gray-600 hover:bg-gray-50'
+                        }`}
+                      >
+                        {harf}
+                      </button>
+                    ))}
+                  </div>
+                  <p className="text-[10px] text-gray-400 mt-1">
+                    Girilirse soru üzerinde DEĞİL, testin sonundaki "Cevap Anahtarı" sayfasında görünür.
+                  </p>
                 </div>
                 <button
                   type="button"
@@ -1048,8 +1116,9 @@ function TestOlusturSekmesi({ initialSeciliSorular, onInitialSeciliSorularTuketi
         ders_adi: s.ders_adi,
         konu: s.konu,
         soru_no: s.soru_no,
+        cevap: s.cevap,
       }))
-      const blob = await testPdfOlustur(girdi, (oran) => setIlerleme(oran))
+      const blob = await testPdfOlustur(girdi, (oran) => setIlerleme(oran), testBasligi)
       setPdfBlob(blob)
       setPdfUrl((eski) => {
         if (eski) URL.revokeObjectURL(eski)
