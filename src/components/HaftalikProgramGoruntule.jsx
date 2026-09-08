@@ -114,8 +114,18 @@ export default function HaftalikProgramGoruntule({ program, siniflar, ogretmenle
     [filtreliDersler]
   )
 
+  // ÖNEMLİ DÜZELTME: önceden BÜTÜN filtreliDersler'deki saatler satır olarak
+  // listeleniyordu — gün numarası ne olursa olsun (kullanıcı bildirimi: bir
+  // sınıfta hiçbir sütunda karşılığı olmayan, baştan sona BOŞ bir saat satırı
+  // görünüyordu, ör. "10.00"). Sebebi: tablo sadece Pazartesi-Cumartesi (gun
+  // 1-6) sütunlarını gösteriyor, ama bir ders satırının gün numarası bu
+  // aralığın dışındaysa (ör. hatalı/silinmemiş bir veri satırı Pazar/gun=7
+  // olarak kayıtlıysa) o satırın saati yine de listeye giriyor, hiçbir
+  // sütunda karşılığı olmadığı için tamamen boş bir satır olarak görünüyordu.
+  // Artık sadece GERÇEKTEN gösterilen 6 güne (1-6) ait saatler satır oluyor.
   const saatSatirlari = useMemo(
-    () => [...new Set(filtreliDersler.map((d) => saatKisalt(d.baslangic_saat)))].sort(),
+    () =>
+      [...new Set(filtreliDersler.filter((d) => d.gun >= 1 && d.gun <= 6).map((d) => saatKisalt(d.baslangic_saat)))].sort(),
     [filtreliDersler]
   )
 
