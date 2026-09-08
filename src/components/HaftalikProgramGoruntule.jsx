@@ -321,33 +321,32 @@ export default function HaftalikProgramGoruntule({ program, siniflar, ogretmenle
               ? `${secilenAd || 'Bu sınıf'} — öğretmen/ders bazında haftalık ders sayısı`
               : `${secilenAd || 'Bu öğretmen'} — sınıf/ders bazında haftalık ders sayısı`}
           </p>
-          <div className="overflow-x-auto">
-            <table className="text-sm border-collapse min-w-[420px]">
-              <thead>
-                <tr className="text-gray-400">
-                  <th className="text-left px-2 py-1 font-medium whitespace-nowrap">
-                    {tip === 'sinif' ? 'Öğretmen' : 'Sınıf'}
-                  </th>
-                  <th className="text-left px-2 py-1 font-medium">Ders</th>
-                  <th className="text-right px-2 py-1 font-medium whitespace-nowrap">Haftalık Ders Sayısı</th>
-                </tr>
-              </thead>
-              <tbody>
-                {ozet.map((o) => (
-                  <tr key={`${o.karsiTaraf}|${o.ders}`} className="border-t border-white">
-                    <td className="px-2 py-1 text-gray-700 font-medium whitespace-nowrap">{o.karsiTaraf}</td>
-                    <td className="px-2 py-1 text-gray-600">{o.ders}</td>
-                    <td className="px-2 py-1 text-right text-gray-700 whitespace-nowrap">{o.sayi}</td>
-                  </tr>
-                ))}
-                <tr className="border-t border-gray-200">
-                  <td className="px-2 py-1.5 font-semibold text-gray-800" colSpan={2}>
-                    Toplam
-                  </td>
-                  <td className="px-2 py-1.5 text-right font-semibold text-gray-800 whitespace-nowrap">{ozetToplam}</td>
-                </tr>
-              </tbody>
-            </table>
+          {/* ÖNEMLİ DÜZELTME: eskiden 3 sütunlu (Öğretmen/Sınıf | Ders | Sayı)
+              min-genişlikli bir tablo kullanılıyordu — kullanıcı bildirimi:
+              mobilde bu, dar ekrana sığmadığı için yatay kaydırma gerektiriyordu
+              ve kaydırılınca etiket (hangi sınıf/öğretmen + hangi ders) ile
+              sayı arasında çok büyük bir boşluk oluşuyordu, hangi satıra
+              baktığını takip etmek zorlaşıyordu. Artık her satır tek bir
+              esnek (flex) satır: etiket sola yaslı (sığmazsa "..." ile
+              kısaltılır, kaymaz), sayı hemen sağında — ikisi HER ZAMAN aynı
+              satırda, aralarında sabit/küçük bir boşluk kalır, ayrıca yatay
+              kaydırma tamamen kalkıyor. Sayının yanına "ders" kelimesi
+              eklendi ki başlık satırı olmadan da ne olduğu tek satırda belli
+              olsun (ör. "5 ders"). */}
+          <div className="divide-y divide-white">
+            {ozet.map((o) => (
+              <div key={`${o.karsiTaraf}|${o.ders}`} className="flex items-baseline justify-between gap-3 py-1.5 text-sm">
+                <span className="text-gray-700 truncate min-w-0">
+                  <span className="font-medium">{o.karsiTaraf}</span>
+                  <span className="text-gray-400"> — {o.ders}</span>
+                </span>
+                <span className="text-gray-700 font-medium whitespace-nowrap shrink-0">{o.sayi} ders</span>
+              </div>
+            ))}
+            <div className="flex items-baseline justify-between gap-3 pt-2 text-sm font-semibold text-gray-800">
+              <span>Toplam</span>
+              <span className="shrink-0">{ozetToplam} ders</span>
+            </div>
           </div>
         </div>
       )}
