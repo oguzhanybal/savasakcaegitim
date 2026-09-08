@@ -151,9 +151,16 @@ export default function HaftalikProgramGoruntule({ program, siniflar, ogretmenle
       if (!gruplar.has(anahtar)) gruplar.set(anahtar, { karsiTaraf, ders, sayi: 0 })
       gruplar.get(anahtar).sayi += 1
     }
-    return [...gruplar.values()].sort(
-      (a, b) => a.karsiTaraf.localeCompare(b.karsiTaraf, 'tr') || b.sayi - a.sayi || a.ders.localeCompare(b.ders, 'tr')
-    )
+    // Öğretmen görünümünde "karşı taraf" gerçek bir sınıf olabileceği gibi
+    // "Bire Bir" de olabilir (bkz. filtreliDersler) — kullanıcı isteğiyle,
+    // alfabetik sıraya bakılmaksızın önce SINIF dersleri, en altta Bire Bir
+    // satırları gösteriliyor.
+    return [...gruplar.values()].sort((a, b) => {
+      const aBireBir = a.karsiTaraf === 'Bire Bir' ? 1 : 0
+      const bBireBir = b.karsiTaraf === 'Bire Bir' ? 1 : 0
+      if (aBireBir !== bBireBir) return aBireBir - bBireBir
+      return a.karsiTaraf.localeCompare(b.karsiTaraf, 'tr') || b.sayi - a.sayi || a.ders.localeCompare(b.ders, 'tr')
+    })
   }, [filtreliDersler, tip, seciliId])
   const ozetToplam = ozet.reduce((t, o) => t + o.sayi, 0)
 
@@ -264,8 +271,46 @@ export default function HaftalikProgramGoruntule({ program, siniflar, ogretmenle
         </p>
       )}
 
+      {seciliId && ozet.length > 0 && (
+        <div className="mb-5 bg-gray-50 border border-gray-100 rounded-xl p-3">
+          <p className="text-xs font-semibold text-gray-500 mb-2">
+            {tip === 'sinif'
+              ? `${secilenAd || 'Bu sınıf'} — öğretmen/ders bazında haftalık ders sayısı`
+              : `${secilenAd || 'Bu öğretmen'} — sınıf/ders bazında haftalık ders sayısı`}
+          </p>
+          <div className="overflow-x-auto">
+            <table className="text-sm border-collapse min-w-[420px]">
+              <thead>
+                <tr className="text-gray-400">
+                  <th className="text-left px-2 py-1 font-medium whitespace-nowrap">
+                    {tip === 'sinif' ? 'Öğretmen' : 'Sınıf'}
+                  </th>
+                  <th className="text-left px-2 py-1 font-medium">Ders</th>
+                  <th className="text-right px-2 py-1 font-medium whitespace-nowrap">Haftalık Ders Sayısı</th>
+                </tr>
+              </thead>
+              <tbody>
+                {ozet.map((o) => (
+                  <tr key={`${o.karsiTaraf}|${o.ders}`} className="border-t border-white">
+                    <td className="px-2 py-1 text-gray-700 font-medium whitespace-nowrap">{o.karsiTaraf}</td>
+                    <td className="px-2 py-1 text-gray-600">{o.ders}</td>
+                    <td className="px-2 py-1 text-right text-gray-700 whitespace-nowrap">{o.sayi}</td>
+                  </tr>
+                ))}
+                <tr className="border-t border-gray-200">
+                  <td className="px-2 py-1.5 font-semibold text-gray-800" colSpan={2}>
+                    Toplam
+                  </td>
+                  <td className="px-2 py-1.5 text-right font-semibold text-gray-800 whitespace-nowrap">{ozetToplam}</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
       {seciliId && filtreliDersler.length > 0 && (
-        <div className="overflow-x-auto touch-pan-x touch-pan-y mb-5">
+        <div className="overflow-x-auto touch-pan-x touch-pan-y">
           <table className="w-full text-sm border-collapse min-w-[720px]">
             <thead>
               <tr>
@@ -304,44 +349,6 @@ export default function HaftalikProgramGoruntule({ program, siniflar, ogretmenle
               ))}
             </tbody>
           </table>
-        </div>
-      )}
-
-      {seciliId && ozet.length > 0 && (
-        <div className="bg-gray-50 border border-gray-100 rounded-xl p-3">
-          <p className="text-xs font-semibold text-gray-500 mb-2">
-            {tip === 'sinif'
-              ? `${secilenAd || 'Bu sınıf'} — öğretmen/ders bazında haftalık ders sayısı`
-              : `${secilenAd || 'Bu öğretmen'} — sınıf/ders bazında haftalık ders sayısı`}
-          </p>
-          <div className="overflow-x-auto">
-            <table className="text-sm border-collapse min-w-[420px]">
-              <thead>
-                <tr className="text-gray-400">
-                  <th className="text-left px-2 py-1 font-medium whitespace-nowrap">
-                    {tip === 'sinif' ? 'Öğretmen' : 'Sınıf'}
-                  </th>
-                  <th className="text-left px-2 py-1 font-medium">Ders</th>
-                  <th className="text-right px-2 py-1 font-medium whitespace-nowrap">Haftalık Ders Sayısı</th>
-                </tr>
-              </thead>
-              <tbody>
-                {ozet.map((o) => (
-                  <tr key={`${o.karsiTaraf}|${o.ders}`} className="border-t border-white">
-                    <td className="px-2 py-1 text-gray-700 font-medium whitespace-nowrap">{o.karsiTaraf}</td>
-                    <td className="px-2 py-1 text-gray-600">{o.ders}</td>
-                    <td className="px-2 py-1 text-right text-gray-700 whitespace-nowrap">{o.sayi}</td>
-                  </tr>
-                ))}
-                <tr className="border-t border-gray-200">
-                  <td className="px-2 py-1.5 font-semibold text-gray-800" colSpan={2}>
-                    Toplam
-                  </td>
-                  <td className="px-2 py-1.5 text-right font-semibold text-gray-800 whitespace-nowrap">{ozetToplam}</td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
         </div>
       )}
     </div>
