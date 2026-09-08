@@ -727,7 +727,18 @@ function SinifOdevGrubu({ grubId, items, isYonetici, durumDegistir, sil, acik, o
             {ilk.son_tarih ? ` · Son tarih: ${new Date(ilk.son_tarih + 'T12:00:00').toLocaleDateString('tr-TR')}` : ''}
           </p>
         </div>
-        <div className="flex items-center gap-1.5 flex-shrink-0 flex-wrap justify-end">
+        {/* İKİNCİ TUR DÜZELTME (kullanıcı mobilde hâlâ kesik gördü): burada
+            "flex-shrink-0" vardı — bu, bu kutunun üstteki satıra SIĞMAYINCA
+            kendi alt satırına inmesini engellemiyordu (o kısım çalışıyordu)
+            ama alt satıra indikten SONRA da kutunun kendisi hâlâ "flex-shrink-0"
+            olduğu için tarayıcı ona İÇERİĞİNİN doğal (sıkışmamış) genişliğini
+            veriyordu — yani kutu kendi rozetlerini tek satırda sığdırmaya
+            çalışıp ekranın dışına taşıyordu, kendi "flex-wrap"i hiç devreye
+            girmiyordu (çünkü kendi genişliği zaten "her şey sığacak kadar
+            geniş" olarak hesaplanıyordu). "min-w-0 max-w-full" ile bu kutu
+            artık satırın gerçek genişliğine SIKIŞTIRILIYOR, bu sayede kendi
+            içindeki rozetler de gerekince alt satıra sarabiliyor. */}
+        <div className="flex items-center gap-1.5 min-w-0 max-w-full flex-wrap justify-end">
           <span className="text-xs font-semibold text-green-700 bg-green-100 px-2 py-1 rounded-lg">{yaptiSayisi} yaptı</span>
           <span className="text-xs font-semibold text-red-700 bg-red-100 px-2 py-1 rounded-lg">{yapmadiSayisi} yapmadı</span>
           {bekliyorSayisi > 0 && (
