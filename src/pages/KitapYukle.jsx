@@ -132,8 +132,7 @@ function KutuKatmani({
               s.gecici_id === seciliGeciciId ? 'bg-orange text-white' : 'bg-white/90 text-gray-600 border border-gray-200'
             }`}
           >
-            {s.soru_no ? `${s.soru_no}. ` : ''}
-            {s.ders_adi || 'Etiketsiz'}
+            {s.ders_adi || 'Soru'}
             {/* Kullanıcı isteği: otomatik/elle tespit sonrası TÜM sorular
                 varsayılan olarak testte seçili sayılır (bkz. sayfaAnaliziYap/
                 cizimBitti) — bir soruyu kutunun kendi üzerinden, sol listeye
@@ -730,9 +729,10 @@ function KitapDuzenle({ kitap, onGeriDon, onKitapGuncellendi, onSeciliSorularlaT
               )}
             </div>
             <p className="text-[11px] text-gray-400 mb-3">
-              Ders/Konu/Soru No hiçbiri ZORUNLU DEĞİL — bu ekranda sadece istediğiniz soruları kutucukla işaretleyip
-              (isterseniz her birine "Doğru Cevap" da girip) üstteki "Seçilenlerle Test Oluştur" ile devam edin;
-              testin adını ve dersini TEK SEFERDE bir sonraki ekranda gireceksiniz.
+              Ders/Konu hiçbiri ZORUNLU DEĞİL — bu ekranda sadece istediğiniz soruları kutucukla işaretleyip
+              (isterseniz her birine "Doğru Cevap" da girip) üstteki "Seçilenlerle Test Oluştur" ile devam edin.
+              Soru numaraları OTOMATİK verilir; testin adını, dersini ve soruların SIRASINI bir sonraki ekranda
+              belirleyeceksiniz.
             </p>
             {sorularBuSayfada.length === 0 && (
               <p className="text-xs text-gray-400 mb-3">
@@ -756,8 +756,7 @@ function KitapDuzenle({ kitap, onGeriDon, onKitapGuncellendi, onSeciliSorularlaT
                       s.gecici_id === seciliGeciciId ? 'bg-orange/10 text-orange font-semibold' : 'hover:bg-gray-50 text-gray-600'
                     }`}
                   >
-                    {s.soru_no ? `${s.soru_no}. ` : '— '}
-                    {s.ders_adi || 'Etiketsiz'}
+                    {s.ders_adi || 'Soru'}
                     {s.konu ? ` · ${s.konu}` : ''}
                   </button>
                 </div>
@@ -785,15 +784,6 @@ function KitapDuzenle({ kitap, onGeriDon, onKitapGuncellendi, onSeciliSorularlaT
                   <input
                     value={seciliSoru.konu || ''}
                     onChange={(e) => soruGuncelle(seciliSoru.gecici_id, { konu: e.target.value })}
-                    className="w-full px-2 py-1.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-medium text-gray-500 mb-1">Soru No (opsiyonel)</label>
-                  <input
-                    type="number"
-                    value={seciliSoru.soru_no ?? ''}
-                    onChange={(e) => soruGuncelle(seciliSoru.gecici_id, { soru_no: e.target.value ? Number(e.target.value) : null })}
                     className="w-full px-2 py-1.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue"
                   />
                 </div>
@@ -1099,6 +1089,20 @@ function TestOlusturSekmesi({ initialSeciliSorular, onInitialSeciliSorularTuketi
   function siradanCikar(id) {
     setSeciliSorular((liste) => liste.filter((s) => s.id !== id))
   }
+  // Kullanıcı isteği: soru numaraları OTOMATİK verilsin ama kullanıcı
+  // soruların YERLERİNİ (dolayısıyla numaralarını) değiştirebilsin — bu
+  // yüzden elle "Soru No" girme alanı kaldırıldı, onun yerine burada basit
+  // yukarı/aşağı taşıma eklendi. PDF'teki sıra No'su hep bu listedeki SIRAYA
+  // göre belirlenir (bkz. pdfUret -> kitapPdf.js).
+  function siraDegistir(index, yon) {
+    setSeciliSorular((liste) => {
+      const hedef = index + yon
+      if (hedef < 0 || hedef >= liste.length) return liste
+      const yeni = [...liste]
+      ;[yeni[index], yeni[hedef]] = [yeni[hedef], yeni[index]]
+      return yeni
+    })
+  }
 
   async function pdfUret() {
     if (seciliSorular.length === 0) return
@@ -1116,7 +1120,11 @@ function TestOlusturSekmesi({ initialSeciliSorular, onInitialSeciliSorularTuketi
         yukseklik: s.yukseklik,
         ders_adi: s.ders_adi,
         konu: s.konu,
-        soru_no: s.soru_no,
+        // soru_no KASITLI OLARAK gönderilmiyor: numaralandırma artık her zaman
+        // "Seçilen Sorular" listesindeki SIRAYA göre otomatik veriliyor (bkz.
+        // kitapPdf.js -> siraNo = i + 1). Kullanıcı sırayı ▲▼ ile değiştirince
+        // numaralar da otomatik güncellenir — eskiden var olan "Soru No" elle
+        // giriş alanı kafa karıştırdığı için kaldırıldı.
         cevap: s.cevap,
       }))
       const blob = await testPdfOlustur(girdi, (oran) => setIlerleme(oran), testBasligi)
@@ -1242,7 +1250,7 @@ function TestOlusturSekmesi({ initialSeciliSorular, onInitialSeciliSorularTuketi
                   <label key={s.id} className="flex items-center gap-2 py-2 text-sm cursor-pointer hover:bg-gray-50 px-1 rounded">
                     <input type="checkbox" checked={seciliMi(s.id)} onChange={() => seciminiDegistir(s)} />
                     <span className="flex-1">
-                      <span className="font-medium text-gray-700">{s.ders_adi || 'Etiketsiz'}</span>
+                      <span className="font-medium text-gray-700">{s.ders_adi || 'Soru'}</span>
                       {s.konu && <span className="text-gray-400"> · {s.konu}</span>}
                       <span className="text-gray-400"> · {s.kitaplar?.ad}</span>
                       <span className="text-gray-300"> · s.{s.sayfa_no}</span>
@@ -1254,16 +1262,41 @@ function TestOlusturSekmesi({ initialSeciliSorular, onInitialSeciliSorularTuketi
             </div>
 
             <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-4 h-fit">
-              <h3 className="font-semibold text-gray-700 mb-2">Seçilen Sorular ({seciliSorular.length})</h3>
+              <h3 className="font-semibold text-gray-700 mb-1">Seçilen Sorular ({seciliSorular.length})</h3>
+              {seciliSorular.length > 1 && (
+                <p className="text-[11px] text-gray-400 mb-2">
+                  Soru numaraları buradaki SIRAYA göre otomatik verilir — ▲▼ ile sırayı değiştirebilirsiniz.
+                </p>
+              )}
               <div className="space-y-1 max-h-48 overflow-y-auto mb-3">
                 {seciliSorular.map((s, i) => (
-                  <div key={s.id} className="flex items-center justify-between gap-2 text-xs bg-gray-50 rounded-lg px-2 py-1.5">
-                    <span className="truncate">
-                      {i + 1}. {s.ders_adi || 'Etiketsiz'} {s.konu ? `· ${s.konu}` : ''}
+                  <div key={s.id} className="flex items-center justify-between gap-1 text-xs bg-gray-50 rounded-lg px-2 py-1.5">
+                    <span className="truncate flex-1">
+                      {i + 1}. {s.ders_adi || 'Soru'} {s.konu ? `· ${s.konu}` : ''}
                     </span>
-                    <button type="button" onClick={() => siradanCikar(s.id)} className="text-red-500 hover:text-red-700 shrink-0">
-                      ✕
-                    </button>
+                    <div className="flex items-center shrink-0">
+                      <button
+                        type="button"
+                        onClick={() => siraDegistir(i, -1)}
+                        disabled={i === 0}
+                        title="Yukarı taşı"
+                        className="text-gray-400 hover:text-gray-700 disabled:opacity-20 disabled:cursor-not-allowed px-1 py-0.5"
+                      >
+                        ▲
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => siraDegistir(i, 1)}
+                        disabled={i === seciliSorular.length - 1}
+                        title="Aşağı taşı"
+                        className="text-gray-400 hover:text-gray-700 disabled:opacity-20 disabled:cursor-not-allowed px-1 py-0.5"
+                      >
+                        ▼
+                      </button>
+                      <button type="button" onClick={() => siradanCikar(s.id)} className="text-red-500 hover:text-red-700 px-1 py-0.5" title="Listeden çıkar">
+                        ✕
+                      </button>
+                    </div>
                   </div>
                 ))}
                 {seciliSorular.length === 0 && <p className="text-xs text-gray-400">Soldan soru seçin.</p>}
