@@ -321,32 +321,23 @@ export default function HaftalikProgramGoruntule({ program, siniflar, ogretmenle
               ? `${secilenAd || 'Bu sınıf'} — öğretmen/ders bazında haftalık ders sayısı`
               : `${secilenAd || 'Bu öğretmen'} — sınıf/ders bazında haftalık ders sayısı`}
           </p>
-          {/* ÖNEMLİ DÜZELTME: eskiden 3 sütunlu (Öğretmen/Sınıf | Ders | Sayı)
-              min-genişlikli bir tablo kullanılıyordu — kullanıcı bildirimi:
-              mobilde bu, dar ekrana sığmadığı için yatay kaydırma gerektiriyordu
-              ve kaydırılınca etiket (hangi sınıf/öğretmen + hangi ders) ile
-              sayı arasında çok büyük bir boşluk oluşuyordu, hangi satıra
-              baktığını takip etmek zorlaşıyordu. Artık her satır tek bir
-              esnek (flex) satır: etiket sola yaslı (sığmazsa "..." ile
-              kısaltılır, kaymaz), sayı hemen sağında — ikisi HER ZAMAN aynı
-              satırda, aralarında sabit/küçük bir boşluk kalır, ayrıca yatay
-              kaydırma tamamen kalkıyor. Sayının yanına "ders" kelimesi
-              eklendi ki başlık satırı olmadan da ne olduğu tek satırda belli
-              olsun (ör. "5 ders"). */}
+          {/* ÖNEMLİ DÜZELTME 2: bir önceki denemede sayı satırın SAĞ UCUNA
+              (justify-between ile) sabitleniyordu — kullanıcı bildirimi: bu
+              da, kutu geniş olduğunda (mobilde bile) yazı kısa kalınca yine
+              yazıyla sayı arasında büyük bir boşluk bırakıyordu. Artık sayı
+              sağa değil, yazının HEMEN ARDINDAN aynı akışta (normal metin
+              gibi) geliyor — kutu ne kadar geniş olursa olsun, aradaki
+              mesafe hep aynı küçük boşluk (bir boşluk karakteri) kadar
+              kalıyor. */}
           <div className="divide-y divide-white">
             {ozet.map((o) => (
-              <div key={`${o.karsiTaraf}|${o.ders}`} className="flex items-baseline justify-between gap-3 py-1.5 text-sm">
-                <span className="text-gray-700 truncate min-w-0">
-                  <span className="font-medium">{o.karsiTaraf}</span>
-                  <span className="text-gray-400"> — {o.ders}</span>
-                </span>
-                <span className="text-gray-700 font-medium whitespace-nowrap shrink-0">{o.sayi} ders</span>
-              </div>
+              <p key={`${o.karsiTaraf}|${o.ders}`} className="py-1.5 text-sm text-gray-700">
+                <span className="font-medium">{o.karsiTaraf}</span>
+                <span className="text-gray-400"> — {o.ders}: </span>
+                <span className="font-semibold">{o.sayi} ders</span>
+              </p>
             ))}
-            <div className="flex items-baseline justify-between gap-3 pt-2 text-sm font-semibold text-gray-800">
-              <span>Toplam</span>
-              <span className="shrink-0">{ozetToplam} ders</span>
-            </div>
+            <p className="pt-2 text-sm font-semibold text-gray-800">Toplam: {ozetToplam} ders</p>
           </div>
         </div>
       )}
