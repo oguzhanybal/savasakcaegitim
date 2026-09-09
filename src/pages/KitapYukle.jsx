@@ -222,8 +222,10 @@ function KitapYukleFormu({ onYuklendi }) {
       // yaşanıyordu (bkz. src/lib/kitapDrive.js'teki açıklama). Var olan
       // kitaplar (Supabase'te duran) buna dokunmuyor, sadece bundan sonraki
       // yeni yüklemeler Drive'a gidiyor.
-      setIlerlemeMetni('PDF Google Drive\'a yükleniyor (dosya boyutuna göre biraz sürebilir)...')
-      const driveDosyaId = await driveyeKitapYukle(dosya, `${ad.trim()}.pdf`)
+      setIlerlemeMetni('PDF Google Drive\'a yükleniyor... %0')
+      const driveDosyaId = await driveyeKitapYukle(dosya, `${ad.trim()}.pdf`, (oran) =>
+        setIlerlemeMetni(`PDF Google Drive'a yükleniyor... %${Math.round(oran * 100)}`)
+      )
 
       const { data: kitapSatiri, error: kayitHatasi } = await supabase
         .from('kitaplar')
