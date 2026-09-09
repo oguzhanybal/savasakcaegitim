@@ -41,6 +41,7 @@ import {
   kitapSayfasindaSoruNumaralariniTespitEt,
 } from '../lib/kitapOcr'
 import { testPdfOlustur } from '../lib/kitapPdf'
+import { driveyeKitapYukle, driveDenKitapSil, kitapPdfBlobuGetir, DriveBagliDegilHatasi } from '../lib/kitapDrive'
 
 const MAKSIMUM_KITAP_BOYUTU = 150 * 1024 * 1024 // 150 MB — ücretsiz 1 GB'lık Storage kotasını gözeten makul bir üst sınır
 const AKTIF_EGITIM_YILI = '2026-2027' // Odev.jsx/Siniflar.jsx'teki ile aynı sabit — yeni yıla geçilince birlikte güncellenmeli
@@ -215,17 +216,26 @@ function KitapYukleFormu({ onYuklendi }) {
       const sayfaSayisi = belge.numPages
 
       const kitapId = crypto.randomUUID()
-      const pdfYolu = `${kitapId}/kitap.pdf`
 
-      setIlerlemeMetni('PDF yükleniyor (dosya boyutuna göre biraz sürebilir)...')
-      const { error: yuklemeHatasi } = await supabase.storage
-        .from('kitaplar')
-        .upload(pdfYolu, dosya, { contentType: 'application/pdf' })
-      if (yuklemeHatasi) throw yuklemeHatasi
+      // ARTIK Supabase Storage'a DEĞİL, doğrudan Google Drive'a yükleniyor —
+      // kullanıcı isteğiyle: ücretsiz Supabase planında alan sıkıntısı
+      // yaşanıyordu (bkz. src/lib/kitapDrive.js'teki açıklama). Var olan
+      // kitaplar (Supabase'te duran) buna dokunmuyor, sadece bundan sonraki
+      // yeni yüklemeler Drive'a gidiyor.
+      setIlerlemeMetni('PDF Google Drive\'a yükleniyor (dosya boyutuna göre biraz sürebilir)...')
+      const driveDosyaId = await driveyeKitapYukle(dosya, `${ad.trim()}.pdf`)
 
       const { data: kitapSatiri, error: kayitHatasi } = await supabase
         .from('kitaplar')
-        .insert({ id: kitapId, ad: ad.trim(), ders_adi: dersAdi || null, pdf_yolu: pdfYolu, sayfa_sayisi: sayfaSayisi, olcek: 3 })
+        .insert({
+          id: kitapId,
+          ad: ad.trim(),
+          ders_adi: dersAdi || null,
+          pdf_yolu: null,
+          drive_dosya_id: driveDosyaId,
+          sayfa_sayisi: sayfaSayisi,
+          olcek: 3,
+        })
         .select()
         .single()
       if (kayitHatasi) throw kayitHatasi
@@ -236,7 +246,7 @@ function KitapYukleFormu({ onYuklendi }) {
       if (inputRef.current) inputRef.current.value = ''
       onYuklendi(kitapSatiri)
     } catch (err) {
-      setHata('Yükleme hatası: ' + err.message)
+      setHata(err instanceof DriveBagliDegilHatasi ? err.message : 'Yükleme hatası: ' + err.message)
     } finally {
       setYukleniyor(false)
       setIlerlemeMetni('')
@@ -332,15 +342,14 @@ function KitapDuzenle({ kitap, onGeriDon, onKitapGuncellendi, onSeciliSorularlaT
 
   const toplamSayfa = belge?.numPages || kitap.sayfa_sayisi || 1
 
-  // Kitabın PDF'ini indirip pdf.js belgesine çevir (bir kez).
+  // Kitabın PDF'ini indirip pdf.js belgesine çevir (bir kez). kitapPdfBlobuGetir
+  // kitabın Drive'da mı Supabase Storage'da mı olduğuna göre otomatik dallanır
+  // (bkz. src/lib/kitapDrive.js).
   useEffect(() => {
     let iptal = false
     setBelgeYukleniyor(true)
-    supabase.storage
-      .from('kitaplar')
-      .download(kitap.pdf_yolu)
-      .then(async ({ data, error }) => {
-        if (error) throw error
+    kitapPdfBlobuGetir(kitap)
+      .then(async (data) => {
         const b = await pdfBelgesiAc(data)
         if (!iptal) setBelge(b)
       })
@@ -1031,7 +1040,7 @@ function TestOlusturSekmesi({ initialSeciliSorular, onInitialSeciliSorularTuketi
   useEffect(() => {
     supabase
       .from('kitap_sorulari')
-      .select('*, kitaplar(id, ad, ders_adi, pdf_yolu, olcek)')
+      .select('*, kitaplar(id, ad, ders_adi, pdf_yolu, drive_dosya_id, olcek)')
       .then(({ data, error }) => {
         if (error) throw error
         setTumSorular(data || [])
@@ -1391,7 +1400,11 @@ export default function KitapYukle() {
   async function kitabiSil(kitap) {
     if (!confirm(`"${kitap.ad}" kitabını ve içindeki tüm işaretli soruları kalıcı olarak silmek istediğinize emin misiniz?`)) return
     try {
-      await supabase.storage.from('kitaplar').remove([kitap.pdf_yolu])
+      if (kitap.drive_dosya_id) {
+        await driveDenKitapSil(kitap.drive_dosya_id)
+      } else {
+        await supabase.storage.from('kitaplar').remove([kitap.pdf_yolu])
+      }
       const { error } = await supabase.from('kitaplar').delete().eq('id', kitap.id)
       if (error) throw error
       kitaplariYenile()
