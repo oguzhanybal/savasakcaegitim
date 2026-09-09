@@ -5,9 +5,20 @@
 // proje bu sınıra dayandığı için (12 fonksiyon + yeni eklenen api/e.js = 13)
 // deploy hata veriyordu. Bu 3 dosyayı 1'e indirmek 2 fonksiyon kazandırıyor.
 //
-// ?action=durumu   -> Odev.jsx sayfa açılışında bağlantı durumunu sorar
-// ?action=baslat   -> "Drive'a Bağlan" butonuna basılınca izin ekranının linkini üretir
-// ?action=callback -> Google'ın izin ekranından dönüşünde çağırdığı adres
+// ?action=durumu       -> Odev.jsx sayfa açılışında bağlantı durumunu sorar
+// ?action=baslat       -> "Drive'a Bağlan" butonuna basılınca izin ekranının linkini üretir
+// ?action=callback     -> Google'ın izin ekranından dönüşünde çağırdığı adres
+// ?action=erisimJetonu -> KitapYukle.jsx için — TARAYICIYA kısa ömürlü bir Drive
+//                         erişim jetonu (access_token) + kitap klasörünün id'sini
+//                         verir. NEDEN: kitap PDF'leri onlarca-yüzlerce MB
+//                         olabiliyor, Vercel sunucu fonksiyonlarının istek
+//                         gövdesi ~4.5MB ile sınırlı — bu yüzden dosyanın kendisi
+//                         BU SUNUCUDAN HİÇ GEÇMİYOR, tarayıcı bu jetonla Drive'a
+//                         DOĞRUDAN yüklüyor/indiriyor (Google'ın API'leri Bearer
+//                         jetonlu isteklere CORS izni veriyor). Jeton yönetici
+//                         oturumuyla korunuyor (aynı yoneticiDogrula), ~1 saat
+//                         geçerli — her yükleme/indirmeden önce taze bir tane
+//                         isteniyor, tarayıcıda saklanmıyor/önbelleklenmiyor.
 //
 // ÖNEMLİ (tek elle yapman gereken ayar): Google Cloud Console'da bu projenin
 // OAuth istemcisinde kayıtlı "Authorized redirect URI" değerini
@@ -28,6 +39,7 @@ export default async function handler(req, res) {
   if (action === 'durumu') return durumuGetir(req, res)
   if (action === 'baslat') return baslat(req, res)
   if (action === 'callback') return callback(req, res)
+  if (action === 'erisimJetonu') return erisimJetonuVer(req, res)
 
   res.status(400).json({ error: 'Geçersiz veya eksik "action" parametresi.' })
 }
@@ -173,4 +185,87 @@ async function callback(req, res) {
   }
 
   res.redirect(302, '/odev?drive=baglandi')
+}
+
+// odev-arsivle.js'teki token-yenileme + klasör bul/oluştur mantığıyla AYNI
+// desen (kod tekrarı bilerek yapıldı — bu dosyalar birbirinden bağımsız,
+// projedeki diğer sunucu fonksiyonlarıyla aynı gelenek). Farkı: o bir CRON
+// işi, bu ise KitapYukle.jsx'in ihtiyaç duydukça (yönetici bir kitap
+// yükleyecek/açacak/silecek her seferinde) çağırdığı, TEK BİR kitap klasörü
+// için jeton üreten interaktif bir uç nokta.
+async function erisimJetonuVer(req, res) {
+  const clientId = process.env.GOOGLE_CLIENT_ID
+  const clientSecret = process.env.GOOGLE_CLIENT_SECRET
+  const admin = adminOlustur()
+  if (!admin || !clientId || !clientSecret) {
+    res.status(500).json({ error: 'Sunucu yapılandırması eksik (Vercel ortam değişkenleri).' })
+    return
+  }
+  const kullanici = await yoneticiDogrula(req, admin)
+  if (!kullanici) {
+    res.status(401).json({ error: 'Oturum geçersiz veya bu işlem sadece yöneticiler tarafından yapılabilir.' })
+    return
+  }
+
+  const { data: baglanti } = await admin
+    .from('google_baglanti')
+    .select('refresh_token, kitap_klasor_id')
+    .eq('id', true)
+    .maybeSingle()
+
+  if (!baglanti?.refresh_token) {
+    // 409: "durum çakışması" — istemci bunu "Drive henüz bağlı değil, önce
+    // Ödev sayfasından bağlan" mesajı göstermek için özel olarak yakalıyor.
+    res.status(409).json({ error: 'baglanti_yok', mesaj: 'Google Drive henüz bağlı değil.' })
+    return
+  }
+
+  const jetonYaniti = await fetch('https://oauth2.googleapis.com/token', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({
+      client_id: clientId,
+      client_secret: clientSecret,
+      refresh_token: baglanti.refresh_token,
+      grant_type: 'refresh_token',
+    }),
+  })
+  const jetonVerisi = await jetonYaniti.json()
+  if (!jetonYaniti.ok || !jetonVerisi.access_token) {
+    res.status(500).json({ error: 'Google erişim jetonu alınamadı: ' + JSON.stringify(jetonVerisi) })
+    return
+  }
+  const accessToken = jetonVerisi.access_token
+
+  // Kitap klasörünü buluyoruz (daha önce bulunup kaydedildiyse tekrar
+  // aramıyoruz), yoksa oluşturup id'sini google_baglanti'ye kaydediyoruz —
+  // ödev arşivinin kullandığı klasörle KARIŞMASIN diye ayrı bir kolon
+  // (kitap_klasor_id) ve ayrı bir isim kullanılıyor.
+  const KLASOR_ADI = 'Savaş Akça Eğitim - Kitaplar'
+  let klasorId = baglanti.kitap_klasor_id
+  if (!klasorId) {
+    const aramaYaniti = await fetch(
+      `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(
+        `name='${KLASOR_ADI}' and mimeType='application/vnd.google-apps.folder' and trashed=false`
+      )}&fields=files(id)`,
+      { headers: { Authorization: `Bearer ${accessToken}` } }
+    )
+    const aramaVerisi = await aramaYaniti.json()
+    if (aramaVerisi.files?.length > 0) {
+      klasorId = aramaVerisi.files[0].id
+    } else {
+      const olusturYaniti = await fetch('https://www.googleapis.com/drive/v3/files', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: KLASOR_ADI, mimeType: 'application/vnd.google-apps.folder' }),
+      })
+      const olusturVerisi = await olusturYaniti.json()
+      klasorId = olusturVerisi.id
+    }
+    if (klasorId) {
+      await admin.from('google_baglanti').update({ kitap_klasor_id: klasorId }).eq('id', true)
+    }
+  }
+
+  res.status(200).json({ accessToken, klasorId: klasorId || null })
 }
