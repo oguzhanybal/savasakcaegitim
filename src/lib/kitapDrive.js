@@ -51,30 +51,58 @@ async function driveErisimBilgisiAl() {
 // Bir kitap PDF'ini (Blob/File) doğrudan tarayıcıdan Drive'daki kitap
 // klasörüne yükler, oluşan Drive dosya id'sini döner.
 //
-// ilerlemeCallback(oran) — kullanıcı isteğiyle eklendi ("yüzde kaçı
-// yüklendiğini göremez miyiz"): 0..1 arası bir yükleme oranı verir. ÖNEMLİ:
-// bunun için bilerek fetch() DEĞİL, XMLHttpRequest kullanılıyor — fetch'in
-// GÖNDERİLEN veri (istek gövdesi) için bir ilerleme olayı YOK, sadece
-// XMLHttpRequest'in upload.onprogress'i bunu destekliyor. Kitap dosyaları
-// büyük olduğu ve yükleme bazen dakikalar sürebildiği için ilerleme çubuğu
-// olmadan ekran "donmuş" gibi görünüyordu.
+// ÖNEMLİ DÜZELTME (kullanıcı bildirimi: "çok yavaş yüklüyor neden"): ÖNCEDEN
+// "multipart" yöntemi kullanılıyordu — tüm dosya, metadata ile birlikte TEK
+// bir Blob'a paketlenip TEK bir istekte gönderiliyordu. Google'ın kendi
+// belgelerine göre bu yöntem SADECE küçük dosyalar için önerilir; 5MB'ın
+// üzerindeki dosyalarda (kitap PDF'leri onlarca-yüzlerce MB) "resumable
+// upload" (devam ettirilebilir yükleme) öneriliyor — hem daha verimli
+// aktarılıyor hem de bağlantı kesilirse baştan başlamak zorunda kalmıyor.
+// Ayrıca multipart yöntemi, göndermeden ÖNCE koca dosyayı yeni bir Blob'a
+// kopyalıyordu (tarayıcıda görünmeyen, ekrana "yüzde" yansımayan bir bekleme
+// süresi) — resumable yöntemde dosya OLDUĞU GİBİ gönderiliyor, bu adım da
+// ortadan kalkıyor.
+//
+// NOT: yine de en büyük etken kullanıcının kendi İNTERNETİNİN YÜKLEME hızı
+// (indirme hızından genelde çok daha düşük olur) — bu, dosya tarayıcıdan
+// doğrudan Google'a gittiği için değişmeyen bir fizik sınırı, hiçbir kod
+// değişikliği bunu ortadan kaldıramaz.
+//
+// ilerlemeCallback(oran) — 0..1 arası bir yükleme oranı verir. Bunun için
+// bilerek fetch() DEĞİL, XMLHttpRequest kullanılıyor — fetch'in GÖNDERİLEN
+// veri (istek gövdesi) için bir ilerleme olayı YOK, sadece
+// XMLHttpRequest'in upload.onprogress'i bunu destekliyor.
 export async function driveyeKitapYukle(dosya, dosyaAdi, ilerlemeCallback) {
   const { accessToken, klasorId } = await driveErisimBilgisiAl()
 
-  const sinir = 'kitap_yukle_sinir_' + Date.now().toString(36)
-  const metadata = { name: dosyaAdi, parents: klasorId ? [klasorId] : undefined }
-  const govde = new Blob([
-    `--${sinir}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${JSON.stringify(metadata)}\r\n`,
-    `--${sinir}\r\nContent-Type: application/pdf\r\n\r\n`,
-    dosya,
-    `\r\n--${sinir}--`,
-  ])
+  // 1) Resumable yükleme OTURUMU başlatıyoruz — küçük bir JSON isteği,
+  // dosyanın kendisi henüz gitmiyor. Google, oturumun adresini "Location"
+  // yanıt başlığında döner.
+  const baslatYaniti = await fetch(
+    'https://www.googleapis.com/upload/drive/v3/files?uploadType=resumable&fields=id',
+    {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        'Content-Type': 'application/json; charset=UTF-8',
+        'X-Upload-Content-Type': 'application/pdf',
+        'X-Upload-Content-Length': String(dosya.size),
+      },
+      body: JSON.stringify({ name: dosyaAdi, parents: klasorId ? [klasorId] : undefined }),
+    }
+  )
+  if (!baslatYaniti.ok) {
+    throw new Error(`Drive yükleme oturumu başlatılamadı (HTTP ${baslatYaniti.status}).`)
+  }
+  const oturumUrl = baslatYaniti.headers.get('Location')
+  if (!oturumUrl) throw new Error('Drive yükleme oturumu başlatılamadı (oturum adresi alınamadı).')
 
+  // 2) Asıl dosyayı bu oturuma gönderiyoruz — dosya OLDUĞU GİBİ (ekstra bir
+  // Blob'a kopyalanmadan) yollanıyor, ilerleme XHR ile canlı takip ediliyor.
   return new Promise((resolve, reject) => {
     const istek = new XMLHttpRequest()
-    istek.open('POST', 'https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id')
-    istek.setRequestHeader('Authorization', `Bearer ${accessToken}`)
-    istek.setRequestHeader('Content-Type', `multipart/related; boundary=${sinir}`)
+    istek.open('PUT', oturumUrl)
+    istek.setRequestHeader('Content-Type', 'application/pdf')
     istek.upload.onprogress = (e) => {
       if (ilerlemeCallback && e.lengthComputable) ilerlemeCallback(e.loaded / e.total)
     }
@@ -89,11 +117,11 @@ export async function driveyeKitapYukle(dosya, dosyaAdi, ilerlemeCallback) {
       if (istek.status >= 200 && istek.status < 300 && veri.id) {
         resolve(veri.id)
       } else {
-        reject(new Error('Drive\'a yükleme hatası: ' + JSON.stringify(veri)))
+        reject(new Error(`Drive'a yükleme hatası (HTTP ${istek.status}): ` + JSON.stringify(veri)))
       }
     }
     istek.onerror = () => reject(new Error('Drive\'a yükleme hatası: bağlantı sorunu.'))
-    istek.send(govde)
+    istek.send(dosya)
   })
 }
 
