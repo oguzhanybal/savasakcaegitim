@@ -46,7 +46,105 @@ function tarihKisaGoster(tarihStr) {
   return new Date(tarihStr + 'T12:00:00').toLocaleDateString('tr-TR', { day: '2-digit', month: 'long' })
 }
 
-export default function HaftalikProgramGoruntule({ program, siniflar, ogretmenler, atamalar, bireBirYoklamalar, ogrenciler }) {
+function tarihStrYerel(isoStr) {
+  if (!isoStr) return null
+  const d = new Date(isoStr)
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+}
+
+function yerelBugunTarihi() {
+  const n = new Date()
+  return `${n.getFullYear()}-${String(n.getMonth() + 1).padStart(2, '0')}-${String(n.getDate()).padStart(2, '0')}`
+}
+
+// GunlukProgramListesi.jsx'teki AYNI ADLI fonksiyonla BİREBİR aynı mantık —
+// kod tekrarı bilerek yapıldı (dosyalar arasında bağımsız tutuluyor, bkz.
+// oradaki uzun açıklama). Seçilen TARİHTE, her slot (sınıf+gün+saat) için
+// GERÇEKTEN geçerli olan ders_programi satırını (eski/yeni öğretmen devri
+// gözetilerek en yenisini) seçer — sadece "aktif=true" satırlara değil,
+// pasif (devredilmiş/silinmiş) satırlara da bakarak.
+function tarihIcinAktifProgram(programTum, tarih) {
+  const bugun = yerelBugunTarihi()
+  const gruplar = new Map() // sınıf+gün+saat -> satır dizisi
+  for (const d of programTum || []) {
+    const anahtar = `${d.sinif_id || d.id}|${d.gun}|${d.baslangic_saat}-${d.bitis_saat}`
+    if (!gruplar.has(anahtar)) gruplar.set(anahtar, [])
+    gruplar.get(anahtar).push(d)
+  }
+  const sonuc = []
+  for (const satirlar of gruplar.values()) {
+    let enYeni = null
+    let enYeniEsasTarih = null
+    for (const d of satirlar) {
+      const esasTarih = d.baslangic_tarihi || tarihStrYerel(d.created_at)
+      if (esasTarih && esasTarih > tarih) continue
+      if (d.aktif === false) {
+        if (!d.pasif_tarihi || tarih > d.pasif_tarihi) continue
+        if (tarih === d.pasif_tarihi && tarih === bugun) continue
+      }
+      const karsilastirma = `${esasTarih || ''}T${d.created_at || ''}`
+      const enYeniKarsilastirma =
+        enYeniEsasTarih !== null ? `${enYeniEsasTarih || ''}T${enYeni.created_at || ''}` : null
+      if (!enYeni || karsilastirma > enYeniKarsilastirma) {
+        enYeni = d
+        enYeniEsasTarih = esasTarih
+      }
+    }
+    if (enYeni) sonuc.push(enYeni)
+  }
+  return sonuc
+}
+
+// ÖNEMLİ DÜZELTME — kullanıcı bildirimi: "öğretmenlere bakıyoruz ya o
+// sağdaki geçmiş haftaları seçtiğimde program saçmalıyor şu anki programa
+// göre sonuç çıkarıyor". Önceden bu bileşen, öğretmen görünümünde ◀/▶ ile
+// başka bir hafta seçilse bile SINIF DERSLERİ kısmında hep "program" (canlı/
+// güncel aktif satırlar) kullanıyordu — hafta seçici sadece Bire Bir kısmını
+// etkiliyordu, sınıf dersleri hiç değişmiyordu. Artık seçilen HAFTANIN her
+// günü (Pazartesi-Cumartesi) kendi GERÇEK takvim tarihine
+// (haftaGunTarihleri[gun-1]) göre AYRI AYRI yeniden kuruluyor — bir öğretmen
+// devri hafta İÇİNDE gerçekleşmiş olsa bile (ör. Çarşamba'dan itibaren yeni
+// program başladıysa) Pazartesi/Salı eski, Çarşamba-Cumartesi yeni öğretmeni
+// doğru gösterir. GunlukProgramListesi'nin gün gün yaptığının haftalık toplu
+// hali.
+function haftaIcinSinifDersleri(programTum, haftaGunTarihleri) {
+  const sonuc = []
+  for (let gun = 1; gun <= 6; gun++) {
+    const tarih = haftaGunTarihleri[gun - 1]
+    if (!tarih) continue
+    const oGuninProgrami = tarihIcinAktifProgram(programTum, tarih).filter((d) => d.gun === gun)
+    sonuc.push(...oGuninProgrami)
+
+    // BOŞLUK YEDEĞİ — GunlukProgramListesi.jsx'teki AYNI mantık: o tarihte
+    // hiçbir tarihsel satır bir slotu (sınıf+saat) kapsamıyorsa (ör. bir
+    // düzenleme sırasında araya kısa bir boşluk girdiyse) ama o sınıf o
+    // tarihte zaten kurulmuşsa, o slot için GÜNCEL (şu an aktif) satırı
+    // yedek olarak gösteriyoruz — dersin haftalık görünümden tamamen
+    // kaybolmasındansa.
+    const kapsananlar = new Set(oGuninProgrami.filter((d) => d.sinif_id).map((d) => `${d.sinif_id}|${saatKisalt(d.baslangic_saat)}`))
+    const gecmisteVarOlanSiniflar = new Set(
+      (programTum || [])
+        .filter((d) => {
+          const esasTarih = d.baslangic_tarihi || tarihStrYerel(d.created_at)
+          return !esasTarih || esasTarih <= tarih
+        })
+        .map((d) => d.sinif_id)
+    )
+    const guncelYedek = (programTum || [])
+      .filter((d) => d.aktif !== false)
+      .filter(
+        (d) =>
+          d.sinif_id &&
+          d.gun === gun &&
+          !kapsananlar.has(`${d.sinif_id}|${saatKisalt(d.baslangic_saat)}`) &&
+          gecmisteVarOlanSiniflar.has(d.sinif_id)
+      )
+    sonuc.push(...guncelYedek)
+  }
+  return sonuc
+}
+
+export default function HaftalikProgramGoruntule({ program, programTum, siniflar, ogretmenler, atamalar, bireBirYoklamalar, ogrenciler }) {
   const [tip, setTip] = useState('sinif') // 'sinif' | 'ogretmen'
   const [seciliId, setSeciliId] = useState('')
   // Sadece öğretmen görünümünde anlamlı — 0: bu hafta, 1: gelecek hafta,
@@ -72,9 +170,16 @@ export default function HaftalikProgramGoruntule({ program, siniflar, ogretmenle
   // HAFTAYA ait bire bir derslerini de ekliyoruz (bkz. yukarıdaki not).
   const filtreliDersler = useMemo(() => {
     if (!seciliId) return []
-    const sinifDersleri = (program || []).filter((d) =>
-      tip === 'sinif' ? d.sinif_id === seciliId : d.ogretmen_profile_id === seciliId
-    )
+    // Sınıf görünümünde hafta seçici zaten yok (her zaman güncel/canlı
+    // programı gösterir, önceki davranış aynen korunuyor) — sadece öğretmen
+    // görünümünde, seçilen HAFTAYA göre tarihsel olarak yeniden kuruluyor
+    // (bkz. haftaIcinSinifDersleri üstündeki not).
+    const sinifDersleri =
+      tip === 'sinif'
+        ? (program || []).filter((d) => d.sinif_id === seciliId)
+        : haftaIcinSinifDersleri(programTum || program, haftaGunTarihleri).filter(
+            (d) => d.ogretmen_profile_id === seciliId
+          )
     if (tip !== 'ogretmen') return sinifDersleri
 
     const tarihliBireBir = (bireBirYoklamalar || [])
@@ -102,7 +207,7 @@ export default function HaftalikProgramGoruntule({ program, siniflar, ogretmenle
         sinif_adi: 'Bire Bir',
       }))
     return [...sinifDersleri, ...tarihliBireBir, ...atamaBireBir]
-  }, [program, atamalar, bireBirYoklamalar, ogrenciler, tip, seciliId, haftaGunTarihleri])
+  }, [program, programTum, atamalar, bireBirYoklamalar, ogrenciler, tip, seciliId, haftaGunTarihleri])
 
   const gunlereGore = useMemo(
     () =>
