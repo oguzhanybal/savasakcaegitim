@@ -50,7 +50,15 @@ async function driveErisimBilgisiAl() {
 
 // Bir kitap PDF'ini (Blob/File) doğrudan tarayıcıdan Drive'daki kitap
 // klasörüne yükler, oluşan Drive dosya id'sini döner.
-export async function driveyeKitapYukle(dosya, dosyaAdi) {
+//
+// ilerlemeCallback(oran) — kullanıcı isteğiyle eklendi ("yüzde kaçı
+// yüklendiğini göremez miyiz"): 0..1 arası bir yükleme oranı verir. ÖNEMLİ:
+// bunun için bilerek fetch() DEĞİL, XMLHttpRequest kullanılıyor — fetch'in
+// GÖNDERİLEN veri (istek gövdesi) için bir ilerleme olayı YOK, sadece
+// XMLHttpRequest'in upload.onprogress'i bunu destekliyor. Kitap dosyaları
+// büyük olduğu ve yükleme bazen dakikalar sürebildiği için ilerleme çubuğu
+// olmadan ekran "donmuş" gibi görünüyordu.
+export async function driveyeKitapYukle(dosya, dosyaAdi, ilerlemeCallback) {
   const { accessToken, klasorId } = await driveErisimBilgisiAl()
 
   const sinir = 'kitap_yukle_sinir_' + Date.now().toString(36)
@@ -62,19 +70,31 @@ export async function driveyeKitapYukle(dosya, dosyaAdi) {
     `\r\n--${sinir}--`,
   ])
 
-  const yuklemeYaniti = await fetch(
-    'https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id',
-    {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': `multipart/related; boundary=${sinir}` },
-      body: govde,
+  return new Promise((resolve, reject) => {
+    const istek = new XMLHttpRequest()
+    istek.open('POST', 'https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id')
+    istek.setRequestHeader('Authorization', `Bearer ${accessToken}`)
+    istek.setRequestHeader('Content-Type', `multipart/related; boundary=${sinir}`)
+    istek.upload.onprogress = (e) => {
+      if (ilerlemeCallback && e.lengthComputable) ilerlemeCallback(e.loaded / e.total)
     }
-  )
-  const yuklemeVerisi = await yuklemeYaniti.json()
-  if (!yuklemeYaniti.ok || !yuklemeVerisi.id) {
-    throw new Error('Drive\'a yükleme hatası: ' + JSON.stringify(yuklemeVerisi))
-  }
-  return yuklemeVerisi.id
+    istek.onload = () => {
+      let veri = {}
+      try {
+        veri = JSON.parse(istek.responseText)
+      } catch {
+        // yanıt JSON değilse (beklenmeyen bir hata sayfası vb.) veri boş kalır,
+        // aşağıdaki "!veri.id" kontrolü zaten hatayı yakalayacak.
+      }
+      if (istek.status >= 200 && istek.status < 300 && veri.id) {
+        resolve(veri.id)
+      } else {
+        reject(new Error('Drive\'a yükleme hatası: ' + JSON.stringify(veri)))
+      }
+    }
+    istek.onerror = () => reject(new Error('Drive\'a yükleme hatası: bağlantı sorunu.'))
+    istek.send(govde)
+  })
 }
 
 // Drive'daki bir kitap PDF'ini indirip Blob olarak döner (pdf.js ile açmak
