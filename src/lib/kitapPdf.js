@@ -8,9 +8,9 @@
 // fazla soru seçilse bile o kitabın PDF'i ve o sayfanın render'ı SADECE BİR
 // KEZ yapılır (belgeCache/sayfaCache) — bkz. kitapcikOcr.js'teki aynı "tek
 // seferde render, tekrar kullan" deseni.
-import { supabase } from './supabase'
 import { pdfBelgesiAc, sayfayiGoruntuyeCevir, alttakiBosluguKirp } from './kitapcikOcr'
 import { jspdfYukle } from './pdfOlustur'
+import { kitapPdfBlobuGetir } from './kitapDrive'
 
 function canvasKirp(canvas, x, y, genislik, yukseklik) {
   const g = Math.max(1, Math.round(genislik))
@@ -92,8 +92,12 @@ export async function testPdfOlustur(sorular, ilerlemeCallback, testBasligi) {
 
   async function belgeGetir(kitap) {
     if (belgeCache.has(kitap.id)) return belgeCache.get(kitap.id)
-    const { data: pdfBlobu, error } = await supabase.storage.from('kitaplar').download(kitap.pdf_yolu)
-    if (error) throw new Error(`"${kitap.ad || kitap.id}" kitabının PDF'i indirilemedi: ${error.message}`)
+    let pdfBlobu
+    try {
+      pdfBlobu = await kitapPdfBlobuGetir(kitap)
+    } catch (error) {
+      throw new Error(`"${kitap.ad || kitap.id}" kitabının PDF'i indirilemedi: ${error.message}`)
+    }
     const belge = await pdfBelgesiAc(pdfBlobu)
     belgeCache.set(kitap.id, belge)
     return belge
