@@ -326,11 +326,28 @@ export async function testPdfOlustur(sorular, ilerlemeCallback, testBasligi, ust
     sutunYler = new Array(sutunSayisi).fill(sayfaBaslangicY)
   }
 
+  // Kullanıcı isteğiyle eklendi: "ortaya çizgi çeksek, soruları bir sayfada
+  // ikiye bölüyoruz ya" — iki sütun arasındaki boşluğun (sutunAraligi) tam
+  // ortasına, ince, açık gri dikey bir çizgi çizilir. Üstten sayfaBaslangicY'de
+  // (kenar, ya da ilk sayfada başlık varsa başlığın ALTINDA) başlar — böylece
+  // ilk sayfada test başlığının ÜZERİNDEN geçip onu bölmez. Her sayfada (ilk
+  // sayfa dahil) TEKRAR çizilmesi gerekir — jsPDF'te her doc.addPage() BOŞ,
+  // çizgisiz yeni bir sayfa açar.
+  function sutunAyracCizgisiCiz() {
+    if (sutunSayisi < 2) return
+    const cizgiX = kenar + sutunGenisligi + sutunAraligi / 2
+    doc.setDrawColor(210, 210, 210)
+    doc.setLineWidth(0.6)
+    doc.line(cizgiX, sayfaBaslangicY, cizgiX, sayfaYuksekligi - kenar)
+  }
+  sutunAyracCizgisiCiz()
+
   function yeniSayfaBaslat() {
     doc.addPage()
     sayfaBaslangicY = kenar // başlık sadece ilk sayfada tekrarlanmaz
     sutunYler = new Array(sutunSayisi).fill(sayfaBaslangicY)
     aktifSutun = 0
+    sutunAyracCizgisiCiz()
   }
 
   for (let i = 0; i < sorular.length; i++) {
