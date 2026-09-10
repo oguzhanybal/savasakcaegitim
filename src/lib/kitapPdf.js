@@ -346,7 +346,11 @@ export async function testPdfOlustur(sorular, ilerlemeCallback, testBasligi, ust
     // riski yok. Sıra numarası: admin elle bir "Soru No" girmişse ONU,
     // girmemişse bu test PDF'indeki YERLEŞİM SIRASINI (i+1) kullanır.
     const siraNo = s.soru_no || i + 1
-    const etiketParcalari = [`${siraNo}.`, s.ders_adi, s.konu].filter(Boolean)
+    // Kullanıcı isteğiyle (3. istek turu) SADECE sıra numarası basılıyor —
+    // ÖNCEDEN burada ders/konu VE en sonda kaynak kitabın adı da ekleniyordu
+    // ("kitabın ismi de yazıyor, sadece soru numarası yazsa yeter"). Artık
+    // etiket tek başına "1." gibi görünüyor; ders_adi/konu/kitap.ad hâlâ
+    // veritabanında duruyor (sadece PDF'e basılmıyor), istenirse geri eklenir.
     const etiketVar = true
     const etiketAlaniYuksekligi = etiketYuksekligi + etiketBosluk
 
@@ -402,7 +406,7 @@ export async function testPdfOlustur(sorular, ilerlemeCallback, testBasligi, ust
     let y = sutunYler[aktifSutun]
 
     if (etiketVar) {
-      const etiket = [...etiketParcalari, s.kitap?.ad].filter(Boolean).join('  ·  ')
+      const etiket = `${siraNo}.`
       doc.setFontSize(9)
       doc.setTextColor(107, 114, 128)
       doc.text(etiket, x, y + 9, { maxWidth: sutunGenisligi })
