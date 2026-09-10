@@ -8,6 +8,7 @@ import MusaitlikTablosu from '../components/MusaitlikTablosu'
 import YoklamaKonuModal from '../components/YoklamaKonuModal'
 import GunlukProgramListesi from '../components/GunlukProgramListesi'
 import HaftalikProgramGoruntule from '../components/HaftalikProgramGoruntule'
+import SinifBazliProgramTablosu from '../components/SinifBazliProgramTablosu'
 
 const GUNLER = ['', 'Pazartesi', 'Salı', 'Çarşamba', 'Perşembe', 'Cuma', 'Cumartesi', 'Pazar']
 const GUNLER_KISA = ['', 'Pzt', 'Sal', 'Çar', 'Per', 'Cum', 'Cmt', 'Paz']
@@ -2423,6 +2424,13 @@ export default function DersProgrami() {
             >
               Haftalık Program
             </button>
+            <button
+              type="button"
+              onClick={() => setYonetimGorunum('sinif')}
+              className={`px-3 py-1.5 font-medium transition-colors ${yonetimGorunum === 'sinif' ? 'bg-navy text-white' : 'text-gray-600 hover:bg-gray-50'}`}
+            >
+              Sınıf Bazlı Program
+            </button>
           </div>
 
           {yonetimGorunum === 'ekle' && (
@@ -2577,6 +2585,10 @@ export default function DersProgrami() {
               bireBirYoklamalar={bireBirYoklamalar}
               ogrenciler={ogrenciler}
             />
+          )}
+
+          {yonetimGorunum === 'sinif' && (
+            <SinifBazliProgramTablosu programTum={programTum} siniflar={siniflar} />
           )}
         </>
       )}
