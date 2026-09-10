@@ -423,10 +423,14 @@ export async function testPdfOlustur(sorular, ilerlemeCallback, testBasligi, ust
     let y = sutunYler[aktifSutun]
 
     if (etiketVar) {
+      // Kullanıcı isteğiyle: soru sıra numarası daha KALIN ve SİYAH —
+      // ÖNCEDEN ince/gri (107,114,128) idi, fark etmesi zor olabiliyordu.
       const etiket = `${siraNo}.`
-      doc.setFontSize(9)
-      doc.setTextColor(107, 114, 128)
+      doc.setFontSize(11)
+      doc.setFont(undefined, 'bold')
+      doc.setTextColor(0, 0, 0)
       doc.text(etiket, x, y + 9, { maxWidth: sutunGenisligi })
+      doc.setFont(undefined, 'normal')
       y += etiketAlaniYuksekligi
     }
 
