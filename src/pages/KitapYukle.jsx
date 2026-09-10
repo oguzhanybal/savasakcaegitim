@@ -63,6 +63,14 @@ function KutuKatmani({
   onKutuTiklandi,
   onCizimBitti,
   onSecimCikar,
+  // Kullanıcı isteğiyle eklendi: "soru karesinin üzerine tıklayabileyim,
+  // üzerine tıklayınca cevap şıkları çıksın işaretleyebileyim" — sağdaki
+  // panele bakmak zorunda kalmadan, kutunun HEMEN ALTINDA küçük bir A-E
+  // seçici açılır. Verilirse (gecici_id, yeniHarf) ile çağrılır; sağdaki
+  // panelin "Doğru Cevap" alanıyla AYNI veriye (soru.cevap) yazar, ikisi de
+  // güncel kalır — biri diğerini geçersiz kılmıyor, sadece iki farklı yerden
+  // aynı şeyi işaretleme imkanı.
+  onCevapDegistir,
 }) {
   const [cizilen, setCizilen] = useState(null) // {x0,y0,x1,y1} doğal koordinatlarda
   const kapRef = useRef(null)
@@ -152,6 +160,39 @@ function KutuKatmani({
               </button>
             )}
           </span>
+          {/* Bu kutu seçiliyken (üzerine tıklanınca), hemen altında küçük bir
+              A-E cevap seçici — sağdaki "Doğru Cevap" paneline gitmeden,
+              kutunun üzerinden tek tıkla işaretlenebilsin diye. Çizim
+              modundayken (yeni kutu çiziliyorken) karışıklık olmasın diye
+              gösterilmiyor. */}
+          {s.gecici_id === seciliGeciciId && !cizimModu && onCevapDegistir && (
+            <div
+              onClick={(e) => e.stopPropagation()}
+              className="absolute top-full left-0 mt-1 z-20 flex items-center gap-1 bg-white border border-orange rounded-lg shadow-lg px-1.5 py-1 whitespace-nowrap"
+            >
+              <span className="text-[9px] font-semibold text-gray-400 pr-0.5">Cevap:</span>
+              {['A', 'B', 'C', 'D', 'E'].map((harf) => (
+                <button
+                  key={harf}
+                  type="button"
+                  onClick={() => onCevapDegistir(s.gecici_id, s.cevap === harf ? null : harf)}
+                  className={`w-5 h-5 leading-none text-[10px] font-semibold rounded ${
+                    s.cevap === harf ? 'bg-navy text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                  }`}
+                >
+                  {harf}
+                </button>
+              ))}
+              <button
+                type="button"
+                onClick={() => onKutuTiklandi(null)}
+                title="Kapat"
+                className="text-gray-300 hover:text-gray-500 text-xs font-bold pl-1"
+              >
+                ✕
+              </button>
+            </div>
+          )}
         </div>
       ))}
       {cizilen && (
@@ -314,6 +355,10 @@ function KitapYukleFormu({ onYuklendi }) {
 function KitapDuzenle({ kitap, onGeriDon, onKitapGuncellendi, onSeciliSorularlaTestOlustur }) {
   const [belge, setBelge] = useState(null)
   const [belgeYukleniyor, setBelgeYukleniyor] = useState(true)
+  // "PDF indiriliyor..." yazısında yüzde göstermek için — kullanıcı isteğiyle
+  // eklendi ("bu şekilde takıldı" — aslında takılı değil, sadece ilerleme
+  // görünmediği için öyle sanılıyordu, bkz. kitapDrive.js'teki not).
+  const [indirmeOrani, setIndirmeOrani] = useState(0)
   const [hata, setHata] = useState('')
   const [sayfaNo, setSayfaNo] = useState(1)
   const [sayfaGoruntusu, setSayfaGoruntusu] = useState(null)
@@ -350,7 +395,8 @@ function KitapDuzenle({ kitap, onGeriDon, onKitapGuncellendi, onSeciliSorularlaT
   useEffect(() => {
     let iptal = false
     setBelgeYukleniyor(true)
-    kitapPdfBlobuGetir(kitap)
+    setIndirmeOrani(0)
+    kitapPdfBlobuGetir(kitap, (oran) => !iptal && setIndirmeOrani(oran))
       .then(async (data) => {
         const b = await pdfBelgesiAc(data)
         if (!iptal) setBelge(b)
@@ -651,7 +697,9 @@ function KitapDuzenle({ kitap, onGeriDon, onKitapGuncellendi, onSeciliSorularlaT
       )}
 
       {belgeYukleniyor ? (
-        <p className="text-gray-400">PDF indiriliyor...</p>
+        <p className="text-gray-400">
+          PDF indiriliyor{indirmeOrani > 0 ? `... %${Math.round(indirmeOrani * 100)}` : '...'}
+        </p>
       ) : !sayfaGoruntusu ? (
         <p className="text-gray-400">Sayfa hazırlanıyor...</p>
       ) : (
@@ -726,6 +774,7 @@ function KitapDuzenle({ kitap, onGeriDon, onKitapGuncellendi, onSeciliSorularlaT
                 onKutuTiklandi={setSeciliGeciciId}
                 onCizimBitti={cizimBitti}
                 onSecimCikar={secimDegistir}
+                onCevapDegistir={(gecici_id, yeniCevap) => soruGuncelle(gecici_id, { cevap: yeniCevap })}
               />
             </div>
           </div>
