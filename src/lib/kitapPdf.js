@@ -11,7 +11,12 @@
 import { pdfBelgesiAc, sayfayiGoruntuyeCevir, alttakiBosluguKirp } from './kitapcikOcr'
 import { jspdfYukle } from './pdfOlustur'
 import { kitapPdfBlobuGetir } from './kitapDrive'
-import { kitapMetinKatmanindanSoruNumaralariniTespitEt } from './kitapOcr'
+import {
+  kitapMetinKatmanindanSoruNumaralariniTespitEt,
+  kitapSoruNumarasiWorkerOlustur,
+  kitapSoruNumarasiWorkerKapat,
+  kitapSayfasindaSoruNumaralariniTespitEt,
+} from './kitapOcr'
 
 function canvasKirp(canvas, x, y, genislik, yukseklik) {
   const g = Math.max(1, Math.round(genislik))
@@ -31,25 +36,34 @@ function canvasKirp(canvas, x, y, genislik, yukseklik) {
 // başladığı için, bu numara test PDF'indeki YENİ sıra numarasıyla (ör. bu
 // testte 3. soru olması) ÇAKIŞIP kafa karıştırabiliyor.
 //
-// OTOMATİK YÖNTEM (aşağıdaki numaraAlaniniBul + numarayiBeyazlat): sadece
-// kaynak kitabın PDF'i GERÇEK bir metin katmanına sahipse (dijital/
-// taranmamış kitaplar — Yöntem 1, bkz. kitapOcr.js) çalışır. Bu durumda
-// kutunun ait olduğu sayfanın metin katmanı YENİDEN taranır (aynı, kanıtlanmış
-// tespit fonksiyonuyla) ve bu kutunun tam olarak HANGİ numaradan üretildiği
-// (satırın y konumu üzerinden, ±birkaç piksel toleransla) bulunur; bulunan
-// numaranın GERÇEK ölçülen konumu ve tahmini boyutu kadar bir alan, kutunun
-// SADECE o köşesinde beyazla boyanır — geri kalan soru metnine dokunulmaz.
-// Eşleşen bir numara bulunamazsa (ör. kutu elle çizildi/yeniden çizildi,
-// dolayısıyla otomatik tespitin ürettiği desenle uyuşmuyor) HİÇBİR ŞEY
-// yapılmaz — "belki doğrudur" diye tahmin yürütülmez, güvenli tarafta kalınır.
+// OTOMATİK YÖNTEM (aşağıdaki numaraAlaniniBul + numarayiBeyazlat): kutunun
+// ait olduğu sayfa YENİDEN taranır ve bu kutunun tam olarak HANGİ numaradan
+// üretildiği (satırın y konumu üzerinden, ±birkaç piksel toleransla) bulunur;
+// bulunan numaranın GERÇEK ölçülen konumu ve tahmini boyutu kadar bir alan,
+// kutunun SADECE o köşesinde beyazla boyanır — geri kalan soru metnine
+// dokunulmaz. Eşleşen bir numara bulunamazsa (ör. kutu elle çizildi/yeniden
+// çizildi, dolayısıyla otomatik tespitin ürettiği desenle uyuşmuyor) HİÇBİR
+// ŞEY yapılmaz — "belki doğrudur" diye tahmin yürütülmez, güvenli tarafta
+// kalınır.
 //
-// TARANMIŞ (metin katmanı olmayan) kitaplarda bu yöntem hiçbir eşleşme
-// bulamaz (Yöntem 1 zaten o kitaplarda hiç aday üretmiyor) — o kitaplar için
-// hâlâ aşağıdaki ustKirp (elle, % ile) kullanılabilir; ikisi BİRLİKTE de
-// uygulanabilir (önce otomatik, sonra varsa elle ek kırpma).
-const numaraAlaniCache = new Map() // "kitapId|sayfaNo" -> Yöntem 1 adayları (bu sayfada bulunan tüm numaralar)
+// İKİ AŞAMALI TESPİT (kullanıcının "ENS MATEMATİK" kitabıyla canlıda test
+// edilip TARANMIŞ kitaplarda numaraların gizlenmediği tespit edildikten SONRA
+// eklendi): ÖNCE kitapOcr.js'teki Yöntem 1 (PDF metin katmanı) denenir —
+// dijital kitaplarda anında ve %100 doğru sonuç verir. Bu sayfada Yöntem 1
+// HİÇ aday bulamazsa (metin katmanı yok — kitap TARANMIŞ/fotoğraflanmış),
+// "Bu Sayfada Soruları Otomatik Tespit Et" özelliğinde ZATEN kullanılan ve
+// kanıtlanmış olan Yöntem 2'ye (Tesseract OCR, PSM 6) otomatik olarak
+// düşülür — yani otomatik gizleme artık HEM dijital HEM taranmış kitaplarda
+// çalışıyor, elle hiçbir şey seçmeye gerek yok. OCR bir sayfa için pahalı
+// olduğundan worker TEMBEL oluşturulur ve testin TAMAMI için TEK SEFER
+// kullanılır (aşağıdaki ocrWorkerGetir, testPdfOlustur içinde tanımlanıyor);
+// sadece GERÇEKTEN taranmış bir kitap seçildiğinde bu ek maliyete girilir.
+// Bu ikinci aşama da bir eşleşme bulamazsa yine HİÇBİR ŞEY yapılmaz — aynı
+// güvenli-taraf kuralı geçerli. Son çare olarak aşağıdaki ustKirp (elle, %
+// ile) her zaman ek/yedek olarak kullanılabilir durumda kalıyor.
+const numaraAlaniCache = new Map() // "kitapId|sayfaNo" -> tespit edilen adaylar (Yöntem 1 veya Yöntem 2)
 
-async function numaraAlaniniBul(belgeGetir, s, sayfaCanvas) {
+async function numaraAlaniniBul(belgeGetir, s, sayfaCanvas, ocrWorkerGetir) {
   try {
     const anahtar = `${s.kitap.id}|${s.sayfa_no}`
     let adaylar = numaraAlaniCache.get(anahtar)
@@ -62,6 +76,19 @@ async function numaraAlaniniBul(belgeGetir, s, sayfaCanvas) {
         sayfaCanvas.width,
         sayfaCanvas.height
       )
+      // Yöntem 1 bu sayfada hiçbir şey bulamadıysa (muhtemelen taranmış bir
+      // kitap) OCR yedeğine düş — bkz. yukarıdaki "İKİ AŞAMALI TESPİT" notu.
+      if (adaylar.length === 0 && ocrWorkerGetir) {
+        const worker = await ocrWorkerGetir()
+        if (worker) {
+          adaylar = await kitapSayfasindaSoruNumaralariniTespitEt(
+            worker,
+            sayfaCanvas,
+            sayfaCanvas.width,
+            sayfaCanvas.height
+          )
+        }
+      }
       numaraAlaniCache.set(anahtar, adaylar)
     }
     // Bu kutu HANGİ adaydan üretildi? baslangicKutulariUret (kitapcikOcr.js)
@@ -224,6 +251,28 @@ export async function testPdfOlustur(sorular, ilerlemeCallback, testBasligi, ust
   const belgeCache = new Map() // kitap_id -> pdf.js belgesi
   const sayfaCache = new Map() // "kitapId|sayfaNo" -> canvas (o sayfanın tam render'ı)
 
+  // Taranmış (metin katmanı olmayan) kitaplarda otomatik numara gizleme için
+  // OCR yedeği (bkz. numaraAlaniniBul'daki "İKİ AŞAMALI TESPİT" notu) — worker
+  // TEMBEL oluşturulur (ilk gerçekten ihtiyaç duyulduğunda) ve bu testin
+  // TAMAMI boyunca TEK SEFER kullanılıp en sonda kapatılır (aşağıdaki finally).
+  let ocrWorker = null
+  let ocrWorkerHata = false
+  async function ocrWorkerGetir() {
+    if (ocrWorkerHata) return null
+    if (!ocrWorker) {
+      try {
+        ocrWorker = await kitapSoruNumarasiWorkerOlustur()
+      } catch {
+        // OCR worker hiç başlatılamazsa (ör. tarayıcı desteği yok) otomatik
+        // gizleme sessizce devre dışı kalır — test PDF'i yine de üretilir,
+        // sadece taranmış kitaplarda numaralar gizlenmez.
+        ocrWorkerHata = true
+        return null
+      }
+    }
+    return ocrWorker
+  }
+
   async function belgeGetir(kitap) {
     if (belgeCache.has(kitap.id)) return belgeCache.get(kitap.id)
     let pdfBlobu
@@ -246,6 +295,11 @@ export async function testPdfOlustur(sorular, ilerlemeCallback, testBasligi, ust
     return canvas
   }
 
+  // Aşağıdaki try/finally: OCR worker'ı (yukarıdaki ocrWorkerGetir ile
+  // tembel/lazy oluşturulmuş olabilir) her koşulda — üretim başarılı olsa da
+  // ortada bir hata fırlatılsa da — kapatmak için. Aksi halde tarayıcıda
+  // sonlandırılmamış bir Tesseract worker'ı boşuna bellekte kalabilir.
+  try {
   // Her sütunun o anki doluluk (y) konumu — yeni sayfaya geçildiğinde sıfırlanır.
   // sayfaBaslangicY: o an geçerli sayfada sütunların BOŞ (henüz hiç soru
   // eklenmemiş) durumdaki y konumu — "bu sütun boş mu" kontrolü (aşağıda)
@@ -302,7 +356,7 @@ export async function testPdfOlustur(sorular, ilerlemeCallback, testBasligi, ust
     // ÖNCE, tüm SAYFA üzerindeki koordinatlarla bulunuyor (kutunun kendi x/y
     // hâlâ sayfa uzayında), sonra kırpılmış görüntüye göreceli konuma çevrilip
     // uygulanıyor.
-    const numaraAlani = await numaraAlaniniBul(belgeGetir, s, sayfaCanvas)
+    const numaraAlani = await numaraAlaniniBul(belgeGetir, s, sayfaCanvas, ocrWorkerGetir)
     let kirpilan = canvasKirp(sayfaCanvas, s.x, s.y, s.genislik, s.yukseklik)
     kirpilan = alanBeyazlat(kirpilan, numaraAlani)
     // Kutu genelde bir sonraki sorunun başladığı yere kadar (fazla boşluklu)
@@ -412,4 +466,10 @@ export async function testPdfOlustur(sorular, ilerlemeCallback, testBasligi, ust
   }
 
   return doc.output('blob')
+  } finally {
+    // Yukarıdaki try'ın açıklaması: OCR worker'ı (ocrWorkerGetir ile taranmış
+    // bir kitap yüzünden gerçekten oluşturulmuşsa) burada, üretim başarılı
+    // olsun ya da bir hata fırlatılsın, HER ZAMAN kapatılır.
+    if (ocrWorker) await kitapSoruNumarasiWorkerKapat(ocrWorker)
+  }
 }
