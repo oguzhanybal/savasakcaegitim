@@ -117,15 +117,40 @@ export async function kitapMetinKatmanindanSoruNumaralariniTespitEt(belge, sayfa
 // YÖNTEM 2 (YEDEK — sadece 1. yöntem sonuç vermezse, taranmış/fotoğraflanmış
 // kitaplar için): kitapcikOcr.js'teki sayfadaSoruNumaralariniTespitEt ile
 // YAPISAL OLARAK AYNI (aynı tek şerit, aynı üst/alt sınır mantığı) — sadece
-// kabul edilen numara deseni ve OCR beyaz listesi "12)" formatını da
-// kapsayacak şekilde genişletildi.
+// kabul edilen numara deseni "12)" formatını da kapsayacak şekilde
+// genişletildi VE (aşağıya bakın) OCR ayarları bu kopyada farklı.
+//
+// CANLIDA YAPILAN GERÇEK TEŞHİS (kullanıcının "ENS MATEMATİK" kitabı, TARANMIŞ
+// bir PDF — metin katmanı yok, bu yüzden Yöntem 1 boş dönüyor ve buraya
+// düşüyor): bu kitapta soru numaraları ("1.", "2." ...) küçük punto, KALIN ve
+// RENKLİ (macenta) rakamlar — kitapcikOcr.js'in kullandığı PSM 11 (SPARSE_TEXT)
+// modu, sayfanın kendi PDF'inden tek başına qpdf ile çıkarılan sayfalar
+// üzerinde doğrudan `tesseract` CLI ile test edildiğinde bu tarz izole,
+// etrafı bol boşluklu küçük rakamları HİÇ bulamadı (0 aday) — hem uygulamanın
+// gerçek render ölçeğinde (kitap.olcek=3 ~ 216 DPI) hem de çok daha yüksek
+// çözünürlüklerde (300-500 DPI) aynı sonuç; yani sorun çözünürlük değil,
+// PSM 11'in bu glif tarzını "metin" olarak hiç algılamaması. PSM 6
+// (ASSUME_UNIFORM_BLOCK — "bu şerit tek bir düzenli metin bloğu") ile AYNI
+// şeritler üzerinde test edildiğinde sorular %100 doğru okundu.
+//
+// Ayrıca tessedit_char_whitelist (sadece rakam/./) ) whitelist'i AÇIKKEN bu
+// PSM 6 modunda bazı doğru okumalar bile anormal şekilde çok düşük (0)
+// güven puanı (confidence) alıyor — aşağıdaki kitapSayfasindaSoruNumaralariniTespitEt
+// zaten `w.confidence < 30` ile düşük puanlıları eliyor, bu yüzden whitelist
+// açıkken bazı GERÇEK soru numaraları da confidence yüzünden yanlışlıkla
+// elenebiliyordu. Whitelist'i kapatıp Tesseract'ın tam modelini kullanmaya
+// bırakınca aynı doğru rakamlar normal/yüksek güven puanı (~60-95) alıyor;
+// whitelist'in engellediği "yanlış pozitif" riskini zaten aşağı akıştaki
+// regex (^\d{1,3}[.)]?$), girintiliAdaylariEle (sütun kenarı) ve
+// ardisikDiziyeGoreFiltrele (artan sıra) filtreleri üstleniyor — bu üç
+// katman, whitelist olmadan da metin gövdesinden sızan kelimeleri güvenle
+// dışarıda bırakıyor (test edilen sayfalarda doğrulandı).
 // ============================================================================
 export async function kitapSoruNumarasiWorkerOlustur() {
   const Tesseract = await tesseractYukle()
   const worker = await Tesseract.createWorker('eng')
   await worker.setParameters({
-    tessedit_pageseg_mode: '11', // PSM.SPARSE_TEXT — kitapcikOcr.js ile aynı
-    tessedit_char_whitelist: '0123456789.)',
+    tessedit_pageseg_mode: '6', // PSM.ASSUME_UNIFORM_BLOCK — bkz. yukarıdaki teşhis notu
   })
   return worker
 }
