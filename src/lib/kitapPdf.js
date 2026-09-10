@@ -63,11 +63,23 @@ function baskiIcinKucult(canvas, hedefGenislikPuan, hedefYukseklikPuan, punoBasi
 // için (kaynak kitaptaki tek bir sütun genişliğinde) tam sayfa genişliğine
 // gerilince boyu da orantılı olarak devasa büyüyordu; sonuçta 50 soru ~60
 // sayfa tutuyordu (neredeyse her soru kendi sayfasını dolduruyordu, kâğıt
-// israfı). Şimdi 2 SÜTUNLU bir "en boş sütuna yerleştir" (greedy bin-packing)
-// düzeni kullanıyoruz: her soru kendi doğal en-boy oranıyla, en fazla bir
-// sütun genişliğine sığacak şekilde (gerekirse hafifçe büyütülüp/küçültülüp)
-// yerleştirilir, o an en az dolu olan sütuna eklenir — böylece sayfa başına
-// çok daha fazla soru sığar ve yazıcıdan çıkarıldığında kâğıt israfı olmaz.
+// israfı). Şimdi 2 SÜTUNLU bir düzen kullanıyoruz: her soru kendi doğal
+// en-boy oranıyla, en fazla bir sütun genişliğine sığacak şekilde (gerekirse
+// hafifçe büyütülüp/küçültülüp) yerleştirilir.
+//
+// SÜTUN DOLDURMA SIRASI (kullanıcı bildirimi: "sorular böyle biri solda biri
+// sağda duruyor" — yani okuma sırası kafa karıştırıcıydı): ÖNCEDEN o an EN AZ
+// DOLU olan sütun seçiliyordu (greedy bin-packing) — kâğıdı biraz daha sıkı
+// dolduruyordu ama sonuç, soruların sütunlar arasında ÖNGÖRÜLEMEZ şekilde
+// zıplaması oluyordu (ör. 1. soru sol sütunda, 2. sağda, 3. YİNE sağda, 4.
+// tekrar solda gibi) — ne kaynak kitabın kendi düzeniyle (önce sol sütun
+// tepeden tabana, SONRA sağ sütun) ne de normal bir test kâğıdının okuma
+// sırasıyla uyuşuyordu. Artık SIRAYLA dolduruyoruz: aktif sütun tamamen
+// dolana (bir sonraki soru sığmayana) kadar hep ONA yazılır, o zaman bir
+// SONRAKİ sütuna geçilir — yani 1,2,3... hep sol sütunda tepeden aşağı
+// dizilir, sol sütun dolunca 4,5,6... sağ sütunda tepeden aşağı devam eder.
+// Kullanılan toplam kâğıt miktarı öncekiyle AYNI (yine 2 sütun tam
+// dolduruluyor) — sadece HANGİ sorunun hangi sütuna gittiği değişti.
 export async function testPdfOlustur(sorular, ilerlemeCallback, testBasligi) {
   const jsPDF = await jspdfYukle()
   const doc = new jsPDF({ unit: 'pt', format: 'a4' })
@@ -113,7 +125,16 @@ export async function testPdfOlustur(sorular, ilerlemeCallback, testBasligi) {
   }
 
   // Her sütunun o anki doluluk (y) konumu — yeni sayfaya geçildiğinde sıfırlanır.
-  let sutunYler = new Array(sutunSayisi).fill(kenar)
+  // sayfaBaslangicY: o an geçerli sayfada sütunların BOŞ (henüz hiç soru
+  // eklenmemiş) durumdaki y konumu — "bu sütun boş mu" kontrolü (aşağıda)
+  // bununla karşılaştırılıyor, sabit "kenar" ile DEĞİL — ilk sayfada başlık
+  // varsa bu daha aşağıda başlar (bkz. baslikAlaniYuksekligi).
+  let sayfaBaslangicY = kenar
+  let sutunYler = new Array(sutunSayisi).fill(sayfaBaslangicY)
+  // Sorular hangi sütuna yazılıyor — SIRAYLA dolduruyoruz (bkz. yukarıdaki
+  // "SÜTUN DOLDURMA SIRASI" notu), bu yüzden "en az dolu sütun" aramak yerine
+  // tek bir "şu an aktif sütun" işaretçisi tutuyoruz.
+  let aktifSutun = 0
 
   // Test başlığı SADECE ilk sayfanın üstüne yazılır (sonraki sayfalarda
   // tekrarlanmaz) — üstteki alan bu kadar sütunların başlangıç y'sinden düşülür.
@@ -125,12 +146,15 @@ export async function testPdfOlustur(sorular, ilerlemeCallback, testBasligi) {
     doc.text(testBasligi.trim(), sayfaGenisligi / 2, kenar + 12, { align: 'center' })
     doc.setFont(undefined, 'normal')
     doc.setTextColor(0, 0, 0)
-    sutunYler = new Array(sutunSayisi).fill(kenar + baslikAlaniYuksekligi)
+    sayfaBaslangicY = kenar + baslikAlaniYuksekligi
+    sutunYler = new Array(sutunSayisi).fill(sayfaBaslangicY)
   }
 
   function yeniSayfaBaslat() {
     doc.addPage()
-    sutunYler = new Array(sutunSayisi).fill(kenar) // başlık sadece ilk sayfada tekrarlanmaz
+    sayfaBaslangicY = kenar // başlık sadece ilk sayfada tekrarlanmaz
+    sutunYler = new Array(sutunSayisi).fill(sayfaBaslangicY)
+    aktifSutun = 0
   }
 
   for (let i = 0; i < sorular.length; i++) {
@@ -173,21 +197,22 @@ export async function testPdfOlustur(sorular, ilerlemeCallback, testBasligi) {
       gerekliYukseklik = enKucukAlanKazanci
     }
 
-    // O an EN AZ dolu olan sütunu seç (greedy bin-packing).
-    let sutunIndex = 0
-    for (let k = 1; k < sutunSayisi; k++) {
-      if (sutunYler[k] < sutunYler[sutunIndex]) sutunIndex = k
+    // Aktif sütuna sığmıyorsa (ve aktif sütun zaten boş DEĞİLSE — yoksa boş
+    // bir sütuna bile sığmayan tek bir devasa soru için sonsuz döngüye
+    // girerdik, o durumda yukarıdaki küçültme zaten devreye girmiş olur) bir
+    // SONRAKİ sütuna geç; son sütundan sonrası yeni sayfa demektir. Bu döngü,
+    // "en az dolu sütunu bul" yerine soruları SIRAYLA (önce sol sütun
+    // tepeden tabana, sonra sağ sütun) yerleştirir — bkz. dosya başındaki not.
+    while (
+      sutunYler[aktifSutun] > sayfaBaslangicY &&
+      sutunYler[aktifSutun] + gerekliYukseklik > sayfaYuksekligi - kenar
+    ) {
+      aktifSutun++
+      if (aktifSutun >= sutunSayisi) yeniSayfaBaslat()
     }
 
-    // Seçilen (en boş) sütuna bile sığmıyorsa, sayfa dolmuş demektir — yeni
-    // sayfaya geç ve baştan (0. sütundan) devam et.
-    if (sutunYler[sutunIndex] > kenar && sutunYler[sutunIndex] + gerekliYukseklik > sayfaYuksekligi - kenar) {
-      yeniSayfaBaslat()
-      sutunIndex = 0
-    }
-
-    const x = kenar + sutunIndex * (sutunGenisligi + sutunAraligi)
-    let y = sutunYler[sutunIndex]
+    const x = kenar + aktifSutun * (sutunGenisligi + sutunAraligi)
+    let y = sutunYler[aktifSutun]
 
     if (etiketVar) {
       const etiket = [...etiketParcalari, s.kitap?.ad].filter(Boolean).join('  ·  ')
@@ -206,7 +231,7 @@ export async function testPdfOlustur(sorular, ilerlemeCallback, testBasligi) {
     const resimX = x + Math.max(0, (sutunGenisligi - gosterilenGenislik) / 2)
     doc.addImage(resim, 'PNG', resimX, y, gosterilenGenislik, gosterilenYukseklik)
 
-    sutunYler[sutunIndex] = y + gosterilenYukseklik + altBosluk
+    sutunYler[aktifSutun] = y + gosterilenYukseklik + altBosluk
   }
 
   // ============================================================================
