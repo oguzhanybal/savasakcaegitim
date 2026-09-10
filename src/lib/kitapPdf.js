@@ -11,6 +11,7 @@
 import { pdfBelgesiAc, sayfayiGoruntuyeCevir, alttakiBosluguKirp } from './kitapcikOcr'
 import { jspdfYukle } from './pdfOlustur'
 import { kitapPdfBlobuGetir } from './kitapDrive'
+import { kitapMetinKatmanindanSoruNumaralariniTespitEt } from './kitapOcr'
 
 function canvasKirp(canvas, x, y, genislik, yukseklik) {
   const g = Math.max(1, Math.round(genislik))
@@ -21,6 +22,125 @@ function canvasKirp(canvas, x, y, genislik, yukseklik) {
   yeni
     .getContext('2d')
     .drawImage(canvas, Math.round(x), Math.round(y), g, h, 0, 0, g, h)
+  return yeni
+}
+
+// Kullanıcı isteğiyle eklendi: "sorular kesilirken gerçek kitaptaki soru
+// numaraları da görünüyor, onlar görünmese" — kutu, admin kutuyu çizerken
+// genelde kaynak kitabın KENDİ soru numarasının (ör. "12.") üzerinden
+// başladığı için, bu numara test PDF'indeki YENİ sıra numarasıyla (ör. bu
+// testte 3. soru olması) ÇAKIŞIP kafa karıştırabiliyor.
+//
+// OTOMATİK YÖNTEM (aşağıdaki numaraAlaniniBul + numarayiBeyazlat): sadece
+// kaynak kitabın PDF'i GERÇEK bir metin katmanına sahipse (dijital/
+// taranmamış kitaplar — Yöntem 1, bkz. kitapOcr.js) çalışır. Bu durumda
+// kutunun ait olduğu sayfanın metin katmanı YENİDEN taranır (aynı, kanıtlanmış
+// tespit fonksiyonuyla) ve bu kutunun tam olarak HANGİ numaradan üretildiği
+// (satırın y konumu üzerinden, ±birkaç piksel toleransla) bulunur; bulunan
+// numaranın GERÇEK ölçülen konumu ve tahmini boyutu kadar bir alan, kutunun
+// SADECE o köşesinde beyazla boyanır — geri kalan soru metnine dokunulmaz.
+// Eşleşen bir numara bulunamazsa (ör. kutu elle çizildi/yeniden çizildi,
+// dolayısıyla otomatik tespitin ürettiği desenle uyuşmuyor) HİÇBİR ŞEY
+// yapılmaz — "belki doğrudur" diye tahmin yürütülmez, güvenli tarafta kalınır.
+//
+// TARANMIŞ (metin katmanı olmayan) kitaplarda bu yöntem hiçbir eşleşme
+// bulamaz (Yöntem 1 zaten o kitaplarda hiç aday üretmiyor) — o kitaplar için
+// hâlâ aşağıdaki ustKirp (elle, % ile) kullanılabilir; ikisi BİRLİKTE de
+// uygulanabilir (önce otomatik, sonra varsa elle ek kırpma).
+const numaraAlaniCache = new Map() // "kitapId|sayfaNo" -> Yöntem 1 adayları (bu sayfada bulunan tüm numaralar)
+
+async function numaraAlaniniBul(belgeGetir, s, sayfaCanvas) {
+  try {
+    const anahtar = `${s.kitap.id}|${s.sayfa_no}`
+    let adaylar = numaraAlaniCache.get(anahtar)
+    if (!adaylar) {
+      const belge = await belgeGetir(s.kitap)
+      adaylar = await kitapMetinKatmanindanSoruNumaralariniTespitEt(
+        belge,
+        s.sayfa_no,
+        Number(s.kitap.olcek) || 3,
+        sayfaCanvas.width,
+        sayfaCanvas.height
+      )
+      numaraAlaniCache.set(anahtar, adaylar)
+    }
+    // Bu kutu HANGİ adaydan üretildi? baslangicKutulariUret (kitapcikOcr.js)
+    // kutunun üst kenarını "aday.y - 6" olarak ayarlıyor — yani doğru eşleşen
+    // adayın y'si, kutunun y'sinden yaklaşık 6 piksel AŞAĞIDA olmalı. Küçük
+    // bir tolerans (±10px) yuvarlama farklarını kapsıyor. x için sıkı bir
+    // eşleşme ARANMIYOR (kutunun x'i sabit bir sütun kenar boşluğu, numaranın
+    // gerçek x'i kitaba göre değişebilir) — bunun yerine adayın x'inin bu
+    // kutunun sütunu İÇİNDE olup olmadığına bakılıyor.
+    const hedefY = s.y + 6
+    let enYakin = null
+    let enYakinFark = Infinity
+    for (const a of adaylar) {
+      if (a.x < s.x - 4 || a.x > s.x + s.genislik) continue // yanlış sütun/kutu
+      const fark = Math.abs(a.y - hedefY)
+      if (fark < enYakinFark) {
+        enYakinFark = fark
+        enYakin = a
+      }
+    }
+    if (!enYakin || enYakinFark > 10) return null
+
+    // Numaranın kutuya göre GÖRECELİ konumu — (0,0) VARSAYILMIYOR, gerçek
+    // ölçülen fark kullanılıyor (bazı kitaplarda numara kutunun tam sol
+    // kenarında değil, birkaç piksel içeride olabilir).
+    const gorelX = Math.max(0, enYakin.x - s.x)
+    const gorelY = Math.max(0, enYakin.y - s.y)
+    // Güvenlik payı: tahmini boyutu biraz büyüt (numarayı TAM kapsasın diye)
+    // ama kutunun makul bir bölümünü (en fazla %45 genişlik, %35 yükseklik)
+    // ASLA aşmasın — bir eşleşme hatası olsa bile soru metninin büyük kısmı
+    // her zaman korunur.
+    const genislik = Math.min(enYakin.genislik * 1.3, s.genislik * 0.45)
+    const yukseklik = Math.min(enYakin.yukseklik * 1.25, s.yukseklik * 0.35)
+    return { x: gorelX, y: gorelY, genislik, yukseklik }
+  } catch {
+    // Herhangi bir hata (ör. sayfa okunamadı) sessizce yutulur — "en kötü
+    // ihtimalle numara gizlenmez" güvenlik ağı, test PDF'i üretimini
+    // ASLA durdurmaz.
+    return null
+  }
+}
+
+// Verilen (x,y,genislik,yukseklik) BÖLGESİNİ (kutuya göre GÖRECELİ, doğal
+// piksel biriminde) canvas üzerinde beyazla boyar — numaraAlaniniBul'un
+// bulduğu alanı gizlemek için.
+function alanBeyazlat(canvas, alan) {
+  if (!alan) return canvas
+  const ctx = canvas.getContext('2d')
+  ctx.save()
+  ctx.fillStyle = '#ffffff'
+  ctx.fillRect(
+    Math.round(alan.x),
+    Math.round(alan.y),
+    Math.min(canvas.width - Math.round(alan.x), Math.round(alan.genislik)),
+    Math.min(canvas.height - Math.round(alan.y), Math.round(alan.yukseklik))
+  )
+  ctx.restore()
+  return canvas
+}
+
+// Kullanıcı isteğiyle eklendi (yukarıdaki otomatik yönteme EK, isteğe bağlı
+// bir araç — özellikle metin katmanı OLMAYAN/taranmış kitaplarda otomatik
+// yöntem çalışmadığı için): her kutunun ÜSTÜNDEN sabit bir YÜZDE kırpılır
+// (varsayılan %0 — hiçbir şey değişmez). Admin test PDF'ini önizleyip bu
+// oranı ihtiyaca göre artırıp azaltabilir; veritabanındaki kutu
+// koordinatlarına HİÇ dokunulmuyor (sadece bu PDF'e gömülen görüntüde), o
+// yüzden yanlış bir % denenirse tek yapılması gereken PDF'i farklı bir
+// oranla yeniden oluşturmak — hiçbir veri kaybı riski yok.
+function ustKirp(canvas, oran) {
+  if (!oran || oran <= 0) return canvas
+  const kirpilacakYukseklik = Math.round(canvas.height * Math.min(oran, 0.4)) // güvenlik payı: en fazla %40
+  if (kirpilacakYukseklik <= 0 || kirpilacakYukseklik >= canvas.height) return canvas
+  const kalanYukseklik = canvas.height - kirpilacakYukseklik
+  const yeni = document.createElement('canvas')
+  yeni.width = canvas.width
+  yeni.height = kalanYukseklik
+  yeni
+    .getContext('2d')
+    .drawImage(canvas, 0, kirpilacakYukseklik, canvas.width, kalanYukseklik, 0, 0, canvas.width, kalanYukseklik)
   return yeni
 }
 
@@ -80,7 +200,9 @@ function baskiIcinKucult(canvas, hedefGenislikPuan, hedefYukseklikPuan, punoBasi
 // dizilir, sol sütun dolunca 4,5,6... sağ sütunda tepeden aşağı devam eder.
 // Kullanılan toplam kâğıt miktarı öncekiyle AYNI (yine 2 sütun tam
 // dolduruluyor) — sadece HANGİ sorunun hangi sütuna gittiği değişti.
-export async function testPdfOlustur(sorular, ilerlemeCallback, testBasligi) {
+// ustKirmaOrani (opsiyonel, 0..1): her kutunun üstünden kırpılacak pay —
+// bkz. yukarıdaki ustKirp açıklaması. Varsayılan 0, yani hiçbir şey değişmez.
+export async function testPdfOlustur(sorular, ilerlemeCallback, testBasligi, ustKirpmaOrani = 0) {
   const jsPDF = await jspdfYukle()
   const doc = new jsPDF({ unit: 'pt', format: 'a4' })
   const sayfaGenisligi = doc.internal.pageSize.getWidth()
@@ -175,10 +297,21 @@ export async function testPdfOlustur(sorular, ilerlemeCallback, testBasligi) {
     const etiketAlaniYuksekligi = etiketYuksekligi + etiketBosluk
 
     const sayfaCanvas = await sayfaCanvasGetir(s.kitap, s.sayfa_no)
+    // Kaynak kitabın kendi soru numarasını (varsa) OTOMATİK olarak gizlemek
+    // için — bkz. dosya başındaki numaraAlaniniBul açıklaması. Kırpmadan
+    // ÖNCE, tüm SAYFA üzerindeki koordinatlarla bulunuyor (kutunun kendi x/y
+    // hâlâ sayfa uzayında), sonra kırpılmış görüntüye göreceli konuma çevrilip
+    // uygulanıyor.
+    const numaraAlani = await numaraAlaniniBul(belgeGetir, s, sayfaCanvas)
     let kirpilan = canvasKirp(sayfaCanvas, s.x, s.y, s.genislik, s.yukseklik)
+    kirpilan = alanBeyazlat(kirpilan, numaraAlani)
     // Kutu genelde bir sonraki sorunun başladığı yere kadar (fazla boşluklu)
     // çizilmiş olabilir — HataKitapcigi.jsx'teki aynı düzeltme burada da uygulanıyor.
     kirpilan = alttakiBosluguKirp(kirpilan)
+    // Kaynak kitabın kendi soru numarasını (varsa) elle gizlemek için isteğe
+    // bağlı üst kırpma (özellikle otomatik yöntemin çalışmadığı TARANMIŞ
+    // kitaplarda) — bkz. dosya başındaki ustKirp açıklaması.
+    kirpilan = ustKirp(kirpilan, ustKirpmaOrani)
 
     let olcek = sutunGenisligi / kirpilan.width
     if (olcek > enFazlaBuyutmeOrani) olcek = enFazlaBuyutmeOrani

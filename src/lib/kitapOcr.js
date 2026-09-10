@@ -108,7 +108,17 @@ export async function kitapMetinKatmanindanSoruNumaralariniTespitEt(belge, sayfa
     if (y < ustSinir || y > altSinir) continue
     const bantIcinde = bantlar.some((b) => x >= b.x0 - 4 && x <= b.x1)
     if (!bantIcinde) continue
-    adaylar.push({ metin, x, y, genislik: 0, yukseklik: 0 })
+    // genislik/yukseklik: numaranın GERÇEK punto boyutunu bilmiyoruz (yukarıdaki
+    // not — PDF'teki punto alanları sahte) ama tipikSatirYuksekligi güvenilir
+    // bir YÜKSEKLİK tahmini veriyor (zaten "y"yi bulmak için kullanıldı);
+    // genişlik karakter sayısına göre kabaca tahmin ediliyor (kalın bir rakam
+    // fontu için tipik en/boy oranı ~0.58). Bu ikisi kitapPdf.js'te test
+    // PDF'i üretilirken kaynak kitabın kendi soru numarasını GÖRÜNTÜDEN
+    // isteğe bağlı olarak gizlemek için kullanılıyor — kutunun kendi x/y/
+    // genişlik/yükseklik'ini ÜRETEN baslangicKutulariUret (kitapcikOcr.js,
+    // PAYLAŞILAN/dokunulmayan dosya) bu iki alanı HİÇ okumuyor, o yüzden
+    // burayı değiştirmek oradaki kutu üretim mantığını etkilemiyor.
+    adaylar.push({ metin, x, y, genislik: metin.length * tipikSatirYuksekligi * 0.58, yukseklik: tipikSatirYuksekligi })
   }
   return adaylar
 }
