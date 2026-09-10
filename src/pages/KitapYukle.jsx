@@ -71,6 +71,13 @@ function KutuKatmani({
   // güncel kalır — biri diğerini geçersiz kılmıyor, sadece iki farklı yerden
   // aynı şeyi işaretleme imkanı.
   onCevapDegistir,
+  // Kullanıcı isteğiyle eklendi: "otomatik soru karesi çıkıyor ya üzerine
+  // tıklayınca düzenle çıksın, düzenle de tekrar kare çizebilelim" — seçili
+  // kutunun altındaki popup'a, sağdaki panele gitmeden doğrudan "Seçili
+  // Kutuyu Yeniden Çiz" modunu açan bir kısayol. Verilirse popup'ta bir
+  // "Düzenle" düğmesi belirir; tıklanınca aynı yeniden-çizim moduna girilir
+  // (bkz. KitapYukleSayfasi'ndaki yenidenCizimModu/setYenidenCizimModu).
+  onKutuyuDuzenle,
 }) {
   const [cizilen, setCizilen] = useState(null) // {x0,y0,x1,y1} doğal koordinatlarda
   const kapRef = useRef(null)
@@ -183,6 +190,16 @@ function KutuKatmani({
                   {harf}
                 </button>
               ))}
+              {onKutuyuDuzenle && (
+                <button
+                  type="button"
+                  onClick={() => onKutuyuDuzenle(s.gecici_id)}
+                  title="Bu kutuyu yeniden çiz"
+                  className="ml-1 text-[10px] font-semibold text-orange border border-orange/40 rounded px-1.5 py-1 hover:bg-orange/10 whitespace-nowrap"
+                >
+                  Düzenle
+                </button>
+              )}
               <button
                 type="button"
                 onClick={() => onKutuTiklandi(null)}
@@ -775,6 +792,14 @@ function KitapDuzenle({ kitap, onGeriDon, onKitapGuncellendi, onSeciliSorularlaT
                 onCizimBitti={cizimBitti}
                 onSecimCikar={secimDegistir}
                 onCevapDegistir={(gecici_id, yeniCevap) => soruGuncelle(gecici_id, { cevap: yeniCevap })}
+                onKutuyuDuzenle={(gecici_id) => {
+                  // Kutu zaten seçili (popup sadece seçili kutuda görünüyor)
+                  // ama yine de garanti olsun diye seçimi tazeliyoruz, sonra
+                  // sağdaki "Seçili Kutuyu Yeniden Çiz" ile AYNI moda giriyoruz.
+                  setSeciliGeciciId(gecici_id)
+                  setCizimModu(false) // iki mod birbirini dışlar
+                  setYenidenCizimModu(true)
+                }}
               />
             </div>
           </div>
@@ -1059,6 +1084,14 @@ function TestOlusturSekmesi({ initialSeciliSorular, onInitialSeciliSorularTuketi
   const [arama, setArama] = useState('')
   const [seciliSorular, setSeciliSorular] = useState([])
   const [testBasligi, setTestBasligi] = useState('')
+  // Kullanıcı isteğiyle eklendi: "sorular kesilirken gerçek kitaptaki soru
+  // numaraları da görünüyor, onlar görünmese" — bkz. kitapPdf.js'teki ustKirp
+  // açıklaması. Varsayılan 0 (kapalı) — hiçbir şey değişmez, admin isterse
+  // açıp PDF'i önizleyerek uygun bir % bulur. Veritabanındaki kutu
+  // koordinatlarına DOKUNMUYOR, sadece bu PDF'e gömülen görüntüde geçerli —
+  // yanlış bir % denenirse tek yapılması gereken farklı bir oranla yeniden
+  // oluşturmak.
+  const [ustKirpmaYuzdesi, setUstKirpmaYuzdesi] = useState(0)
   const [aktarilanMesaji, setAktarilanMesaji] = useState('')
 
   // KitapDuzenle ekranından "Seçilenlerle Test Oluştur" ile gelen sorular —
@@ -1187,7 +1220,7 @@ function TestOlusturSekmesi({ initialSeciliSorular, onInitialSeciliSorularTuketi
         // giriş alanı kafa karıştırdığı için kaldırıldı.
         cevap: s.cevap,
       }))
-      const blob = await testPdfOlustur(girdi, (oran) => setIlerleme(oran), testBasligi)
+      const blob = await testPdfOlustur(girdi, (oran) => setIlerleme(oran), testBasligi, ustKirpmaYuzdesi / 100)
       setPdfBlob(blob)
       setPdfUrl((eski) => {
         if (eski) URL.revokeObjectURL(eski)
@@ -1360,6 +1393,31 @@ function TestOlusturSekmesi({ initialSeciliSorular, onInitialSeciliSorularTuketi
                   </div>
                 ))}
                 {seciliSorular.length === 0 && <p className="text-xs text-gray-400">Soldan soru seçin.</p>}
+              </div>
+
+              {/* Kullanıcı isteğiyle eklendi: kaynak kitabın kendi soru
+                  numarasını (kutunun en üstünde görünen) test PDF'inden
+                  gizlemek için — bkz. kitapPdf.js'teki ustKirp açıklaması.
+                  Varsayılan kapalı (%0), tamamen isteğe bağlı. */}
+              <div className="mb-3">
+                <label className="flex items-center gap-1.5 text-[11px] font-medium text-gray-500 mb-1">
+                  <span>Kutunun üstünden kırp (kitabın kendi soru numarasını gizler)</span>
+                </label>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="number"
+                    min="0"
+                    max="40"
+                    step="1"
+                    value={ustKirpmaYuzdesi}
+                    onChange={(e) => setUstKirpmaYuzdesi(Math.max(0, Math.min(40, Number(e.target.value) || 0)))}
+                    className="w-16 px-2 py-1 border border-gray-200 rounded-lg text-sm"
+                  />
+                  <span className="text-xs text-gray-400">%</span>
+                </div>
+                <p className="text-[10px] text-gray-400 mt-1">
+                  Varsayılan %0 — hiçbir şey değişmez. Deneyerek doğru oranı bulun; PDF'i önizleyip beğenmezseniz farklı bir % ile tekrar oluşturabilirsiniz, kutular veritabanında değişmez.
+                </p>
               </div>
 
               <button
