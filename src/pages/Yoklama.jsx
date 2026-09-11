@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../lib/AuthContext'
 import KonuTakipBolumu from '../components/KonuTakipBolumu'
@@ -44,6 +44,14 @@ export default function Yoklama() {
   const [yoklamaBugun, setYoklamaBugun] = useState({})
   const [loading, setLoading] = useState(true)
   const [kaydediliyor, setKaydediliyor] = useState(false)
+  // Aşağıdaki Realtime abonelik callback'i (kanal sadece seciliSinif
+  // değişince yeniden kurulur) içinde seciliSaat'in HER ZAMAN en güncel
+  // değerini okuyabilmek için — state'i doğrudan kullanmak, React'in kapanış
+  // (closure) davranışı yüzünden ESKİ/bayat bir değeri "dondurabilirdi".
+  const seciliSaatRef = useRef('')
+  useEffect(() => {
+    seciliSaatRef.current = seciliSaat
+  }, [seciliSaat])
 
   const bugun = new Date().toISOString().slice(0, 10)
   const bugunGunNo = ((new Date().getDay() + 6) % 7) + 1 // Pazartesi=1 ... Pazar=7
@@ -70,8 +78,12 @@ export default function Yoklama() {
     return ogretmenler.find((o) => o.id === ogretmenId)?.ad_soyad || ''
   }
 
-  // Seçili sınıfın BUGÜNKÜ ders saatlerini getir
-  useEffect(() => {
+  // Seçili sınıfın BUGÜNKÜ ders saatlerini getir. Ayrı bir fonksiyona alındı
+  // (önceden doğrudan useEffect içindeydi) çünkü artık İKİ yerden çağrılıyor:
+  // (1) sınıf değişince/sayfa ilk açılışında, (2) aşağıdaki Realtime aboneliği
+  // yönetici PROGRAMDA bir değişiklik yaptığında — bkz. az aşağıdaki
+  // "CANLI GÜNCELLEME" bölümü.
+  function dersSaatleriniGetir(mevcutSeciliSaat) {
     if (!seciliSinif) return
     supabase
       .from('ders_programi')
@@ -113,8 +125,54 @@ export default function Yoklama() {
         )
         const benzersizSaatler = saatleriBirlestir(gosterilecekSaatler, yoklamasiOlanIdler)
         setGununSaatleri(benzersizSaatler)
-        setSeciliSaat(benzersizSaatler.length > 0 ? benzersizSaatler[0].id : '')
+        // Realtime yenilemesinde (mevcutSeciliSaat verilmişse) öğretmenin o an
+        // seçili olan saati, listede hâlâ varsa KORUNUR — programda başka bir
+        // saat değişmişse öğretmen elindeki dersten "fırlatılmaz". Sadece
+        // seçili olan saatin KENDİSİ artık listede yoksa (ör. tam o saat
+        // silinmiş/taşınmışsa) ilk saate düşülür.
+        const korunacakSaat =
+          mevcutSeciliSaat && benzersizSaatler.some((s) => s.id === mevcutSeciliSaat) ? mevcutSeciliSaat : null
+        setSeciliSaat(korunacakSaat || (benzersizSaatler.length > 0 ? benzersizSaatler[0].id : ''))
       })
+  }
+
+  useEffect(() => {
+    dersSaatleriniGetir(null)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [seciliSinif])
+
+  // ============================================================================
+  // CANLI GÜNCELLEME (kullanıcı isteğiyle eklendi): "ben programı
+  // değiştirdiğimde yenileme yapmadan da programın değiştiğini görebilsinler,
+  // bazen hocalar yenileme yapmıyor çünkü" — yönetici Ders Programı'nda bir
+  // değişiklik yaptığında (ör. bir dersin öğretmenini değiştirdiğinde),
+  // öğretmenin EKRANINDA AÇIK duran bu sayfa artık F5 gerekmeden KENDİLİĞİNDEN
+  // güncelleniyor. Bunun somut sebebi: bir öğretmen, programı yenilemeden eski
+  // (artık başka bir öğretmene devredilmiş) ders saatiyle yoklama
+  // kaydedebiliyordu — bu da AYNI ders saati için İKİ AYRI öğretmenin yoklama
+  // kaydı bırakmasına yol açtı (bkz. aşağıdaki kaydet() içindeki ikinci
+  // güvenlik katmanı — bu Realtime aboneliği birincisi, ekran anlık
+  // güncellensin diye; ama internet kesintisi/gecikmesi ihtimaline karşı asıl
+  // garanti kaydet() anındaki taze kontrol).
+  //
+  // NOT: bu abonelik için Supabase projesinde "ders_programi" tablosunda
+  // Realtime'ın açık olması gerekiyor (Database → Replication'dan tek tıkla
+  // açılır) — kapalıysa bu abonelik sessizce hiçbir şey yapmaz, sayfa yine de
+  // normal çalışmaya devam eder (aşağıdaki kaydet() güvenlik kontrolü zaten
+  // Realtime'dan bağımsız olarak her durumda çalışır).
+  useEffect(() => {
+    if (!seciliSinif) return
+    const kanal = supabase
+      .channel(`ders-programi-degisiklik-${seciliSinif}`)
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'ders_programi', filter: `sinif_id=eq.${seciliSinif}` },
+        () => dersSaatleriniGetir(seciliSaatRef.current)
+      )
+      .subscribe()
+    return () => {
+      supabase.removeChannel(kanal)
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [seciliSinif])
 
@@ -175,6 +233,44 @@ export default function Yoklama() {
 
   async function kaydet() {
     setKaydediliyor(true)
+
+    // GÜVENLİK KONTROLÜ (kullanıcının bildirdiği hatadan sonra eklendi): bu
+    // sayfa açık kalmış olabilir ve o sırada yönetici TAM O AN, bu ders
+    // saatinin öğretmenini/dersini değiştirmiş olabilir (bkz. dosya başındaki
+    // Realtime aboneliği — o normalde ekranı anında günceller, ama internet
+    // kesintisi/gecikmesi ihtimaline karşı burada AYRICA, kaydetme anında taze
+    // bir kontrol daha yapılıyor — bu asıl garanti). Seçili ders saati artık
+    // PASİFSE ve bu saat için bugüne ait DAHA ÖNCE başlanmış bir yoklama
+    // YOKSA (yani bu YENİ bir kayıt olacaksa) kaydı durdurup öğretmeni
+    // sayfayı yenilemeye yönlendiriyoruz — aksi halde tam da yaşanan hata
+    // tekrarlanır: aynı ders saati için birden fazla öğretmenin ayrı ayrı
+    // yoklama bırakması. Bu kontrol (ağ hatası vb. yüzünden) başarısız
+    // olursa kaydetmeyi ENGELLEMİYORUZ — eskisi gibi devam ediyor, sadece
+    // ek bir güvenlik katmanı, tek yol değil.
+    if (seciliSaat) {
+      try {
+        const [{ data: guncelSaat }, { count: mevcutYoklamaSayisi }] = await Promise.all([
+          supabase.from('ders_programi').select('aktif').eq('id', seciliSaat).maybeSingle(),
+          supabase
+            .from('yoklama')
+            .select('id', { count: 'exact', head: true })
+            .eq('ders_programi_id', seciliSaat)
+            .eq('tarih', bugun),
+        ])
+        if (guncelSaat && guncelSaat.aktif === false && !mevcutYoklamaSayisi) {
+          setKaydediliyor(false)
+          alert(
+            'Bu ders saati, siz bu sayfayı açtıktan sonra değiştirilmiş görünüyor (ör. öğretmeni ya da dersi değişmiş olabilir). Yanlış derse yoklama kaydedilmesin diye durduruldu — lütfen sayfayı yenileyip güncel ders saatini seçerek tekrar deneyin.'
+          )
+          return
+        }
+      } catch {
+        // Kontrolün kendisi başarısız oldu (ör. ağ hatası) — eski davranışa
+        // (kontrolsüz kaydetme) sessizce geri dönülür, bu bir ek güvence
+        // katmanı olduğu için ana işlemi durdurmuyor.
+      }
+    }
+
     const kayitlar = ogrenciler.map((o) => ({
       sinif_id: seciliSinif,
       ders_programi_id: seciliSaat || null,
