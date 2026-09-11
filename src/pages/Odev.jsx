@@ -55,6 +55,15 @@ function odevDosyaLinkBilgisi(o) {
   return null
 }
 
+// "Süresi geçti" tanımı: son tarih dolmuş VE hâlâ "bekliyor" durumunda olan
+// (yani öğretmen henüz yaptı/yapmadı diye işaretlememiş) bir ödev. Veli/
+// öğrenci tarafındaki "OdevKarti" bileşenindeki aynı mantığın paylaşılan hali
+// — artık öğretmen/yönetici tarafındaki özet panelde ve gruplarda da
+// kullanılıyor (kullanıcı isteği: süresi geçenler kırmızı vurgulansın).
+function sonTarihGectiMi(o) {
+  return !!(o.son_tarih && o.son_tarih < yerelBugunTarihi() && o.durum === 'bekliyor')
+}
+
 // ============================================================================
 // YÖNETİCİ — Google Drive bağlantısını kurma/durumunu gösterme paneli. 2
 // haftadan eski ödev dosyaları her gece otomatik olarak buraya bağlanan
@@ -636,12 +645,15 @@ function OdevDurumButonlari({ o, durumDegistir }) {
   )
 }
 
-// Bireysel Ödevler tablosundaki tek bir satır (atama_grubu_id boş olan ödevler).
-function OdevSatiri({ o, isYonetici, durumDegistir, sil }) {
+// Bir öğrenci kartı içindeki TEK ödev satırı (bireysel ödevler artık
+// öğrenciye göre gruplanmış kartlarda gösteriliyor — bkz. OgrenciOdevGrubu,
+// eskiden düz bir tablodaydı). Süresi geçmiş ve hâlâ "bekliyor" durumundaki
+// ödevler kırmızı vurgulanıyor (kullanıcı isteği).
+function OgrenciOdevSatiri({ o, isYonetici, durumDegistir, sil }) {
   const linkBilgi = odevDosyaLinkBilgisi(o)
+  const gecti = sonTarihGectiMi(o)
   return (
-    <tr className="border-t border-gray-50">
-      <td className="px-4 py-2 font-medium text-gray-800">{o.ogrenci_adi || '—'}</td>
+    <tr className={`border-t border-gray-50 ${gecti ? 'bg-red-50' : ''}`}>
       <td className="px-4 py-2 text-gray-500">{o.ders || '—'}</td>
       <td className="px-4 py-2">
         {o.baslik}
@@ -655,8 +667,9 @@ function OdevSatiri({ o, isYonetici, durumDegistir, sil }) {
         )}
       </td>
       {isYonetici && <td className="px-4 py-2 text-gray-500">{o.ogretmen_adi || '—'}</td>}
-      <td className="px-4 py-2 text-gray-500">
+      <td className={`px-4 py-2 ${gecti ? 'text-red-600 font-semibold' : 'text-gray-500'}`}>
         {o.son_tarih ? new Date(o.son_tarih + 'T12:00:00').toLocaleDateString('tr-TR') : '—'}
+        {gecti && ' (geçti)'}
       </td>
       <td className="px-4 py-2">
         <OdevDurumButonlari o={o} durumDegistir={durumDegistir} />
@@ -681,6 +694,7 @@ function SinifOdevGrubu({ grubId, items, isYonetici, durumDegistir, sil, acik, o
   const yaptiSayisi = items.filter((o) => o.durum === 'yapti').length
   const yapmadiSayisi = items.filter((o) => o.durum === 'yapmadi').length
   const bekliyorSayisi = items.length - yaptiSayisi - yapmadiSayisi
+  const sureGectiSayisi = items.filter((o) => sonTarihGectiMi(o)).length
   // Kullanıcı isteği: "toplu ödevlerde sınıfın adı yazmıyor" — bu grup
   // hangi ogrenci_id'lere ödev verildiyse, o öğrencilerin GERÇEKTEN kayıtlı
   // olduğu sınıf(lar)ı (Sınıflar sayfasındaki sinif_ogrenciler eşleşmesinden,
@@ -744,6 +758,9 @@ function SinifOdevGrubu({ grubId, items, isYonetici, durumDegistir, sil, acik, o
           {bekliyorSayisi > 0 && (
             <span className="text-xs font-semibold text-gray-500 bg-gray-200 px-2 py-1 rounded-lg">{bekliyorSayisi} bekliyor</span>
           )}
+          {sureGectiSayisi > 0 && (
+            <span className="text-xs font-semibold text-red-700 bg-red-200 px-2 py-1 rounded-lg">⚠ {sureGectiSayisi} süresi geçti</span>
+          )}
           <span className="text-navy text-xs font-semibold whitespace-nowrap ml-1">
             {acik ? 'Gizle' : 'Öğrencileri Gör'}
           </span>
@@ -786,13 +803,114 @@ function SinifOdevGrubu({ grubId, items, isYonetici, durumDegistir, sil, acik, o
   )
 }
 
+// "Bireysel Ödevler" panelindeki TEK bir öğrenci kartı — o öğrenciye tek tek
+// verilmiş (atama_grubu_id boş) tüm ödevler burada birleştirilir (kullanıcı
+// isteği: "kimin ne yaptığını bulmak zor" — artık düz/uzun bir tablo yerine
+// sınıf kartlarıyla aynı mantıkta, öğrenci öğrenci gruplanmış kartlar var).
+function OgrenciOdevGrubu({ ogrenciAdi, items, isYonetici, durumDegistir, sil, acik, onToggle }) {
+  const yaptiSayisi = items.filter((o) => o.durum === 'yapti').length
+  const yapmadiSayisi = items.filter((o) => o.durum === 'yapmadi').length
+  const bekliyorSayisi = items.length - yaptiSayisi - yapmadiSayisi
+  const sureGectiSayisi = items.filter((o) => sonTarihGectiMi(o)).length
+
+  return (
+    <div className="border border-gray-100 rounded-xl overflow-hidden">
+      <button
+        type="button"
+        onClick={onToggle}
+        className="w-full flex items-center flex-wrap justify-between gap-x-3 gap-y-2 px-4 py-3 bg-gray-50 hover:bg-gray-100 text-left transition-colors"
+      >
+        <div className="min-w-0 flex-1 basis-40">
+          <p className="font-medium text-gray-800 break-words">{ogrenciAdi || '—'}</p>
+          <p className="text-xs text-gray-500 break-words">{items.length} ödev</p>
+        </div>
+        <div className="flex items-center gap-1.5 min-w-0 max-w-full flex-wrap justify-end">
+          <span className="text-xs font-semibold text-green-700 bg-green-100 px-2 py-1 rounded-lg">{yaptiSayisi} yaptı</span>
+          <span className="text-xs font-semibold text-red-700 bg-red-100 px-2 py-1 rounded-lg">{yapmadiSayisi} yapmadı</span>
+          {bekliyorSayisi > 0 && (
+            <span className="text-xs font-semibold text-gray-500 bg-gray-200 px-2 py-1 rounded-lg">{bekliyorSayisi} bekliyor</span>
+          )}
+          {sureGectiSayisi > 0 && (
+            <span className="text-xs font-semibold text-red-700 bg-red-200 px-2 py-1 rounded-lg">⚠ {sureGectiSayisi} süresi geçti</span>
+          )}
+          <span className="text-navy text-xs font-semibold whitespace-nowrap ml-1">
+            {acik ? 'Gizle' : 'Ödevleri Gör'}
+          </span>
+        </div>
+      </button>
+      {acik && (
+        <div className="overflow-x-auto" style={{ touchAction: 'pan-x pan-y' }}>
+          <table className="w-full text-sm min-w-[520px]">
+            <thead>
+              <tr className="text-left text-gray-500">
+                <th className="px-4 py-2 font-medium">Ders</th>
+                <th className="px-4 py-2 font-medium">Başlık</th>
+                {isYonetici && <th className="px-4 py-2 font-medium">Öğretmen</th>}
+                <th className="px-4 py-2 font-medium">Son Tarih</th>
+                <th className="px-4 py-2 font-medium">Durum</th>
+                <th className="px-4 py-2 font-medium">İşlemler</th>
+              </tr>
+            </thead>
+            <tbody>
+              {items.map((o) => (
+                <OgrenciOdevSatiri key={o.id} o={o} isYonetici={isYonetici} durumDegistir={durumDegistir} sil={sil} />
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ============================================================================
+// YÖNETİCİ / ÖĞRETMEN — sayfanın en üstünde, TÜM ödevlere (filtre uygulanmadan)
+// bakarak tek bakışta özet veren küçük panel (kullanıcı isteği). Kutulara
+// tıklayınca aşağıdaki durum filtresi otomatik o duruma geçiyor — "kimin ne
+// yaptığını bulmak zor" şikayetine karşı en hızlı kısayol.
+// ============================================================================
+function OdevOzetPaneli({ odevler, onFiltreSec }) {
+  const bekleyenSayisi = odevler.filter((o) => o.durum === 'bekliyor').length
+  const sureGecenSayisi = odevler.filter((o) => sonTarihGectiMi(o)).length
+  const toplamSayisi = odevler.length
+
+  const kutular = [
+    { etiket: 'Toplam Ödev', sayi: toplamSayisi, renk: 'text-navy', filtre: 'hepsi' },
+    { etiket: 'Bekleyen', sayi: bekleyenSayisi, renk: 'text-gray-600', filtre: 'bekliyor' },
+    { etiket: 'Süresi Geçmiş', sayi: sureGecenSayisi, renk: 'text-red-600', filtre: 'sure_gecti' },
+  ]
+
+  return (
+    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-4">
+      {kutular.map((k) => (
+        <button
+          key={k.etiket}
+          type="button"
+          onClick={() => onFiltreSec(k.filtre)}
+          className="bg-white rounded-2xl border border-gray-100 shadow-sm p-4 text-left hover:border-gray-300 transition-colors"
+        >
+          <p className="text-xs text-gray-500">{k.etiket}</p>
+          <p className={`text-2xl font-bold ${k.renk}`}>{k.sayi}</p>
+        </button>
+      ))}
+    </div>
+  )
+}
+
 // Sınıfa/toplu verilen ödevler (atama_grubu_id dolu) ile tek tek verilen
-// ödevler (atama_grubu_id boş) artık ayrı ayrı gösteriliyor — SOLDA sınıf/toplu
-// ödevler (gruplanmış, tıklayınca açılan kartlar), SAĞDA bireysel ödevler
-// (eskisi gibi düz tablo). Amaç: bir hoca sınıfa ödev verdiğinde bunun ayrı ve
-// net göründüğünü, bireysel ödevlerle karışmadığını görebilsin (kullanıcı isteği).
+// ödevler (atama_grubu_id boş) ayrı ayrı gösteriliyor — SOLDA sınıf/toplu
+// ödevler (gruplanmış, tıklayınca açılan kartlar), SAĞDA öğrenciye göre
+// gruplanmış bireysel ödevler (kullanıcı isteği — eskiden düz/uzun bir tablo
+// olduğu için "kimin ne yaptığını bulmak zor"du, artık sınıf kartlarıyla aynı
+// mantıkta öğrenci öğrenci kartlar var). Üstte bir özet panel, altında da
+// durum + isim filtresi var — "sadece yapmayanları göster" ya da "Ahmet'in
+// ödevlerini bul" gibi ihtiyaçları tek tıkla/aramayla çözmek için (kullanıcı
+// isteği).
 function VerilenOdevlerListesi({ odevler, isYonetici, onDegisti, ogrenciSinifAdMap }) {
   const [acikGruplar, setAcikGruplar] = useState({})
+  const [acikOgrenciler, setAcikOgrenciler] = useState({})
+  const [durumFiltre, setDurumFiltre] = useState('hepsi') // 'hepsi' | 'bekliyor' | 'yapti' | 'yapmadi' | 'sure_gecti'
+  const [arama, setArama] = useState('')
 
   async function sil(o) {
     if (!confirm(`"${o.baslik}" ödevini silmek istediğinize emin misiniz?`)) return
@@ -823,21 +941,103 @@ function VerilenOdevlerListesi({ odevler, isYonetici, onDegisti, ogrenciSinifAdM
     setAcikGruplar((s) => ({ ...s, [grubId]: !s[grubId] }))
   }
 
+  function ogrenciGrupToggle(ogrenciId) {
+    setAcikOgrenciler((s) => ({ ...s, [ogrenciId]: !s[ogrenciId] }))
+  }
+
+  // Durum + isim filtresi ödevlerin TAMAMINA (hem sınıf/toplu hem bireysel)
+  // birlikte uygulanıyor — bir sınıf kartının içinde de artık sadece
+  // aranan/filtrelenen öğrenciler görünür, geri kalanı kartın kendisinden
+  // gizlenir (bir kartta hiç eşleşen kalmazsa kart hiç gösterilmez).
+  const filtreliOdevler = useMemo(() => {
+    const aramaKucuk = arama.trim().toLowerCase()
+    return odevler.filter((o) => {
+      if (durumFiltre === 'bekliyor' && o.durum !== 'bekliyor') return false
+      if (durumFiltre === 'yapti' && o.durum !== 'yapti') return false
+      if (durumFiltre === 'yapmadi' && o.durum !== 'yapmadi') return false
+      if (durumFiltre === 'sure_gecti' && !sonTarihGectiMi(o)) return false
+      if (aramaKucuk && !(o.ogrenci_adi || '').toLowerCase().includes(aramaKucuk)) return false
+      return true
+    })
+  }, [odevler, durumFiltre, arama])
+
+  const filtreAktif = durumFiltre !== 'hepsi' || arama.trim() !== ''
+
   const gruplar = useMemo(() => {
     const harita = {}
-    odevler.forEach((o) => {
+    filtreliOdevler.forEach((o) => {
       if (!o.atama_grubu_id) return
       if (!harita[o.atama_grubu_id]) harita[o.atama_grubu_id] = []
       harita[o.atama_grubu_id].push(o)
     })
     return Object.entries(harita).map(([grubId, items]) => ({ grubId, items }))
-  }, [odevler])
+  }, [filtreliOdevler])
 
-  const bireysel = useMemo(() => odevler.filter((o) => !o.atama_grubu_id), [odevler])
+  // Bireysel ödevler artık öğrenciye göre gruplanıyor (kullanıcı isteği).
+  const ogrenciGruplari = useMemo(() => {
+    const harita = {}
+    filtreliOdevler
+      .filter((o) => !o.atama_grubu_id)
+      .forEach((o) => {
+        const anahtar = o.ogrenci_id || 'bilinmiyor'
+        if (!harita[anahtar]) harita[anahtar] = { ogrenciAdi: o.ogrenci_adi, items: [] }
+        harita[anahtar].items.push(o)
+      })
+    return Object.entries(harita)
+      .map(([ogrenciId, v]) => ({ ogrenciId, ogrenciAdi: v.ogrenciAdi, items: v.items }))
+      .sort((a, b) => (a.ogrenciAdi || '').localeCompare(b.ogrenciAdi || '', 'tr'))
+  }, [filtreliOdevler])
+
+  const DURUM_SEKMELERI = [
+    { deger: 'hepsi', etiket: 'Hepsi' },
+    { deger: 'bekliyor', etiket: 'Bekliyor' },
+    { deger: 'yapti', etiket: 'Yaptı' },
+    { deger: 'yapmadi', etiket: 'Yapmadı' },
+    { deger: 'sure_gecti', etiket: 'Süresi Geçmiş' },
+  ]
 
   return (
     <div className="mb-6">
       <h2 className="font-semibold text-gray-700 mb-3">{isYonetici ? 'Verilen Tüm Ödevler' : 'Verdiğim Ödevler'}</h2>
+
+      <OdevOzetPaneli odevler={odevler} onFiltreSec={setDurumFiltre} />
+
+      <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-3 mb-4 flex flex-wrap items-center gap-3">
+        <div className="inline-flex rounded-lg border border-gray-200 overflow-hidden">
+          {DURUM_SEKMELERI.map((s) => (
+            <button
+              key={s.deger}
+              type="button"
+              onClick={() => setDurumFiltre(s.deger)}
+              className={`px-3 py-1.5 text-xs font-semibold transition-colors ${
+                durumFiltre === s.deger ? 'bg-navy text-white' : 'bg-white text-gray-600 hover:bg-gray-50'
+              }`}
+            >
+              {s.etiket}
+            </button>
+          ))}
+        </div>
+        <input
+          type="text"
+          value={arama}
+          onChange={(e) => setArama(e.target.value)}
+          placeholder="Öğrenci adına göre ara..."
+          className="flex-1 min-w-[180px] px-3 py-1.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue"
+        />
+        {filtreAktif && (
+          <button
+            type="button"
+            onClick={() => {
+              setDurumFiltre('hepsi')
+              setArama('')
+            }}
+            className="text-xs text-gray-400 font-semibold hover:underline"
+          >
+            Filtreyi Temizle
+          </button>
+        )}
+      </div>
+
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-start">
         <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
           <div className="px-4 py-3 border-b border-gray-100 bg-gray-50">
@@ -848,7 +1048,9 @@ function VerilenOdevlerListesi({ odevler, isYonetici, onDegisti, ogrenciSinifAdM
           </div>
           <div className="p-3 space-y-2">
             {gruplar.length === 0 && (
-              <p className="px-1 py-3 text-center text-sm text-gray-400">Henüz sınıfa/toplu ödev verilmedi.</p>
+              <p className="px-1 py-3 text-center text-sm text-gray-400">
+                {filtreAktif ? 'Filtreye uyan sınıf/toplu ödev yok.' : 'Henüz sınıfa/toplu ödev verilmedi.'}
+              </p>
             )}
             {gruplar.map(({ grubId, items }) => (
               <SinifOdevGrubu
@@ -866,39 +1068,30 @@ function VerilenOdevlerListesi({ odevler, isYonetici, onDegisti, ogrenciSinifAdM
           </div>
         </div>
 
-        <div
-          className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-x-auto"
-          style={{ touchAction: 'pan-x pan-y' }}
-        >
+        <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
           <div className="px-4 py-3 border-b border-gray-100 bg-gray-50">
             <h3 className="font-semibold text-gray-700">Bireysel Ödevler</h3>
-            <p className="text-xs text-gray-400 mt-0.5">Tek tek, öğrenci bazında verilen ödevler.</p>
+            <p className="text-xs text-gray-400 mt-0.5">Tek tek verilen ödevler, öğrenci öğrenci gruplanmış.</p>
           </div>
-          <table className="w-full text-sm min-w-[560px]">
-            <thead>
-              <tr className="text-left text-gray-500">
-                <th className="px-4 py-2 font-medium">Öğrenci</th>
-                <th className="px-4 py-2 font-medium">Ders</th>
-                <th className="px-4 py-2 font-medium">Başlık</th>
-                {isYonetici && <th className="px-4 py-2 font-medium">Öğretmen</th>}
-                <th className="px-4 py-2 font-medium">Son Tarih</th>
-                <th className="px-4 py-2 font-medium">Durum</th>
-                <th className="px-4 py-2 font-medium">İşlemler</th>
-              </tr>
-            </thead>
-            <tbody>
-              {bireysel.length === 0 && (
-                <tr>
-                  <td colSpan={isYonetici ? 7 : 6} className="px-4 py-4 text-center text-gray-400">
-                    Henüz bireysel ödev girilmedi.
-                  </td>
-                </tr>
-              )}
-              {bireysel.map((o) => (
-                <OdevSatiri key={o.id} o={o} isYonetici={isYonetici} durumDegistir={durumDegistir} sil={sil} />
-              ))}
-            </tbody>
-          </table>
+          <div className="p-3 space-y-2">
+            {ogrenciGruplari.length === 0 && (
+              <p className="px-1 py-3 text-center text-sm text-gray-400">
+                {filtreAktif ? 'Filtreye uyan bireysel ödev yok.' : 'Henüz bireysel ödev girilmedi.'}
+              </p>
+            )}
+            {ogrenciGruplari.map(({ ogrenciId, ogrenciAdi, items }) => (
+              <OgrenciOdevGrubu
+                key={ogrenciId}
+                ogrenciAdi={ogrenciAdi}
+                items={items}
+                isYonetici={isYonetici}
+                durumDegistir={durumDegistir}
+                sil={sil}
+                acik={!!acikOgrenciler[ogrenciId]}
+                onToggle={() => ogrenciGrupToggle(ogrenciId)}
+              />
+            ))}
+          </div>
         </div>
       </div>
     </div>
