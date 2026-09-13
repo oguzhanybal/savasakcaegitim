@@ -1921,6 +1921,36 @@ export default function DersProgrami() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
+  // ============================================================================
+  // CANLI GÜNCELLEME (kullanıcı isteğiyle eklendi — Yoklama Al sayfasına
+  // eklenen aynı özelliğin bu sayfaya genişletilmiş hali: "programa değiştiğim
+  // an, yenileme yapmadan da görebilsinler"): bu sayfayı (Ders Programı,
+  // Günlük Müsaitlik, Sınıf Bazlı Program, Bire Bir sekmeleri) açık tutan
+  // HERKES — başka bir yönetici, ya da sadece görüntüleyen biri — artık bir
+  // değişiklik olduğunda F5 gerekmeden anında güncel veriyi görür. Bütün alt
+  // görünümler AYNI "program"/"programTum" state'ini kullandığı için TEK bir
+  // abonelik hepsini birden kapsıyor.
+  //
+  // Sadece GERÇEK bir değişiklik olduğunda tetiklenir — periyodik bir
+  // "her X saniyede bir yenile" değildir; hiçbir şey değişmezse hiçbir şey
+  // olmaz. Kullanıcının o an doldurmakta olduğu formu (Yeni Ders Saati Ekle)
+  // silmez — sadece arka plandaki listeyi (program/programTum) tazeler.
+  //
+  // NOT: Supabase projesinde "ders_programi" tablosunda Realtime'ın açık
+  // olması gerekiyor — bkz. yoklama_canli_guncelleme_ac.sql (Yoklama Al
+  // için gönderilen dosya) — AYNI ayar burada da geçerli, zaten
+  // çalıştırdıysanız ekstra bir şey yapmanıza gerek yok.
+  useEffect(() => {
+    const kanal = supabase
+      .channel('ders-programi-degisiklik-genel')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'ders_programi' }, () => veriyiYenile())
+      .subscribe()
+    return () => {
+      supabase.removeChannel(kanal)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
   // Müsaitlik tablosunda boş bir hücreye tıklanınca çağrılır: hücrenin
   // öğretmen/gün/saat bilgisini forma iletir ve forma doğru yumuşak kaydırır.
   function hucreTiklandi(bilgi) {
@@ -2663,7 +2693,7 @@ export default function DersProgrami() {
             <tbody>
               {saatSatirlari.map((saat, ri) => (
                 <tr key={saat} className={ri % 2 ? 'bg-gray-50/60' : ''}>
-                  <td className="sticky left-0 z-10 bg-white px-3 py-2 font-semibold text-gray-600 whitespace-nowrap border-t border-gray-100 text-xs">
+                  <td className="sticky left-0 z-10 bg-white px-3 py-2 font-bold text-gray-700 whitespace-nowrap border-t border-gray-100 text-xs">
                     {saatGoster(saat)}
                   </td>
                   {GUNLER.slice(1).map((_, i) => {
@@ -2715,7 +2745,7 @@ export default function DersProgrami() {
                                   kartların hepsi zaten o öğrenciye ait — her kartın altında adını
                                   tekrar basmak (eskiden birdenFazlaCocukMu true iken burada
                                   gösteriliyordu) gereksiz kalabalık oluyordu, kaldırıldı. */}
-                              <p className="text-[10px] text-gray-400 leading-tight">
+                              <p className="text-[10px] font-bold text-gray-500 leading-tight">
                                 {saatGoster(d.baslangic_saat)}–{saatGoster(d.bitis_saat)}
                               </p>
                               {isOgretmen && d.sinif_id && (
@@ -2862,7 +2892,7 @@ export default function DersProgrami() {
                         )}
                         {/* Kullanıcı isteğiyle: yukarıdaki seçim kutusuyla artık tek öğrenci
                             gösterildiği için kart başına tekrar eden ad etiketi kaldırıldı. */}
-                        <p className="text-sm text-gray-500">
+                        <p className="text-sm font-bold text-gray-600">
                           {saatGoster(d.baslangic_saat)} – {saatGoster(d.bitis_saat)}
                         </p>
                       </div>
