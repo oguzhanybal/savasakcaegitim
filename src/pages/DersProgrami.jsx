@@ -39,6 +39,14 @@ function yerelBugunTarihi() {
   return `${n.getFullYear()}-${String(n.getMonth() + 1).padStart(2, '0')}-${String(n.getDate()).padStart(2, '0')}`
 }
 
+// "YYYY-MM-DD" bir tarihe gün ekler/çıkarır (negatif de olabilir) — ders_programi
+// sorgusundaki eski-pasif-satır kesme tarihini hesaplamak için (bkz. veriyiYenile).
+function gunEkle(tarihStr, gunSayisi) {
+  const t = new Date(tarihStr + 'T12:00:00')
+  t.setDate(t.getDate() + gunSayisi)
+  return `${t.getFullYear()}-${String(t.getMonth() + 1).padStart(2, '0')}-${String(t.getDate()).padStart(2, '0')}`
+}
+
 // Bir ISO zaman damgasını (ör. ders_programi.created_at) "YYYY-MM-DD" YEREL
 // tarihine çevirir — yerelBugunTarihi() ile aynı desen, ama "şu an" yerine
 // verilen bir zaman damgası için. musaitlikIcinProgram'ın "bu ders o tarihte
@@ -1678,9 +1686,27 @@ export default function DersProgrami() {
       // "programTum" ise hepsini tutar (bkz. musaitlikIcinProgram — Günlük
       // Müsaitlik'te geçmiş bir tarihe dönülünce "o gün bu ders oradaydı"
       // diye gösterebilmek için).
+      // ÖNEMLİ HATA DÜZELTMESİ: bu sorgu ÖNCEDEN filtresiz "select *" idi —
+      // tablo yıllar içinde pasif (silinmiş/devredilmiş) satırlarla birikip
+      // 1200+ satıra ulaşınca, Supabase/PostgREST'in tek istekte döndürdüğü
+      // satır sayısı sunucu tarafında 1000 ile sınırlı olduğu için sorgu
+      // SESSİZCE kesiliyordu (hata vermiyor, sadece eksik veri dönüyordu).
+      // Sıralama "gun" sonra "baslangic_saat" olduğunca, kesilen kısım hep
+      // en yüksek gun (6=Cumartesi, 7=Pazar) ve o günün GEÇ saatleriydi —
+      // "Günlük Program" ve "Sınıf Bazlı Program" ekranlarında Cumartesi/
+      // Pazar derslerinin sadece ilk saati görünüp gerisinin kaybolmasının
+      // GERÇEK nedeni buydu (veri bozuk değildi, sorgu veriyi hiç getirmiyordu).
+      // Çözüm: artık hiçbir zaman görüntülenmeyecek ESKİ pasif satırlar (60
+      // günden eski pasif_tarihi'li, veya pasif_tarihi hiç girilmemiş) en
+      // baştan hariç tutuluyor — tarihIcinAktifProgram zaten pasif_tarihi
+      // olmayan satırları asla kullanmıyordu (bkz. o fonksiyondaki "!d.pasif_tarihi
+      // continue" satırı), o yüzden bunları hiç çekmemek görünen hiçbir
+      // ekranı bozmaz, sadece toplam satır sayısını 1000 sınırının altında
+      // tutar.
       supabase
         .from('ders_programi')
         .select('*, siniflar(ad), profiles:ogretmen_profile_id(ad_soyad, brans)')
+        .or(`aktif.eq.true,pasif_tarihi.gte.${gunEkle(yerelBugunTarihi(), -60)}`)
         .order('gun')
         .order('baslangic_saat'),
       isYonetici ? supabase.from('siniflar').select('*').order('ad') : Promise.resolve({ data: [] }),
