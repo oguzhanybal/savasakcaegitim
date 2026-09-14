@@ -1706,7 +1706,14 @@ export default function DersProgrami() {
       supabase
         .from('ders_programi')
         .select('*, siniflar(ad), profiles:ogretmen_profile_id(ad_soyad, brans)')
-        .or(`aktif.eq.true,pasif_tarihi.gte.${gunEkle(yerelBugunTarihi(), -60)}`)
+        // (60 günlük ilk deneme yetersiz kaldı — pasif satırların NEREDEYSE
+        // HEPSİ zaten son birkaç hafta içindeydi, muhtemelen bu dönemde
+        // yapılan tekrarlı program düzeltmelerinin her biri bir "geçmiş
+        // kaydı" satırı bıraktığı için. 7 güne indirildi — tarihIcinAktifProgram
+        // zaten sadece "görüntülenen tarih <= pasif_tarihi" olan satırları
+        // kullanıyor, yani BUGÜNDEN SONRASINI gösteren bu ekranlar için 7
+        // günden eski pasif satırların hiçbir zaman kullanılmayacağı kesin.)
+        .or(`aktif.eq.true,pasif_tarihi.gte.${gunEkle(yerelBugunTarihi(), -7)}`)
         .order('gun')
         .order('baslangic_saat'),
       isYonetici ? supabase.from('siniflar').select('*').order('ad') : Promise.resolve({ data: [] }),
