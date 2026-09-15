@@ -59,6 +59,15 @@ export default function OgretmenEkstre() {
   const { ogretmenId } = useParams()
   const { profile } = useAuth()
   const isYonetici = profile?.rol === 'yonetici'
+  // ÖNEMLİ GÜVENLİK DÜZELTMESİ: bu sayfanın rotası (App.jsx) sadece rolün
+  // 'yonetici' ya da 'ogretmen' olmasını kontrol ediyordu — URL'deki
+  // ogretmenId'nin GİRİŞ YAPAN öğretmenin KENDİ id'si olup olmadığına hiç
+  // bakılmıyordu. Yani bir öğretmen, başka bir öğretmenin ekstre linkini
+  // (ör. URL'yi elle değiştirerek ya da tahmin ederek) açarsa, o öğretmenin
+  // TÜM ders dökümünü (ve yönetici görüntülemiyorsa bile mesai/öğrenci
+  // bilgilerini) görebiliyordu — kullanıcı isteğiyle burada engelleniyor.
+  // Yönetici için bu kısıtlama yok (o zaten herkesi görebilmeli).
+  const yetkisiz = !isYonetici && profile?.id !== ogretmenId
 
   const [ogretmen, setOgretmen] = useState(null)
   const [dersler, setDersler] = useState([])
@@ -71,6 +80,13 @@ export default function OgretmenEkstre() {
   const [gosterilenDonem, setGosterilenDonem] = useState(null) // { periyot, anahtar } | null
 
   useEffect(() => {
+    // Yetkisiz erişimde veri hiç ÇEKİLMİYOR bile — sadece ekranda
+    // gösterilmemesi yetmez, başka bir öğretmenin özel ders/ücret verisi
+    // tarayıcıya hiç inmemeli.
+    if (yetkisiz) {
+      setLoading(false)
+      return
+    }
     // Bu fonksiyon hem sayfa ilk açıldığında hem de aşağıdaki
     // görünürlük/odak dinleyicileri tetiklendiğinde çağrılıyor (bkz. altta).
     function veriyiGetir(ilkYuklemeMi) {
@@ -143,7 +159,7 @@ export default function OgretmenEkstre() {
     }
     document.addEventListener('visibilitychange', gorunurlukDegisti)
     return () => document.removeEventListener('visibilitychange', gorunurlukDegisti)
-  }, [ogretmenId])
+  }, [ogretmenId, yetkisiz])
 
   // İndirilen PDF/yazdırma çıktısının dosya adı (ve tarayıcı sekme başlığı)
   // öğretmen adını göstersin diye — "Savaş Akça Eğitim Portalı" gibi genel
@@ -155,6 +171,22 @@ export default function OgretmenEkstre() {
       document.title = 'Savaş Akça Eğitim Portalı'
     }
   }, [ogretmen])
+
+  // Yetkisiz erişim: veri zaten hiç çekilmedi (bkz. yukarıdaki useEffect),
+  // burada da hiçbir şey gösterilmeden net bir uyarı ile kesiliyor.
+  if (yetkisiz) {
+    return (
+      <div className="min-h-screen bg-cream py-8 px-4 flex items-center justify-center">
+        <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-8 max-w-md text-center">
+          <p className="text-lg font-bold text-navy mb-2">Bu sayfayı görüntüleme yetkiniz yok</p>
+          <p className="text-sm text-gray-500 mb-4">Sadece kendi ders dökümünüzü görebilirsiniz.</p>
+          <Link to={`/ogretmen-ekstre/${profile.id}`} className="text-sm text-blue hover:underline">
+            ← Kendi Ekstreme Dön
+          </Link>
+        </div>
+      </div>
+    )
+  }
 
   if (loading) return <p className="p-6 text-gray-400">Yükleniyor...</p>
   if (!ogretmen) return <p className="p-6 text-gray-400">Öğretmen bulunamadı.</p>
@@ -202,8 +234,16 @@ export default function OgretmenEkstre() {
       `}</style>
       <div className="max-w-2xl mx-auto">
         <div className="no-print flex items-center justify-between mb-4 flex-wrap gap-3">
+          {/* ÖNEMLİ: burası eskiden "Bire Bir'e Dön" diyip /bire-bir'e
+              götürüyordu — oysa buraya normalde /ogretmen-ekstresi
+              (öğretmen seçici listesi) üzerinden gelinir, "Bire Bir" farklı
+              bir sayfa. Kullanıcı isteğiyle "Öğretmen Ekstresine Dön" olarak
+              ve doğru hedefe (/ogretmen-ekstresi) güncellendi. Öğretmen
+              kendi ekstresini görüntülerken (isYonetici=false) bu link hiç
+              gösterilmiyor — öğretmenin geri dönebileceği ayrı bir liste
+              sayfası yok, bu istenen davranış. */}
           {isYonetici ? (
-            <Link to="/bire-bir" className="text-sm text-blue hover:underline">← Bire Bir'e Dön</Link>
+            <Link to="/ogretmen-ekstresi" className="text-sm text-blue hover:underline">← Öğretmen Ekstresine Dön</Link>
           ) : (
             <span />
           )}
