@@ -2876,7 +2876,7 @@ export default function DersProgrami() {
                   <p className="px-4 py-4 text-sm text-gray-400">Bugüne ait ders bulunmuyor.</p>
                 ) : (
                 <div className="divide-y divide-gray-50">
-                  {dersler.map((d) => {
+                  {dersler.map((d, i) => {
                     // Kullanıcı isteğiyle başlık sırası ROLE GÖRE değişiyor:
                     // - Öğretmen kendi programına baktığında en üstte SINIF adı
                     //   görünsün istiyor (hangi sınıfa girdiğini görmek asıl amaç).
@@ -2885,16 +2885,19 @@ export default function DersProgrami() {
                     // Bu yüzden aşağıda isVeliYaDaOgrenci'ye göre iki ayrı sıralama var.
                     const baslik = d.ders_adi || d.ogretmen_brans || d.sinif_adi
                     const sinifAdiGoster = d.sinif_adi && d.sinif_adi !== baslik
-                    // Tablo görünümündeki AYNI renk teması (task: mobilde "bir açık bir
-                    // koyu" ayrımı istendi) — Liste görünümünde de her satır türüne göre
-                    // (sınıf dersi mavi, bire bir tekil ders amber, soru çözümü mor)
-                    // arka plan rengi alıyor, sadece Tablo'da değil.
-                    const satirRengi = d.sinif_id
-                      ? 'bg-blue-50/60'
-                      : d._bireBir
-                        ? 'bg-amber-100/70'
-                        : 'bg-purple-50/60'
-                    const baslikRengi = d.sinif_id ? 'text-gray-800' : d._bireBir ? 'text-amber-900' : 'text-purple-800'
+                    // ÖNCEDEN bu renk türe göre belirleniyordu (sınıf dersi mavi, bire
+                    // bir amber, soru çözümü mor) — ama aynı türden birkaç ders art arda
+                    // geldiğinde (ör. bir günde 3 sınıf dersi üst üste) hepsi AYNI renkte
+                    // kaldığı için, hangi dersin nerede bittiği/başladığı bir bakışta
+                    // ayırt edilemiyordu (sadece ince bir çizgiyle ayrılıyordu). Kullanıcı
+                    // isteğiyle artık öğretmen/veli/öğrenci FARK ETMEKSİZİN, gün içindeki
+                    // SIRAYA göre (satır indeksine göre) bir açık (site mavisinin silik
+                    // hali) bir beyaz şeklinde şeritli (zebra) arka plan kullanılıyor —
+                    // her ders saati, türünden bağımsız olarak net şekilde ayrışıyor.
+                    // Ders türü zaten kart içindeki metinden (ör. "Bire Bir · ...")
+                    // belli olduğu için ayrıca renkle vurgulamaya gerek kalmıyor.
+                    const satirRengi = i % 2 === 0 ? 'bg-blue-50/60' : 'bg-white'
+                    const baslikRengi = 'text-gray-800'
                     return (
                     <div
                       key={d.id}
