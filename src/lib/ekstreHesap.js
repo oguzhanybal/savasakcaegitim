@@ -812,7 +812,21 @@ export function bireBirDersDetaylariOlustur(atamalar, yoklamalar) {
         tur: soruCozumuMu ? 'soru_cozumu' : 'ders',
       }
     })
-    .sort((a, b) => (a.tarih < b.tarih ? 1 : -1))
+    // ÖNEMLİ HATA DÜZELTMESİ: bu sıralama eskiden SADECE tarihe göre yapılıyordu
+    // (a.tarih < b.tarih ? 1 : -1) — aynı güne ait birden fazla ders varsa (ör.
+    // bir öğretmenin aynı günde 5-6 farklı dersi), aralarında hiçbir saat
+    // karşılaştırması olmadığı için Supabase'den gelen ham sırayla (saatle
+    // alakasız) görünüyorlardı — Öğretmen Ekstresi'nde kullanıcının fark ettiği
+    // "13.30, 15.10, 16.05, 17.00, 17.55, sonra 14.15, sonra 12.40" gibi karman
+    // çorman sıralama buradan kaynaklanıyordu. Bu fonksiyon hem Ekstre.jsx (veli/
+    // öğrenci dökümü) hem GenelBireBirEkstre.jsx hem de (OgretmenEkstre.jsx
+    // üzerinden) öğretmen dökümü tarafından kullanıldığı için düzeltme buradan,
+    // TEK yerden yapılıyor. Tarih hâlâ yeniden-eskiye sıralanıyor, aynı tarih
+    // içinde artık başlangıç saatine göre erkenden geçe sıralanıyor.
+    .sort((a, b) => {
+      if (a.tarih !== b.tarih) return a.tarih < b.tarih ? 1 : -1
+      return (a.baslangicSaat || '') < (b.baslangicSaat || '') ? -1 : 1
+    })
 }
 
 // ============================================================================
@@ -851,7 +865,12 @@ export function sinifDersDetaylariOlustur(yoklamaKayitlari) {
       tur: 'sinif',
     })
   }
-  return Array.from(gruplar.values()).sort((a, b) => (a.tarih < b.tarih ? 1 : -1))
+  // Aynı tarih-saat düzeltmesi burada da geçerli (bkz. bireBirDersDetaylariOlustur
+  // içindeki açıklama) — tarih yeniden-eskiye, aynı tarih içinde saat erkenden geçe.
+  return Array.from(gruplar.values()).sort((a, b) => {
+    if (a.tarih !== b.tarih) return a.tarih < b.tarih ? 1 : -1
+    return (a.baslangicSaat || '') < (b.baslangicSaat || '') ? -1 : 1
+  })
 }
 
 // Bir tarihin (YYYY-MM-DD) içinde bulunduğu haftanın PAZARTESİ gününü bulur —
