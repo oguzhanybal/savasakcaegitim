@@ -109,7 +109,7 @@ function tarihIcinAktifProgram(programTum, tarih) {
 // hali.
 function haftaIcinSinifDersleri(programTum, haftaGunTarihleri) {
   const sonuc = []
-  for (let gun = 1; gun <= 6; gun++) {
+  for (let gun = 1; gun <= 7; gun++) {
     const tarih = haftaGunTarihleri[gun - 1]
     if (!tarih) continue
     const oGuninProgrami = tarihIcinAktifProgram(programTum, tarih).filter((d) => d.gun === gun)
@@ -155,7 +155,7 @@ export default function HaftalikProgramGoruntule({ program, programTum, siniflar
   const haftaGunTarihleri = useMemo(() => {
     const pazartesi = haftaninPazartesisi(new Date())
     pazartesi.setDate(pazartesi.getDate() + haftaOfset * 7)
-    return [0, 1, 2, 3, 4, 5].map((i) => {
+    return [0, 1, 2, 3, 4, 5, 6].map((i) => {
       const d = new Date(pazartesi)
       d.setDate(d.getDate() + i)
       return yerelTarih(d)
@@ -230,7 +230,7 @@ export default function HaftalikProgramGoruntule({ program, programTum, siniflar
   // Artık sadece GERÇEKTEN gösterilen 6 güne (1-6) ait saatler satır oluyor.
   const saatSatirlari = useMemo(
     () =>
-      [...new Set(filtreliDersler.filter((d) => d.gun >= 1 && d.gun <= 6).map((d) => saatKisalt(d.baslangic_saat)))].sort(),
+      [...new Set(filtreliDersler.filter((d) => d.gun >= 1 && d.gun <= 7).map((d) => saatKisalt(d.baslangic_saat)))].sort(),
     [filtreliDersler]
   )
 
@@ -382,7 +382,7 @@ export default function HaftalikProgramGoruntule({ program, programTum, siniflar
             <thead>
               <tr>
                 <th className="text-left px-2 py-2 border-b border-gray-100 text-gray-500 font-medium whitespace-nowrap">Saat</th>
-                {GUNLER.slice(1, 7).map((g) => (
+                {GUNLER.slice(1, 8).map((g) => (
                   <th key={g} className="text-left px-2 py-2 border-b border-gray-100 text-gray-500 font-medium">
                     {g}
                   </th>
@@ -393,7 +393,7 @@ export default function HaftalikProgramGoruntule({ program, programTum, siniflar
               {saatSatirlari.map((saat) => (
                 <tr key={saat} className="border-b border-gray-50">
                   <td className="px-2 py-2 text-gray-400 whitespace-nowrap align-top">{saatGoster(saat)}</td>
-                  {[1, 2, 3, 4, 5, 6].map((gun) => {
+                  {[1, 2, 3, 4, 5, 6, 7].map((gun) => {
                     const dersler = hucreDersleri(gun, saat)
                     return (
                       <td key={gun} className="px-2 py-2 align-top">
