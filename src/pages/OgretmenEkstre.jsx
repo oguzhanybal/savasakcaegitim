@@ -107,7 +107,22 @@ export default function OgretmenEkstre() {
           const sinifDersler = sinifDersDetaylariOlustur(sinifYoklamalari.data || [])
           setOgretmen(ogr.data)
           setDersler(
-            gecmisteKalanlar([...bireBirDersler, ...sinifDersler]).sort((a, b) => (a.tarih < b.tarih ? 1 : -1))
+            // ÖNEMLİ HATA DÜZELTMESİ: bu sıralama eskiden SADECE tarihe göre
+            // yapılıyordu (a.tarih < b.tarih ? 1 : -1) — aynı tarihe ait
+            // birden fazla ders varsa (ör. 12.09.2026'da 7 farklı ders),
+            // aralarında HİÇBİR saat karşılaştırması yapılmıyordu. Bu yüzden
+            // aynı gün içindeki dersler, bireBirDersler/sinifDersler
+            // dizilerine hangi sırayla eklendiyse (Supabase'den gelen ham
+            // sırayla, saatle alakasız) öyle görünüyordu — kullanıcının
+            // ekran görüntüsünde gösterdiği gibi 13.30, 15.10, 16.05, 17.00,
+            // 17.55, sonra 14.15, sonra 12.40 gibi karman çorman bir sıra
+            // ortaya çıkıyordu. Düzeltme: tarih hâlâ yeniden-eskiye
+            // sıralanıyor (en son tarih en üstte), ama AYNI tarih içinde artık
+            // başlangıç saatine göre erkenden geçe (sabahtan akşama) sıralanıyor.
+            gecmisteKalanlar([...bireBirDersler, ...sinifDersler]).sort((a, b) => {
+              if (a.tarih !== b.tarih) return a.tarih < b.tarih ? 1 : -1
+              return (a.baslangicSaat || '') < (b.baslangicSaat || '') ? -1 : 1
+            })
           )
           setLoading(false)
         })
