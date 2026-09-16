@@ -19,7 +19,6 @@ import {
   bireBirDersDetaylariOlustur,
   fazlaOdemeleriHesapla,
   ogrenciSatirlariHesapla,
-  sonOdemeleriGrupSiniriylaKes,
   telefonNormallestir,
   makbuzWhatsappMesajiOlustur,
   makbuzTaksitBilgisiBul,
@@ -886,6 +885,17 @@ export default function Muhasebe() {
   const [duzenleSozlesmeTarihi, setDuzenleSozlesmeTarihi] = useState('')
   const [sozlesmeKaydediliyor, setSozlesmeKaydediliyor] = useState(false)
 
+  // Kullanıcı isteği: eskiden "en son alınan 15 ödeme" (sayı bazlı sabit
+  // sınır) gösteriliyordu — artık bunun yerine "son 10 GÜNDE alınan tüm
+  // ödemeler" (tarih bazlı) gösteriliyor. Bugün dahil son 10 takvim günü
+  // (bugün, dün, ... 9 gün önce) — bu yüzden sınır tarihi bugünden 9 gün
+  // öncesi.
+  function onGunOncekiTarih() {
+    const n = new Date()
+    n.setDate(n.getDate() - 9)
+    return `${n.getFullYear()}-${String(n.getMonth() + 1).padStart(2, '0')}-${String(n.getDate()).padStart(2, '0')}`
+  }
+
   function sonOdemeleriYukle() {
     // İkinci sıralama ölçütü created_at: "Dağıtılmamış" bir ödeme sonradan
     // kalemlere bölününce (bkz. OdemeDagitForm.kaydet), yeni satırlar orijinal
@@ -893,17 +903,18 @@ export default function Muhasebe() {
     // güne ait farklı öğrencilerin dağıtılmış kayıtları rastgele karışabiliyor.
     // created_at (gerçek giriş sırası) ile bu karışıklık düzeliyor.
     //
-    // 40 satır çekip sonOdemeleriGrupSiniriylaKes ile en az 15'e tamamlıyoruz —
-    // düz limit(15) kullansaydık, bir öğrencinin aynı günkü tek işlemi (ör.
-    // Bire Bir + Kitap diye 2 satıra bölünmüş) tam sınırın ortasına denk
-    // gelirse ikiye bölünüp yarısı görünmez olurdu.
+    // Artık sayı bazlı bir sınır (limit) YOK — tarih aralığına göre çekiliyor,
+    // bu yüzden aynı öğrencinin aynı günkü işleminin (ör. Bire Bir + Kitap diye
+    // 2 satıra bölünmüş) ortadan kesilip yarısının görünmez olması sorunu da
+    // (eski sonOdemeleriGrupSiniriylaKes ile çözülen sorun) artık kendiliğinden
+    // oluşmuyor — o gün tarih aralığındaysa TÜM satırları zaten gösteriliyor.
     supabase
       .from('odemeler')
       .select('*, ogrenciler(ad_soyad)')
+      .gte('tarih', onGunOncekiTarih())
       .order('tarih', { ascending: false })
       .order('created_at', { ascending: false })
-      .limit(40)
-      .then(({ data }) => setSonOdemeler(sonOdemeleriGrupSiniriylaKes(data || [], 15)))
+      .then(({ data }) => setSonOdemeler(data || []))
   }
 
   useEffect(() => {
@@ -1549,7 +1560,7 @@ export default function Muhasebe() {
             <div className="px-4 py-3 border-b border-gray-100 bg-gray-50">
               <h2 className="font-semibold text-gray-700">Son Alınan Ödemeler</h2>
               <p className="text-xs text-gray-400 mt-0.5">
-                Kimin ne ödediğini unutmayasınız diye — en son alınan 15 ödeme, tüm öğrenciler dahil.
+                Kimin ne ödediğini unutmayasınız diye — son 10 günde alınan tüm ödemeler, tüm öğrenciler dahil.
               </p>
             </div>
             <table className="w-full text-sm min-w-[480px]">
