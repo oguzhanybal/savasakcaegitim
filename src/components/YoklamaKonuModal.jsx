@@ -45,7 +45,7 @@ function gunNumarasi(tarihStr) {
 // saati bugünün gününe denk gelmiyorsa (ör. hafta programında başka bir
 // günün dersine tıklandıysa), burada yoklama alma formu hiç gösterilmiyor,
 // bunun yerine kullanıcı Geçmiş Yoklama'ya yönlendiriliyor.
-export default function YoklamaKonuModal({ dersProgramiId, sinifId, sinifAdi, dersAdi, gun, profile, onClose, onKaydedildi }) {
+export default function YoklamaKonuModal({ dersProgramiId, sinifId, sinifAdi, dersAdi, gun, baslangicSaat, bitisSaat, profile, onClose, onKaydedildi }) {
   const [ogrenciler, setOgrenciler] = useState([])
   const [yoklamaDurumu, setYoklamaDurumu] = useState({})
   const [loading, setLoading] = useState(true)
@@ -113,12 +113,18 @@ export default function YoklamaKonuModal({ dersProgramiId, sinifId, sinifAdi, de
       return
     }
     setKaydediliyor(true)
+    // Gün/saat bilgisi burada da damgalanıyor — bkz. Yoklama.jsx'teki AYNI
+    // düzeltmenin açıklaması (Geçmiş Yoklama'nın ders_programi satırı
+    // silinince/değişince yoklamayı "Alınmadı" göstermesi hatası).
     const kayitlar = ogrenciler.map((o) => ({
       sinif_id: sinifId,
       ders_programi_id: dersProgramiId,
       ogrenci_id: o.id,
       tarih: bugun,
       geldi: yoklamaDurumu[o.id] ?? true,
+      gun: gun ?? null,
+      baslangic_saat: baslangicSaat ?? null,
+      bitis_saat: bitisSaat ?? null,
     }))
     const { error } = await supabase
       .from('yoklama')
