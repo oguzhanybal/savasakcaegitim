@@ -665,6 +665,7 @@ function OgrenciOdevSatiri({ o, isYonetici, durumDegistir, sil }) {
             </a>
           </>
         )}
+        {o.aciklama && <p className="text-xs text-gray-400 mt-0.5 whitespace-pre-line">{o.aciklama}</p>}
       </td>
       {isYonetici && <td className="px-4 py-2 text-gray-500">{o.ogretmen_adi || '—'}</td>}
       <td className={`px-4 py-2 ${gecti ? 'text-red-600 font-semibold' : 'text-gray-500'}`}>
@@ -734,6 +735,7 @@ function SinifOdevGrubu({ grubId, items, isYonetici, durumDegistir, sil, acik, o
             {ilk.baslik}
             {linkBilgi && <span className="text-blue text-xs font-normal"> ({linkBilgi.etiket})</span>}
           </p>
+          {ilk.aciklama && <p className="text-xs text-gray-400 break-words whitespace-pre-line">{ilk.aciklama}</p>}
           <p className="text-xs text-gray-500 break-words">
             {sinifAdlari.length > 0 && <span className="font-medium text-gray-600">{sinifAdlari.join(', ')} · </span>}
             {ilk.ders || '—'} · {items.length} öğrenci
