@@ -161,26 +161,83 @@ export default function GecmisYoklama() {
       // pasif olmuş eski derslerin de "hâlâ benim dersim" sayılıp gerçek
       // olmayan "Alındı" satırları üretmesine sebep olmuştu.)
       const tumSatirMap = new Map(tumSatirlar.map((s) => [s.id, s]))
-      const tumIdler = tumSatirlar.map((s) => s.id)
-      const yoklamaSatirlari = tumIdler.length
-        ? await sayfalayarakGetir(() =>
-            supabase
-              .from('yoklama')
-              .select('ders_programi_id, tarih')
-              .in('ders_programi_id', tumIdler)
-              .gte('tarih', enEskiTarih)
-              .lte('tarih', dun)
-          )
-        : []
-      // tarih -> Map(sinif_id|gun|saat -> ders) — anahtara GÜN de dahil,
-      // aksi halde farklı günlerin aynı saatteki dersleri birbirine karışır.
+      // ÖNEMLİ HATA DÜZELTMESİ 6 (kullanıcı bildirdi: "birkaç kez düzelttirdim
+      // ama yine bozuldu"): bu sorgu ÖNCEDEN sadece HÂLÂ MEVCUT ders_programi
+      // id'lerine (.in('ders_programi_id', tumIdler)) bakıyordu. Bir ders
+      // saati zaman içinde SQL ile (ör. toplu program düzeltmelerinde HARD
+      // DELETE + yeniden INSERT ile — uygulama içindeki "Sil" butonu bunu
+      // yapmıyor, sadece pasife alıyor, ama SQL Editor'de doğrudan çalıştırılan
+      // düzeltme scriptleri satırı gerçekten silip yerine YENİ bir id'yle satır
+      // ekleyebiliyordu) yeniden oluşturulduğunda, ESKİ id'ye bağlı yoklama
+      // kaydı artık .in(...) filtresine hiç girmiyordu — yani GERÇEKTEN
+      // alınmış bir yoklama sorgudan TAMAMEN dışarıda kalıyor, "Alınmadı"
+      // gibi görünüyordu. Artık tarih aralığına göre (sınıf seçiliyse ona
+      // göre) TÜM yoklama satırları çekiliyor, id'nin hâlâ var olup
+      // olmadığına bakılmıyor.
+      const yoklamaSatirlari = await sayfalayarakGetir(() => {
+        let sorgu = supabase
+          .from('yoklama')
+          .select('ders_programi_id, tarih, sinif_id, gun, baslangic_saat, bitis_saat')
+          .gte('tarih', enEskiTarih)
+          .lte('tarih', dun)
+        if (seciliSinif) sorgu = sorgu.eq('sinif_id', seciliSinif)
+        return sorgu
+      })
+      // tarih -> Set(sinif_id|gun|saat) — SADECE "alındı mı" boole kontrolü
+      // için, HER ZAMAN güvenilir: artık yoklama satırının KENDİ üzerine
+      // damgalanmış gun/baslangic_saat/bitis_saat (bkz. Yoklama.jsx /
+      // YoklamaKonuModal.jsx / bu dosyanın kaydet()'i) öncelikli kullanılıyor
+      // — ders_programi satırı silinmiş/id'si değişmiş olsa bile bu satır
+      // kendi başına doğru kalıyor. Bu kolonlar henüz eklenmeden ÖNCE
+      // kaydedilmiş ESKİ satırlar için (gun alanı boşsa) eski yönteme
+      // (ders_programi_id join'i) düşülüyor — o satırların karşılığı da
+      // silinmişse maalesef hâlâ eşleşmeyebilir (bkz. teslim ettiğim SQL'deki
+      // geriye dönük "backfill" — bundan sonrakiler için sorun kalmıyor).
+      //
+      // tarih -> Map(sinif_id|gun|saat -> ders) — SADECE ekranda gösterilecek
+      // ders adı/öğretmen bilgisi için (o tarihte GERÇEKTEN kimin dersiydi),
+      // yalnızca ders_programi karşılığı hâlâ çözülebiliyorsa dolduruluyor.
+      const alindiAnahtarlarByTarih = new Map()
       const alinanByTarih = new Map()
       for (const y of yoklamaSatirlari || []) {
-        const ders = tumSatirMap.get(y.ders_programi_id)
-        if (!ders) continue
-        const anahtar = `${ders.sinif_id}|${ders.gun}|${ders.baslangic_saat}-${ders.bitis_saat}`
+        let sinifId, gun, baslangicSaat, bitisSaat
+        if (y.gun != null && y.baslangic_saat && y.sinif_id) {
+          sinifId = y.sinif_id
+          gun = y.gun
+          baslangicSaat = y.baslangic_saat
+          bitisSaat = y.bitis_saat
+        } else {
+          const ders = tumSatirMap.get(y.ders_programi_id)
+          if (!ders) continue
+          sinifId = ders.sinif_id
+          gun = ders.gun
+          baslangicSaat = ders.baslangic_saat
+          bitisSaat = ders.bitis_saat
+        }
+        const anahtar = `${sinifId}|${gun}|${baslangicSaat}-${bitisSaat}`
+        if (!alindiAnahtarlarByTarih.has(y.tarih)) alindiAnahtarlarByTarih.set(y.tarih, new Set())
+        alindiAnahtarlarByTarih.get(y.tarih).add(anahtar)
+
+        // ders_programi karşılığı hâlâ çözülebiliyorsa onu kullan (ders adı/
+        // öğretmen doğru görünsün diye); çözülemiyorsa (orijinal id
+        // silinmiş) yine de asgari bir nesne üretiyoruz — ÖNEMLİ: bu nesnenin
+        // "id" alanı hâlâ y.ders_programi_id'ye (orijinal, silinmiş id'ye)
+        // işaret ediyor, çünkü aşağıda bu slota tıklanınca öğrenci bazlı
+        // Geldi/Gelmedi kayıtları TAM OLARAK bu id'ye göre aranıyor — enYeni
+        // (güncel slot sahibinin id'si) kullanılsaydı o sorgu hiçbir şey
+        // bulamaz, "Alındı" rozeti doğru görünse bile öğrenci işaretleri
+        // boş/varsayılan gelirdi.
+        const dersNesne = tumSatirMap.get(y.ders_programi_id) || {
+          id: y.ders_programi_id,
+          sinif_id: sinifId,
+          gun,
+          baslangic_saat: baslangicSaat,
+          bitis_saat: bitisSaat,
+          ders_adi: null,
+          ogretmen_profile_id: null,
+        }
         if (!alinanByTarih.has(y.tarih)) alinanByTarih.set(y.tarih, new Map())
-        alinanByTarih.get(y.tarih).set(anahtar, ders)
+        alinanByTarih.get(y.tarih).set(anahtar, dersNesne)
       }
 
       // Slot (sınıf+gün+saat) bazında gruplama — bir slotu zaman içinde farklı
@@ -202,6 +259,7 @@ export default function GecmisYoklama() {
         const tarih = yerelTarih(d)
         const gunNo = gunNumarasi(tarih)
         const alinanAnahtarlar = alinanByTarih.get(tarih) || new Map()
+        const alindiAnahtarlari = alindiAnahtarlarByTarih.get(tarih) || new Set()
         const dersMap = new Map() // anahtar -> {ders, alindiMi}
 
         // ÖNEMLİ DÜZELTME 4: bir slot (sınıf+gün+saat) devredildiğinde, admin
@@ -241,9 +299,15 @@ export default function GecmisYoklama() {
           if (profile?.rol === 'ogretmen' && enYeni.ogretmen_profile_id !== profile.id) continue
 
           // GERÇEKTEN alınmış mı — aynı slotta (hangi ders_programi_id/
-          // öğretmen olursa olsun) o tarihe ait yoklama kaydı var mı.
+          // öğretmen olursa olsun) o tarihe ait yoklama kaydı var mı. Bu
+          // kontrol artık alindiAnahtarlari (damgalanmış gun/saat'e göre,
+          // ders_programi satırının hâlâ var olup olmadığından bağımsız)
+          // üzerinden yapılıyor — "Alındı" rozeti artık asla yanlışlıkla
+          // "Alınmadı" görünmüyor. alinanKaydi ise SADECE görüntüleme
+          // (hangi ders adı/öğretmen) için, çözülebiliyorsa kullanılıyor.
+          const alindiMi = alindiAnahtarlari.has(temelAnahtar)
           const alinanKaydi = alinanAnahtarlar.get(temelAnahtar)
-          dersMap.set(temelAnahtar, { ders: alinanKaydi || enYeni, alindiMi: !!alinanKaydi })
+          dersMap.set(temelAnahtar, { ders: alinanKaydi || enYeni, alindiMi })
         }
 
         if (dersMap.size === 0) continue
@@ -331,12 +395,17 @@ export default function GecmisYoklama() {
   async function kaydet() {
     if (!seciliOge) return
     setKaydediliyor(true)
+    // Gün/saat bilgisi burada da damgalanıyor — bkz. aşağıdaki "ÖNEMLİ HATA
+    // DÜZELTMESİ 6" açıklaması (bu dosyanın okuma tarafındaki asıl düzeltme).
     const kayitlar = ogrenciler.map((o) => ({
       sinif_id: seciliOge.ders.sinif_id,
       ders_programi_id: seciliOge.ders.id,
       ogrenci_id: o.id,
       tarih: seciliOge.tarih,
       geldi: yoklamaKayitlari[o.id] ?? true,
+      gun: seciliOge.ders.gun ?? null,
+      baslangic_saat: seciliOge.ders.baslangic_saat ?? null,
+      bitis_saat: seciliOge.ders.bitis_saat ?? null,
     }))
     const { error } = await supabase
       .from('yoklama')

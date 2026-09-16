@@ -11,26 +11,38 @@ const GUNLER = ['', 'Pazartesi', 'Salı', 'Çarşamba', 'Perşembe', 'Cuma', 'Cu
 // fazla satır günün listesine girip "Ders Saati" açılır listesinde aynı
 // saat aralığı iki kez görünüyordu (kullanıcı bildirdi, GecmisYoklama.jsx'te
 // de aynı düzeltme yapıldı). Aynı saat aralığına sahip satırları TEK satıra
-// indiriyoruz — o tarihe ait GERÇEKTEN yoklaması kayıtlı olan satır varsa
-// onu, yoksa aktif olanı tercih ederek.
+// indiriyoruz — AMA SADECE bunlar GERÇEKTEN aynı dersin (aynı ders adı +
+// aynı öğretmen) sadece yeniden kaydedilmiş hali ise. Ders adı VEYA
+// öğretmeni FARKLIYSA (kullanıcı bildirdi: bir dersi "Soru Çözümü" olarak
+// tamamen değiştirip öğretmensiz bıraktığında, o saatte daha önce zaten
+// yoklaması alınmış ESKİ ders — ör. "Geometri / Yücel Şahin" — bu YENİ
+// dersi tamamen gizleyip listede hâlâ eskisini gösteriyordu) bu artık
+// GERÇEKTEN FARKLI bir ders sayılıyor ve İKİSİ DE ayrı ayrı listede kalıyor
+// — böylece hem bugün daha önce yoklaması alınmış eski ders görülüp
+// düzenlenebiliyor, hem de yerine gelen güncel ders dropdown'da kaybolmuyor.
 function saatleriBirlestir(saatler, yoklamasiOlanIdler) {
-  const gruplar = new Map()
+  const gruplar = new Map() // saat anahtarı -> o saatteki GERÇEKTEN FARKLI derslerin listesi
   for (const d of saatler) {
     const anahtar = `${d.baslangic_saat}-${d.bitis_saat}`
-    const mevcut = gruplar.get(anahtar)
-    if (!mevcut) {
-      gruplar.set(anahtar, d)
-      continue
+    const liste = gruplar.get(anahtar) || []
+    const ayniDersIndex = liste.findIndex(
+      (m) => m.ders_adi === d.ders_adi && m.ogretmen_profile_id === d.ogretmen_profile_id
+    )
+    if (ayniDersIndex === -1) {
+      liste.push(d)
+    } else {
+      const mevcut = liste[ayniDersIndex]
+      const mevcutYoklamasiVar = yoklamasiOlanIdler.has(mevcut.id)
+      const yeniYoklamasiVar = yoklamasiOlanIdler.has(d.id)
+      if (yeniYoklamasiVar && !mevcutYoklamasiVar) {
+        liste[ayniDersIndex] = d
+      } else if (yeniYoklamasiVar === mevcutYoklamasiVar && d.aktif !== false && mevcut.aktif === false) {
+        liste[ayniDersIndex] = d
+      }
     }
-    const mevcutYoklamasiVar = yoklamasiOlanIdler.has(mevcut.id)
-    const yeniYoklamasiVar = yoklamasiOlanIdler.has(d.id)
-    if (yeniYoklamasiVar && !mevcutYoklamasiVar) {
-      gruplar.set(anahtar, d)
-    } else if (yeniYoklamasiVar === mevcutYoklamasiVar && d.aktif !== false && mevcut.aktif === false) {
-      gruplar.set(anahtar, d)
-    }
+    gruplar.set(anahtar, liste)
   }
-  return [...gruplar.values()].sort((a, b) => (a.baslangic_saat || '').localeCompare(b.baslangic_saat || ''))
+  return [...gruplar.values()].flat().sort((a, b) => (a.baslangic_saat || '').localeCompare(b.baslangic_saat || ''))
 }
 
 export default function Yoklama() {
@@ -271,12 +283,28 @@ export default function Yoklama() {
       }
     }
 
+    // ÖNEMLİ HATA DÜZELTMESİ (Geçmiş Yoklama'nın yanlış "Alınmadı" göstermesi):
+    // yoklama satırı eskiden SADECE ders_programi_id'yi tutuyordu — o dersin
+    // gün/saat bilgisi hep ders_programi tablosundan JOIN ile okunuyordu.
+    // Program üzerinde bir ders saati sonradan silinip (özellikle SQL ile
+    // toplu program düzeltmelerinde HARD DELETE ile) aynı saat için yeni bir
+    // satır oluşturulduğunda, eski ders_programi_id artık hiçbir satıra karşılık
+    // gelmiyordu — bu da GERÇEKTEN alınmış bir yoklamanın Geçmiş Yoklama'da
+    // "Alınmadı" gibi görünmesine yol açıyordu (ders_programi satırı hâlâ
+    // duruyorsa sorun yoktu, ama silinince bağlantı kopuyordu). Artık gün ve
+    // saat bilgisi yoklama satırının ÜZERİNE de damgalanıyor — ders_programi
+    // satırı ileride silinse/id'si değişse bile bu satır kendi başına doğru
+    // kalmaya devam ediyor (bkz. GecmisYoklama.jsx'teki okuma tarafı).
+    const seciliSaatBilgi = seciliSaat ? gununSaatleri.find((s) => s.id === seciliSaat) : null
     const kayitlar = ogrenciler.map((o) => ({
       sinif_id: seciliSinif,
       ders_programi_id: seciliSaat || null,
       ogrenci_id: o.id,
       tarih: bugun,
       geldi: yoklamaBugun[o.id] ?? true,
+      gun: seciliSaatBilgi?.gun ?? null,
+      baslangic_saat: seciliSaatBilgi?.baslangic_saat ?? null,
+      bitis_saat: seciliSaatBilgi?.bitis_saat ?? null,
     }))
     const { error } = await supabase
       .from('yoklama')
@@ -296,6 +324,17 @@ export default function Yoklama() {
   // sade yazıldığı için (ör. "Matematik") otomatik eşleşme olmaz, öğretmen
   // o zaman sekmeyi kendisi seçer.
   const seciliSaatDersAdi = gununSaatleri.find((s) => s.id === seciliSaat)?.ders_adi || ''
+
+  // Aynı saat aralığında GERÇEKTEN farklı iki ders varsa (bkz. saatleriBirlestir
+  // yorumu — ör. biri az önce "Soru Çözümü"ne çevrilmiş, öğretmensiz; öbürü
+  // bugün daha önce yoklaması alınmış eski ders) sadece "saat — öğretmen"
+  // yazmak ikisini ayırt etmeye yetmeyebilir (ör. ikisi de öğretmensizse).
+  // Bu yüzden aynı saatte birden fazla seçenek varsa ders adını da ekliyoruz.
+  const saatTekrarSayisi = {}
+  gununSaatleri.forEach((s) => {
+    const anahtar = `${s.baslangic_saat}-${s.bitis_saat}`
+    saatTekrarSayisi[anahtar] = (saatTekrarSayisi[anahtar] || 0) + 1
+  })
 
   return (
     <div>
@@ -329,14 +368,19 @@ export default function Yoklama() {
                 onChange={(e) => setSeciliSaat(e.target.value)}
                 className="w-full min-w-[180px] px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue bg-white"
               >
-                {gununSaatleri.map((s) => (
-                  <option key={s.id} value={s.id}>
-                    {s.baslangic_saat?.slice(0, 5)} – {s.bitis_saat?.slice(0, 5)}
-                    {profile?.rol !== 'ogretmen' && ogretmenAdi(s.ogretmen_profile_id)
-                      ? ` — ${ogretmenAdi(s.ogretmen_profile_id)}`
-                      : ''}
-                  </option>
-                ))}
+                {gununSaatleri.map((s) => {
+                  const anahtar = `${s.baslangic_saat}-${s.bitis_saat}`
+                  const dersAdiEklensin = saatTekrarSayisi[anahtar] > 1 && s.ders_adi
+                  return (
+                    <option key={s.id} value={s.id}>
+                      {s.baslangic_saat?.slice(0, 5)} – {s.bitis_saat?.slice(0, 5)}
+                      {dersAdiEklensin ? ` (${s.ders_adi})` : ''}
+                      {profile?.rol !== 'ogretmen' && ogretmenAdi(s.ogretmen_profile_id)
+                        ? ` — ${ogretmenAdi(s.ogretmen_profile_id)}`
+                        : ''}
+                    </option>
+                  )
+                })}
               </select>
             </div>
           )}

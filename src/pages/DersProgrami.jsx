@@ -3023,6 +3023,8 @@ export default function DersProgrami() {
           sinifAdi={yoklamaModalDers.sinif_adi}
           dersAdi={yoklamaModalDers.ders_adi}
           gun={yoklamaModalDers.gun}
+          baslangicSaat={yoklamaModalDers.baslangic_saat}
+          bitisSaat={yoklamaModalDers.bitis_saat}
           profile={profile}
           onClose={() => setYoklamaModalDers(null)}
           // KULLANICI İSTEĞİ (regresyon düzeltmesi): bu callback önceden hiç
