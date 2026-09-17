@@ -2312,6 +2312,10 @@ function DersHatirlatmaPaneli({ atamalar, yoklamalar, sadeceOgretmenId }) {
         // ör. "Matematik") gösterilsin diye — bire bir derslerin ayrı bir
         // "ders adı" alanı olmadığı için en yakın karşılığı branş.
         dersAdi: kayit.ogretmen_bransi || null,
+        // Kullanıcı isteği: "parantez içinde hangi hocaysa o da görünsün" —
+        // öğretmen adı da mesaja taşınıyor (ekstreHesap.js'teki
+        // dersParantezMetni bunu branşla birleştirip parantezi oluşturuyor).
+        ogretmenAdi: kayit.ogretmen_adi || null,
       })
     }
 
@@ -2364,6 +2368,8 @@ function DersHatirlatmaPaneli({ atamalar, yoklamalar, sadeceOgretmenId }) {
         baslangicSaat: saatKisalt(kayit.baslangic_saat),
         bitisSaat: saatKisalt(kayit.bitis_saat),
         dersAdi: kayit.ogretmen_bransi || null,
+        // Kullanıcı isteği: "parantez içinde hangi hocaysa o da görünsün".
+        ogretmenAdi: kayit.ogretmen_adi || null,
       })
     }
 
