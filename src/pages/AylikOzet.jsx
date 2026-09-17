@@ -3,8 +3,10 @@ import { supabase } from '../lib/supabase'
 import {
   paraFormat,
   bireBirDersDetaylariOlustur,
+  bireBirBorclariOlustur,
   taksitPlaniOlustur,
   kantinBorclariOlustur,
+  buAyTutarininOdemeDurumu,
   ayEkle,
   ayIndexOf,
   odemeToplamKalem,
@@ -42,22 +44,6 @@ function ayEtiketiUret(ay) {
   return new Date(ay + '-01T12:00:00').toLocaleDateString('tr-TR', { month: 'long', year: 'numeric' })
 }
 
-// Bir satır listesini (bire bir ders ya da kantin alışı) öğrenci adına göre
-// gruplar — her öğrenci için kaç kayıt olduğunu ve toplam tutarı hesaplar.
-// En yüksek tutardan en düşüğe sıralı döner (patronun en çok kimin harcadığını
-// ilk bakışta görmesi için).
-function gruplaOgrenciye(satirlar, adFn) {
-  const map = new Map()
-  for (const s of satirlar) {
-    const ad = adFn(s) || '—'
-    if (!map.has(ad)) map.set(ad, { ad, sayi: 0, tutar: 0 })
-    const g = map.get(ad)
-    g.sayi += 1
-    g.tutar += Number(s.tutar) || 0
-  }
-  return Array.from(map.values()).sort((a, b) => b.tutar - a.tutar || a.ad.localeCompare(b.ad, 'tr'))
-}
-
 // Belirli bir ayda okulda alınan TÜM bire bir dersleri (ücretiyle) ve kantin
 // alışlarını, hem genel toplam hem öğrenci bazında döküm olarak gösteren,
 // yazdırılabilir/PDF alınabilir bir rapor sayfası. "Ay sonu patronla
@@ -74,6 +60,11 @@ export default function AylikOzet() {
   // seçiliyken Bire Bir'e ait hiçbir şey (üst kutu dahil) görünmemeli.
   const [sekme, setSekme] = useState('birebir') // 'birebir' | 'kantin' | 'taksit'
   const [bireBirDersler, setBireBirDersler] = useState([])
+  // "Bire Bir — Öğrenci Bazında" tablosunda da Kantin'dekiyle AYNI şekilde
+  // "bu ayki tutarın ödenen/ödenmeyen kısmı" gösterebilmek için — bireBirDersler
+  // (yukarıdaki) sadece ders dökümü, borç/ödeme kümülatif hesabı için AYRICA
+  // bireBirBorclariOlustur çıktısı (aylik_borclar ile AYNI şekil) gerekiyor.
+  const [bireBirBorclarTumu, setBireBirBorclarTumu] = useState([])
   const [kantinAlislari, setKantinAlislari] = useState([])
   const [sozlesmeler, setSozlesmeler] = useState([])
   const [odemeler, setOdemeler] = useState([])
@@ -104,6 +95,7 @@ export default function AylikOzet() {
       yoklamaSorgusu.then((by) => {
         const tumYoklamalar = [...(by.data || []), ...(ekDersler.data || [])]
         setBireBirDersler(bireBirDersDetaylariOlustur(atamalar, tumYoklamalar))
+        setBireBirBorclarTumu(bireBirBorclariOlustur(atamalar, tumYoklamalar))
         setKantinAlislari(kantin.data || [])
         setSozlesmeler(sozlesme.data || [])
         setOdemeler(odeme.data || [])
@@ -145,7 +137,24 @@ export default function AylikOzet() {
     return { bireBirBuAy, kantinBuAy, soruCozumuSayisi, aylar }
   }, [bireBirDersler, kantinAlislari, odemeler, seciliAy])
 
-  const bireBirOgrenciler = useMemo(() => gruplaOgrenciye(bireBirBuAy, (d) => d.ogrenciAdi), [bireBirBuAy])
+  // Kullanıcı isteği: "Bire Bir'de de ödenen/ödenmeyen görünsün" (Kantin
+  // tablosuna eklendikten sonra) — Kantin'de yaptığımız DÜZELTMEYLE AYNI
+  // sebepten (aynı isimli iki öğrenci karışmasın, ödeme durumu haritasıyla
+  // güvenilir eşleşsin diye) burası da artık ad string'i yerine ogrenci_id'ye
+  // göre gruplanıyor (bkz. bireBirDersDetaylariOlustur'a eklenen ogrenciId).
+  const bireBirOgrenciler = useMemo(() => {
+    const map = new Map()
+    for (const d of bireBirBuAy) {
+      const anahtar = d.ogrenciId || `isimsiz-${d.ogrenciAdi || '—'}`
+      if (!map.has(anahtar)) {
+        map.set(anahtar, { ogrenciId: d.ogrenciId, ad: d.ogrenciAdi || '—', sayi: 0, tutar: 0 })
+      }
+      const g = map.get(anahtar)
+      g.sayi += 1
+      g.tutar += Number(d.tutar) || 0
+    }
+    return Array.from(map.values()).sort((a, b) => b.tutar - a.tutar || a.ad.localeCompare(b.ad, 'tr'))
+  }, [bireBirBuAy])
   // Kullanıcı isteği: "Kantin — Öğrenci Bazında" tablosunda, o ayki alış
   // tutarının yanında ödenip ödenmediği de görünsün. Bunun için burada artık
   // ad string'ine göre değil ogrenci_id'ye göre gruplanıyor (aşağıdaki ödeme
@@ -258,23 +267,53 @@ export default function AylikOzet() {
     return sonuc
   }, [sozlesmeler, odemeler, kantinBorclarTumu, seciliAy, ogrenciAdMap])
 
-  // "Kantin — Öğrenci Bazında" (sekme='kantin') tablosundaki her satırın
-  // ödeme durumunu, Taksitler sekmesinde zaten hesaplanmış olan aynı veriden
-  // (taksitKalemTablolari[KANTIN_KALEM]) ogrenci_id'ye göre bulmak için.
+  // "Kantin — Öğrenci Bazında" (sekme='kantin') tablosundaki "Ödenen"/
+  // "Ödenmeyen" — DİKKAT: bu, Taksitler sekmesindeki "Bu Ay Ödenen" (o takvim
+  // ayında yatan NAKİT, hangi ayın borcunu kapattığına bakılmaksızın) ile AYNI
+  // ŞEY DEĞİL — o mantık kullanıldığında "Tutar 2.492 ama Ödenen 12.000" gibi
+  // anlamsız görünen satırlar çıkıyordu (veli o ay büyük bir ödeme yapıp geçmiş
+  // ayların borcunu da kapatmış olabiliyor). Burada onun yerine
+  // buAyTutarininOdemeDurumu kullanılıyor: SADECE bu ayki "Tutar" sütununun ne
+  // kadarının (kümülatif bakiyeye göre, en eski borçtan başlanarak) fiilen
+  // kapandığını hesaplar — Ödenen + Ödenmeyen her zaman tam olarak Tutar'a
+  // eşittir, böylece sütunlar artık birbiriyle çelişmez.
   const kantinOdemeDurumMap = useMemo(() => {
     const map = new Map()
-    for (const s of taksitKalemTablolari[KANTIN_KALEM] || []) {
-      map.set(s.ogrenciId, s)
+    for (const o of kantinOgrenciler) {
+      map.set(o.ogrenciId, buAyTutarininOdemeDurumu(KANTIN_KALEM, o.ogrenciId, kantinBorclarTumu, odemeler, seciliAy))
     }
     return map
-  }, [taksitKalemTablolari])
+  }, [kantinOgrenciler, kantinBorclarTumu, odemeler, seciliAy])
 
   const kantinBuAyOdenenToplam = kantinOgrenciler.reduce(
     (t, o) => t + (kantinOdemeDurumMap.get(o.ogrenciId)?.buAyOdenen || 0),
     0
   )
   const kantinKalanBakiyeToplam = kantinOgrenciler.reduce(
-    (t, o) => t + (kantinOdemeDurumMap.get(o.ogrenciId)?.kalanBakiye || 0),
+    (t, o) => t + (kantinOdemeDurumMap.get(o.ogrenciId)?.buAyOdenmeyen || 0),
+    0
+  )
+
+  // "Bire Bir — Öğrenci Bazında" tablosu için AYNI mantık (kullanıcı isteği:
+  // Kantin'de eklendikten sonra "bire birde ödenenler hiç görünmüyor" —
+  // burada henüz bu sütunlar hiç yoktu, şimdi Kantin'le BİREBİR aynı şekilde
+  // ekleniyor). Bire Bir de taksitsiz, kümülatif bakiyeli bir kalem olduğu
+  // için (bkz. ekstreHesap.js — aylikKalemHesapla), aynı yardımcı fonksiyon
+  // kullanılabiliyor.
+  const bireBirOdemeDurumMap = useMemo(() => {
+    const map = new Map()
+    for (const o of bireBirOgrenciler) {
+      map.set(o.ogrenciId, buAyTutarininOdemeDurumu('Bire Bir', o.ogrenciId, bireBirBorclarTumu, odemeler, seciliAy))
+    }
+    return map
+  }, [bireBirOgrenciler, bireBirBorclarTumu, odemeler, seciliAy])
+
+  const bireBirBuAyOdenenToplam = bireBirOgrenciler.reduce(
+    (t, o) => t + (bireBirOdemeDurumMap.get(o.ogrenciId)?.buAyOdenen || 0),
+    0
+  )
+  const bireBirBuAyOdenmeyenToplam = bireBirOgrenciler.reduce(
+    (t, o) => t + (bireBirOdemeDurumMap.get(o.ogrenciId)?.buAyOdenmeyen || 0),
     0
   )
 
@@ -398,26 +437,45 @@ export default function AylikOzet() {
                       <th className="px-3 py-2 font-semibold">Öğrenci</th>
                       <th className="px-3 py-2 font-semibold text-right">Ders Sayısı</th>
                       <th className="px-3 py-2 font-semibold text-right">Tutar</th>
+                      <th className="px-3 py-2 font-semibold text-right">Ödenen</th>
+                      <th className="px-3 py-2 font-semibold text-right">Ödenmeyen</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {bireBirOgrenciler.map((o, i) => (
-                      <tr key={o.ad} className={i % 2 ? 'bg-gray-50' : ''}>
-                        <td className="px-3 py-2">{o.ad}</td>
-                        <td className="px-3 py-2 text-right">{o.sayi}</td>
-                        <td className="px-3 py-2 text-right font-medium">{paraFormat(o.tutar)}</td>
-                      </tr>
-                    ))}
+                    {bireBirOgrenciler.map((o, i) => {
+                      const d = bireBirOdemeDurumMap.get(o.ogrenciId)
+                      const odenen = d?.buAyOdenen || 0
+                      const odenmeyen = d?.buAyOdenmeyen || 0
+                      return (
+                        <tr key={o.ogrenciId ?? o.ad} className={i % 2 ? 'bg-gray-50' : ''}>
+                          <td className="px-3 py-2">{o.ad}</td>
+                          <td className="px-3 py-2 text-right">{o.sayi}</td>
+                          <td className="px-3 py-2 text-right font-medium">{paraFormat(o.tutar)}</td>
+                          <td className={`px-3 py-2 text-right ${odenen > 0.01 ? 'text-green-700 font-medium' : 'text-gray-400'}`}>
+                            {paraFormat(odenen)}
+                          </td>
+                          <td className={`px-3 py-2 text-right font-medium ${odenmeyen > 0.01 ? 'text-red-700' : 'text-gray-400'}`}>
+                            {paraFormat(odenmeyen)}
+                          </td>
+                        </tr>
+                      )
+                    })}
                   </tbody>
                   <tfoot>
                     <tr className="bg-gray-50 font-semibold">
                       <td className="px-3 py-2">Toplam</td>
                       <td className="px-3 py-2 text-right">{bireBirBuAy.length}</td>
                       <td className="px-3 py-2 text-right">{paraFormat(bireBirToplamTutar)}</td>
+                      <td className="px-3 py-2 text-right">{paraFormat(bireBirBuAyOdenenToplam)}</td>
+                      <td className="px-3 py-2 text-right">{paraFormat(bireBirBuAyOdenmeyenToplam)}</td>
                     </tr>
                   </tfoot>
                 </table>
               )}
+              <p className="text-xs text-gray-400 mt-2">
+                "Ödenen" ve "Ödenmeyen", bu ayki ders tutarının (en eski borçtan başlanarak kapanan kümülatif
+                bakiyeye göre) ne kadarının fiilen ödendiğini gösterir — ikisinin toplamı her zaman "Tutar" sütununa eşittir.
+              </p>
             </div>
 
             <div className={sekme === 'kantin' ? '' : 'hidden'}>
@@ -437,17 +495,17 @@ export default function AylikOzet() {
                   </thead>
                   <tbody>
                     {/* Kullanıcı isteği: "ödendiyse ödenen tutar da görünsün,
-                        ödenmediyse ödenmeyen miktar görünsün" — Kantin kümülatif
-                        bir bakiye olduğu için (bkz. yukarıdaki KANTIN_KALEM
-                        yorumu), "Ödenen" ve "Ödenmeyen" burada SADECE bu ayki
-                        alışa değil, öğrencinin genel kantin bakiyesine göre
-                        hesaplanıyor — Taksitler sekmesindeki Kantin tablosuyla
-                        (taksitKalemTablolari[KANTIN_KALEM]) AYNI veriden gelir,
-                        iki tablo asla birbiriyle çelişmez. */}
+                        ödenmediyse ödenmeyen miktar görünsün" — burada "Ödenen"
+                        ve "Ödenmeyen", bu satırdaki "Tutar" (SADECE bu ayki
+                        alış) sütununun ne kadarının kümülatif bakiyeye göre
+                        kapandığını gösterir (bkz. ekstreHesap.js →
+                        buAyTutarininOdemeDurumu) — ikisi her zaman Tutar'a
+                        toplanır, farklı bir ayın ödemesiyle karışıp "Tutardan
+                        büyük Ödenen" gibi anlamsız satırlar oluşmaz. */}
                     {kantinOgrenciler.map((o, i) => {
                       const d = kantinOdemeDurumMap.get(o.ogrenciId)
                       const odenen = d?.buAyOdenen || 0
-                      const odenmeyen = d?.kalanBakiye || 0
+                      const odenmeyen = d?.buAyOdenmeyen || 0
                       return (
                         <tr key={o.ogrenciId ?? o.ad} className={i % 2 ? 'bg-gray-50' : ''}>
                           <td className="px-3 py-2">{o.ad}</td>
@@ -475,9 +533,10 @@ export default function AylikOzet() {
                 </table>
               )}
               <p className="text-xs text-gray-400 mt-2">
-                "Ödenen" ve "Ödenmeyen", öğrencinin bugüne kadarki TÜM kantin bakiyesine göre hesaplanır (Kantin
-                kümülatif bir bakiyedir, ay ay kapanmaz) — bu ay ödenen tutar ile hâlâ ödenmemiş genel bakiyeyi
-                gösterir; sadece bu ayki alış tutarının ödenip ödenmediğini değil.
+                "Ödenen" ve "Ödenmeyen", bu ayki alış tutarının (en eski borçtan başlanarak kapanan kümülatif
+                bakiyeye göre) ne kadarının fiilen ödendiğini gösterir — ikisinin toplamı her zaman "Tutar" sütununa
+                eşittir. Öğrencinin bundan ÖNCEKİ aylardan kalan genel bakiyesi burada değil, "Taksitler" sekmesindeki
+                Kantin tablosunda ("Toplam Borç" / "Kalan Bakiye") görünür.
               </p>
             </div>
 
