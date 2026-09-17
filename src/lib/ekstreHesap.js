@@ -431,10 +431,19 @@ function selamlamaSatiri(kimeGonderiliyor) {
   return kimeGonderiliyor === 'veli' ? 'Değerli Velimiz,' : 'Değerli Öğrencimiz,'
 }
 
+// Kullanıcı isteği: "parantez içinde hangi hocaysa o da görünsün" — eskiden
+// parantezde sadece ders/branş (ör. "Matematik") vardı, artık öğretmen adı da
+// ekleniyor: "(Matematik - Oğuzhan Yıldız)". İkisinden biri eksikse (branş
+// girilmemiş öğretmen, ya da öğretmen adı bir şekilde gelmemiş) sadece var
+// olan gösterilir; ikisi de yoksa parantez hiç eklenmez.
+function dersParantezMetni(d) {
+  const parcalar = [d.dersAdi, d.ogretmenAdi].filter(Boolean)
+  return parcalar.length ? ` (${parcalar.join(' - ')})` : ''
+}
+
 // Seçili GÜNÜN (bugün/yarın/seçilen tarih) TÜM derslerini tek mesajda özetler.
-// dersler: [{ baslangicSaat, bitisSaat, dersAdi }] — saate göre sıralı olmalı.
-// dersAdi, öğretmenin branşından gelir (ör. "Matematik") — kişi adı yerine
-// hangi DERS olduğu yazsın diye.
+// dersler: [{ baslangicSaat, bitisSaat, dersAdi, ogretmenAdi }] — saate göre
+// sıralı olmalı. dersAdi, öğretmenin branşından gelir (ör. "Matematik").
 export function bireBirGunlukOzetMesajiOlustur({ kimeGonderiliyor, ogrenciAdi, tarihStr, dersler }) {
   const tarihMetni = new Date(tarihStr + 'T12:00:00').toLocaleDateString('tr-TR', {
     day: '2-digit',
@@ -443,7 +452,7 @@ export function bireBirGunlukOzetMesajiOlustur({ kimeGonderiliyor, ogrenciAdi, t
     weekday: 'long',
   })
   const satirlar = dersler
-    .map((d) => `• ${d.bitisSaat ? `${saatGoster(d.baslangicSaat)}–${saatGoster(d.bitisSaat)}` : saatGoster(d.baslangicSaat)}${d.dersAdi ? ` (${d.dersAdi})` : ''}`)
+    .map((d) => `• ${d.bitisSaat ? `${saatGoster(d.baslangicSaat)}–${saatGoster(d.bitisSaat)}` : saatGoster(d.baslangicSaat)}${dersParantezMetni(d)}`)
     .join('\n')
   const derslerMetni = dersler.length > 1 ? 'aşağıdaki bire bir dersler bulunmaktadır' : 'aşağıdaki bire bir ders bulunmaktadır'
   return (
@@ -455,11 +464,11 @@ export function bireBirGunlukOzetMesajiOlustur({ kimeGonderiliyor, ogrenciAdi, t
 
 // Öğrencinin o haftanın (seçili günden Pazar'a kadar) TÜM bire bir derslerini
 // özetler — hem her hafta tekrar eden atamalar hem de o haftaya özel tek
-// seferlik dersler dahildir. dersler: [{ gunAdi, baslangicSaat, bitisSaat, dersAdi }]
-// — haftanın gününe göre sıralı olmalı.
+// seferlik dersler dahildir. dersler: [{ gunAdi, baslangicSaat, bitisSaat,
+// dersAdi, ogretmenAdi }] — haftanın gününe göre sıralı olmalı.
 export function bireBirHaftalikOzetMesajiOlustur({ kimeGonderiliyor, ogrenciAdi, dersler }) {
   const satirlar = dersler
-    .map((d) => `• ${d.gunAdi}: ${d.bitisSaat ? `${saatGoster(d.baslangicSaat)}–${saatGoster(d.bitisSaat)}` : saatGoster(d.baslangicSaat)}${d.dersAdi ? ` (${d.dersAdi})` : ''}`)
+    .map((d) => `• ${d.gunAdi}: ${d.bitisSaat ? `${saatGoster(d.baslangicSaat)}–${saatGoster(d.bitisSaat)}` : saatGoster(d.baslangicSaat)}${dersParantezMetni(d)}`)
     .join('\n')
   return (
     `${selamlamaSatiri(kimeGonderiliyor)}\n${ogrenciAdi} için bu hafta bire bir ders programı şu şekildedir:\n` +
