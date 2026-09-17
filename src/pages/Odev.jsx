@@ -934,6 +934,84 @@ function OdevOzetPaneli({ odevler, onFiltreSec }) {
   )
 }
 
+// Durum önceliği — "ilgilenmem gereken" (henüz olumlu olmayan) durumlar
+// listenin başında çıksın diye. Sayı ne kadar küçükse o kadar öne alınır.
+const DURUM_ONCELIK = { yapmadi: 0, eksik: 1, gelmedi: 2, bekliyor: 3, yapti: 4 }
+
+// ============================================================================
+// YÖNETİCİ/ÖĞRETMEN — "kimin hangi ödevi yaptığını/yapmadığını tek bakışta
+// görmek istiyorum" (kullanıcı isteği): sınıf/öğrenci kartlarının aksine hiç
+// tıklama gerektirmeyen, HER satırın (öğrenci + ödev + durum) doğrudan
+// göründüğü düz bir tablo. VerilenOdevlerListesi'teki durum sekmesi/arama
+// kutusuyla filtrelenmiş AYNI listeyi (filtreliOdevler) alır — böylece "Eksik"
+// sekmesine basılınca bu tablo da otomatik sadece eksik yapanları gösterir.
+// ============================================================================
+function OdevDurumListesi({ odevler, ogrenciSinifAdMap, isYonetici }) {
+  const siraliOdevler = useMemo(
+    () =>
+      [...odevler].sort((a, b) => {
+        const oncelikFarki = (DURUM_ONCELIK[a.durum] ?? 9) - (DURUM_ONCELIK[b.durum] ?? 9)
+        if (oncelikFarki !== 0) return oncelikFarki
+        return (a.ogrenci_adi || '').localeCompare(b.ogrenci_adi || '', 'tr')
+      }),
+    [odevler]
+  )
+
+  return (
+    <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-x-auto mb-4" style={{ touchAction: 'pan-x pan-y' }}>
+      <div className="px-4 py-3 border-b border-gray-100 bg-gray-50">
+        <h3 className="font-semibold text-gray-700">Durum Listesi</h3>
+        <p className="text-xs text-gray-400 mt-0.5">
+          Kimin hangi ödevi yaptığını/yapmadığını tek bakışta görün — en üstte yapmayanlar ve eksik yapanlar.
+        </p>
+      </div>
+      <table className="w-full text-sm min-w-[640px]">
+        <thead>
+          <tr className="text-left text-gray-500">
+            <th className="px-4 py-2 font-medium">Öğrenci</th>
+            <th className="px-4 py-2 font-medium">Sınıf</th>
+            <th className="px-4 py-2 font-medium">Ders / Ödev</th>
+            {isYonetici && <th className="px-4 py-2 font-medium">Öğretmen</th>}
+            <th className="px-4 py-2 font-medium">Son Tarih</th>
+            <th className="px-4 py-2 font-medium">Durum</th>
+          </tr>
+        </thead>
+        <tbody>
+          {siraliOdevler.length === 0 && (
+            <tr>
+              <td colSpan={isYonetici ? 6 : 5} className="px-4 py-4 text-center text-gray-400">
+                Bu filtreyle eşleşen ödev yok.
+              </td>
+            </tr>
+          )}
+          {siraliOdevler.map((o) => {
+            const sinifAdlari = (ogrenciSinifAdMap?.[o.ogrenci_id] || []).join(', ')
+            const gecti = sonTarihGectiMi(o)
+            return (
+              <tr key={o.id} className={`border-t border-gray-50 ${gecti ? 'bg-red-50' : ''}`}>
+                <td className="px-4 py-2 font-medium text-gray-800">{o.ogrenci_adi || '—'}</td>
+                <td className="px-4 py-2 text-gray-500">{sinifAdlari || '—'}</td>
+                <td className="px-4 py-2">
+                  {o.baslik}
+                  {o.ders && <span className="text-gray-400"> — {o.ders}</span>}
+                </td>
+                {isYonetici && <td className="px-4 py-2 text-gray-500">{o.ogretmen_adi || '—'}</td>}
+                <td className={`px-4 py-2 ${gecti ? 'text-red-600 font-semibold' : 'text-gray-500'}`}>
+                  {o.son_tarih ? new Date(o.son_tarih + 'T12:00:00').toLocaleDateString('tr-TR') : '—'}
+                  {gecti && ' (geçti)'}
+                </td>
+                <td className="px-4 py-2">
+                  <OdevDurumRozeti durum={o.durum} />
+                </td>
+              </tr>
+            )
+          })}
+        </tbody>
+      </table>
+    </div>
+  )
+}
+
 // Sınıfa/toplu verilen ödevler (atama_grubu_id dolu) ile tek tek verilen
 // ödevler (atama_grubu_id boş) ayrı ayrı gösteriliyor — SOLDA sınıf/toplu
 // ödevler (gruplanmış, tıklayınca açılan kartlar), SAĞDA öğrenciye göre
@@ -942,7 +1020,9 @@ function OdevOzetPaneli({ odevler, onFiltreSec }) {
 // mantıkta öğrenci öğrenci kartlar var). Üstte bir özet panel, altında da
 // durum + isim filtresi var — "sadece yapmayanları göster" ya da "Ahmet'in
 // ödevlerini bul" gibi ihtiyaçları tek tıkla/aramayla çözmek için (kullanıcı
-// isteği).
+// isteği). En üstte AYRICA, hiç tıklama gerektirmeyen düz bir "Durum Listesi"
+// tablosu var (bkz. OdevDurumListesi) — kartlar detaya inmek için, bu tablo
+// tek bakışta genel durumu görmek için (kullanıcı isteği).
 function VerilenOdevlerListesi({ odevler, isYonetici, onDegisti, ogrenciSinifAdMap }) {
   const [acikGruplar, setAcikGruplar] = useState({})
   const [acikOgrenciler, setAcikOgrenciler] = useState({})
@@ -1079,6 +1159,18 @@ function VerilenOdevlerListesi({ odevler, isYonetici, onDegisti, ogrenciSinifAdM
           </button>
         )}
       </div>
+
+      {/* Kullanıcı isteği: "yapanları yapmayanları/gelmeyenleri/eksik yapanları
+          liste halinde net görebilsek" — aşağıdaki kartlar hâlâ duruyor (bir
+          gruba tıklayıp detaya inmek için), ama bunun yanında, hiçbir şeye
+          tıklamadan HER satırın (öğrenci + ödev + durum) tek bakışta göründüğü
+          düz bir tablo da ekliyoruz. Üstteki durum sekmesi/arama kutusuyla
+          filtrelenen AYNI liste (filtreliOdevler) kullanılıyor — "Eksik"
+          sekmesine basınca bu tablo da sadece eksik yapanları gösterir.
+          Sıralama BİLEREK durum önceliğine göre: önce Yapmadı, sonra Eksik,
+          sonra Gelmedi, sonra Bekliyor, en sona Yaptı — "ilgilenmem gereken"
+          en yukarıda çıksın diye. */}
+      <OdevDurumListesi odevler={filtreliOdevler} ogrenciSinifAdMap={ogrenciSinifAdMap} isYonetici={isYonetici} />
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-start">
         <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
