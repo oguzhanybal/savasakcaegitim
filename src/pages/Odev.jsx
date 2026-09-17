@@ -624,12 +624,31 @@ function OdevDurumButonlari({ o, durumDegistir }) {
       </button>
       <button
         type="button"
+        onClick={() => durumDegistir(o, 'eksik')}
+        className={`px-2 py-1 rounded-lg text-xs font-semibold transition-colors ${
+          o.durum === 'eksik' ? 'bg-amber-500 text-white' : 'bg-amber-100 text-amber-700 hover:bg-amber-200'
+        }`}
+      >
+        Eksik
+      </button>
+      <button
+        type="button"
         onClick={() => durumDegistir(o, 'yapmadi')}
         className={`px-2 py-1 rounded-lg text-xs font-semibold transition-colors ${
           o.durum === 'yapmadi' ? 'bg-red-600 text-white' : 'bg-red-100 text-red-700 hover:bg-red-200'
         }`}
       >
         Yapmadı
+      </button>
+      <button
+        type="button"
+        onClick={() => durumDegistir(o, 'gelmedi')}
+        title="Öğrenci o gün derste/okulda yoktu, ödev kontrol edilemedi"
+        className={`px-2 py-1 rounded-lg text-xs font-semibold transition-colors ${
+          o.durum === 'gelmedi' ? 'bg-purple-600 text-white' : 'bg-purple-100 text-purple-700 hover:bg-purple-200'
+        }`}
+      >
+        Gelmedi
       </button>
       {o.durum !== 'bekliyor' && (
         <button
@@ -693,8 +712,10 @@ function SinifOdevGrubu({ grubId, items, isYonetici, durumDegistir, sil, acik, o
   const ilk = items[0]
   const linkBilgi = odevDosyaLinkBilgisi(ilk)
   const yaptiSayisi = items.filter((o) => o.durum === 'yapti').length
+  const eksikSayisi = items.filter((o) => o.durum === 'eksik').length
   const yapmadiSayisi = items.filter((o) => o.durum === 'yapmadi').length
-  const bekliyorSayisi = items.length - yaptiSayisi - yapmadiSayisi
+  const gelmediSayisi = items.filter((o) => o.durum === 'gelmedi').length
+  const bekliyorSayisi = items.length - yaptiSayisi - eksikSayisi - yapmadiSayisi - gelmediSayisi
   const sureGectiSayisi = items.filter((o) => sonTarihGectiMi(o)).length
   // Kullanıcı isteği: "toplu ödevlerde sınıfın adı yazmıyor" — bu grup
   // hangi ogrenci_id'lere ödev verildiyse, o öğrencilerin GERÇEKTEN kayıtlı
@@ -756,7 +777,13 @@ function SinifOdevGrubu({ grubId, items, isYonetici, durumDegistir, sil, acik, o
             içindeki rozetler de gerekince alt satıra sarabiliyor. */}
         <div className="flex items-center gap-1.5 min-w-0 max-w-full flex-wrap justify-end">
           <span className="text-xs font-semibold text-green-700 bg-green-100 px-2 py-1 rounded-lg">{yaptiSayisi} yaptı</span>
+          {eksikSayisi > 0 && (
+            <span className="text-xs font-semibold text-amber-700 bg-amber-100 px-2 py-1 rounded-lg">{eksikSayisi} eksik</span>
+          )}
           <span className="text-xs font-semibold text-red-700 bg-red-100 px-2 py-1 rounded-lg">{yapmadiSayisi} yapmadı</span>
+          {gelmediSayisi > 0 && (
+            <span className="text-xs font-semibold text-purple-700 bg-purple-100 px-2 py-1 rounded-lg">{gelmediSayisi} gelmedi</span>
+          )}
           {bekliyorSayisi > 0 && (
             <span className="text-xs font-semibold text-gray-500 bg-gray-200 px-2 py-1 rounded-lg">{bekliyorSayisi} bekliyor</span>
           )}
@@ -811,8 +838,10 @@ function SinifOdevGrubu({ grubId, items, isYonetici, durumDegistir, sil, acik, o
 // sınıf kartlarıyla aynı mantıkta, öğrenci öğrenci gruplanmış kartlar var).
 function OgrenciOdevGrubu({ ogrenciAdi, items, isYonetici, durumDegistir, sil, acik, onToggle }) {
   const yaptiSayisi = items.filter((o) => o.durum === 'yapti').length
+  const eksikSayisi = items.filter((o) => o.durum === 'eksik').length
   const yapmadiSayisi = items.filter((o) => o.durum === 'yapmadi').length
-  const bekliyorSayisi = items.length - yaptiSayisi - yapmadiSayisi
+  const gelmediSayisi = items.filter((o) => o.durum === 'gelmedi').length
+  const bekliyorSayisi = items.length - yaptiSayisi - eksikSayisi - yapmadiSayisi - gelmediSayisi
   const sureGectiSayisi = items.filter((o) => sonTarihGectiMi(o)).length
 
   return (
@@ -828,7 +857,13 @@ function OgrenciOdevGrubu({ ogrenciAdi, items, isYonetici, durumDegistir, sil, a
         </div>
         <div className="flex items-center gap-1.5 min-w-0 max-w-full flex-wrap justify-end">
           <span className="text-xs font-semibold text-green-700 bg-green-100 px-2 py-1 rounded-lg">{yaptiSayisi} yaptı</span>
+          {eksikSayisi > 0 && (
+            <span className="text-xs font-semibold text-amber-700 bg-amber-100 px-2 py-1 rounded-lg">{eksikSayisi} eksik</span>
+          )}
           <span className="text-xs font-semibold text-red-700 bg-red-100 px-2 py-1 rounded-lg">{yapmadiSayisi} yapmadı</span>
+          {gelmediSayisi > 0 && (
+            <span className="text-xs font-semibold text-purple-700 bg-purple-100 px-2 py-1 rounded-lg">{gelmediSayisi} gelmedi</span>
+          )}
           {bekliyorSayisi > 0 && (
             <span className="text-xs font-semibold text-gray-500 bg-gray-200 px-2 py-1 rounded-lg">{bekliyorSayisi} bekliyor</span>
           )}
@@ -927,9 +962,10 @@ function VerilenOdevlerListesi({ odevler, isYonetici, onDegisti, ogrenciSinifAdM
 
   // "Durum" değiştirmeyi BİLEREK sadece burada (öğretmen/yönetici tarafında)
   // yapılabilir kıldık — öğrenci/veli sadece görüntüler (OdevlerimListesi
-  // salt-okunur). Ödevi kontrol edip "yaptı/yapmadı" diyecek olan öğretmenin
-  // kendisi. Üç durum var: 'bekliyor' (henüz kontrol edilmedi), 'yapti',
-  // 'yapmadi' — bire bir yoklamadaki Geldi/Gelmedi/Bekliyor ile AYNI mantık.
+  // salt-okunur). Ödevi kontrol edip durumunu belirleyecek olan öğretmenin
+  // kendisi. Beş durum var: 'bekliyor' (henüz kontrol edilmedi), 'yapti',
+  // 'eksik' (yarım/eksik yapmış), 'yapmadi', 'gelmedi' (öğrenci o gün derste/
+  // okulda yoktu, ödev hiç kontrol edilemedi — kullanıcı isteğiyle eklendi).
   async function durumDegistir(o, yeniDurum) {
     const { error } = await supabase
       .from('odevler')
@@ -956,7 +992,9 @@ function VerilenOdevlerListesi({ odevler, isYonetici, onDegisti, ogrenciSinifAdM
     return odevler.filter((o) => {
       if (durumFiltre === 'bekliyor' && o.durum !== 'bekliyor') return false
       if (durumFiltre === 'yapti' && o.durum !== 'yapti') return false
+      if (durumFiltre === 'eksik' && o.durum !== 'eksik') return false
       if (durumFiltre === 'yapmadi' && o.durum !== 'yapmadi') return false
+      if (durumFiltre === 'gelmedi' && o.durum !== 'gelmedi') return false
       if (durumFiltre === 'sure_gecti' && !sonTarihGectiMi(o)) return false
       if (aramaKucuk && !(o.ogrenci_adi || '').toLowerCase().includes(aramaKucuk)) return false
       return true
@@ -994,7 +1032,9 @@ function VerilenOdevlerListesi({ odevler, isYonetici, onDegisti, ogrenciSinifAdM
     { deger: 'hepsi', etiket: 'Hepsi' },
     { deger: 'bekliyor', etiket: 'Bekliyor' },
     { deger: 'yapti', etiket: 'Yaptı' },
+    { deger: 'eksik', etiket: 'Eksik' },
     { deger: 'yapmadi', etiket: 'Yapmadı' },
+    { deger: 'gelmedi', etiket: 'Gelmedi' },
     { deger: 'sure_gecti', etiket: 'Süresi Geçmiş' },
   ]
 
@@ -1114,10 +1154,24 @@ function OdevDurumRozeti({ durum }) {
       </span>
     )
   }
+  if (durum === 'eksik') {
+    return (
+      <span className="px-3 py-1.5 rounded-lg text-sm font-semibold whitespace-nowrap bg-amber-100 text-amber-700">
+        ◐ Eksik Yaptı
+      </span>
+    )
+  }
   if (durum === 'yapmadi') {
     return (
       <span className="px-3 py-1.5 rounded-lg text-sm font-semibold whitespace-nowrap bg-red-100 text-red-600">
         ✗ Yapmadı
+      </span>
+    )
+  }
+  if (durum === 'gelmedi') {
+    return (
+      <span className="px-3 py-1.5 rounded-lg text-sm font-semibold whitespace-nowrap bg-purple-100 text-purple-700">
+        Gelmedi
       </span>
     )
   }
