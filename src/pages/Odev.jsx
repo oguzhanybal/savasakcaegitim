@@ -747,8 +747,15 @@ function SinifOdevGrubu({ grubId, items, isYonetici, durumDegistir, sil, acik, o
       <button
         type="button"
         onClick={onToggle}
-        className="w-full flex items-center flex-wrap justify-between gap-x-3 gap-y-2 px-4 py-3 bg-gray-50 hover:bg-gray-100 text-left transition-colors"
+        className="w-full bg-gray-50 hover:bg-gray-100 text-left transition-colors"
       >
+        {/* ÖNEMLİ: flex/flex-wrap stilini doğrudan <button> etiketine değil,
+            içindeki bu <div>'e uyguluyoruz. Mobil tarayıcılarda (özellikle
+            iOS Safari) <button> üzerine doğrudan flex-wrap konulunca içindeki
+            rozetler bazen üst üste binerek/örtüşerek render olabiliyor —
+            kullanıcı "eksik falan kısmı üst üste girmiş" diye bunu bildirdi.
+            Flex'i normal bir <div>'e taşımak bu render hatasını çözüyor. */}
+        <div className="flex items-center flex-wrap justify-between gap-x-3 gap-y-2 px-4 py-3">
         {/* ÖNEMLİ (kullanıcı isteği — mobilde bildirildi): burada eskiden
             "truncate" (tek satır + "...") kullanılıyordu ve dar telefon
             ekranlarında hem ödev başlığı hem de ders/konu bilgisi kesilip
@@ -797,6 +804,7 @@ function SinifOdevGrubu({ grubId, items, isYonetici, durumDegistir, sil, acik, o
           <span className="text-navy text-xs font-semibold whitespace-nowrap ml-1">
             {acik ? 'Gizle' : 'Ödevleri Gir'}
           </span>
+        </div>
         </div>
       </button>
       {acik && (
@@ -853,8 +861,11 @@ function OgrenciOdevGrubu({ ogrenciAdi, items, isYonetici, durumDegistir, sil, a
       <button
         type="button"
         onClick={onToggle}
-        className="w-full flex items-center flex-wrap justify-between gap-x-3 gap-y-2 px-4 py-3 bg-gray-50 hover:bg-gray-100 text-left transition-colors"
+        className="w-full bg-gray-50 hover:bg-gray-100 text-left transition-colors"
       >
+        {/* Aynı düzeltme: flex/flex-wrap doğrudan <button>'da değil, içindeki
+            bu <div>'de — mobilde rozetlerin üst üste binmesini önlüyor. */}
+        <div className="flex items-center flex-wrap justify-between gap-x-3 gap-y-2 px-4 py-3">
         <div className="min-w-0 flex-1 basis-40">
           <p className="font-medium text-gray-800 break-words">{ogrenciAdi || '—'}</p>
           <p className="text-xs text-gray-500 break-words">{items.length} ödev</p>
@@ -873,6 +884,7 @@ function OgrenciOdevGrubu({ ogrenciAdi, items, isYonetici, durumDegistir, sil, a
           <span className="text-navy text-xs font-semibold whitespace-nowrap ml-1">
             {acik ? 'Gizle' : 'Ödevleri Gir'}
           </span>
+        </div>
         </div>
       </button>
       {acik && (
@@ -1172,7 +1184,12 @@ function VerilenOdevlerListesi({ odevler, isYonetici, onDegisti, ogrenciSinifAdM
           en yukarıda çıksın diye. */}
       <OdevDurumListesi odevler={filtreliOdevler} ogrenciSinifAdMap={ogrenciSinifAdMap} isYonetici={isYonetici} />
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-start">
+      {/* Kullanıcı isteği: "sınıf toplu ödevler kısmı üstte görünsün verdiğim
+          [bireysel] ödevler kısmı aşağıda görünsün" — eskiden geniş ekranda
+          (lg:grid-cols-2) bu iki kutu YAN YANA duruyordu. Artık ekran
+          genişliği fark etmeksizin HER ZAMAN tek sütun: Sınıf/Toplu Ödevler
+          üstte, Bireysel Ödevler altta. */}
+      <div className="grid grid-cols-1 gap-4 items-start">
         <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
           <div className="px-4 py-3 border-b border-gray-100 bg-gray-50">
             <h3 className="font-semibold text-gray-700">Sınıf / Toplu Ödevler</h3>
