@@ -244,6 +244,59 @@ export function aylikKalemHesapla(kalemAdi, aylikBorclar, odemeler, seciliAy) {
   }
 }
 
+// ============================================================================
+// BİR ÖĞRENCİNİN "BU AYKİ TUTARI" NE KADARI ÖDENDİ? — aylikKalemHesapla ile
+// AYNI kümülatif motoru kullanır (Bire Bir / Yemek / Kantin gibi taksitsiz,
+// kümülatif bakiye kalemleri için), ama AylikOzet.jsx'teki "Öğrenci Bazında"
+// tablolarında "Tutar" sütunu (SADECE bu ayki alış/ders tutarı) ile aynı satırda
+// gösterilecek "Ödenen"/"Ödenmeyen" için özel olarak hesaplar.
+//
+// ÖNEMLİ (kullanıcının "saçma" dediği hatanın kökeni): eskiden bu tablolarda
+// "Ödenen" sütunu o TAKVİM AYI içinde YATAN NAKİT ödemeyi gösteriyordu — ama
+// veli o ay büyük bir ödeme yapıp GEÇMİŞ ayların da borcunu kapatabilir, bu da
+// "Tutar 2.492 ama Ödenen 12.000" gibi anlamsız görünen satırlar oluşturuyordu.
+// Burada onun yerine, ödemelerin KÜMÜLATİF olarak en eski borçtan başlayarak
+// kapandığı varsayımıyla (tüm bu dosyadaki mantıkla aynı), "bu ayki tutarın"
+// ne kadarının fiilen kapandığı hesaplanıyor:
+//   - J = bu aya kadarki TÜM borç (bu ay dahil), odenen = bu aya kadarki TÜM ödeme
+//   - kalanToplam = bugüne kadarki kapanmamış TOPLAM bakiye
+//   - buAyTutar = SADECE bu ayın kendi borcu (Tutar sütunuyla birebir aynı)
+//   - Eğer kalanToplam < buAyTutar ise, bu ayın bir kısmı ödenmiş demektir
+//     (çünkü FIFO mantığıyla ondan ÖNCEKİ tüm borç zaten kapanmış olmalı):
+//     ödenen kısım = buAyTutar - kalanToplam, ödenmeyen kısım = kalanToplam.
+//   - Eğer kalanToplam >= buAyTutar ise, bu ayın borcu hâlâ TAMAMEN üstte demektir
+//     (üstüne geçmişten de borç var): ödenen kısım = 0, ödenmeyen kısım = buAyTutar.
+// Bu ikisinin TOPLAMI her zaman tam olarak buAyTutar'a (yani "Tutar" sütununa)
+// eşittir — böylece tabloda yan yana duran üç sütun birbiriyle çelişmez.
+// ============================================================================
+export function buAyTutarininOdemeDurumu(kalemAdi, ogrenciId, tumBorclar, tumOdemeler, seciliAy) {
+  const simdi = ayEkle(seciliAy, 0)
+  const simdiIndex = ayIndexOf(simdi)
+  const kendiBorclar = (tumBorclar || []).filter((b) => b.ogrenci_id === ogrenciId && b.kalem === kalemAdi)
+  const kendiOdemeler = (tumOdemeler || []).filter((o) => o.ogrenci_id === ogrenciId)
+
+  const J = kendiBorclar
+    .filter((b) => {
+      const d = new Date(b.donem)
+      return ayIndexOf({ yil: d.getFullYear(), ay: d.getMonth() + 1 }) <= simdiIndex
+    })
+    .reduce((t, b) => t + (Number(b.tutar) || 0), 0)
+
+  const buAyTutar = kendiBorclar
+    .filter((b) => {
+      const d = new Date(b.donem)
+      return d.getFullYear() === simdi.yil && d.getMonth() + 1 === simdi.ay
+    })
+    .reduce((t, b) => t + (Number(b.tutar) || 0), 0)
+
+  const odenen = odemeToplamKalem(kendiOdemeler, kalemAdi, simdi)
+  const kalanToplam = Math.max(0, J - odenen)
+
+  const buAyOdenen = Math.max(0, buAyTutar - kalanToplam)
+  const buAyOdenmeyen = Math.min(buAyTutar, kalanToplam)
+  return { buAyOdenen, buAyOdenmeyen }
+}
+
 // Bir tarih string'inden (ödemenin "tarih" alanı gibi) yerel gün anahtarı
 // üretir ("YYYY-MM-DD") — aynı günün tüm ödemelerini gruplamak için kullanılır.
 export function gunAnahtari(tarihStr) {
@@ -816,6 +869,12 @@ export function bireBirDersDetaylariOlustur(atamalar, yoklamalar) {
         ogretmenAdi: ogretmenAdi || '—',
         ogretmenBransi: ogretmenBransi || null,
         ogrenciAdi: ogrenciAdi || '—',
+        // AylikOzet.jsx'teki "Bire Bir — Öğrenci Bazında" tablosunda ödeme
+        // durumunu (Ödenen/Ödenmeyen) GÜVENİLİR şekilde ogrenci_id'ye göre
+        // hesaplayabilmek için (ad string'i yerine — aynı isimli iki öğrenci
+        // karışmasın diye, Kantin tablosunda yapılan düzeltmeyle AYNI mantık).
+        // Soru Çözümü'nde öğrenciye bağlı olmadığı için null.
+        ogrenciId: soruCozumuMu ? null : (atama ? atama.ogrenci_id : y.ogrenci_id) || null,
         tutar: soruCozumuMu ? 0 : (y.tutar != null ? Number(y.tutar) : Number(atama?.ders_ucreti) || 0),
         kaynak: y.atama_id ? 'Haftalık' : 'Tekil',
         tur: soruCozumuMu ? 'soru_cozumu' : 'ders',
