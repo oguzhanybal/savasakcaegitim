@@ -1075,9 +1075,18 @@ export default function MusaitlikTablosu({
                                       e.stopPropagation()
                                       onSinifDersiGuncelle(h.dolu.id)
                                     }}
-                                    className="w-3.5 h-3.5 leading-none flex items-center justify-center bg-blue-600 text-white text-[8px]"
+                                    className="w-3.5 h-3.5 leading-none flex items-center justify-center bg-blue-600 text-white"
                                   >
-                                    ✏
+                                    {/* ÖNEMLİ (kullanıcı bildirdi): burada eskiden ✏ emoji karakteri
+                                        kullanılıyordu — bazı tarayıcı/işletim sistemi
+                                        kombinasyonlarında bu karakter mavi arka plan üzerinde
+                                        neredeyse görünmez (siyaha yakın) render oluyordu, "text-white"
+                                        CSS'i emoji glifini etkilemiyordu. Gerçek bir SVG ikon
+                                        (fill="currentColor") kullanmak rengi her zaman garantili
+                                        şekilde beyaz tutuyor. */}
+                                    <svg viewBox="0 0 20 20" fill="currentColor" className="w-2.5 h-2.5">
+                                      <path d="M17.414 2.586a2 2 0 00-2.828 0L13 4.172 15.828 7l1.586-1.586a2 2 0 000-2.828zM12 5.172L3 14.172V17h2.828l9-9L12 5.172z" />
+                                    </svg>
                                   </button>
                                 )}
                                 <button
@@ -1105,9 +1114,14 @@ export default function MusaitlikTablosu({
                                     e.stopPropagation()
                                     yonetimPopupAc(o.id, tarih, h.baslangic, h.dolu)
                                   }}
-                                  className="w-3.5 h-3.5 leading-none flex items-center justify-center bg-blue-600 text-white text-[8px]"
+                                  className="w-3.5 h-3.5 leading-none flex items-center justify-center bg-blue-600 text-white"
                                 >
-                                  ✏
+                                  {/* Aşağıdaki, yukarıdaki sınıf dersi ✏ butonuyla AYNI düzeltme
+                                      (kullanıcı bildirdi: emoji görünmüyordu) — bkz. o butonun
+                                      yanındaki açıklama. */}
+                                  <svg viewBox="0 0 20 20" fill="currentColor" className="w-2.5 h-2.5">
+                                    <path d="M17.414 2.586a2 2 0 00-2.828 0L13 4.172 15.828 7l1.586-1.586a2 2 0 000-2.828zM12 5.172L3 14.172V17h2.828l9-9L12 5.172z" />
+                                  </svg>
                                 </button>
                                 <button
                                   type="button"
