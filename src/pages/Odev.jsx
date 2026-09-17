@@ -823,8 +823,8 @@ function SinifOdevGrubu({ grubId, items, isYonetici, durumDegistir, sil, acik, o
               </tr>
             </thead>
             <tbody>
-              {items.map((o) => (
-                <tr key={o.id} className="border-t border-gray-50">
+              {items.map((o, i) => (
+                <tr key={o.id} className={`border-t border-gray-50 ${i % 2 === 0 ? 'bg-blue/10' : 'bg-white'}`}>
                   <td className="px-4 py-2 font-medium text-gray-800">{o.ogrenci_adi || '—'}</td>
                   <td className="px-4 py-2">
                     <OdevDurumButonlari o={o} durumDegistir={durumDegistir} />
