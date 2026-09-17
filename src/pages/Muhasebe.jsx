@@ -6,6 +6,7 @@ import { supabase } from '../lib/supabase'
 import { useAuth } from '../lib/AuthContext'
 import { ilkHarfleriBuyukYap } from '../lib/adSoyadFormat'
 import BireBirDersDokumu from '../components/BireBirDersDokumu'
+import KantinAlisDokumu from '../components/KantinAlisDokumu'
 import SozlesmeSayfalari from '../components/SozlesmeSayfalari'
 import { sozlesmeVerisiHazirla, tarihFormat } from '../lib/sozlesmeHesapla'
 import {
@@ -858,6 +859,13 @@ export default function Muhasebe() {
   const [aylikBorclar, setAylikBorclar] = useState([])
   const [odemeler, setOdemeler] = useState([])
   const [bireBirDersleri, setBireBirDersleri] = useState([])
+  // Kullanıcı isteği: "Bu Ay Ödenecek — Kalem Kalem Döküm" panelindeki Kantin
+  // satırının da kendi "Detayı Gör"ü olsun, tıklanınca hangi ürünlerin
+  // alındığı görünsün — Ekstre.jsx'teki "Kantin Alış Dökümü" ile AYNI ham veri
+  // ve AYNI KantinAlisDokumu bileşeni kullanılıyor, burada sadece o veri de
+  // (aggregat kantinBorclar'a ek olarak) state'te tutuluyor.
+  const [kantinAlislari, setKantinAlislari] = useState([])
+  const [kantinDetayAcik, setKantinDetayAcik] = useState(false)
   // "WhatsApp'tan Gönder" tıklanınca PDF hazırlanıp Storage'a yüklenene kadar
   // geçen süre için — `${ogrenciId}-${gunAnahtari}` şeklinde o an işlemde
   // olan tek satırın anahtarını tutar (Toplu Ekstre'deki "gonderiliyor" ile
@@ -988,6 +996,20 @@ export default function Muhasebe() {
         setAylikBorclar([...(a.data || []), ...bireBirBorclar, ...kantinBorclar])
         setOdemeler(o.data || [])
         setBireBirDersleri(bireBirDersDetaylariOlustur(atamalar, tumYoklamalar))
+        // kantin_alislar satırları (ürün adı/adet/birim fiyat ile) — "Kalem
+        // Kalem Döküm"deki Kantin satırının "Detayı Gör"ü bunu gösterecek.
+        setKantinAlislari(
+          (kantin.data || [])
+            .map((k) => ({
+              id: k.id,
+              tarih: k.tarih,
+              urunAdi: k.urun_adi,
+              adet: k.adet,
+              birimFiyat: Number(k.birim_fiyat) || 0,
+              tutar: Number(k.tutar) || 0,
+            }))
+            .sort((a, b) => (a.tarih < b.tarih ? 1 : -1))
+        )
         setLoading(false)
         // Bu öğrenciye yeni bir ödeme eklenmiş/silinmiş olabilir — giriş
         // ekranındaki "Son Alınan Ödemeler" listesini de güncel tutalım.
@@ -1645,20 +1667,44 @@ export default function Muhasebe() {
                 <div className="space-y-2">
                   {buAySatirlar
                     .filter((s) => s.toplamOdenecek > 0.01)
-                    .map((s, i) => (
-                      <div key={i} className="flex items-center justify-between border-b border-gray-50 last:border-0 pb-2 last:pb-0 flex-wrap gap-1">
-                        <div>
-                          <p className="font-medium text-gray-800">{s.label}</p>
-                          <p className="text-xs text-gray-400">{s.durum}</p>
-                          {s.gecmisBorc > 0.01 && (
-                            <p className="text-xs text-red-500">
-                              (bu tutara {paraFormat(s.gecmisBorc)} geçmiş ay bakiyesi dahil)
-                            </p>
+                    .map((s, i) => {
+                      // Kullanıcı isteği: "kantinde de detayı gör çıksın, ona
+                      // tıklarsa kantinden yapılan alışverişler görünsün" — SADECE
+                      // Kantin satırında, altına açılıp kapanan bir "Detayı Gör"
+                      // ekleniyor (diğer kalemlerde — Okul/Kurs/Bire Bir vb. — bu
+                      // buton yok, çünkü onların ayrı bir "alış listesi" yok).
+                      const kantinSatiriMi = s.label === 'Kantin'
+                      return (
+                        <div key={i} className="border-b border-gray-50 last:border-0 pb-2 last:pb-0">
+                          <div className="flex items-center justify-between flex-wrap gap-1">
+                            <div>
+                              <p className="font-medium text-gray-800">{s.label}</p>
+                              <p className="text-xs text-gray-400">{s.durum}</p>
+                              {s.gecmisBorc > 0.01 && (
+                                <p className="text-xs text-red-500">
+                                  (bu tutara {paraFormat(s.gecmisBorc)} geçmiş ay bakiyesi dahil)
+                                </p>
+                              )}
+                              {kantinSatiriMi && (
+                                <button
+                                  type="button"
+                                  onClick={() => setKantinDetayAcik((v) => !v)}
+                                  className="text-xs text-blue font-semibold hover:underline mt-0.5"
+                                >
+                                  {kantinDetayAcik ? 'Gizle ▲' : 'Detayı Gör ▼'}
+                                </button>
+                              )}
+                            </div>
+                            <p className="font-semibold text-orange">{paraFormat(s.toplamOdenecek)}</p>
+                          </div>
+                          {kantinSatiriMi && kantinDetayAcik && (
+                            <div className="mt-2 bg-gray-50 rounded-lg p-3">
+                              <KantinAlisDokumu alislar={kantinAlislari} hedefDonem={`${buAy}-01`} />
+                            </div>
                           )}
                         </div>
-                        <p className="font-semibold text-orange">{paraFormat(s.toplamOdenecek)}</p>
-                      </div>
-                    ))}
+                      )
+                    })}
                 </div>
               )}
             </div>
