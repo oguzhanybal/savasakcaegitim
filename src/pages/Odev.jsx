@@ -996,11 +996,16 @@ function OdevDurumListesi({ odevler, ogrenciSinifAdMap, isYonetici }) {
               </td>
             </tr>
           )}
-          {siraliOdevler.map((o) => {
+          {siraliOdevler.map((o, i) => {
             const sinifAdlari = (ogrenciSinifAdMap?.[o.ogrenci_id] || []).join(', ')
             const gecti = sonTarihGectiMi(o)
+            // Kullanıcı isteği: "derslerdeki gibi biri açık mavi biri beyaz
+            // olsun" — DersProgrami.jsx'teki AYNI şeritleme (site markası
+            // mavisi %10 opaklıkla / beyaz). Süresi geçmiş satırlarda bu
+            // şeritleme yerine (daha önemli olduğu için) kırmızı vurgu kalır.
+            const satirRengi = gecti ? 'bg-red-50' : i % 2 === 0 ? 'bg-blue/10' : 'bg-white'
             return (
-              <tr key={o.id} className={`border-t border-gray-50 ${gecti ? 'bg-red-50' : ''}`}>
+              <tr key={o.id} className={`border-t border-gray-50 ${satirRengi}`}>
                 <td className="px-4 py-2 font-medium text-gray-800">{o.ogrenci_adi || '—'}</td>
                 <td className="px-4 py-2 text-gray-500">{sinifAdlari || '—'}</td>
                 <td className="px-4 py-2">
@@ -1172,18 +1177,10 @@ function VerilenOdevlerListesi({ odevler, isYonetici, onDegisti, ogrenciSinifAdM
         )}
       </div>
 
-      {/* Kullanıcı isteği: "yapanları yapmayanları/gelmeyenleri/eksik yapanları
-          liste halinde net görebilsek" — aşağıdaki kartlar hâlâ duruyor (bir
-          gruba tıklayıp detaya inmek için), ama bunun yanında, hiçbir şeye
-          tıklamadan HER satırın (öğrenci + ödev + durum) tek bakışta göründüğü
-          düz bir tablo da ekliyoruz. Üstteki durum sekmesi/arama kutusuyla
-          filtrelenen AYNI liste (filtreliOdevler) kullanılıyor — "Eksik"
-          sekmesine basınca bu tablo da sadece eksik yapanları gösterir.
-          Sıralama BİLEREK durum önceliğine göre: önce Yapmadı, sonra Eksik,
-          sonra Gelmedi, sonra Bekliyor, en sona Yaptı — "ilgilenmem gereken"
-          en yukarıda çıksın diye. */}
-      <OdevDurumListesi odevler={filtreliOdevler} ogrenciSinifAdMap={ogrenciSinifAdMap} isYonetici={isYonetici} />
-
+      {/* Kullanıcı isteği: "güncel ödevler üste gelsin, durum listesi alta
+          gelsin" — hoca sayfayı açınca önce aksiyon alabileceği (ödev
+          durumu girebileceği) kartları görsün, salt-okunur özet tablo en
+          altta kalsın. */}
       {/* Kullanıcı isteği: "sınıf toplu ödevler kısmı üstte görünsün verdiğim
           [bireysel] ödevler kısmı aşağıda görünsün" — eskiden geniş ekranda
           (lg:grid-cols-2) bu iki kutu YAN YANA duruyordu. Artık ekran
@@ -1245,6 +1242,19 @@ function VerilenOdevlerListesi({ odevler, isYonetici, onDegisti, ogrenciSinifAdM
           </div>
         </div>
       </div>
+
+      {/* Kullanıcı isteği: "yapanları yapmayanları/gelmeyenleri/eksik yapanları
+          liste halinde net görebilsek" — yukarıdaki kartlara ek olarak, hiçbir
+          şeye tıklamadan HER satırın (öğrenci + ödev + durum) tek bakışta
+          göründüğü düz bir tablo. Üstteki durum sekmesi/arama kutusuyla
+          filtrelenen AYNI liste (filtreliOdevler) kullanılıyor — "Eksik"
+          sekmesine basınca bu tablo da sadece eksik yapanları gösterir.
+          Sıralama BİLEREK durum önceliğine göre: önce Yapmadı, sonra Eksik,
+          sonra Gelmedi, sonra Bekliyor, en sona Yaptı — "ilgilenmem gereken"
+          en yukarıda çıksın diye. Kullanıcı isteği: "güncel ödevler üste
+          gelsin, durum listesi alta gelsin" — bu yüzden artık yukarıdaki
+          kartlardan SONRA geliyor. */}
+      <OdevDurumListesi odevler={filtreliOdevler} ogrenciSinifAdMap={ogrenciSinifAdMap} isYonetici={isYonetici} />
     </div>
   )
 }
