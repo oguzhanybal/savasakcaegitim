@@ -507,9 +507,47 @@ function DersEkleForm({
       sinav_mi: sinavMi,
       sinav_turu: sinavMi ? sinavTuru : null,
     })
-    const { error } = duzenleModu
-      ? await supabase.from('ders_programi').update(veriUret(sinifId, gunler[0])).eq('id', duzenlenenDers.id)
-      : await supabase.from('ders_programi').insert(gunler.flatMap((g) => hedefSiniflar.map((h) => veriUret(h, g))))
+    // ÖNEMLİ (kullanıcı isteği — güvenlik düzeltmesi): "Düzenle" artık AYNI
+    // kaydı yerinde güncellemiyor. Eskiden öyle yapıyordu, ama bu, o ders
+    // saatinde GEÇMİŞTE zaten alınmış yoklamaları da (Öğretmen Ekstresi'ndeki
+    // ücret/kayıt hesabı dahil) sessizce yeni bilgiye taşıyordu — çünkü Ekstre
+    // hesaplaması her zaman o kaydın GÜNCEL haline canlı bakıyor. Örn. sadece
+    // "bundan sonra bu dersi X değil Y versin" demek isteyen bir kullanıcı,
+    // farkında olmadan X'in geçmişte zaten verdiği dersleri de Y'ye
+    // devretmiş oluyordu.
+    //
+    // Artık burada da, tıpkı normal haftalık güncellemede ("Sil" + "Ekle" /
+    // Taslak Modu) olduğu gibi: eski kayıt SADECE BUGÜNDEN İTİBAREN pasife
+    // alınıyor (geçmiş asla etkilenmiyor, geçmişte alınmış yoklamalar hep
+    // eski kayda ve dolayısıyla eski bilgiye bağlı kalıyor), ve girilen yeni
+    // bilgilerle TAMAMEN AYRI, yeni bir kayıt ekleniyor (bugünden itibaren
+    // geçerli). Böylece "Düzenle" butonu da artık normal haftalık
+    // güncelleme kadar güvenli — geçmişe asla dokunmuyor.
+    let error = null
+    if (duzenleModu) {
+      const eskiId = duzenlenenDers.id
+      const { error: pasifHata } = await supabase
+        .from('ders_programi')
+        .update({ aktif: false, pasif_tarihi: yerelBugunTarihi() })
+        .eq('id', eskiId)
+      if (pasifHata) {
+        error = pasifHata
+      } else {
+        const { error: ekleHata } = await supabase.from('ders_programi').insert(veriUret(sinifId, gunler[0]))
+        if (ekleHata) {
+          // Yeni kayıt eklenemedi — eskiyi geri aktif yap, "düzenleme
+          // yarıda kaldı, ders programdan tamamen kayboldu" gibi bozuk bir
+          // duruma düşülmesin.
+          await supabase.from('ders_programi').update({ aktif: true, pasif_tarihi: null }).eq('id', eskiId)
+          error = ekleHata
+        }
+      }
+    } else {
+      const sonuc = await supabase
+        .from('ders_programi')
+        .insert(gunler.flatMap((g) => hedefSiniflar.map((h) => veriUret(h, g))))
+      error = sonuc.error
+    }
     setGonderiliyor(false)
     if (error) {
       setHata('Hata: ' + error.message)
