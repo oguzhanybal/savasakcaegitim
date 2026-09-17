@@ -610,54 +610,62 @@ function OdevVerForm({ ogrenciler, siniflarListesi, sinifOgrenciMap, ogretmenPro
 // sadece kendi verdiklerini görür — bu ayrım zaten RLS'te de var, burada ekstra
 // bir filtreye gerek yok, sorgu zaten doğru satırları döndürüyor).
 // ============================================================================
+// Kullanıcı isteği: açılır kutu (select) da kafa karıştırdı — öğretmen bunu
+// "ödevi gir" gibi, Yoklama sayfasındaki Geldi/Gelmedi butonları gibi BÜYÜK
+// ve NET dört buton olarak istedi. 2x2 düzen: üstte Yaptı/Eksik, altta
+// Yapmadı/Gelmedi — hepsi aynı boyutta, seçili olan dolu renkle vurgulanıyor.
+// Yanlışlıkla işaretlenmişse geri almak için altında küçük bir "Bekliyor'a
+// al" bağlantısı var (eski "Sıfırla" ile aynı işi görüyor).
 function OdevDurumButonlari({ o, durumDegistir }) {
   return (
-    <div className="flex items-center gap-1.5 flex-wrap">
-      <button
-        type="button"
-        onClick={() => durumDegistir(o, 'yapti')}
-        className={`px-2 py-1 rounded-lg text-xs font-semibold transition-colors ${
-          o.durum === 'yapti' ? 'bg-green-600 text-white' : 'bg-green-100 text-green-700 hover:bg-green-200'
-        }`}
-      >
-        Yaptı
-      </button>
-      <button
-        type="button"
-        onClick={() => durumDegistir(o, 'eksik')}
-        className={`px-2 py-1 rounded-lg text-xs font-semibold transition-colors ${
-          o.durum === 'eksik' ? 'bg-amber-500 text-white' : 'bg-amber-100 text-amber-700 hover:bg-amber-200'
-        }`}
-      >
-        Eksik
-      </button>
-      <button
-        type="button"
-        onClick={() => durumDegistir(o, 'yapmadi')}
-        className={`px-2 py-1 rounded-lg text-xs font-semibold transition-colors ${
-          o.durum === 'yapmadi' ? 'bg-red-600 text-white' : 'bg-red-100 text-red-700 hover:bg-red-200'
-        }`}
-      >
-        Yapmadı
-      </button>
-      <button
-        type="button"
-        onClick={() => durumDegistir(o, 'gelmedi')}
-        title="Öğrenci o gün derste/okulda yoktu, ödev kontrol edilemedi"
-        className={`px-2 py-1 rounded-lg text-xs font-semibold transition-colors ${
-          o.durum === 'gelmedi' ? 'bg-purple-600 text-white' : 'bg-purple-100 text-purple-700 hover:bg-purple-200'
-        }`}
-      >
-        Gelmedi
-      </button>
+    <div className="inline-block">
+      <div className="grid grid-cols-2 gap-1.5">
+        <button
+          type="button"
+          onClick={() => durumDegistir(o, 'yapti')}
+          className={`px-3 py-2 rounded-lg text-sm font-semibold transition-colors whitespace-nowrap ${
+            o.durum === 'yapti' ? 'bg-green-600 text-white' : 'bg-green-100 text-green-700 hover:bg-green-200'
+          }`}
+        >
+          ✓ Yaptı
+        </button>
+        <button
+          type="button"
+          onClick={() => durumDegistir(o, 'eksik')}
+          className={`px-3 py-2 rounded-lg text-sm font-semibold transition-colors whitespace-nowrap ${
+            o.durum === 'eksik' ? 'bg-amber-500 text-white' : 'bg-amber-100 text-amber-700 hover:bg-amber-200'
+          }`}
+        >
+          ◐ Eksik
+        </button>
+        <button
+          type="button"
+          onClick={() => durumDegistir(o, 'yapmadi')}
+          className={`px-3 py-2 rounded-lg text-sm font-semibold transition-colors whitespace-nowrap ${
+            o.durum === 'yapmadi' ? 'bg-red-600 text-white' : 'bg-red-100 text-red-700 hover:bg-red-200'
+          }`}
+        >
+          ✗ Yapmadı
+        </button>
+        <button
+          type="button"
+          onClick={() => durumDegistir(o, 'gelmedi')}
+          title="Öğrenci o gün derste/okulda yoktu, ödev kontrol edilemedi"
+          className={`px-3 py-2 rounded-lg text-sm font-semibold transition-colors whitespace-nowrap ${
+            o.durum === 'gelmedi' ? 'bg-purple-600 text-white' : 'bg-purple-100 text-purple-700 hover:bg-purple-200'
+          }`}
+        >
+          Gelmedi
+        </button>
+      </div>
       {o.durum !== 'bekliyor' && (
         <button
           type="button"
           onClick={() => durumDegistir(o, 'bekliyor')}
           title="Bekliyor durumuna geri al"
-          className="text-gray-400 text-xs hover:underline"
+          className="mt-1 text-gray-400 text-xs hover:underline"
         >
-          Sıfırla
+          Bekliyor'a al
         </button>
       )}
     </div>
@@ -777,13 +785,9 @@ function SinifOdevGrubu({ grubId, items, isYonetici, durumDegistir, sil, acik, o
             içindeki rozetler de gerekince alt satıra sarabiliyor. */}
         <div className="flex items-center gap-1.5 min-w-0 max-w-full flex-wrap justify-end">
           <span className="text-xs font-semibold text-green-700 bg-green-100 px-2 py-1 rounded-lg">{yaptiSayisi} yaptı</span>
-          {eksikSayisi > 0 && (
-            <span className="text-xs font-semibold text-amber-700 bg-amber-100 px-2 py-1 rounded-lg">{eksikSayisi} eksik</span>
-          )}
+          <span className="text-xs font-semibold text-amber-700 bg-amber-100 px-2 py-1 rounded-lg">{eksikSayisi} eksik</span>
           <span className="text-xs font-semibold text-red-700 bg-red-100 px-2 py-1 rounded-lg">{yapmadiSayisi} yapmadı</span>
-          {gelmediSayisi > 0 && (
-            <span className="text-xs font-semibold text-purple-700 bg-purple-100 px-2 py-1 rounded-lg">{gelmediSayisi} gelmedi</span>
-          )}
+          <span className="text-xs font-semibold text-purple-700 bg-purple-100 px-2 py-1 rounded-lg">{gelmediSayisi} gelmedi</span>
           {bekliyorSayisi > 0 && (
             <span className="text-xs font-semibold text-gray-500 bg-gray-200 px-2 py-1 rounded-lg">{bekliyorSayisi} bekliyor</span>
           )}
@@ -791,7 +795,7 @@ function SinifOdevGrubu({ grubId, items, isYonetici, durumDegistir, sil, acik, o
             <span className="text-xs font-semibold text-red-700 bg-red-200 px-2 py-1 rounded-lg">⚠ {sureGectiSayisi} süresi geçti</span>
           )}
           <span className="text-navy text-xs font-semibold whitespace-nowrap ml-1">
-            {acik ? 'Gizle' : 'Öğrencileri Gör'}
+            {acik ? 'Gizle' : 'Ödevleri Gir'}
           </span>
         </div>
       </button>
@@ -857,13 +861,9 @@ function OgrenciOdevGrubu({ ogrenciAdi, items, isYonetici, durumDegistir, sil, a
         </div>
         <div className="flex items-center gap-1.5 min-w-0 max-w-full flex-wrap justify-end">
           <span className="text-xs font-semibold text-green-700 bg-green-100 px-2 py-1 rounded-lg">{yaptiSayisi} yaptı</span>
-          {eksikSayisi > 0 && (
-            <span className="text-xs font-semibold text-amber-700 bg-amber-100 px-2 py-1 rounded-lg">{eksikSayisi} eksik</span>
-          )}
+          <span className="text-xs font-semibold text-amber-700 bg-amber-100 px-2 py-1 rounded-lg">{eksikSayisi} eksik</span>
           <span className="text-xs font-semibold text-red-700 bg-red-100 px-2 py-1 rounded-lg">{yapmadiSayisi} yapmadı</span>
-          {gelmediSayisi > 0 && (
-            <span className="text-xs font-semibold text-purple-700 bg-purple-100 px-2 py-1 rounded-lg">{gelmediSayisi} gelmedi</span>
-          )}
+          <span className="text-xs font-semibold text-purple-700 bg-purple-100 px-2 py-1 rounded-lg">{gelmediSayisi} gelmedi</span>
           {bekliyorSayisi > 0 && (
             <span className="text-xs font-semibold text-gray-500 bg-gray-200 px-2 py-1 rounded-lg">{bekliyorSayisi} bekliyor</span>
           )}
@@ -871,7 +871,7 @@ function OgrenciOdevGrubu({ ogrenciAdi, items, isYonetici, durumDegistir, sil, a
             <span className="text-xs font-semibold text-red-700 bg-red-200 px-2 py-1 rounded-lg">⚠ {sureGectiSayisi} süresi geçti</span>
           )}
           <span className="text-navy text-xs font-semibold whitespace-nowrap ml-1">
-            {acik ? 'Gizle' : 'Ödevleri Gör'}
+            {acik ? 'Gizle' : 'Ödevleri Gir'}
           </span>
         </div>
       </button>
