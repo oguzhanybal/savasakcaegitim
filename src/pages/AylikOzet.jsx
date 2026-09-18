@@ -65,6 +65,10 @@ export default function AylikOzet() {
   // (yukarıdaki) sadece ders dökümü, borç/ödeme kümülatif hesabı için AYRICA
   // bireBirBorclariOlustur çıktısı (aylik_borclar ile AYNI şekil) gerekiyor.
   const [bireBirBorclarTumu, setBireBirBorclarTumu] = useState([])
+  // "aylik_borclar" tablosundaki GERÇEK satırlar — Muhasebe.jsx'teki "Sistem
+  // Öncesi (Geçmiş) Borç Ekle" formuyla ELLE girilmiş Bire Bir/Yemek/Kantin
+  // borçları (bkz. aşağıdaki useEffect'teki BÜYÜK HATA DÜZELTMESİ yorumu).
+  const [aylikBorclarTumu, setAylikBorclarTumu] = useState([])
   const [kantinAlislari, setKantinAlislari] = useState([])
   const [sozlesmeler, setSozlesmeler] = useState([])
   const [odemeler, setOdemeler] = useState([])
@@ -99,7 +103,22 @@ export default function AylikOzet() {
       tumSatirlariGetir(() => supabase.from('sozlesmeler').select('*')),
       tumSatirlariGetir(() => supabase.from('odemeler').select('*')),
       tumSatirlariGetir(() => supabase.from('ogrenciler').select('id, ad_soyad')),
-    ]).then(([bba, ekDersler, kantin, sozlesme, odeme, ogrenci]) => {
+      // "aylik_borclar" — Muhasebe.jsx'teki "+ Sistem Öncesi (Geçmiş) Borç Ekle"
+      // formuyla ELLE girilmiş Bire Bir/Yemek/Kantin satırları (öğrenci bu
+      // sisteme geçmeden önceki dönemin borcu, ya da bir düzeltme). BÜYÜK HATA
+      // DÜZELTMESİ: bu sayfa eskiden Bire Bir/Kantin borcunu SADECE derslerden/
+      // alışlardan otomatik üretilen (sentetik) satırlardan hesaplıyordu, elle
+      // girilmiş bu satırları HİÇ hesaba katmıyordu — Muhasebe.jsx ise ikisini
+      // BİRLEŞTİRİYOR (bkz. Muhasebe.jsx → setAylikBorclar). Sonuç: bu sayfa
+      // Muhasebe'nin gösterdiğinden DAHA AZ borç (J) hesaplıyor, bu da bazı
+      // öğrencilerin gerçekte ödenmemiş bir ayının "tamamen ödenmiş" gibi
+      // görünmesine yol açıyordu (örnek: Tural Hamid'in Haziran 2026'ya elle
+      // girilmiş ₺61.250 Bire Bir borcu bu sayfada hiç görünmüyordu, bu yüzden
+      // asıl 60.250 TL borcu varken Eylül'ün ₺34.000 tutarı yanlışlıkla
+      // "tamamen ödendi" gösteriliyordu — Muhasebe'nin kendi sayfasında doğru
+      // görünüyordu çünkü o, bu satırı hesaba katıyor).
+      tumSatirlariGetir(() => supabase.from('aylik_borclar').select('*')),
+    ]).then(([bba, ekDersler, kantin, sozlesme, odeme, ogrenci, aylikBorclar]) => {
       const atamalar = bba.data || []
       const atamaIdleri = atamalar.map((x) => x.id)
       const yoklamaSorgusu =
@@ -108,12 +127,19 @@ export default function AylikOzet() {
           : Promise.resolve({ data: [] })
       yoklamaSorgusu.then((by) => {
         const tumYoklamalar = [...(by.data || []), ...(ekDersler.data || [])]
+        const elleGirilenBorclar = aylikBorclar.data || []
         setBireBirDersler(bireBirDersDetaylariOlustur(atamalar, tumYoklamalar))
-        setBireBirBorclarTumu(bireBirBorclariOlustur(atamalar, tumYoklamalar))
+        // Elle girilmiş (gerçek aylik_borclar) + derslerden otomatik üretilen
+        // (sentetik) Bire Bir satırları birlikte — Muhasebe.jsx ile AYNI mantık.
+        setBireBirBorclarTumu([
+          ...elleGirilenBorclar.filter((a) => a.kalem === 'Bire Bir'),
+          ...bireBirBorclariOlustur(atamalar, tumYoklamalar),
+        ])
         setKantinAlislari(kantin.data || [])
         setSozlesmeler(sozlesme.data || [])
         setOdemeler(odeme.data || [])
         setOgrenciler(ogrenci.data || [])
+        setAylikBorclarTumu(elleGirilenBorclar)
         setLoading(false)
       })
     })
@@ -210,7 +236,15 @@ export default function AylikOzet() {
   // Her iki tür için de "Bu ay ödenen", SADECE o kaleme ait ödemelerin
   // toplamıdır — tüm ödemeleri karıştırıp tek havuzda toplamak yanlış sonuç
   // verir, bu yüzden her öğrencinin KENDİ ödemeleriyle hesaplanır.
-  const kantinBorclarTumu = useMemo(() => kantinBorclariOlustur(kantinAlislari), [kantinAlislari])
+  // ÖNEMLİ: yukarıdaki bireBirBorclarTumu'nda anlatılan AYNI düzeltme burada da
+  // gerekiyor — elle girilmiş (gerçek aylik_borclar tablosundaki) Kantin
+  // satırları, kantin_alislar'dan otomatik üretilen (sentetik) satırlarla
+  // birleştirilmezse, bir öğrencinin elle girilmiş geçmiş Kantin borcu bu
+  // sayfada hiç görünmez ve borcu olduğundan az gösterilir.
+  const kantinBorclarTumu = useMemo(
+    () => [...aylikBorclarTumu.filter((a) => a.kalem === 'Kantin'), ...kantinBorclariOlustur(kantinAlislari)],
+    [kantinAlislari, aylikBorclarTumu]
+  )
 
   const taksitKalemTablolari = useMemo(() => {
     const sonuc = {}
