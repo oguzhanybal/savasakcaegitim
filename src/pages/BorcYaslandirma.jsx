@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { supabase } from '../lib/supabase'
+import { supabase, tumSatirlariGetir } from '../lib/supabase'
 import {
   paraFormat,
   bireBirBorclariOlustur,
@@ -49,14 +49,21 @@ export default function BorcYaslandirma() {
   const [arama, setArama] = useState('')
 
   useEffect(() => {
+    // ÖNEMLİ (bkz. supabase.js → tumSatirlariGetir yorumu): bu sayfa TÜM
+    // öğrencilerin TÜM ZAMANLARDAKİ borç/ödeme kayıtlarını karşılaştırıyor —
+    // filtresiz `.select('*')` kullanılan tablolar (özellikle kantin_alislar
+    // ve odemeler) kurum genelinde kolayca 1000 satırı aşabiliyor ve
+    // Supabase bunu sessizce kesiyor. Bir tahsilat/risk raporunda eksik veri
+    // özellikle tehlikeli (bir öğrencinin gerçekte borçlu olduğu halde
+    // listede hiç görünmemesine yol açabilir), bu yüzden hepsi sayfalanıyor.
     Promise.all([
-      supabase.from('ogrenciler').select('*').order('ad_soyad'),
-      supabase.from('sozlesmeler').select('*'),
-      supabase.from('aylik_borclar').select('*'),
-      supabase.from('odemeler').select('*'),
-      supabase.from('bire_bir_atamalari').select('*'),
-      supabase.from('bire_bir_yoklama').select('*'),
-      supabase.from('kantin_alislar').select('*'),
+      tumSatirlariGetir(() => supabase.from('ogrenciler').select('*').order('ad_soyad')),
+      tumSatirlariGetir(() => supabase.from('sozlesmeler').select('*')),
+      tumSatirlariGetir(() => supabase.from('aylik_borclar').select('*')),
+      tumSatirlariGetir(() => supabase.from('odemeler').select('*')),
+      tumSatirlariGetir(() => supabase.from('bire_bir_atamalari').select('*')),
+      tumSatirlariGetir(() => supabase.from('bire_bir_yoklama').select('*')),
+      tumSatirlariGetir(() => supabase.from('kantin_alislar').select('*')),
     ]).then(([o, s, a, od, bba, bby, kantin]) => {
       setOgrenciler(o.data || [])
       setSozlesmeler(s.data || [])

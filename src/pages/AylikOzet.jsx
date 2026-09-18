@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { supabase } from '../lib/supabase'
+import { supabase, tumSatirlariGetir } from '../lib/supabase'
 import {
   paraFormat,
   bireBirDersDetaylariOlustur,
@@ -73,24 +73,38 @@ export default function AylikOzet() {
 
   useEffect(() => {
     setLoading(true)
+    // ÖNEMLİ (bkz. supabase.js → tumSatirlariGetir yorumu): bu sayfa
+    // KÜMÜLATİF bakiye hesapladığı için (bir öğrencinin "bugüne kadarki"
+    // toplam borç/ödeme durumu) aşağıdaki sorguların HİÇBİRİ tarihe göre
+    // filtrelenemez — hepsinin TÜM ZAMANLARDAKİ satırlarını çekmesi gerekiyor.
+    // kantin_alislar/odemeler/bire_bir_yoklama gibi tablolar kolayca 1000
+    // satırı aştığı için (kurum genelinde tek bir ayda bile 900'ün üzerinde
+    // kantin alışı olabiliyor), düz `.select('*')` yerine tumSatirlariGetir
+    // kullanılıyor — aksi halde en güncel satırlar sessizce kesiliyordu
+    // (bkz. Tural Hamid örneği: bir öğrencinin o ayki gerçek kantin tutarı
+    // ₺8.741 iken, kesilen veriyle sadece ₺1.982 hesaplanıyordu).
     Promise.all([
-      supabase
-        .from('bire_bir_atamalari')
-        .select('*, ogrenciler(ad_soyad), profiles:ogretmen_profile_id(ad_soyad, brans)'),
-      supabase
-        .from('bire_bir_yoklama')
-        .select('*, ogrenciler(ad_soyad), profiles:ogretmen_profile_id(ad_soyad, brans)')
-        .is('atama_id', null),
-      supabase.from('kantin_alislar').select('*, ogrenciler(ad_soyad)'),
-      supabase.from('sozlesmeler').select('*'),
-      supabase.from('odemeler').select('*'),
-      supabase.from('ogrenciler').select('id, ad_soyad'),
+      tumSatirlariGetir(() =>
+        supabase
+          .from('bire_bir_atamalari')
+          .select('*, ogrenciler(ad_soyad), profiles:ogretmen_profile_id(ad_soyad, brans)')
+      ),
+      tumSatirlariGetir(() =>
+        supabase
+          .from('bire_bir_yoklama')
+          .select('*, ogrenciler(ad_soyad), profiles:ogretmen_profile_id(ad_soyad, brans)')
+          .is('atama_id', null)
+      ),
+      tumSatirlariGetir(() => supabase.from('kantin_alislar').select('*, ogrenciler(ad_soyad)')),
+      tumSatirlariGetir(() => supabase.from('sozlesmeler').select('*')),
+      tumSatirlariGetir(() => supabase.from('odemeler').select('*')),
+      tumSatirlariGetir(() => supabase.from('ogrenciler').select('id, ad_soyad')),
     ]).then(([bba, ekDersler, kantin, sozlesme, odeme, ogrenci]) => {
       const atamalar = bba.data || []
       const atamaIdleri = atamalar.map((x) => x.id)
       const yoklamaSorgusu =
         atamaIdleri.length > 0
-          ? supabase.from('bire_bir_yoklama').select('*').in('atama_id', atamaIdleri)
+          ? tumSatirlariGetir(() => supabase.from('bire_bir_yoklama').select('*').in('atama_id', atamaIdleri))
           : Promise.resolve({ data: [] })
       yoklamaSorgusu.then((by) => {
         const tumYoklamalar = [...(by.data || []), ...(ekDersler.data || [])]

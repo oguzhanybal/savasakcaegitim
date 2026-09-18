@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { supabase } from '../lib/supabase'
+import { supabase, tumSatirlariGetir } from '../lib/supabase'
 
 // ============================================================================
 // TÜM VERİLERİ YEDEKLE — sitenin veritabanındaki bütün tabloların o anki
@@ -139,8 +139,13 @@ export default function YedekAl() {
     setOzet([])
 
     try {
+      // ÖNEMLİ (bkz. supabase.js → tumSatirlariGetir yorumu): bir tablo 1000
+      // satırı geçtiğinde filtresiz `.select('*')` sessizce kesiliyordu — bu
+      // BİR YEDEKTE fark edilmesi en zor, en tehlikeli türden hata olurdu
+      // (felaket anında "yedeğim var" sanıp aslında eksik veri geri
+      // yüklemek). Bu yüzden her tablo sayfalanarak, eksiksiz çekiliyor.
       const sonuclar = await Promise.all(
-        TABLOLAR.map((tablo) => supabase.from(tablo).select('*'))
+        TABLOLAR.map((tablo) => tumSatirlariGetir(() => supabase.from(tablo).select('*')))
       )
 
       const hataliTablo = sonuclar.findIndex((s) => s.error)

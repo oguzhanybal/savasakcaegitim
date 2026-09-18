@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { supabase } from '../lib/supabase'
+import { supabase, tumSatirlariGetir } from '../lib/supabase'
 import { paraFormat } from '../lib/ekstreHesap'
 
 // Bilinen kalemler bu sırayla gösterilir; veride bunların dışında bir kalem
@@ -21,9 +21,14 @@ export default function GelirRaporu() {
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
+    // ÖNEMLİ (bkz. supabase.js → tumSatirlariGetir yorumu): bu rapor TÜM
+    // ZAMANLARI ay ay listelediği için "odemeler" tablosunun tamamı gerekiyor
+    // — 1000 satırı geçtiğinde filtresiz sorgu sessizce kesilip EN ESKİ aylar
+    // kaybolabiliyordu (tarihe göre azalan sıralandığı için kesilen kısım hep
+    // geçmişteki aylardı). Sayfalanarak tüm veri çekiliyor.
     Promise.all([
-      supabase.from('odemeler').select('*').order('tarih', { ascending: false }),
-      supabase.from('giderler').select('*').order('tarih', { ascending: false }),
+      tumSatirlariGetir(() => supabase.from('odemeler').select('*').order('tarih', { ascending: false })),
+      tumSatirlariGetir(() => supabase.from('giderler').select('*').order('tarih', { ascending: false })),
     ]).then(([o, g]) => {
       setOdemeler(o.data || [])
       setGiderler(g.data || [])

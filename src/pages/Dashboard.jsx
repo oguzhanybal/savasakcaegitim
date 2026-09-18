@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { supabase } from '../lib/supabase'
+import { supabase, tumSatirlariGetir } from '../lib/supabase'
 import { useAuth } from '../lib/AuthContext'
 import { taksitPlaniOlustur, aylikBorcDurumHesapla, sonOdemeleriGrupSiniriylaKes } from '../lib/ekstreHesap'
 
@@ -338,11 +338,15 @@ export default function Dashboard() {
     // tek başına vade kontrolü yapmıyor — önden kısmi ödeme yapılmış ama vadesi
     // henüz gelmemiş bir taksit de 'kismi' çıkabiliyor; bu yüzden vade/ay
     // kontrolünü burada ayrıca yapıyoruz.)
+    // ÖNEMLİ (bkz. supabase.js → tumSatirlariGetir yorumu): "odemeler" tablosu
+    // zamanla 1000 satırı geçebilir — filtresiz çekilirse sessizce kesilip bu
+    // panelde bazı öğrencilerin "gecikmiş" borcu kaybolabilir, bu yüzden
+    // sayfalanarak çekiliyor.
     Promise.all([
-      supabase.from('ogrenciler').select('id, ad_soyad').or('durum.eq.aktif,durum.is.null'),
-      supabase.from('sozlesmeler').select('*'),
-      supabase.from('aylik_borclar').select('*'),
-      supabase.from('odemeler').select('*'),
+      tumSatirlariGetir(() => supabase.from('ogrenciler').select('id, ad_soyad').or('durum.eq.aktif,durum.is.null')),
+      tumSatirlariGetir(() => supabase.from('sozlesmeler').select('*')),
+      tumSatirlariGetir(() => supabase.from('aylik_borclar').select('*')),
+      tumSatirlariGetir(() => supabase.from('odemeler').select('*')),
     ]).then(([{ data: aktifOgrenciler }, { data: sozlesmeler }, { data: aylikBorclar }, { data: odemeler }]) => {
       const yediGunSonra = new Date(simdi)
       yediGunSonra.setHours(0, 0, 0, 0)

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { supabase } from '../lib/supabase'
+import { supabase, tumSatirlariGetir } from '../lib/supabase'
 import { paraFormat, ayBaslangici, ayEtiketi } from '../lib/ekstreHesap'
 
 // Yönetici VE kantin rolü için: seçilen dönem (Günlük / Aylık / Tüm Zamanlar)
@@ -84,18 +84,37 @@ export default function KantinGunlukRapor() {
   async function veriyiYukle() {
     setYukleniyor(true)
     setHata('')
-    let sorgu = supabase
-      .from('kantin_alislar')
-      .select('*, ogrenciler(ad_soyad)')
-      .order('tarih', { ascending: true })
-      .order('created_at', { ascending: true })
-    if (donem === 'gun') {
-      sorgu = sorgu.eq('tarih', seciliTarih)
-    } else if (donem === 'ay') {
-      sorgu = sorgu.gte('tarih', seciliAy).lt('tarih', ayKaydir(seciliAy, 1))
+    // ÖNEMLİ (bkz. supabase.js → tumSatirlariGetir yorumu): "Tüm Zamanlar"
+    // (donem === 'hepsi') seçiliyken tarih filtresi OLMADIĞI için, kurum
+    // genelinde biriken kantin_alislar satırları kolayca 1000'i geçip
+    // Supabase'in tek istekteki sınırına takılabiliyor (canlıda doğrulandı:
+    // "Genel Toplamı" gerçek toplamdan çok daha düşük çıkıyordu). "Günlük" ve
+    // "Aylık" görünümler zaten bir tarih aralığıyla sınırlı olduğu için
+    // (tek bir gün/ay 1000 satırı bulması pratikte imkansız) onlar normal
+    // sorguda kalabilir — sadece filtresiz "hepsi" dalı sayfalanıyor.
+    let alisRes
+    if (donem === 'hepsi') {
+      alisRes = await tumSatirlariGetir(() =>
+        supabase
+          .from('kantin_alislar')
+          .select('*, ogrenciler(ad_soyad)')
+          .order('tarih', { ascending: true })
+          .order('created_at', { ascending: true })
+      )
+    } else {
+      let sorgu = supabase
+        .from('kantin_alislar')
+        .select('*, ogrenciler(ad_soyad)')
+        .order('tarih', { ascending: true })
+        .order('created_at', { ascending: true })
+      if (donem === 'gun') {
+        sorgu = sorgu.eq('tarih', seciliTarih)
+      } else if (donem === 'ay') {
+        sorgu = sorgu.gte('tarih', seciliAy).lt('tarih', ayKaydir(seciliAy, 1))
+      }
+      alisRes = await sorgu
     }
-    const [alisRes, urunRes, ogrenciRes] = await Promise.all([
-      sorgu,
+    const [urunRes, ogrenciRes] = await Promise.all([
       supabase.from('kantin_urunler').select('*').order('ad'),
       supabase.from('ogrenciler').select('id, ad_soyad').order('ad_soyad'),
     ])

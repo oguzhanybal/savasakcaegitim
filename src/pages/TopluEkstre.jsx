@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { supabase } from '../lib/supabase'
+import { supabase, tumSatirlariGetir } from '../lib/supabase'
 import {
   paraFormat,
   ogrenciSatirlariHesapla,
@@ -38,14 +38,18 @@ export default function TopluEkstre() {
   }
 
   useEffect(() => {
+    // ÖNEMLİ (bkz. supabase.js → tumSatirlariGetir yorumu): kümülatif borç/
+    // ödeme hesabı TÜM ZAMANLARDAKİ veriyi gerektiriyor — filtresiz
+    // `.select('*')` kolayca 1000 satırı aşıp sessizce kesilebiliyor (özellikle
+    // kantin_alislar/odemeler), bu yüzden hepsi sayfalanarak çekiliyor.
     Promise.all([
-      supabase.from('ogrenciler').select('*').order('ad_soyad'),
-      supabase.from('sozlesmeler').select('*'),
-      supabase.from('aylik_borclar').select('*'),
-      supabase.from('odemeler').select('*'),
-      supabase.from('bire_bir_atamalari').select('*'),
-      supabase.from('bire_bir_yoklama').select('*'),
-      supabase.from('kantin_alislar').select('*'),
+      tumSatirlariGetir(() => supabase.from('ogrenciler').select('*').order('ad_soyad')),
+      tumSatirlariGetir(() => supabase.from('sozlesmeler').select('*')),
+      tumSatirlariGetir(() => supabase.from('aylik_borclar').select('*')),
+      tumSatirlariGetir(() => supabase.from('odemeler').select('*')),
+      tumSatirlariGetir(() => supabase.from('bire_bir_atamalari').select('*')),
+      tumSatirlariGetir(() => supabase.from('bire_bir_yoklama').select('*')),
+      tumSatirlariGetir(() => supabase.from('kantin_alislar').select('*')),
     ]).then(([o, s, a, od, bba, bby, kantin]) => {
       setOgrenciler(o.data || [])
       setSozlesmeler(s.data || [])
