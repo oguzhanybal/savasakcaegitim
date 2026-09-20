@@ -47,6 +47,43 @@ function gunEkle(tarihStr, gunSayisi) {
   return `${t.getFullYear()}-${String(t.getMonth() + 1).padStart(2, '0')}-${String(t.getDate()).padStart(2, '0')}`
 }
 
+// ÖNEMLİ HATA DÜZELTMESİ (2026-09-20): "7 gün içindeki pasif satırlar" filtresi
+// tabloyu 1000 satırın ALTINDA tutmak için eklenmişti (bkz. veriyiYenile'deki
+// yorum), ama bu KIRILGAN bir çözümdü — aynı gün içinde birden fazla program
+// güncellemesi (taslak yayınlama) yapılınca, o güne ait pasif satır sayısı tek
+// başına 1000'i geçebiliyor (her yayınlama ~170 yeni pasif satır bırakıyor).
+// Bu durumda Supabase/PostgREST sorguyu YİNE SESSİZCE 1000 satırda kesiyor —
+// sıralama "gun" sonra "baslangic_saat" olduğu için, kesilen kısım hep en
+// yüksek gün (Cumartesi/Pazar) ve o günün geç saatleri oluyor. Kullanıcı bunu
+// "Pazar günü programı sanki silinmiş" ya da "Cumartesi 12.40 dersi kaybolmuş"
+// olarak görüyor — VERİ SİLİNMİYOR, sorgu sadece hepsini getirmiyor.
+//
+// Kalıcı çözüm: kaç satır olursa olsun HEPSİNİ sayfalayarak (range ile döngü)
+// çekmek — artık 1000 sınırının altında kalmaya güvenmiyoruz, ne kadar satır
+// birikirse birikisin tam veri geliyor. 7 günlük filtre performans için hâlâ
+// duruyor (gereksiz eski geçmişi çekmemek için), ama artık DOĞRULUK için
+// gerekli değil — bir güvenlik ağı olarak sayfalama var.
+async function tumDersProgramiSatirlariniGetir() {
+  const SAYFA_BOYU = 1000
+  let hepsi = []
+  let bas = 0
+  while (true) {
+    const { data, error } = await supabase
+      .from('ders_programi')
+      .select('*, siniflar(ad), profiles:ogretmen_profile_id(ad_soyad, brans)')
+      .or(`aktif.eq.true,pasif_tarihi.gte.${gunEkle(yerelBugunTarihi(), -7)}`)
+      .order('gun')
+      .order('baslangic_saat')
+      .order('id')
+      .range(bas, bas + SAYFA_BOYU - 1)
+    if (error) return { data: hepsi.length ? hepsi : null, error }
+    hepsi = hepsi.concat(data || [])
+    if (!data || data.length < SAYFA_BOYU) break
+    bas += SAYFA_BOYU
+  }
+  return { data: hepsi, error: null }
+}
+
 // Bir ISO zaman damgasını (ör. ders_programi.created_at) "YYYY-MM-DD" YEREL
 // tarihine çevirir — yerelBugunTarihi() ile aynı desen, ama "şu an" yerine
 // verilen bir zaman damgası için. musaitlikIcinProgram'ın "bu ders o tarihte
@@ -1724,36 +1761,17 @@ export default function DersProgrami() {
       // "programTum" ise hepsini tutar (bkz. musaitlikIcinProgram — Günlük
       // Müsaitlik'te geçmiş bir tarihe dönülünce "o gün bu ders oradaydı"
       // diye gösterebilmek için).
-      // ÖNEMLİ HATA DÜZELTMESİ: bu sorgu ÖNCEDEN filtresiz "select *" idi —
-      // tablo yıllar içinde pasif (silinmiş/devredilmiş) satırlarla birikip
-      // 1200+ satıra ulaşınca, Supabase/PostgREST'in tek istekte döndürdüğü
-      // satır sayısı sunucu tarafında 1000 ile sınırlı olduğu için sorgu
-      // SESSİZCE kesiliyordu (hata vermiyor, sadece eksik veri dönüyordu).
-      // Sıralama "gun" sonra "baslangic_saat" olduğunca, kesilen kısım hep
-      // en yüksek gun (6=Cumartesi, 7=Pazar) ve o günün GEÇ saatleriydi —
-      // "Günlük Program" ve "Sınıf Bazlı Program" ekranlarında Cumartesi/
-      // Pazar derslerinin sadece ilk saati görünüp gerisinin kaybolmasının
-      // GERÇEK nedeni buydu (veri bozuk değildi, sorgu veriyi hiç getirmiyordu).
-      // Çözüm: artık hiçbir zaman görüntülenmeyecek ESKİ pasif satırlar (60
-      // günden eski pasif_tarihi'li, veya pasif_tarihi hiç girilmemiş) en
-      // baştan hariç tutuluyor — tarihIcinAktifProgram zaten pasif_tarihi
-      // olmayan satırları asla kullanmıyordu (bkz. o fonksiyondaki "!d.pasif_tarihi
-      // continue" satırı), o yüzden bunları hiç çekmemek görünen hiçbir
-      // ekranı bozmaz, sadece toplam satır sayısını 1000 sınırının altında
-      // tutar.
-      supabase
-        .from('ders_programi')
-        .select('*, siniflar(ad), profiles:ogretmen_profile_id(ad_soyad, brans)')
-        // (60 günlük ilk deneme yetersiz kaldı — pasif satırların NEREDEYSE
-        // HEPSİ zaten son birkaç hafta içindeydi, muhtemelen bu dönemde
-        // yapılan tekrarlı program düzeltmelerinin her biri bir "geçmiş
-        // kaydı" satırı bıraktığı için. 7 güne indirildi — tarihIcinAktifProgram
-        // zaten sadece "görüntülenen tarih <= pasif_tarihi" olan satırları
-        // kullanıyor, yani BUGÜNDEN SONRASINI gösteren bu ekranlar için 7
-        // günden eski pasif satırların hiçbir zaman kullanılmayacağı kesin.)
-        .or(`aktif.eq.true,pasif_tarihi.gte.${gunEkle(yerelBugunTarihi(), -7)}`)
-        .order('gun')
-        .order('baslangic_saat'),
+      // ÖNEMLİ HATA DÜZELTMESİ (2026-09-20): Bu sorgu daha önce TEK istekte
+      // çekiliyordu ve 1000 satırın altında kalmak için sadece "son 7 gün
+      // içindeki pasif satırlar" filtresine güveniyordu — ama aynı gün
+      // içinde birden fazla taslak yayınlanınca (her biri ~170 pasif satır
+      // bırakıyor) bu filtre bile yetmeyip sorgu YİNE 1000'de sessizce
+      // kesildi (Pazar programının tamamen kaybolması, Cumartesi geç
+      // saatlerin gelip gitmesi buradan kaynaklandı — veri hiç silinmedi,
+      // sorgu hepsini getirmiyordu). Artık tumDersProgramiSatirlariniGetir()
+      // ile SAYFALAYARAK (1000'er 1000'er, hepsi bitene kadar) çekiliyor —
+      // kaç satır birikirse birikisin artık hiçbiri sessizce atlanmıyor.
+      tumDersProgramiSatirlariniGetir(),
       isYonetici ? supabase.from('siniflar').select('*').order('ad') : Promise.resolve({ data: [] }),
       isYonetici ? supabase.from('profiles').select('*').eq('rol', 'ogretmen').order('ad_soyad') : Promise.resolve({ data: [] }),
       // Günlük Müsaitlik tablosunda sınıf derslerinin yanında bire bir dersleri de
