@@ -1048,7 +1048,19 @@ export default function MusaitlikTablosu({
                         }
                         className={`group relative border-t border-l border-gray-100 text-center align-middle py-1 ${
                           h.dolu && !h.dolu.kaldirilacak
-                            ? h.dolu.renk + (ipucuTiklanabilirMi ? ' cursor-pointer hover:bg-gray-200 transition-colors' : '')
+                            ? h.dolu.renk +
+                              // ÖNEMLİ DÜZELTME (kullanıcı bildirdi — ekran görüntüsüyle): art arda
+                              // gelen iki öğretmen satırının ikisi de aynı saatte dolu (ör. ikisi de
+                              // bire bir, ikisi de aynı düz turuncu renk) olunca, aradaki normal
+                              // "border-t border-gray-100" (soluk gri, 1px) bu renklerin üzerinde
+                              // neredeyse hiç görünmüyor — iki ayrı satır tek bir hücreymiş gibi
+                              // birleşik/karışık görünüyordu ("üst üste binmiş" izlenimi veriyordu,
+                              // aslında satırların hiçbiri gerçekten üst üste binmiyor, konumlar
+                              // doğru — sadece aradaki çizgi görünmüyordu). Dolu hücrelere HER ZAMAN
+                              // kalın BEYAZ bir üst çizgi ekleyerek (hangi renk olursa olsun kontrast
+                              // garantili), art arda gelen satırları görsel olarak net ayırıyoruz.
+                              ' border-t-2 border-t-white' +
+                              (ipucuTiklanabilirMi ? ' cursor-pointer hover:bg-gray-200 transition-colors' : '')
                             : seciliMi
                             ? 'bg-navy text-white h-8 cursor-pointer ring-2 ring-inset'
                             : tiklanabilir
@@ -1075,15 +1087,19 @@ export default function MusaitlikTablosu({
                                       e.stopPropagation()
                                       onSinifDersiGuncelle(h.dolu.id)
                                     }}
-                                    className="w-3.5 h-3.5 leading-none flex items-center justify-center bg-blue-600 text-white"
+                                    className="w-3.5 h-3.5 leading-none flex items-center justify-center bg-white text-blue-700 border border-blue-700"
                                   >
                                     {/* ÖNEMLİ (kullanıcı bildirdi): burada eskiden ✏ emoji karakteri
                                         kullanılıyordu — bazı tarayıcı/işletim sistemi
                                         kombinasyonlarında bu karakter mavi arka plan üzerinde
-                                        neredeyse görünmez (siyaha yakın) render oluyordu, "text-white"
-                                        CSS'i emoji glifini etkilemiyordu. Gerçek bir SVG ikon
-                                        (fill="currentColor") kullanmak rengi her zaman garantili
-                                        şekilde beyaz tutuyor. */}
+                                        neredeyse görünmez (siyaha yakın) render oluyordu. SVG ikona
+                                        geçilmişti ama mavi arka plan + beyaz ikon kombinasyonu, dolu
+                                        hücrenin KENDİ arka planı da mavi tonlarda (sınıf dersi hücreleri
+                                        bg-blue-200) olunca yine göze çarpmıyordu (kullanıcı yine
+                                        "görünmüyor" dedi). Bu yüzden tam tersine çevrildi: BEYAZ
+                                        arka plan + KOYU MAVİ ikon + koyu mavi ince çerçeve — bu
+                                        kombinasyon hücrenin rengi ne olursa olsun (mavi/turuncu/mor/
+                                        sarı) her zaman kontrastlı kalıyor. */}
                                     <svg viewBox="0 0 20 20" fill="currentColor" className="w-2.5 h-2.5">
                                       <path d="M17.414 2.586a2 2 0 00-2.828 0L13 4.172 15.828 7l1.586-1.586a2 2 0 000-2.828zM12 5.172L3 14.172V17h2.828l9-9L12 5.172z" />
                                     </svg>
@@ -1114,11 +1130,11 @@ export default function MusaitlikTablosu({
                                     e.stopPropagation()
                                     yonetimPopupAc(o.id, tarih, h.baslangic, h.dolu)
                                   }}
-                                  className="w-3.5 h-3.5 leading-none flex items-center justify-center bg-blue-600 text-white"
+                                  className="w-3.5 h-3.5 leading-none flex items-center justify-center bg-white text-blue-700 border border-blue-700"
                                 >
                                   {/* Aşağıdaki, yukarıdaki sınıf dersi ✏ butonuyla AYNI düzeltme
-                                      (kullanıcı bildirdi: emoji görünmüyordu) — bkz. o butonun
-                                      yanındaki açıklama. */}
+                                      (kullanıcı bildirdi: beyaz ikon mavi arka planda yine
+                                      görünmüyordu) — bkz. o butonun yanındaki açıklama. */}
                                   <svg viewBox="0 0 20 20" fill="currentColor" className="w-2.5 h-2.5">
                                     <path d="M17.414 2.586a2 2 0 00-2.828 0L13 4.172 15.828 7l1.586-1.586a2 2 0 000-2.828zM12 5.172L3 14.172V17h2.828l9-9L12 5.172z" />
                                   </svg>
