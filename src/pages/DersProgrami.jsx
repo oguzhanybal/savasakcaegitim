@@ -1698,6 +1698,16 @@ export default function DersProgrami() {
   // dosyada, src/components/GunlukProgramListesi.jsx) burada AYNI ŞEKİLDE
   // sekme olarak render ediliyor.
   const [yonetimGorunum, setYonetimGorunum] = useState('ekle')
+  // "Bire Bir Öğrenciler" sekmesindeki filtreler — kullanıcı isteğiyle
+  // eklendi: yönetici artık TEK bir öğrenci seçip (ör. "Yiğit Atiği"),
+  // SADECE seçtiği haftanın Pazartesi-Pazar arasındaki bire bir derslerini
+  // görebiliyor. Önceden filtre yoktu — herkes birden ve "bugünden itibaren"
+  // açık uçlu bir liste gösteriliyordu. seciliBireBirOgrenciId boşsa (''),
+  // "Tüm bire bir öğrencileri" gösterilir (eski davranışla uyumlu).
+  // bireBirHaftaOfseti: 0 = içinde bulunulan hafta, -1 = önceki hafta,
+  // 1 = sonraki hafta, vs. (◀/▶ ile değişir).
+  const [seciliBireBirOgrenciId, setSeciliBireBirOgrenciId] = useState('')
+  const [bireBirHaftaOfseti, setBireBirHaftaOfseti] = useState(0)
   // Tıklanan hücreyi tablo üzerinde koyu işaretlemek için — ders eklenene/
   // taslağa kaydedilene kadar kullanıcı "hangi saate ekliyordum" diye
   // unutmasın diye. dersEklendiVeyaTaslaklandi() içinde temizlenir.
@@ -2201,19 +2211,62 @@ export default function DersProgrami() {
 
   // Yönetici için "Bire Bir Öğrenciler" sekmesi: TÜM kayıtlı öğrencileri değil,
   // sadece o an bire bir dersi OLAN öğrencileri, veli/öğrenci tarafındaki
-  // BireBirDerslerimBolumu ile AYNI görünümde (gün gün haftalık + yaklaşan
+  // BireBirDerslerimBolumu ile AYNI görünümde (gün gün haftalık + o haftaki
   // tekil dersler) gösterir. Veri zaten yukarıda tüm yönetici için çekilen
   // bireBirAtamalar (tüm atamalar, ogrenciler(ad_soyad) join'li) ve
   // bireBirYoklamalar (tüm satırlar) state'lerinden türetiliyor — ayrıca bir
-  // sorgu atmaya gerek yok. Veli tarafındaki mantıkla birebir aynı filtreler
-  // kullanıldı: haftalık atamalarda sadece aktif=true, tekil derslerde sadece
-  // atama_id boş (gerçekten tek seferlik) + bugünden itibaren + bir öğrenciye
-  // bağlı olanlar (grup/sınıf bazlı soru çözümü seansları, ogrenci_id boş
-  // olduğu için burada zaten kendiliğinden dışarıda kalıyor).
+  // sorgu atmaya gerek yok.
+
+  // Dropdown'daki öğrenci listesi — bugün/bu hafta bire bir dersi olmasa bile,
+  // aktif bir haftalık ataması VEYA herhangi bir tarihte (geçmiş/gelecek) tekil
+  // bire bir/soru çözümü kaydı OLAN her öğrenci burada listelenir. Böylece
+  // kullanıcı örneğin "Yiğit Atiği"yi seçtiğinde, o hafta hiç dersi olmasa
+  // bile "bu hafta dersi yok" diye doğru şekilde gösterebiliyoruz — öğrenci
+  // listeden aniden kaybolmuyor.
+  const bireBirOgrenciListesi = useMemo(() => {
+    if (!isYonetici) return []
+    const map = new Map()
+    ;(bireBirAtamalar || []).forEach((a) => {
+      if (a.aktif === true && a.ogrenci_id) {
+        map.set(a.ogrenci_id, a.ogrenciler?.ad_soyad || ogrenciAdMap.get(a.ogrenci_id) || 'Bilinmeyen öğrenci')
+      }
+    })
+    ;(bireBirYoklamalar || []).forEach((y) => {
+      if (!y.atama_id && y.ogrenci_id && !map.has(y.ogrenci_id)) {
+        map.set(y.ogrenci_id, ogrenciAdMap.get(y.ogrenci_id) || 'Bilinmeyen öğrenci')
+      }
+    })
+    return Array.from(map.entries())
+      .map(([id, ad]) => ({ id, ad }))
+      .sort((a, b) => a.ad.localeCompare(b.ad, 'tr'))
+  }, [isYonetici, bireBirAtamalar, bireBirYoklamalar, ogrenciAdMap])
+
+  const seciliBireBirOgrenciAdi = seciliBireBirOgrenciId
+    ? bireBirOgrenciListesi.find((o) => o.id === seciliBireBirOgrenciId)?.ad || null
+    : null
+
+  // Seçili haftanın (bireBirHaftaOfseti ile ◀/▶ değişir) Pazartesi ve Pazar
+  // tarihleri — tekil (tarihli) bire bir derslerini bu aralığa sınırlamak
+  // için. Haftalık (her hafta tekrarlanan) atamalar zaten belirli bir tarihe
+  // bağlı değil, o yüzden onlar hafta seçiminden etkilenmiyor.
+  const bireBirHaftaSinirlari = useMemo(() => {
+    const bugun = yerelBugunTarihi()
+    const gunNo = gunNumaraTarihten(bugun)
+    const buHaftaPazartesi = gunEkle(bugun, -(gunNo - 1))
+    const pazartesi = gunEkle(buHaftaPazartesi, bireBirHaftaOfseti * 7)
+    const pazar = gunEkle(pazartesi, 6)
+    return { pazartesi, pazar }
+  }, [bireBirHaftaOfseti])
+
+  const bireBirHaftaEtiketi = useMemo(() => {
+    const fmt = (s) => new Date(s + 'T12:00:00').toLocaleDateString('tr-TR', { day: 'numeric', month: 'long' })
+    return `${fmt(bireBirHaftaSinirlari.pazartesi)} – ${fmt(bireBirHaftaSinirlari.pazar)}`
+  }, [bireBirHaftaSinirlari])
+
   const tumBireBirHaftalik = useMemo(() => {
     if (!isYonetici) return []
     return (bireBirAtamalar || [])
-      .filter((a) => a.aktif === true && a.ogrenci_id)
+      .filter((a) => a.aktif === true && a.ogrenci_id && (!seciliBireBirOgrenciId || a.ogrenci_id === seciliBireBirOgrenciId))
       .map((a) => {
         const og = ogretmenler.find((o) => o.id === a.ogretmen_profile_id)
         return {
@@ -2223,13 +2276,20 @@ export default function DersProgrami() {
           ogrenci_adi: a.ogrenciler?.ad_soyad || ogrenciAdMap.get(a.ogrenci_id) || 'Bilinmeyen öğrenci',
         }
       })
-  }, [isYonetici, bireBirAtamalar, ogretmenler, ogrenciAdMap])
+  }, [isYonetici, bireBirAtamalar, ogretmenler, ogrenciAdMap, seciliBireBirOgrenciId])
 
   const tumBireBirTekSeferlik = useMemo(() => {
     if (!isYonetici) return []
-    const bugun = yerelBugunTarihi()
+    const { pazartesi, pazar } = bireBirHaftaSinirlari
     return (bireBirYoklamalar || [])
-      .filter((y) => !y.atama_id && y.ogrenci_id && y.tarih >= bugun)
+      .filter(
+        (y) =>
+          !y.atama_id &&
+          y.ogrenci_id &&
+          y.tarih >= pazartesi &&
+          y.tarih <= pazar &&
+          (!seciliBireBirOgrenciId || y.ogrenci_id === seciliBireBirOgrenciId)
+      )
       .map((y) => {
         const og = ogretmenler.find((o) => o.id === y.ogretmen_profile_id)
         return {
@@ -2243,11 +2303,11 @@ export default function DersProgrami() {
         (x, y) =>
           (x.tarih || '').localeCompare(y.tarih || '') || (x.baslangic_saat || '').localeCompare(y.baslangic_saat || '')
       )
-  }, [isYonetici, bireBirYoklamalar, ogretmenler, ogrenciAdMap])
+  }, [isYonetici, bireBirYoklamalar, ogretmenler, ogrenciAdMap, bireBirHaftaSinirlari, seciliBireBirOgrenciId])
 
-  // "Bire bir alan öğrenci" sayısı — haftalık atama VEYA yaklaşan tekil ders
-  // sahibi olan öğrencilerin tekrarsız (unique) toplamı, sekme başlığındaki
-  // özet cümle için.
+  // "Bire bir alan öğrenci" sayısı — SEÇİLİ HAFTADA haftalık atama VEYA o
+  // haftaki tekil ders sahibi olan öğrencilerin tekrarsız (unique) toplamı,
+  // sekme başlığındaki özet cümle için.
   const bireBirOgrenciSayisi = useMemo(() => {
     const idler = new Set()
     tumBireBirHaftalik.forEach((d) => idler.add(d.ogrenci_id))
@@ -2776,21 +2836,78 @@ export default function DersProgrami() {
           {yonetimGorunum === 'birebir_ogrenciler' && (
             <>
               {/* Tüm kayıtlı öğrenciler değil — sadece o an bire bir dersi
-                  (haftalık sabit atama ya da yaklaşan tek seferlik) OLAN
-                  öğrenciler, aynı veli/öğrenci tarafında kullanılan
+                  (haftalık sabit atama ya da seçili haftadaki tek seferlik)
+                  OLAN öğrenciler, aynı veli/öğrenci tarafında kullanılan
                   BireBirDerslerimBolumu görünümüyle (gün gün, kart üstünde
-                  öğrenci adı etiketli). */}
-              <div className="bg-white rounded-2xl border border-gray-100 shadow-sm px-4 py-3 mb-4 text-sm text-gray-600">
-                {bireBirOgrenciSayisi === 0 ? (
-                  <>Şu an bire bir dersi olan öğrenci yok.</>
-                ) : (
-                  <>
-                    Şu an <strong className="text-navy">{bireBirOgrenciSayisi}</strong> öğrencinin bire bir dersi var
-                    (tüm kayıtlı öğrenciler değil, sadece bire bir alanlar).
-                  </>
-                )}
+                  öğrenci adı etiketli). Kullanıcı isteğiyle: tek bir öğrenci
+                  seçip SADECE seçtiği haftanın (Pazartesi-Pazar) derslerini
+                  filtreleyebiliyor (aşağıdaki öğrenci/hafta seçiciler). */}
+              <div className="bg-white rounded-2xl border border-gray-100 shadow-sm px-4 py-3 mb-4 flex flex-wrap items-center gap-4">
+                <div className="flex items-center gap-2">
+                  <label className="text-sm text-gray-500 whitespace-nowrap">Öğrenci:</label>
+                  <select
+                    value={seciliBireBirOgrenciId}
+                    onChange={(e) => setSeciliBireBirOgrenciId(e.target.value)}
+                    className="px-2 py-1.5 border border-gray-200 rounded-lg text-sm max-w-[220px]"
+                  >
+                    <option value="">Tüm bire bir öğrencileri</option>
+                    {bireBirOgrenciListesi.map((o) => (
+                      <option key={o.id} value={o.id}>
+                        {o.ad}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setBireBirHaftaOfseti((o) => o - 1)}
+                    className="px-2 py-1.5 rounded-lg text-sm text-gray-500 hover:bg-gray-100"
+                  >
+                    ◀
+                  </button>
+                  <span className="text-sm font-medium text-navy whitespace-nowrap">{bireBirHaftaEtiketi}</span>
+                  <button
+                    type="button"
+                    onClick={() => setBireBirHaftaOfseti((o) => o + 1)}
+                    className="px-2 py-1.5 rounded-lg text-sm text-gray-500 hover:bg-gray-100"
+                  >
+                    ▶
+                  </button>
+                  {bireBirHaftaOfseti !== 0 && (
+                    <button
+                      type="button"
+                      onClick={() => setBireBirHaftaOfseti(0)}
+                      className="text-xs text-gray-400 hover:text-navy underline whitespace-nowrap"
+                    >
+                      Bu hafta
+                    </button>
+                  )}
+                </div>
               </div>
-              {bireBirOgrenciSayisi === 0 ? (
+
+              {(() => {
+                const kayitYok = tumBireBirHaftalik.length === 0 && tumBireBirTekSeferlik.length === 0
+                return (
+                  <div className="bg-white rounded-2xl border border-gray-100 shadow-sm px-4 py-3 mb-4 text-sm text-gray-600">
+                    {seciliBireBirOgrenciAdi ? (
+                      <>
+                        <strong className="text-navy">{seciliBireBirOgrenciAdi}</strong>'nin {bireBirHaftaEtiketi} haftası
+                        {kayitYok ? ' arasında bire bir dersi bulunmuyor.' : ' arasındaki bire bir dersleri aşağıda.'}
+                      </>
+                    ) : kayitYok ? (
+                      <>{bireBirHaftaEtiketi} haftasında hiçbir öğrencinin bire bir dersi yok.</>
+                    ) : (
+                      <>
+                        {bireBirHaftaEtiketi} haftasında <strong className="text-navy">{bireBirOgrenciSayisi}</strong>{' '}
+                        öğrencinin bire bir dersi var (tüm kayıtlı öğrenciler değil, sadece bire bir alanlar).
+                      </>
+                    )}
+                  </div>
+                )
+              })()}
+
+              {tumBireBirHaftalik.length === 0 && tumBireBirTekSeferlik.length === 0 ? (
                 <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6">
                   <p className="text-gray-400">Görüntülenecek bire bir dersi bulunamadı.</p>
                 </div>
@@ -2798,7 +2915,7 @@ export default function DersProgrami() {
                 <BireBirDerslerimBolumu
                   haftalikDersler={tumBireBirHaftalik}
                   tekSeferlikDersler={tumBireBirTekSeferlik}
-                  birdenFazlaCocukMu={true}
+                  birdenFazlaCocukMu={!seciliBireBirOgrenciId}
                 />
               )}
             </>
