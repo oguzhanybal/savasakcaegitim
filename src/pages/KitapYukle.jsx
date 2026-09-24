@@ -19,7 +19,7 @@
 // (bkz. src/lib/kitapPdf.js) — bu yüzden kaç soru kesildiğinin Storage
 // kullanımına HİÇBİR etkisi yoktur, sadece kitapların kendisi yer kaplar.
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { supabase } from '../lib/supabase'
+import { supabase, tumSatirlariGetir } from '../lib/supabase'
 import { useAuth } from '../lib/AuthContext'
 import { KONU_DERSLERI } from '../lib/konuDersleri'
 import {
@@ -1122,9 +1122,12 @@ function TestOlusturSekmesi({ initialSeciliSorular, onInitialSeciliSorularTuketi
   const [sinifOgrenciMap, setSinifOgrenciMap] = useState({})
 
   useEffect(() => {
-    supabase
-      .from('kitap_sorulari')
-      .select('*, kitaplar(id, ad, ders_adi, pdf_yolu, drive_dosya_id, olcek)')
+    // 1000 satır önlemi (bkz. lib/supabase.js → tumSatirlariGetir) — kitap
+    // sayısı arttıkça bu tablo da filtresiz .select() ile sessizce kesilebilir,
+    // baştan sayfalanarak çekiliyor.
+    tumSatirlariGetir(() =>
+      supabase.from('kitap_sorulari').select('*, kitaplar(id, ad, ders_adi, pdf_yolu, drive_dosya_id, olcek)')
+    )
       .then(({ data, error }) => {
         if (error) throw error
         setTumSorular(data || [])

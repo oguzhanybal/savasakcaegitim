@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useAuth } from '../lib/AuthContext'
-import { supabase } from '../lib/supabase'
+import { supabase, tumSatirlariGetir } from '../lib/supabase'
 
 function bugunTarihi() {
   const n = new Date()
@@ -26,14 +26,13 @@ export default function Hatirlatmalar() {
 
   function yukle() {
     setLoading(true)
-    supabase
-      .from('hatirlatmalar')
-      .select('*')
-      .order('tarih', { ascending: true })
-      .then(({ data }) => {
+    // 1000 satır önlemi (bkz. lib/supabase.js → tumSatirlariGetir).
+    tumSatirlariGetir(() => supabase.from('hatirlatmalar').select('*').order('tarih', { ascending: true })).then(
+      ({ data }) => {
         setListe(data || [])
         setLoading(false)
-      })
+      }
+    )
   }
 
   useEffect(() => {

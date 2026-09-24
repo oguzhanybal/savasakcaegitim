@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useAuth } from '../lib/AuthContext'
-import { supabase } from '../lib/supabase'
+import { supabase, tumSatirlariGetir } from '../lib/supabase'
 
 const HEDEF_ETIKETLERI = {
   ogrenci: 'Öğrenci',
@@ -181,7 +181,8 @@ export default function Duyurular() {
   function yukle() {
     setLoading(true)
     Promise.all([
-      supabase.from('duyurular').select('*').order('created_at', { ascending: false }),
+      // 1000 satır önlemi (bkz. lib/supabase.js → tumSatirlariGetir).
+      tumSatirlariGetir(() => supabase.from('duyurular').select('*').order('created_at', { ascending: false })),
       supabase.from('siniflar').select('id, ad').order('ad'),
       supabase.from('ogrenciler').select('id, ad_soyad').or('durum.eq.aktif,durum.is.null').order('ad_soyad'),
       supabase.from('profiles').select('id, ad_soyad').eq('rol', 'ogretmen').order('ad_soyad'),

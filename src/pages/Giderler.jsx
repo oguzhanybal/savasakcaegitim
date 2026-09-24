@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useAuth } from '../lib/AuthContext'
-import { supabase } from '../lib/supabase'
+import { supabase, tumSatirlariGetir } from '../lib/supabase'
 import { paraFormat } from '../lib/ekstreHesap'
 
 // Sabit bir kategori listesi öneriliyor ama serbest metin de girilebiliyor
@@ -47,14 +47,15 @@ export default function Giderler() {
 
   function yukle() {
     setLoading(true)
-    supabase
-      .from('giderler')
-      .select('*')
-      .order('tarih', { ascending: false })
-      .then(({ data }) => {
+    // 1000 satır önlemi (bkz. lib/supabase.js → tumSatirlariGetir) — bu tablo
+    // şu an uzak olsa da, filtresiz .select('*') tek seferde en fazla 1000 satır
+    // döndürdüğü için baştan sayfalanarak çekiliyor.
+    tumSatirlariGetir(() => supabase.from('giderler').select('*').order('tarih', { ascending: false })).then(
+      ({ data }) => {
         setGiderler(data || [])
         setLoading(false)
-      })
+      }
+    )
   }
 
   useEffect(() => {

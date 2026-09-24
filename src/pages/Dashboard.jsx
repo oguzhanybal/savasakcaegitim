@@ -62,10 +62,8 @@ function DuyurularBolumu({ profile }) {
     if (!profile) return
     const bugun = new Date().toISOString().slice(0, 10)
 
-    supabase
-      .from('duyurular')
-      .select('*')
-      .order('created_at', { ascending: false })
+    // 1000 satır önlemi (bkz. lib/supabase.js → tumSatirlariGetir).
+    tumSatirlariGetir(() => supabase.from('duyurular').select('*').order('created_at', { ascending: false }))
       .then(({ data }) => {
         const tumDuyurular = (data || []).filter((d) => !(d.bitis_tarihi && d.bitis_tarihi < bugun))
         const rolDuyurular = tumDuyurular.filter((d) => d.hedef_tur !== 'ozel')

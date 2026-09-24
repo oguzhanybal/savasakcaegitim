@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { supabase } from '../lib/supabase'
+import { supabase, tumSatirlariGetir } from '../lib/supabase'
 import { useAuth } from '../lib/AuthContext'
 
 // Karnede dersler HANGİ SIRAYLA görünsün — sinav_ders_sonuclari tablosu
@@ -52,9 +52,16 @@ function normalizeDers(s) {
 async function ogretmenIcinUygunOgrenciIdleriGetir(izinliDersler) {
   const izinliSet = new Set((izinliDersler || []).map((d) => normalizeDers(d)))
   if (izinliSet.size === 0) return new Set()
-  const { data: sonuclarHam } = await supabase
-    .from('ogrenci_sinav_sonuclari')
-    .select('id, ogrenci_id, sinav_id, kitapcik, toplam_yanlis, toplam_bos')
+  // 1000 satır sınırı notu: bu sorgu okulun TÜM sınav sonuçlarını (öğretmenin
+  // branşıyla ilgisiz olanlar dahil) filtresiz çekip ANCAK SONRASINDA istemci
+  // tarafında süzüyor — filtre sorgudan SONRA uygulandığı için, tablo 1000
+  // satırı geçtiğinde Supabase'in sessiz kesmesi bu süzmeden önce olurdu (bkz.
+  // lib/supabase.js → tumSatirlariGetir; aynı hata ders_programi/bire_bir_yoklama'da
+  // yaşandı). Şu an güvenli sayıda olsa da (bkz. kullanıcıyla kontrol edilen
+  // sayım) ileride aşmasın diye baştan sayfalanarak çekiliyor.
+  const { data: sonuclarHam } = await tumSatirlariGetir(() =>
+    supabase.from('ogrenci_sinav_sonuclari').select('id, ogrenci_id, sinav_id, kitapcik, toplam_yanlis, toplam_bos')
+  )
   const adaylar = (sonuclarHam || []).filter((s) => (s.toplam_yanlis || 0) + (s.toplam_bos || 0) > 0)
   if (adaylar.length === 0) return new Set()
 
