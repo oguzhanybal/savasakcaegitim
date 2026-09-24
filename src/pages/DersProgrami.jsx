@@ -1619,6 +1619,79 @@ function BireBirDerslerimBolumu({ haftalikDersler, tekSeferlikDersler, birdenFaz
   )
 }
 
+// Yönetici için "Bire Bir Öğrenciler" sekmesinin TABLO görünümü — kullanıcı
+// isteğiyle eklendi: liste görünümünün ("BireBirDerslerimBolumu" yukarıda)
+// yanına, satırda öğrenci sütunda gün (seçili haftanın gerçek tarihleriyle)
+// olan klasik bir zaman çizelgesi tablosu. "satirlar" DersProgrami()
+// içindeki bireBirTabloSatirlari useMemo'sundan gelir: her satır
+// {ogrenciId, ad, gunler: [[ders,ders,...] x7]} şeklinde — gunler[0] =
+// Pazartesi ... gunler[6] = Pazar, her biri o gün o öğrencinin (haftalık
+// tekrarlanan + o haftaki tekil) derslerinin listesi.
+function BireBirOgrencilerTablosu({ satirlar, gunTarihleri }) {
+  if (!satirlar || satirlar.length === 0) return null
+  return (
+    <div
+      className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-x-auto overscroll-x-contain"
+      style={{ touchAction: 'pan-x pan-y' }}
+    >
+      <table className="border-collapse text-xs w-full min-w-[760px]">
+        <thead>
+          <tr>
+            <th className="sticky left-0 z-10 bg-gray-50 px-3 py-2 text-left font-semibold text-gray-600 border-b border-gray-100 whitespace-nowrap">
+              Öğrenci
+            </th>
+            {GUNLER.slice(1).map((gunAdi, i) => (
+              <th
+                key={gunAdi}
+                className="px-2 py-2 text-center font-semibold text-gray-600 border-b border-l border-gray-100 whitespace-nowrap min-w-[110px]"
+              >
+                <div>{gunAdi}</div>
+                <div className="text-[10px] font-normal text-gray-400">
+                  {new Date(gunTarihleri[i] + 'T12:00:00').toLocaleDateString('tr-TR', { day: '2-digit', month: '2-digit' })}
+                </div>
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {satirlar.map((satir, i) => (
+            <tr key={satir.ogrenciId} className={i % 2 ? 'bg-gray-50/60' : ''}>
+              <td className="sticky left-0 z-10 bg-white px-3 py-1.5 font-semibold text-gray-700 border-t border-gray-100 whitespace-nowrap">
+                {satir.ad}
+              </td>
+              {satir.gunler.map((dersler, gunIdx) => (
+                <td key={gunIdx} className="px-1.5 py-1.5 border-t border-l border-gray-100 align-top">
+                  {dersler.length === 0 ? (
+                    <div className="h-full min-h-[28px]" />
+                  ) : (
+                    <div className="space-y-1">
+                      {dersler.map((d) => (
+                        <div
+                          key={d.id}
+                          className="rounded-lg px-2 py-1 border-l-4 leading-tight"
+                          style={{ backgroundColor: '#fed7aa', color: '#431407', borderLeftColor: '#c2410c' }}
+                        >
+                          <p className="font-semibold whitespace-nowrap">
+                            {saatGoster(d.baslangic)}–{saatGoster(d.bitis)}
+                          </p>
+                          <p className="text-[11px] whitespace-nowrap">
+                            {d.ogretmen_adi || '—'}
+                            {d.ogretmen_brans && <span className="opacity-70"> ({d.ogretmen_brans})</span>}
+                          </p>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </td>
+              ))}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  )
+}
+
 export default function DersProgrami() {
   const { profile } = useAuth()
   const isYonetici = profile?.rol === 'yonetici'
@@ -1708,6 +1781,10 @@ export default function DersProgrami() {
   // 1 = sonraki hafta, vs. (◀/▶ ile değişir).
   const [seciliBireBirOgrenciId, setSeciliBireBirOgrenciId] = useState('')
   const [bireBirHaftaOfseti, setBireBirHaftaOfseti] = useState(0)
+  // "Liste" (BireBirDerslerimBolumu ile aynı, gün gün kart görünümü) ile
+  // "Tablo" (öğrenci satır, gün sütun — bkz. bireBirTabloSatirlari) arasında
+  // geçiş — kullanıcı isteğiyle eklendi.
+  const [bireBirGorunum, setBireBirGorunum] = useState('liste')
   // Tıklanan hücreyi tablo üzerinde koyu işaretlemek için — ders eklenene/
   // taslağa kaydedilene kadar kullanıcı "hangi saate ekliyordum" diye
   // unutmasın diye. dersEklendiVeyaTaslaklandi() içinde temizlenir.
@@ -2315,6 +2392,63 @@ export default function DersProgrami() {
     return idler.size
   }, [tumBireBirHaftalik, tumBireBirTekSeferlik])
 
+  // Seçili haftanın Pazartesi'den Pazar'a 7 gerçek tarihi (gün no 1-7 -> index
+  // 0-6) — hem tablo başlıklarında ("Pazartesi 21 Eylül" gibi) hem de tekil
+  // (tarihli) derslerin hangi gün sütununa düşeceğini bulmak için kullanılıyor.
+  const bireBirHaftaGunTarihleri = useMemo(
+    () => Array.from({ length: 7 }, (_, i) => gunEkle(bireBirHaftaSinirlari.pazartesi, i)),
+    [bireBirHaftaSinirlari]
+  )
+
+  // "Bire Bir Öğrenciler" sekmesindeki TABLO görünümü için — kullanıcı
+  // isteğiyle eklendi: liste görünümünün yanına, her öğrencinin SEÇİLİ
+  // HAFTADA (Pazartesi-Pazar) hangi gün hangi dersi olduğunu tek bakışta
+  // gösteren bir tablo. Satır: öğrenci, sütun: gün (o haftanın gerçek
+  // tarihiyle). Hem haftalık (her hafta tekrarlanan, d.gun'a göre) hem tekil
+  // (o haftaki gerçek tarihe göre) dersler AYNI hücrede birleştiriliyor —
+  // öğretmene göre değil öğrenciye göre baktığı için, aynı öğrencinin aynı
+  // gün birden fazla dersi varsa (nadir ama mümkün) hücrede alt alta listelenir.
+  const bireBirTabloSatirlari = useMemo(() => {
+    const ogrenciMap = new Map() // ogrenci_id -> { ad, gunler: [[],[],[],[],[],[],[]] }
+    function kaydiBul(ogrenciId, ad) {
+      if (!ogrenciMap.has(ogrenciId)) {
+        ogrenciMap.set(ogrenciId, { ad, gunler: Array.from({ length: 7 }, () => []) })
+      }
+      return ogrenciMap.get(ogrenciId)
+    }
+    tumBireBirHaftalik.forEach((d) => {
+      const idx = (d.gun || 1) - 1
+      if (idx < 0 || idx > 6) return
+      const kayit = kaydiBul(d.ogrenci_id, d.ogrenci_adi)
+      kayit.gunler[idx].push({
+        id: d.id,
+        ogretmen_adi: d.ogretmen_adi,
+        ogretmen_brans: d.ogretmen_brans,
+        baslangic: d.baslangic_saat,
+        bitis: d.bitis_saat,
+      })
+    })
+    tumBireBirTekSeferlik.forEach((y) => {
+      const idx = bireBirHaftaGunTarihleri.indexOf(y.tarih)
+      if (idx === -1) return
+      const kayit = kaydiBul(y.ogrenci_id, y.ogrenci_adi)
+      kayit.gunler[idx].push({
+        id: y.id,
+        ogretmen_adi: y.ogretmen_adi,
+        ogretmen_brans: y.ogretmen_brans,
+        baslangic: y.baslangic_saat,
+        bitis: y.bitis_saat,
+      })
+    })
+    // Her gün hücresinin içindeki dersleri saate göre sırala.
+    ogrenciMap.forEach((kayit) => {
+      kayit.gunler.forEach((liste) => liste.sort((a, b) => (a.baslangic || '').localeCompare(b.baslangic || '')))
+    })
+    return Array.from(ogrenciMap.entries())
+      .map(([ogrenciId, v]) => ({ ogrenciId, ad: v.ad, gunler: v.gunler }))
+      .sort((a, b) => (a.ad || '').localeCompare(b.ad || '', 'tr'))
+  }, [tumBireBirHaftalik, tumBireBirTekSeferlik, bireBirHaftaGunTarihleri])
+
   // Plan adı kutusundaki öneriler — şu an var olan (silinmemiş) tüm isimli
   // planlar, aktifPlanAdi'yla eşleşenlere göre filtrelenmiş. Muhasebe.jsx'teki
   // Öğrenci Seç kutusuyla aynı mantık, native datalist yerine.
@@ -2637,42 +2771,57 @@ export default function DersProgrami() {
 
       {isYonetici && (
         <>
-          <div className="flex bg-white border border-gray-200 rounded-lg overflow-hidden text-sm mb-4 w-fit">
-            <button
-              type="button"
-              onClick={() => setYonetimGorunum('ekle')}
-              className={`px-3 py-1.5 font-medium transition-colors ${yonetimGorunum === 'ekle' ? 'bg-navy text-white' : 'text-gray-600 hover:bg-gray-50'}`}
-            >
-              Ders Ekleme Aracı
-            </button>
-            <button
-              type="button"
-              onClick={() => setYonetimGorunum('gunluk')}
-              className={`px-3 py-1.5 font-medium transition-colors ${yonetimGorunum === 'gunluk' ? 'bg-navy text-white' : 'text-gray-600 hover:bg-gray-50'}`}
-            >
-              Günlük Program Listesi
-            </button>
-            <button
-              type="button"
-              onClick={() => setYonetimGorunum('haftalik')}
-              className={`px-3 py-1.5 font-medium transition-colors ${yonetimGorunum === 'haftalik' ? 'bg-navy text-white' : 'text-gray-600 hover:bg-gray-50'}`}
-            >
-              Haftalık Program
-            </button>
-            <button
-              type="button"
-              onClick={() => setYonetimGorunum('sinif')}
-              className={`px-3 py-1.5 font-medium transition-colors ${yonetimGorunum === 'sinif' ? 'bg-navy text-white' : 'text-gray-600 hover:bg-gray-50'}`}
-            >
-              Sınıf Bazlı Program
-            </button>
-            <button
-              type="button"
-              onClick={() => setYonetimGorunum('birebir_ogrenciler')}
-              className={`px-3 py-1.5 font-medium transition-colors ${yonetimGorunum === 'birebir_ogrenciler' ? 'bg-navy text-white' : 'text-gray-600 hover:bg-gray-50'}`}
-            >
-              Bire Bir Öğrenciler
-            </button>
+          {/* ÖNEMLİ (kullanıcı isteğiyle düzeltildi — mobilde): bu sekme çubuğu
+              eskiden "overflow-hidden w-fit" idi — masaüstünde 5 sekme yan
+              yana rahatça sığıyordu ama DAR (mobil) ekranlarda toplam
+              genişlik ekrandan taştığında "overflow-hidden" taşan kısmı
+              (en sağdaki "Bire Bir Öğrenciler" sekmesi) basitçe KIRPIP
+              gizliyordu — kaydırma imkanı da yoktu, o sekmeye mobilde hiç
+              tıklanamıyordu. Artık dıştaki sarmalayıcı "overflow-x-auto" ile
+              yatay kaydırılabiliyor, düğmeler "shrink-0 whitespace-nowrap"
+              ile sıkışıp metni bölmüyor — dar ekranda parmakla sağa
+              kaydırarak "Bire Bir Öğrenciler"e ulaşılabiliyor. */}
+          <div
+            className="overflow-x-auto mb-4 -mx-4 px-4 sm:mx-0 sm:px-0"
+            style={{ touchAction: 'pan-x pan-y' }}
+          >
+            <div className="flex flex-nowrap bg-white border border-gray-200 rounded-lg overflow-hidden text-sm w-fit">
+              <button
+                type="button"
+                onClick={() => setYonetimGorunum('ekle')}
+                className={`shrink-0 whitespace-nowrap px-3 py-1.5 font-medium transition-colors ${yonetimGorunum === 'ekle' ? 'bg-navy text-white' : 'text-gray-600 hover:bg-gray-50'}`}
+              >
+                Ders Ekleme Aracı
+              </button>
+              <button
+                type="button"
+                onClick={() => setYonetimGorunum('gunluk')}
+                className={`shrink-0 whitespace-nowrap px-3 py-1.5 font-medium transition-colors ${yonetimGorunum === 'gunluk' ? 'bg-navy text-white' : 'text-gray-600 hover:bg-gray-50'}`}
+              >
+                Günlük Program Listesi
+              </button>
+              <button
+                type="button"
+                onClick={() => setYonetimGorunum('haftalik')}
+                className={`shrink-0 whitespace-nowrap px-3 py-1.5 font-medium transition-colors ${yonetimGorunum === 'haftalik' ? 'bg-navy text-white' : 'text-gray-600 hover:bg-gray-50'}`}
+              >
+                Haftalık Program
+              </button>
+              <button
+                type="button"
+                onClick={() => setYonetimGorunum('sinif')}
+                className={`shrink-0 whitespace-nowrap px-3 py-1.5 font-medium transition-colors ${yonetimGorunum === 'sinif' ? 'bg-navy text-white' : 'text-gray-600 hover:bg-gray-50'}`}
+              >
+                Sınıf Bazlı Program
+              </button>
+              <button
+                type="button"
+                onClick={() => setYonetimGorunum('birebir_ogrenciler')}
+                className={`shrink-0 whitespace-nowrap px-3 py-1.5 font-medium transition-colors ${yonetimGorunum === 'birebir_ogrenciler' ? 'bg-navy text-white' : 'text-gray-600 hover:bg-gray-50'}`}
+              >
+                Bire Bir Öğrenciler
+              </button>
+            </div>
           </div>
 
           {yonetimGorunum === 'ekle' && (
@@ -2884,6 +3033,29 @@ export default function DersProgrami() {
                     </button>
                   )}
                 </div>
+                {/* Kullanıcı isteğiyle eklendi: liste görünümünün yanına,
+                    öğrencilerin o haftaki programını satır/sütun bir TABLO
+                    olarak da gösteren bir seçenek (bkz. bireBirTabloSatirlari). */}
+                <div className="inline-flex rounded-lg border border-gray-200 overflow-hidden shrink-0">
+                  <button
+                    type="button"
+                    onClick={() => setBireBirGorunum('liste')}
+                    className={`px-3 py-1.5 text-xs font-semibold transition-colors ${
+                      bireBirGorunum === 'liste' ? 'bg-navy text-white' : 'bg-white text-gray-600 hover:bg-gray-50'
+                    }`}
+                  >
+                    Liste
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setBireBirGorunum('tablo')}
+                    className={`px-3 py-1.5 text-xs font-semibold transition-colors ${
+                      bireBirGorunum === 'tablo' ? 'bg-navy text-white' : 'bg-white text-gray-600 hover:bg-gray-50'
+                    }`}
+                  >
+                    Tablo
+                  </button>
+                </div>
               </div>
 
               {(() => {
@@ -2911,6 +3083,8 @@ export default function DersProgrami() {
                 <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6">
                   <p className="text-gray-400">Görüntülenecek bire bir dersi bulunamadı.</p>
                 </div>
+              ) : bireBirGorunum === 'tablo' ? (
+                <BireBirOgrencilerTablosu satirlar={bireBirTabloSatirlari} gunTarihleri={bireBirHaftaGunTarihleri} />
               ) : (
                 <BireBirDerslerimBolumu
                   haftalikDersler={tumBireBirHaftalik}
