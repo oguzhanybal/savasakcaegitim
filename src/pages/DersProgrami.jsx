@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { supabase } from '../lib/supabase'
+import { supabase, tumSatirlariGetir } from '../lib/supabase'
 import { useAuth } from '../lib/AuthContext'
 import { ilkHarfleriBuyukYap } from '../lib/adSoyadFormat'
 import { useTaslakModu } from '../lib/taslakModu'
@@ -1864,7 +1864,11 @@ export default function DersProgrami() {
       // Günlük Müsaitlik tablosunda sınıf derslerinin yanında bire bir dersleri de
       // gösterebilmek için (öğretmen tam olarak boş mu, doluysa neyle dolu).
       isYonetici ? supabase.from('bire_bir_atamalari').select('*, ogrenciler(ad_soyad)') : Promise.resolve({ data: [] }),
-      isYonetici ? supabase.from('bire_bir_yoklama').select('*') : Promise.resolve({ data: [] }),
+      // ÖNEMLİ HATA DÜZELTMESİ: az yukarıdaki ders_programi sorgusunda
+      // yaşanan AYNI 1000-satır-sessiz-kesilme hatası bu tabloda da mümkündü
+      // (bire_bir_yoklama, her bire bir/soru çözümü yoklamasında büyüyen bir
+      // günlük tablosu) — tumSatirlariGetir ile sayfalanarak düzeltildi.
+      isYonetici ? tumSatirlariGetir(() => supabase.from('bire_bir_yoklama').select('*')) : Promise.resolve({ data: [] }),
       isYonetici ? supabase.from('ogrenciler').select('id, ad_soyad') : Promise.resolve({ data: [] }),
       // Öğrencinin hangi sınıf(lar)a kayıtlı olduğu — bkz. yukarıdaki
       // sinifOgrencileri state açıklaması. ÖNCEDEN sadece yönetici için
@@ -1891,7 +1895,11 @@ export default function DersProgrami() {
       // tablosunun bunları da "dolu (taslak)" olarak gösterebilmesi için TÜM
       // türler burada tutulmalı. "Taslaklarım" listesi (TaslaklarimDersProgrami)
       // yine de sadece 'sinif' olanları gösterir — aşağıda ayrıca filtrelenir.
-      isYonetici ? supabase.from('taslaklar').select('*').order('created_at') : Promise.resolve({ data: [] }),
+      // Aynı 1000 satır riski taslaklar için de geçerli (bkz. yukarıdaki
+      // bire_bir_yoklama notu) — tumSatirlariGetir ile sayfalanarak çekiliyor.
+      isYonetici
+        ? tumSatirlariGetir(() => supabase.from('taslaklar').select('*').order('created_at'))
+        : Promise.resolve({ data: [] }),
     ]).then(([p, s, og, ba, by, o, so, kendiCocuklarSonuc, t]) => {
       setTaslaklar(t.data || [])
       setSinifOgrencileri(so.data || [])

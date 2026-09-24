@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { supabase } from '../lib/supabase'
+import { supabase, tumSatirlariGetir } from '../lib/supabase'
 import { useAuth } from '../lib/AuthContext'
 import { useTaslakModu } from '../lib/taslakModu'
 import { saatGoster } from '../lib/saatFormat'
@@ -1801,7 +1801,16 @@ function YoklamaSatiri({ atama, yoklamalar, onDegisti, ucretGorunur }) {
           >
             Gelmedi
           </button>
-          {mevcutKayit && (
+          {/* ÖNEMLİ (kullanıcı isteğiyle eklendi): "Kaydı Sil" öncesinde HERKESE
+              (öğretmen dahil) açıktı — öğretmen kendi yanlış aldığı bir
+              yoklamayı kendisi silebiliyordu. Kullanıcı bunu istemedi: yanlış
+              alınan bir yoklamanın silinmesi SADECE yöneticinin yetkisinde
+              olsun istedi. Bu yüzden artık "ucretGorunur" (üst bileşenden
+              isYonetici olarak geliyor — bkz. sayfanın en altındaki
+              <YoklamaSatiri ucretGorunur={isYonetici} .../> çağrısı) true
+              değilse bu buton hiç render edilmiyor; öğretmen sadece
+              Geldi/Gelmedi işaretleyebiliyor, kaydı tamamen silemiyor. */}
+          {mevcutKayit && ucretGorunur && (
             <button
               onClick={kaydiSil}
               disabled={gonderiliyor}
@@ -2616,9 +2625,21 @@ export default function BireBir() {
       // birlikte çekiyoruz (atamalardaki gibi) — çünkü öğretmen rolünde tam
       // öğrenci/öğretmen listesi hiç çekilmiyor (yukarıdaki iki satır sadece
       // yönetici için), o zaman isim haritaları boş kalıp "—" görünürdü.
-      supabase
-        .from('bire_bir_yoklama')
-        .select('*, ogrenciler(ad_soyad, telefon, anne_telefon, baba_telefon), profiles:ogretmen_profile_id(ad_soyad, brans)'),
+      // ÖNEMLİ HATA DÜZELTMESİ: bu sorgu bire_bir_yoklama'nın TÜM satırlarını
+      // (okulun tüm geçmişi boyunca alınan her bire bir/soru çözümü yoklaması)
+      // filtresiz çekiyordu — Supabase/PostgREST sayfalanmamış bir sorguda tek
+      // seferde en fazla 1000 satır döndürdüğü, aştığında da hatasız ama
+      // SESSİZCE KESİLMİŞ veri verdiği için (bkz. lib/supabase.js →
+      // tumSatirlariGetir, ve aynı hatanın ders_programi'nde yol açtığı
+      // "sınıf dersleri bazen görünmüyor" şikayeti), bu tablo da kolayca
+      // 1000'i geçip Müsaitlik Tablosu'nda bazı geçmiş/uzak tarihli kayıtların
+      // sessizce eksik görünmesine yol açabiliyordu. Artık tumSatirlariGetir
+      // ile sayfalanarak eksiksiz çekiliyor.
+      tumSatirlariGetir(() =>
+        supabase
+          .from('bire_bir_yoklama')
+          .select('*, ogrenciler(ad_soyad, telefon, anne_telefon, baba_telefon), profiles:ogretmen_profile_id(ad_soyad, brans)')
+      ),
       // ÖNCEDEN sadece bire bir/soru çözümü türleri çekiliyordu — ama 'sinif'
       // taslakları da (Ders Programı sayfasından, Taslak Modu açıkken
       // eklenmiş olabilir) Günlük Müsaitlik tablosunda "dolu (taslak)" olarak
@@ -2626,7 +2647,12 @@ export default function BireBir() {
       // listesi (TaslaklarimBireBir) yine de 'sinif' olanları HARİÇ tutarak
       // gösterilir — aşağıda ayrıca filtrelenir (o liste sadece bire bir/soru
       // çözümü yayınlama mantığını biliyor).
-      isYonetici ? supabase.from('taslaklar').select('*').order('created_at') : Promise.resolve({ data: [] }),
+      // Aynı 1000 satır riski taslaklar için de geçerli olduğundan (uzun
+      // süredir yayınlanmamış/silinmemiş taslaklar birikebilir) burada da
+      // tumSatirlariGetir kullanılıyor.
+      isYonetici
+        ? tumSatirlariGetir(() => supabase.from('taslaklar').select('*').order('created_at'))
+        : Promise.resolve({ data: [] }),
     ]).then(([o, og, dp, so, a, y, t]) => {
       setOgrenciler(o.data || [])
       setOgretmenler(og.data || [])

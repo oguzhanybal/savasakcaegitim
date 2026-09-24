@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { supabase } from '../lib/supabase'
+import { supabase, tumSatirlariGetir } from '../lib/supabase'
 import { useAuth } from '../lib/AuthContext'
 import {
   odevBildirimMesajiOlustur,
@@ -1680,11 +1680,21 @@ export default function Odev() {
       isYonetici || isOgretmen
         ? supabase.from('siniflar').select('id, ad').eq('egitim_yili', AKTIF_EGITIM_YILI).order('ad')
         : Promise.resolve({ data: [] }),
+      // ÖNEMLİ HATA DÜZELTMESİ: yönetici görünümü okuldaki TÜM öğrencilerin
+      // TÜM ödevlerini filtresiz çekiyordu — Supabase/PostgREST'in sayfalanmamış
+      // sorgularda tek seferde en fazla 1000 satır döndürdüğü, aştığında da
+      // hatasız ama SESSİZCE KESİLMİŞ veri verdiği düşünülürse (bkz.
+      // lib/supabase.js → tumSatirlariGetir; ders_programi/bire_bir_yoklama'da
+      // yaşanan aynı hata), bu tablo şu an ~450 satırda olsa da okul yılı
+      // ilerledikçe kolayca 1000'i geçebilir. Önceden tumSatirlariGetir ile
+      // sayfalanarak çekiliyor.
       isYonetici
-        ? supabase
-            .from('odevler')
-            .select('*, ogrenciler(ad_soyad), profiles:ogretmen_profile_id(ad_soyad)')
-            .order('olusturma_tarihi', { ascending: false })
+        ? tumSatirlariGetir(() =>
+            supabase
+              .from('odevler')
+              .select('*, ogrenciler(ad_soyad), profiles:ogretmen_profile_id(ad_soyad)')
+              .order('olusturma_tarihi', { ascending: false })
+          )
         : isOgretmen
         ? supabase
             .from('odevler')

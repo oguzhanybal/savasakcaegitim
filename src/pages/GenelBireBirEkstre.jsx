@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { supabase } from '../lib/supabase'
+import { supabase, tumSatirlariGetir } from '../lib/supabase'
 import BireBirDersDokumu from '../components/BireBirDersDokumu'
 import { paraFormat, bireBirDersDetaylariOlustur, ayEtiketi } from '../lib/ekstreHesap'
 
@@ -24,20 +24,33 @@ export default function GenelBireBirEkstre() {
 
   useEffect(() => {
     setLoading(true)
+    // ÖNEMLİ HATA DÜZELTMESİ: bu sayfa, hiçbir tarih filtresi olmadan
+    // OKULUN TÜM GEÇMİŞİ boyunca verilmiş her bire bir dersini/soru çözümü
+    // seansını tek seferde çekiyordu — Supabase/PostgREST'in sayfalanmamış
+    // sorgularda tek seferde en fazla 1000 satır döndürdüğü, aştığında da
+    // hatasız ama SESSİZCE KESİLMİŞ veri verdiği düşünülürse (bkz.
+    // lib/supabase.js → tumSatirlariGetir), bu sayfanın (okul çapında,
+    // tarihsiz döküm) diğerlerinden bile daha yüksek risk taşıdığı ve
+    // muhtemelen zaten eksik veri gösterdiği açık. Üç sorgu da artık
+    // sayfalanarak (tumSatirlariGetir) eksiksiz çekiliyor.
     Promise.all([
-      supabase
-        .from('bire_bir_atamalari')
-        .select('*, ogrenciler(ad_soyad), profiles:ogretmen_profile_id(ad_soyad, brans)'),
-      supabase
-        .from('bire_bir_yoklama')
-        .select('*, ogrenciler(ad_soyad), profiles:ogretmen_profile_id(ad_soyad, brans)')
-        .is('atama_id', null),
+      tumSatirlariGetir(() =>
+        supabase
+          .from('bire_bir_atamalari')
+          .select('*, ogrenciler(ad_soyad), profiles:ogretmen_profile_id(ad_soyad, brans)')
+      ),
+      tumSatirlariGetir(() =>
+        supabase
+          .from('bire_bir_yoklama')
+          .select('*, ogrenciler(ad_soyad), profiles:ogretmen_profile_id(ad_soyad, brans)')
+          .is('atama_id', null)
+      ),
     ]).then(([bba, ekDersler]) => {
       const atamalar = bba.data || []
       const atamaIdleri = atamalar.map((x) => x.id)
       const yoklamaSorgusu =
         atamaIdleri.length > 0
-          ? supabase.from('bire_bir_yoklama').select('*').in('atama_id', atamaIdleri)
+          ? tumSatirlariGetir(() => supabase.from('bire_bir_yoklama').select('*').in('atama_id', atamaIdleri))
           : Promise.resolve({ data: [] })
       yoklamaSorgusu.then((by) => {
         const tumYoklamalar = [...(by.data || []), ...(ekDersler.data || [])]
