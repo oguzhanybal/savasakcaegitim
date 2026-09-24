@@ -1040,11 +1040,19 @@ function OdevDurumListesi({ odevler, ogrenciSinifAdMap, isYonetici }) {
 // isteği). En üstte AYRICA, hiç tıklama gerektirmeyen düz bir "Durum Listesi"
 // tablosu var (bkz. OdevDurumListesi) — kartlar detaya inmek için, bu tablo
 // tek bakışta genel durumu görmek için (kullanıcı isteği).
-function VerilenOdevlerListesi({ odevler, isYonetici, onDegisti, ogrenciSinifAdMap }) {
+function VerilenOdevlerListesi({ odevler, isYonetici, onDegisti, ogrenciSinifAdMap, ogrenciler = [] }) {
   const [acikGruplar, setAcikGruplar] = useState({})
   const [acikOgrenciler, setAcikOgrenciler] = useState({})
   const [durumFiltre, setDurumFiltre] = useState('hepsi') // 'hepsi' | 'bekliyor' | 'yapti' | 'yapmadi' | 'sure_gecti'
   const [arama, setArama] = useState('')
+  // Kullanıcı isteğiyle eklendi: "öğrenci öğrenci seçip kim hangi ödevi
+  // yapmamış görebileyim" — yukarıdaki serbest metin aramanın (arama) yanına,
+  // gerçek öğrenci listesinden TEK bir öğrenci seçilebilen bir dropdown
+  // eklendi. Serbest arama isim yazım hatalarına/kısmi eşleşmeye açıkken, bu
+  // dropdown ogrenci_id'ye göre KESİN eşleşme yapıyor — ikisi birlikte de
+  // kullanılabilir (ör. önce öğrenciyi seçip sonra "Yapmadı" durum sekmesine
+  // basarak sadece o öğrencinin yapmadığı ödevleri görmek için).
+  const [seciliOgrenciId, setSeciliOgrenciId] = useState('')
 
   async function sil(o) {
     if (!confirm(`"${o.baslik}" ödevini silmek istediğinize emin misiniz?`)) return
@@ -1093,12 +1101,29 @@ function VerilenOdevlerListesi({ odevler, isYonetici, onDegisti, ogrenciSinifAdM
       if (durumFiltre === 'yapmadi' && o.durum !== 'yapmadi') return false
       if (durumFiltre === 'gelmedi' && o.durum !== 'gelmedi') return false
       if (durumFiltre === 'sure_gecti' && !sonTarihGectiMi(o)) return false
+      if (seciliOgrenciId && o.ogrenci_id !== seciliOgrenciId) return false
       if (aramaKucuk && !(o.ogrenci_adi || '').toLowerCase().includes(aramaKucuk)) return false
       return true
     })
-  }, [odevler, durumFiltre, arama])
+  }, [odevler, durumFiltre, arama, seciliOgrenciId])
 
-  const filtreAktif = durumFiltre !== 'hepsi' || arama.trim() !== ''
+  const filtreAktif = durumFiltre !== 'hepsi' || arama.trim() !== '' || seciliOgrenciId !== ''
+
+  // Seçili öğrenci için kısa özet — kullanıcı bir öğrenci seçip henüz bir
+  // durum sekmesine basmadıysa bile, o öğrencinin kaç ödevinin "Yapmadı" ya
+  // da "Eksik" olduğunu hemen görsün diye (bkz. "Bire Bir Öğrenciler"
+  // sekmesindeki aynı desen — DersProgrami.jsx).
+  const seciliOgrenciAdi = seciliOgrenciId ? ogrenciler.find((o) => o.id === seciliOgrenciId)?.ad_soyad : null
+  const seciliOgrenciOzeti = useMemo(() => {
+    if (!seciliOgrenciId) return null
+    const buOgrencinin = odevler.filter((o) => o.ogrenci_id === seciliOgrenciId)
+    return {
+      toplam: buOgrencinin.length,
+      yapmadi: buOgrencinin.filter((o) => o.durum === 'yapmadi').length,
+      eksik: buOgrencinin.filter((o) => o.durum === 'eksik').length,
+      bekliyor: buOgrencinin.filter((o) => o.durum === 'bekliyor').length,
+    }
+  }, [odevler, seciliOgrenciId])
 
   const gruplar = useMemo(() => {
     const harita = {}
@@ -1156,6 +1181,18 @@ function VerilenOdevlerListesi({ odevler, isYonetici, onDegisti, ogrenciSinifAdM
             </button>
           ))}
         </div>
+        <select
+          value={seciliOgrenciId}
+          onChange={(e) => setSeciliOgrenciId(e.target.value)}
+          className="px-3 py-1.5 border border-gray-200 rounded-lg text-sm max-w-[220px] focus:outline-none focus:ring-2 focus:ring-blue"
+        >
+          <option value="">Tüm öğrenciler</option>
+          {ogrenciler.map((o) => (
+            <option key={o.id} value={o.id}>
+              {o.ad_soyad}
+            </option>
+          ))}
+        </select>
         <input
           type="text"
           value={arama}
@@ -1169,6 +1206,7 @@ function VerilenOdevlerListesi({ odevler, isYonetici, onDegisti, ogrenciSinifAdM
             onClick={() => {
               setDurumFiltre('hepsi')
               setArama('')
+              setSeciliOgrenciId('')
             }}
             className="text-xs text-gray-400 font-semibold hover:underline"
           >
@@ -1176,6 +1214,24 @@ function VerilenOdevlerListesi({ odevler, isYonetici, onDegisti, ogrenciSinifAdM
           </button>
         )}
       </div>
+
+      {seciliOgrenciAdi && seciliOgrenciOzeti && (
+        <div className="bg-white rounded-2xl border border-gray-100 shadow-sm px-4 py-3 mb-4 text-sm text-gray-600">
+          <strong className="text-navy">{seciliOgrenciAdi}</strong>'nin toplam {seciliOgrenciOzeti.toplam} ödevinden{' '}
+          {seciliOgrenciOzeti.yapmadi + seciliOgrenciOzeti.eksik === 0 ? (
+            <>hepsi yapılmış ya da bekliyor — hiç "Yapmadı"/"Eksik" kaydı yok.</>
+          ) : (
+            <>
+              <strong className="text-red-600">{seciliOgrenciOzeti.yapmadi}</strong> tanesi yapılmamış,{' '}
+              <strong className="text-amber-600">{seciliOgrenciOzeti.eksik}</strong> tanesi eksik yapılmış
+              {seciliOgrenciOzeti.bekliyor > 0 && (
+                <>, <strong className="text-gray-500">{seciliOgrenciOzeti.bekliyor}</strong> tanesi henüz kontrol edilmemiş</>
+              )}
+              .
+            </>
+          )}
+        </div>
+      )}
 
       {/* Kullanıcı isteği: "güncel ödevler üste gelsin, durum listesi alta
           gelsin" — hoca sayfayı açınca önce aksiyon alabileceği (ödev
@@ -1744,6 +1800,7 @@ export default function Odev() {
             isYonetici={isYonetici}
             onDegisti={veriyiYenile}
             ogrenciSinifAdMap={ogrenciSinifAdMap}
+            ogrenciler={ogrenciler}
           />
         </>
       )}
