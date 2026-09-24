@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { supabase } from '../lib/supabase'
+import { supabase, tumSatirlariGetir } from '../lib/supabase'
 import GunlukProgramListesi from '../components/GunlukProgramListesi'
 
 // Daha önce Ders Programı sayfası içinde bir sekme (Günlük Program Listesi)
@@ -27,20 +27,42 @@ export default function GunlukProgram() {
   const [ogrenciAdMap, setOgrenciAdMap] = useState(new Map())
   const [loading, setLoading] = useState(true)
 
-  useEffect(() => {
+  function veriyiYenile() {
     Promise.all([
-      supabase
-        .from('ders_programi')
-        .select('*, siniflar(ad), profiles:ogretmen_profile_id(ad_soyad)')
-        // NOT: burada artık aktif=true filtresi YOK — pasif (silinmiş/devredilmiş)
-        // satırlar da çekiliyor, filtreleme aşağıda JS tarafında yapılıyor
-        // (bkz. yukarıdaki not — DersProgrami.jsx'teki veriyiYenile ile aynı desen).
-        .order('gun')
-        .order('baslangic_saat'),
+      // ÖNEMLİ HATA DÜZELTMESİ (kullanıcı bildirdi — "sınıf dersleri bazen
+      // görünüyor bazen görünmüyor"): bu sorgu, pasif (devredilmiş/silinmiş)
+      // satırları da içerecek şekilde ders_programi'nin TÜM satırlarını
+      // filtresiz çekiyordu (bkz. aşağıdaki eski not) — ama Supabase/PostgREST,
+      // `.range()` ile sayfalanmamış bir sorguda tek seferde EN FAZLA 1000 satır
+      // döndürür, tablo 1000'i AŞTIĞINDA bunu hatasız ama SESSİZCE KESİLMİŞ
+      // veri olarak döndürür (bkz. lib/supabase.js'teki tumSatirlariGetir
+      // açıklaması — bu, kantin_alislar'da yaşanan AYNI hatanın burada da
+      // geçerli hâli; hatta bu tablo için DAHA ÖNCE de "Cumartesi/Pazar
+      // dersleri kayboluyor" şeklinde yaşanmıştı). Öğretmen değişikliği gibi
+      // her düzenleme yeni bir satır ekleyip eskisini pasife çektiği için bu
+      // tablo aylar içinde kolayca 1000 satırı geçebiliyor — aşıldığı anda
+      // `.order('gun').order('baslangic_saat')` sıralamasına göre EN SONA
+      // düşen (haftanın geç günleri / geç saatleri) satırlar sessizce
+      // kayboluyordu, toplam satır sayısı zamanla dalgalandıkça da "bazen
+      // görünüyor bazen görünmüyor" izlenimi veriyordu. Çözüm: DersProgrami.jsx
+      // sayfasındaki gibi elle sayfalamak yerine, zaten test edilmiş olan
+      // tumSatirlariGetir yardımcısıyla TÜM satırları (1000'in katları hâlinde
+      // sayfalayarak) eksiksiz çekiyoruz — dönen veri şekli aynı kaldığı için
+      // aşağıdaki hiçbir satır değişmedi.
+      tumSatirlariGetir(() =>
+        supabase
+          .from('ders_programi')
+          .select('*, siniflar(ad), profiles:ogretmen_profile_id(ad_soyad)')
+          // NOT: burada artık aktif=true filtresi YOK — pasif (silinmiş/devredilmiş)
+          // satırlar da çekiliyor, filtreleme aşağıda JS tarafında yapılıyor
+          // (bkz. yukarıdaki not — DersProgrami.jsx'teki veriyiYenile ile aynı desen).
+          .order('gun')
+          .order('baslangic_saat')
+      ),
       supabase.from('profiles').select('*').eq('rol', 'ogretmen').order('ad_soyad'),
-      supabase.from('bire_bir_atamalari').select('*, ogrenciler(ad_soyad)'),
-      supabase.from('bire_bir_yoklama').select('*'),
-      supabase.from('ogrenciler').select('id, ad_soyad'),
+      tumSatirlariGetir(() => supabase.from('bire_bir_atamalari').select('*, ogrenciler(ad_soyad)')),
+      tumSatirlariGetir(() => supabase.from('bire_bir_yoklama').select('*')),
+      tumSatirlariGetir(() => supabase.from('ogrenciler').select('id, ad_soyad')),
     ]).then(([p, og, ba, by, o]) => {
       const dersleriGenislet = (p.data || []).map((d) => ({
         ...d,
@@ -55,6 +77,24 @@ export default function GunlukProgram() {
       setOgrenciAdMap(new Map((o.data || []).map((x) => [x.id, x.ad_soyad])))
       setLoading(false)
     })
+  }
+
+  useEffect(() => {
+    veriyiYenile()
+  }, [])
+
+  // CANLI GÜNCELLEME (kullanıcı isteğiyle — bkz. Yoklama.jsx/DersProgrami.jsx'
+  // teki aynı özellik): bu sayfa salt okunur olduğu için özellikle önemli —
+  // öğretmenler günlerini planlamak için buna bakıyor, program değişince
+  // burada da F5 gerekmeden anında güncellensin diye.
+  useEffect(() => {
+    const kanal = supabase
+      .channel('gunluk-program-degisiklik')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'ders_programi' }, () => veriyiYenile())
+      .subscribe()
+    return () => {
+      supabase.removeChannel(kanal)
+    }
   }, [])
 
   return (
