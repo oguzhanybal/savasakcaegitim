@@ -277,6 +277,10 @@ export default function MusaitlikTablosu({
   const [ymBaslangic, setYmBaslangic] = useState('')
   const [ymBitis, setYmBitis] = useState('')
   const [ymTutar, setYmTutar] = useState('')
+  // Sadece SINIF DERSİ taslakları için — bu popup üzerinden şimdiye kadar
+  // sadece saat değiştirilebiliyordu, ders adı değiştirilemiyordu (kullanıcı
+  // isteğiyle eklendi: "taslakta güncelle deyince ders adını değiştiremiyorum").
+  const [ymDersAdi, setYmDersAdi] = useState('')
   const [ymHata, setYmHata] = useState('')
   const [ymGonderiliyor, setYmGonderiliyor] = useState(false)
 
@@ -285,6 +289,7 @@ export default function MusaitlikTablosu({
     setYmBaslangic(saatKisalt(kayit.baslangic))
     setYmBitis(saatKisalt(kayit.bitis))
     setYmTutar(kayit.tutar != null ? String(kayit.tutar) : '')
+    setYmDersAdi(kayit.veri?.ders_adi || '')
     setYmHata('')
   }
 
@@ -307,9 +312,15 @@ export default function MusaitlikTablosu({
     // diğer alanları (sinif_id, ders_adi, ogrenci_id, tarih/gun vb.) olduğu
     // gibi koruyup sadece baslangic_saat/bitis_saat'i güncelliyoruz.
     if (kayit.kaynak === 'taslaklar') {
+      const yeniVeri = { ...kayit.veri, baslangic_saat: ymBaslangic, bitis_saat: ymBitis }
+      // Sadece sınıf dersi taslaklarında (veri.sinif_id doluysa) ders adı da
+      // düzenlenebilir — bire bir/soru çözümü taslaklarında bu alan yok.
+      if (kayit.veri?.sinif_id) {
+        yeniVeri.ders_adi = ymDersAdi.trim() || null
+      }
       const { error } = await supabase
         .from('taslaklar')
-        .update({ veri: { ...kayit.veri, baslangic_saat: ymBaslangic, bitis_saat: ymBitis } })
+        .update({ veri: yeniVeri })
         .eq('id', kayit.id)
       setYmGonderiliyor(false)
       if (error) {
@@ -1331,6 +1342,15 @@ export default function MusaitlikTablosu({
                                 value={ymTutar}
                                 onChange={(e) => setYmTutar(e.target.value)}
                                 placeholder="Ders ücreti"
+                                className="w-full px-2 py-1.5 border border-gray-200 rounded-lg text-xs mb-1.5 font-normal"
+                              />
+                            )}
+                            {yonetimPopup.kayit.kaynak === 'taslaklar' && yonetimPopup.kayit.veri?.sinif_id && (
+                              <input
+                                type="text"
+                                value={ymDersAdi}
+                                onChange={(e) => setYmDersAdi(e.target.value)}
+                                placeholder="Ders adı"
                                 className="w-full px-2 py-1.5 border border-gray-200 rounded-lg text-xs mb-1.5 font-normal"
                               />
                             )}
