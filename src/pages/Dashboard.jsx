@@ -9,23 +9,33 @@ function paraFormat(n) {
 }
 
 function Card({ label, value, color = 'text-navy', to }) {
+  // Tam ekran DIŞINDA (tarayıcı penceresi daralınca) özellikle büyük tutarlar
+  // ("₺2.203.290,00" gibi) 4 sütunlu ızgarada kartın dışına taşıp pencere
+  // kenarından kesiliyordu — sebebi: grid hücreleri varsayılan olarak
+  // içeriğin doğal (satır kırılmasız) genişliğinden DAHA DAR olamıyor, o
+  // yüzden uzun bir sayı tüm ızgarayı pencereden geniş yapıp sağ ucu
+  // görünmez kılıyordu. "min-w-0" hücrenin küçülebilmesine izin veriyor,
+  // "truncate" da hâlâ sığmazsa sessizce kesmek yerine "..." ile göstergeç
+  // koyuyor (üstüne gelince title ile tam değeri de görebiliyorsunuz).
   const icerik = (
     <>
-      <p className="text-sm text-gray-500 font-medium">{label}</p>
-      <p className={`text-3xl font-bold mt-1 ${color}`}>{value}</p>
+      <p className="text-sm text-gray-500 font-medium truncate">{label}</p>
+      <p className={`text-2xl sm:text-3xl font-bold mt-1 truncate ${color}`} title={String(value)}>
+        {value}
+      </p>
     </>
   )
   if (to) {
     return (
       <Link
         to={to}
-        className="block bg-white rounded-2xl border border-gray-100 shadow-sm p-5 hover:shadow-md hover:border-navy/20 transition-all cursor-pointer"
+        className="block min-w-0 bg-white rounded-2xl border border-gray-100 shadow-sm p-5 hover:shadow-md hover:border-navy/20 transition-all cursor-pointer"
       >
         {icerik}
       </Link>
     )
   }
-  return <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">{icerik}</div>
+  return <div className="min-w-0 bg-white rounded-2xl border border-gray-100 shadow-sm p-5">{icerik}</div>
 }
 
 // Ana sayfaya girer girmez okul geneli mali/istatistik özet ekranı bir anlık
