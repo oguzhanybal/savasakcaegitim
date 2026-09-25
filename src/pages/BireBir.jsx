@@ -2818,6 +2818,29 @@ export default function BireBir() {
             </label>
             {taslakModuAcik && (
               <>
+                {/* Var olan planlar için doğrudan SEÇİM kutusu — kullanıcı
+                    isteğiyle eklendi: "kaç taslağım varsa onlar görünsün,
+                    aynısını yazmam gerekmesin". Aşağıdaki serbest metin
+                    kutusuyla birlikte çalışır: buradan seçilince o isim
+                    harfi harfine (yazım hatası riski olmadan) kutuya yazılır;
+                    yeni bir plan başlatmak için hâlâ aşağıdaki kutuya
+                    yazılabilir. */}
+                {mevcutPlanAdlari.length > 0 && (
+                  <select
+                    value={mevcutPlanAdlari.includes(aktifPlanAdi.trim()) ? aktifPlanAdi.trim() : ''}
+                    onChange={(e) => {
+                      if (e.target.value) setAktifPlanAdi(e.target.value)
+                    }}
+                    className="px-3 py-1.5 border border-gray-200 rounded-lg text-sm bg-white min-w-[190px]"
+                  >
+                    <option value="">📋 Var olan bir plan seç...</option>
+                    {mevcutPlanAdlari.map((ad) => (
+                      <option key={ad} value={ad}>
+                        {ad} ({taslaklar.filter((t) => t.plan_adi === ad).length})
+                      </option>
+                    ))}
+                  </select>
+                )}
                 <div className="relative flex-1 min-w-[220px]">
                   <input
                     type="text"
@@ -2825,7 +2848,7 @@ export default function BireBir() {
                     onChange={(e) => setAktifPlanAdi(e.target.value)}
                     onFocus={() => setPlanOneriAcik(true)}
                     onBlur={() => setTimeout(() => setPlanOneriAcik(false), 150)}
-                    placeholder='Plan adı (ör. "Ekim 2. Hafta Programı")'
+                    placeholder='...veya yeni bir plan adı yazın (ör. "Ekim 2. Hafta Programı")'
                     autoComplete="off"
                     className="w-full px-3 py-1.5 border border-gray-200 rounded-lg text-sm"
                   />
