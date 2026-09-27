@@ -366,15 +366,50 @@ export default function MusaitlikTablosu({
       taslakModuAcik && kayit.kaynak !== 'taslaklar'
         ? '⚠️ DİKKAT: Bu bir taslak DEĞİL, CANLI/gerçek bir kayıt! Taslak Modu açık olsa bile bu kayıt hemen ve kalıcı olarak silinecek.\n\n'
         : ''
+    // GEÇMİŞ TARİH UYARISI (kullanıcı isteğiyle eklendi — bir yönetici,
+    // "gelecek bir tarihe bakıyorum" sanıp aslında GEÇMİŞ bir tarihte bire bir
+    // dersler/atamalar sildi; haftalık bir atamayı silmek, o atamaya bağlı TÜM
+    // geçmiş yoklama/ücret geçmişini de otomatik olarak sildiği için — bkz.
+    // bire_bir_yoklama.atama_id ON DELETE CASCADE — bu geri alınamaz bir veri
+    // kaybına yol açtı). Şu an tablonun gösterdiği tarih bugünden ESKİYSE,
+    // silme öncesi bunu özellikle ayrı bir satırla vurguluyoruz — taslaklar
+    // için bu riski taşımadığından (yayınlanana kadar zaten geri alınabilir)
+    // bu uyarı sadece CANLI kayıtlar için gösteriliyor.
+    const gecmisTarihMi = kayit.kaynak !== 'taslaklar' && tarih < bugununTarihi
+    const tarihGoster = (t) => {
+      const [y, m, d] = (t || '').split('-')
+      return d && m && y ? `${d}.${m}.${y}` : t
+    }
+    const gecmisUyarisi = gecmisTarihMi
+      ? `📅 DİKKAT: Şu an GEÇMİŞ bir tarihe (${tarihGoster(tarih)}) bakıyorsunuz — bugün değil! Silme işlemi geleceği değil, bu geçmiş tarihi/haftayı etkileyecek.\n\n`
+      : ''
+    // Haftalık bir atama siliniyorsa, ona bağlı GEÇMİŞTE ALINMIŞ kaç yoklama
+    // kaydı olduğunu (varsa) sayıp uyarıya ekliyoruz — "tüm yoklama geçmişini
+    // silmek" soyut kalmasın, kaç kayıt olduğu somut görünsün diye.
+    let gecmisKayitSayisi = null
+    if (kayit.kaynak === 'bire_bir_atamalari') {
+      const { count } = await supabase
+        .from('bire_bir_yoklama')
+        .select('id', { count: 'exact', head: true })
+        .eq('atama_id', kayit.id)
+        .lt('tarih', bugununTarihi)
+      gecmisKayitSayisi = count ?? null
+    }
+    const atamaUyarisi =
+      kayit.kaynak === 'bire_bir_atamalari'
+        ? gecmisKayitSayisi
+          ? `Bu atamayı silerseniz, ona bağlı GEÇMİŞTE ALINMIŞ ${gecmisKayitSayisi} ders/yoklama kaydı da KALICI olarak silinecek. Bu işlem geri alınamaz.\n\nSadece BUNDAN SONRA bu dersin olmasını istemiyorsanız, silmek yerine atamayı "pasif" yapmayı düşünün (geçmiş kayıtlar korunur).`
+          : 'Bu atamayı ve (varsa) tüm yoklama geçmişini silmek istediğinize emin misiniz? Bu işlem geri alınamaz.'
+        : null
     const mesaj =
       canliUyariOnEki +
+      gecmisUyarisi +
       (kayit.kaynak === 'taslaklar'
         ? 'Bu taslağı iptal etmek istediğinize emin misiniz?'
-        : kayit.kaynak === 'bire_bir_atamalari'
-        ? 'Bu atamayı ve tüm yoklama geçmişini silmek istediğinize emin misiniz? Bu işlem geri alınamaz.'
-        : kayit.soruCozumuMu
-        ? 'Bu Soru Çözümü seansını silmek istediğinize emin misiniz?'
-        : 'Bu dersi silmek istediğinize emin misiniz?')
+        : atamaUyarisi ||
+          (kayit.soruCozumuMu
+            ? 'Bu Soru Çözümü seansını silmek istediğinize emin misiniz?'
+            : 'Bu dersi silmek istediğinize emin misiniz?'))
     if (!confirm(mesaj)) return
     const { error } = await supabase.from(kayit.kaynak).delete().eq('id', kayit.id)
     if (error) {
