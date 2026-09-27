@@ -284,6 +284,16 @@ export default function MusaitlikTablosu({
   const [ymHata, setYmHata] = useState('')
   const [ymGonderiliyor, setYmGonderiliyor] = useState(false)
 
+  // Silme onay penceresi — kullanıcı isteğiyle tarayıcının düz-metin confirm()
+  // penceresinden, tehlikeli kısımları KIRMIZI/kalın gösterebilen kendi
+  // popup'ımıza geçildi (bkz. yonetimSilBaslat/yonetimSilOnayla). { kayit,
+  // canliUyari, gecmisUyari, gecmisKayitSayisi, satirlar } tutar; satirlar,
+  // popup'ta sırayla gösterilecek { metin, tur } parçalarının listesi ('tur':
+  // 'tehlike' kırmızı, 'uyari' amber, 'normal' gri).
+  const [silOnay, setSilOnay] = useState(null)
+  const [silYukleniyor, setSilYukleniyor] = useState(false)
+  const [silGonderiliyor, setSilGonderiliyor] = useState(false)
+
   function yonetimPopupAc(ogretmenId, tarih, baslangicSutun, kayit) {
     setYonetimPopup({ ogretmenId, tarih, baslangic: baslangicSutun, kayit })
     setYmBaslangic(saatKisalt(kayit.baslangic))
@@ -355,17 +365,29 @@ export default function MusaitlikTablosu({
     onHizliEklendi && onHizliEklendi()
   }
 
-  async function yonetimSil(kayit) {
+  function tarihGoster(t) {
+    const [y, m, d] = (t || '').split('-')
+    return d && m && y ? `${d}.${m}.${y}` : t
+  }
+
+  // Silme onayı için gösterilecek satırları hazırlar — kullanıcı isteğiyle
+  // tarayıcının düz metin confirm()'ünden, tehlikeli kısımları KIRMIZI/kalın
+  // gösterebilen kendi popup'ımıza (aşağıdaki JSX'te silOnay) geçildi.
+  // 'tur': 'tehlike' (kırmızı, kalın) | 'uyari' (amber) | 'normal' (gri).
+  async function yonetimSilBaslat(kayit) {
+    const satirlar = []
     // Taslak Modu açıkken, hücrenin rengi taslak (amber, kesik çizgili) mi
     // yoksa CANLI (turuncu/mor, düz çizgili) mi olduğu ekranda kolayca
     // karışabiliyor — ikisi de görsel olarak birbirine yakın. Kullanıcı bir
     // taslağı sildiğini sanıp yanlışlıkla canlı bir kaydı silmesin diye,
     // Taslak Modu açıkken canlı (taslaklar DIŞI) bir kayıt siliniyorsa uyarıyı
     // özellikle "bu bir taslak DEĞİL, gerçek/canlı bir kayıt" diye başlatıyoruz.
-    const canliUyariOnEki =
-      taslakModuAcik && kayit.kaynak !== 'taslaklar'
-        ? '⚠️ DİKKAT: Bu bir taslak DEĞİL, CANLI/gerçek bir kayıt! Taslak Modu açık olsa bile bu kayıt hemen ve kalıcı olarak silinecek.\n\n'
-        : ''
+    if (taslakModuAcik && kayit.kaynak !== 'taslaklar') {
+      satirlar.push({
+        tur: 'tehlike',
+        metin: 'DİKKAT: Bu bir taslak DEĞİL, CANLI/gerçek bir kayıt! Taslak Modu açık olsa bile bu kayıt hemen ve kalıcı olarak silinecek.',
+      })
+    }
     // GEÇMİŞ TARİH UYARISI (kullanıcı isteğiyle eklendi — bir yönetici,
     // "gelecek bir tarihe bakıyorum" sanıp aslında GEÇMİŞ bir tarihte bire bir
     // dersler/atamalar sildi; haftalık bir atamayı silmek, o atamaya bağlı TÜM
@@ -376,46 +398,79 @@ export default function MusaitlikTablosu({
     // için bu riski taşımadığından (yayınlanana kadar zaten geri alınabilir)
     // bu uyarı sadece CANLI kayıtlar için gösteriliyor.
     const gecmisTarihMi = kayit.kaynak !== 'taslaklar' && tarih < bugununTarihi
-    const tarihGoster = (t) => {
-      const [y, m, d] = (t || '').split('-')
-      return d && m && y ? `${d}.${m}.${y}` : t
+    if (gecmisTarihMi) {
+      // Kullanıcı isteğiyle: bu satır artık amber değil, KIRMIZI/kalın
+      // ('tehlike') gösteriliyor — geçmiş tarihli bir kaydı yanlışlıkla
+      // silme riski, "sadece bilgi" değil "dikkat edilmesi gereken" bir
+      // durum olarak vurgulanmak isteniyor.
+      satirlar.push({
+        tur: 'tehlike',
+        metin: `DİKKAT: Şu an GEÇMİŞ bir tarihe (${tarihGoster(tarih)}) bakıyorsunuz — bugün değil! Silme işlemi geleceği değil, bu geçmiş tarihi/haftayı etkileyecek.`,
+      })
     }
-    const gecmisUyarisi = gecmisTarihMi
-      ? `📅 DİKKAT: Şu an GEÇMİŞ bir tarihe (${tarihGoster(tarih)}) bakıyorsunuz — bugün değil! Silme işlemi geleceği değil, bu geçmiş tarihi/haftayı etkileyecek.\n\n`
-      : ''
     // Haftalık bir atama siliniyorsa, ona bağlı GEÇMİŞTE ALINMIŞ kaç yoklama
     // kaydı olduğunu (varsa) sayıp uyarıya ekliyoruz — "tüm yoklama geçmişini
-    // silmek" soyut kalmasın, kaç kayıt olduğu somut görünsün diye.
-    let gecmisKayitSayisi = null
+    // silmek" soyut kalmasın, kaç kayıt olduğu somut görünsün diye. Sayım
+    // bitene kadar popup'ı "Kontrol ediliyor..." ile açıyoruz (silYukleniyor),
+    // böylece kullanıcı sayım tamamlanmadan "Evet, sil" diyemiyor.
     if (kayit.kaynak === 'bire_bir_atamalari') {
+      setSilOnay({ kayit, satirlar, gecmisKayitSayisi: null })
+      setSilYukleniyor(true)
       const { count } = await supabase
         .from('bire_bir_yoklama')
         .select('id', { count: 'exact', head: true })
         .eq('atama_id', kayit.id)
         .lt('tarih', bugununTarihi)
-      gecmisKayitSayisi = count ?? null
-    }
-    const atamaUyarisi =
-      kayit.kaynak === 'bire_bir_atamalari'
-        ? gecmisKayitSayisi
-          ? `Bu atamayı silerseniz, ona bağlı GEÇMİŞTE ALINMIŞ ${gecmisKayitSayisi} ders/yoklama kaydı da KALICI olarak silinecek. Bu işlem geri alınamaz.\n\nSadece BUNDAN SONRA bu dersin olmasını istemiyorsanız, silmek yerine atamayı "pasif" yapmayı düşünün (geçmiş kayıtlar korunur).`
-          : 'Bu atamayı ve (varsa) tüm yoklama geçmişini silmek istediğinize emin misiniz? Bu işlem geri alınamaz.'
-        : null
-    const mesaj =
-      canliUyariOnEki +
-      gecmisUyarisi +
-      (kayit.kaynak === 'taslaklar'
-        ? 'Bu taslağı iptal etmek istediğinize emin misiniz?'
-        : atamaUyarisi ||
-          (kayit.soruCozumuMu
+      setSilYukleniyor(false)
+      const gecmisKayitSayisi = count ?? 0
+      const atamaSatiri =
+        gecmisKayitSayisi > 0
+          ? [
+              {
+                tur: 'tehlike',
+                metin: `Bu atamayı silerseniz, ona bağlı GEÇMİŞTE ALINMIŞ ${gecmisKayitSayisi} ders/yoklama kaydı da KALICI olarak silinecek. Bu işlem geri alınamaz.`,
+              },
+              {
+                tur: 'normal',
+                metin: 'Sadece BUNDAN SONRA bu dersin olmasını istemiyorsanız, silmek yerine atamayı "pasif" yapmayı düşünün (geçmiş kayıtlar korunur).',
+              },
+            ]
+          : [
+              {
+                tur: 'uyari',
+                metin: 'Bu atamayı ve (varsa) tüm yoklama geçmişini silmek istediğinize emin misiniz? Bu işlem geri alınamaz.',
+              },
+            ]
+      setSilOnay({ kayit, satirlar: [...satirlar, ...atamaSatiri], gecmisKayitSayisi })
+    } else {
+      const sonSatir = {
+        tur: 'normal',
+        metin:
+          kayit.kaynak === 'taslaklar'
+            ? 'Bu taslağı iptal etmek istediğinize emin misiniz?'
+            : kayit.soruCozumuMu
             ? 'Bu Soru Çözümü seansını silmek istediğinize emin misiniz?'
-            : 'Bu dersi silmek istediğinize emin misiniz?'))
-    if (!confirm(mesaj)) return
-    const { error } = await supabase.from(kayit.kaynak).delete().eq('id', kayit.id)
+            : 'Bu dersi silmek istediğinize emin misiniz?',
+      }
+      setSilOnay({ kayit, satirlar: [...satirlar, sonSatir], gecmisKayitSayisi: null })
+    }
+  }
+
+  function silOnayKapat() {
+    if (silGonderiliyor) return
+    setSilOnay(null)
+  }
+
+  async function silOnayOnayla() {
+    if (!silOnay) return
+    setSilGonderiliyor(true)
+    const { error } = await supabase.from(silOnay.kayit.kaynak).delete().eq('id', silOnay.kayit.id)
+    setSilGonderiliyor(false)
     if (error) {
       alert('Hata: ' + error.message)
       return
     }
+    setSilOnay(null)
     onHizliEklendi && onHizliEklendi()
   }
 
@@ -981,6 +1036,7 @@ export default function MusaitlikTablosu({
   }
 
   return (
+    <>
     <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden mb-6">
       <div className="px-4 py-3 border-b border-gray-100 bg-gray-50 flex items-center justify-between flex-wrap gap-3">
         <div>
@@ -1190,7 +1246,7 @@ export default function MusaitlikTablosu({
                                   title="Sil"
                                   onClick={(e) => {
                                     e.stopPropagation()
-                                    yonetimSil(h.dolu)
+                                    yonetimSilBaslat(h.dolu)
                                   }}
                                   className="w-3.5 h-3.5 leading-none flex items-center justify-center rounded-bl bg-red-600 text-white text-[9px]"
                                 >
@@ -1451,5 +1507,60 @@ export default function MusaitlikTablosu({
         )}
       </div>
     </div>
+
+    {/* Silme onay penceresi — tarayıcının düz metin confirm()'ü yerine,
+        tehlikeli satırları kırmızı/kalın gösterebilen kendi popup'ımız
+        (kullanıcı isteğiyle: "eski ders silinecek ibaresi kırmızı olsun"). */}
+    {silOnay && (
+      <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4" onClick={silOnayKapat}>
+        <div
+          className="bg-white rounded-2xl shadow-xl w-full max-w-md overflow-hidden"
+          onClick={(e) => e.stopPropagation()}
+        >
+          <div className="px-4 py-3 bg-red-600 text-white flex items-center justify-between">
+            <p className="font-semibold">Silme Onayı</p>
+            <button type="button" onClick={silOnayKapat} className="text-white/80 hover:text-white text-2xl leading-none px-1 -mt-1">
+              ×
+            </button>
+          </div>
+          <div className="p-4 space-y-2.5">
+            {silOnay.satirlar.map((s, i) => (
+              <p
+                key={i}
+                className={
+                  s.tur === 'tehlike'
+                    ? 'text-sm font-bold text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2.5'
+                    : s.tur === 'uyari'
+                    ? 'text-sm font-semibold text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2.5'
+                    : 'text-sm text-gray-600'
+                }
+              >
+                {s.metin}
+              </p>
+            ))}
+            {silYukleniyor && <p className="text-xs text-gray-400">Geçmiş kayıtlar kontrol ediliyor...</p>}
+          </div>
+          <div className="p-4 pt-0 flex gap-2">
+            <button
+              type="button"
+              onClick={silOnayKapat}
+              disabled={silGonderiliyor}
+              className="flex-1 px-3 py-2 rounded-lg text-sm font-semibold text-gray-600 bg-gray-100 hover:bg-gray-200 disabled:opacity-50"
+            >
+              Vazgeç
+            </button>
+            <button
+              type="button"
+              onClick={silOnayOnayla}
+              disabled={silYukleniyor || silGonderiliyor}
+              className="flex-1 px-3 py-2 rounded-lg text-sm font-semibold text-white bg-red-600 hover:bg-red-700 disabled:opacity-50"
+            >
+              {silGonderiliyor ? 'Siliniyor...' : 'Evet, sil'}
+            </button>
+          </div>
+        </div>
+      </div>
+    )}
+    </>
   )
 }
