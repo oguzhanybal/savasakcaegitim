@@ -78,7 +78,7 @@ function BugunkuYoklamaDurumu({ isYonetici, ogretmenProfileId }) {
   const bugunTarih = yerelTarih(new Date())
   const [secilenTarih, setSecilenTarih] = useState(bugunTarih)
   const [dersSaatleri, setDersSaatleri] = useState([])
-  const [yoklamalar, setYoklamalar] = useState([])
+  const [yoklamalar, setYoklamalar] = useState({ alindiAnahtarlari: new Set(), yoklamaBySlot: new Map() })
   const [loading, setLoading] = useState(true)
   const secilenGunNo = gunNumaraTarihten(secilenTarih)
 
@@ -90,63 +90,107 @@ function BugunkuYoklamaDurumu({ isYonetici, ogretmenProfileId }) {
 
   useEffect(() => {
     setLoading(true)
+    // ÖNEMLİ DÜZELTME (kullanıcı bildirdi: "Yoklama Raporu'nda kaç ders
+    // varsa kaçının alındığı görünmesi gerekiyordu ama hep '30/30 alındı'
+    // gibi %100 görünüyor, gerçekte unutulmuş bir ders varken bile"):
+    // ÖNCEKİ mantık, pasif (aktif=false) bir satırı SADECE o satırın KENDİ
+    // id'sine GERÇEKTEN yoklama girilmişse listede tutuyordu
+    // (yoklamasiOlanIdler.has(d.id)). Bu yüzden bir ders saati sonradan
+    // başka bir öğretmene devredilip (eski satır pasife çekilip) o satıra
+    // HİÇ yoklama girilmemişse, o ders saati "Toplam"a hiç girmiyordu —
+    // sanki hiç var olmamış gibi sessizce kayboluyordu, bu da "Toplam"ın
+    // her zaman "alındı" sayısına eşit (yanıltıcı %100) çıkmasına yol
+    // açıyordu. Artık GunlukProgramListesi.jsx / GecmisYoklama.jsx'teki AYNI
+    // "bu slotta (sınıf+gün+saat), seçilen tarihte GERÇEKTEN geçerli olan
+    // TEK satır hangisi" mantığı kullanılıyor: TÜM geçmiş satırlar (aktif/
+    // pasif fark etmeksizin) çekilip, her slot için o tarihte geçerli olan
+    // EN GÜNCEL satır seçiliyor — o satırın yoklaması olsun ya da olmasın,
+    // liste artık eksiksiz.
     let sorgu = supabase
       .from('ders_programi')
       .select('*, siniflar(ad), profiles:ogretmen_profile_id(ad_soyad, brans)')
       .eq('gun', secilenGunNo)
-      // ÖNEMLİ: sadece aktif=true DEĞİL — bir ders TAM O GÜN silinirse
-      // (aktif=false yapılırsa), o günün özeti hâlâ o dersi göstermeli (belki
-      // yoklaması zaten alınmıştı). "aktif=true VEYA o gün ya da sonrasında
-      // silindi (pasif_tarihi >= secilenTarih)" — Yoklama.jsx'teki aynı kural.
-      // NOT: aşağıdaki BugunkuYoklamaDurumu bileşeninin DIŞINDAKİ geçmiş
-      // sınıf raporu sorgusuna (yoklama tablosunu ders_programi'ye join eden)
-      // BİLEREK bu filtre eklenmiyor — geçmiş kayıtlar pasif olsa bile ders
-      // adını göstermeye devam etmeli.
-      .or(`aktif.eq.true,pasif_tarihi.gte.${secilenTarih}`)
     if (!isYonetici && ogretmenProfileId) sorgu = sorgu.eq('ogretmen_profile_id', ogretmenProfileId)
 
     Promise.all([
       sorgu,
       supabase
         .from('yoklama')
-        .select('ders_programi_id, ogrenci_id, geldi, ogrenciler(ad_soyad)')
+        .select('ders_programi_id, ogrenci_id, geldi, sinif_id, gun, baslangic_saat, bitis_saat, ogrenciler(ad_soyad)')
         .eq('tarih', secilenTarih),
     ]).then(([dp, y]) => {
       const yoklamaVeri = y.data || []
-      // Seçilen gün pasif yapılan (silinen) bir ders saati, sadece o saat
-      // için GERÇEKTEN kayıtlı bir yoklama varsa listede kalsın — yoklaması
-      // hiç alınmamış, aynı gün içinde silinmiş bir kayıt burada göstermek
-      // sadece kafa karıştırıyor (bkz. Yoklama.jsx'teki aynı düzeltme).
-      const yoklamasiOlanIdler = new Set(yoklamaVeri.map((y) => y.ders_programi_id))
-      // "baslangic_tarihi" elle girilmiş ve seçilen günden ilerideyse (bkz.
-      // DersProgrami.jsx/SinifDetay.jsx'teki opsiyonel alan, Yoklama.jsx'teki
-      // aynı düzeltme), bu ders o gün henüz başlamamış demektir — özete hiç
-      // girmemeli.
-      const filtreli = (dp.data || []).filter((d) => {
-        if (d.baslangic_tarihi && d.baslangic_tarihi > secilenTarih) return false
-        if (d.aktif === false) return yoklamasiOlanIdler.has(d.id)
-        // AKTİF bir satır bile, seçilen günden SONRA oluşturulmuşsa o günün
-        // programında sayılmamalı — yoksa bir ders saati bugün yeniden
-        // düzenlendiğinde (eski satır pasif + yeni satır eklendiğinde), yeni
-        // (henüz yoklamasız) satır geçmiş bir tarihte de "varmış" gibi
-        // görünüp eski (gerçek yoklamalı) satırla birlikte iki kez listelenir.
-        return tarihStrYerel(d.created_at) <= secilenTarih
-      })
-      const sirali = filtreli.sort((a, b) => {
-        const s = (a.baslangic_saat || '').localeCompare(b.baslangic_saat || '')
+      const tumSatirlar = dp.data || []
+      const tumSatirMap = new Map(tumSatirlar.map((s) => [s.id, s]))
+      const slotAnahtari = (sinifId, gunNo, bas, bit) => `${sinifId}|${gunNo}|${bas}-${bit}`
+
+      // "Alındı mı" kontrolü, kazanan (en güncel) satırın id'siyle SINIRLI
+      // DEĞİL — o slotu (sınıf+gün+saat) paylaşan HERHANGİ bir eski/yeni
+      // ders_programi id'sine yoklama girilmişse "Alındı" sayılır (bkz.
+      // GecmisYoklama.jsx'teki aynı düzeltme — bir düzeltme sırasında
+      // yoklama eski satırın id'sine bağlı kalmış olabilir).
+      const alindiAnahtarlari = new Set()
+      const yoklamaBySlot = new Map()
+      for (const yk of yoklamaVeri) {
+        let sinifId, gunNo, bas, bit
+        if (yk.gun != null && yk.baslangic_saat && yk.sinif_id) {
+          sinifId = yk.sinif_id; gunNo = yk.gun; bas = yk.baslangic_saat; bit = yk.bitis_saat
+        } else {
+          const ders = tumSatirMap.get(yk.ders_programi_id)
+          if (!ders) continue
+          sinifId = ders.sinif_id; gunNo = ders.gun; bas = ders.baslangic_saat; bit = ders.bitis_saat
+        }
+        const anahtar = slotAnahtari(sinifId, gunNo, bas, bit)
+        alindiAnahtarlari.add(anahtar)
+        if (!yoklamaBySlot.has(anahtar)) yoklamaBySlot.set(anahtar, [])
+        yoklamaBySlot.get(anahtar).push(yk)
+      }
+
+      // Slot (sınıf+gün+saat) bazında grupla, her slot için seçilen tarihte
+      // GERÇEKTEN geçerli olan TEK satırı (en son oluşturulanı) seç.
+      const gruplar = new Map()
+      for (const d of tumSatirlar) {
+        const anahtar = slotAnahtari(d.sinif_id, d.gun, d.baslangic_saat, d.bitis_saat)
+        if (!gruplar.has(anahtar)) gruplar.set(anahtar, [])
+        gruplar.get(anahtar).push(d)
+      }
+      const bugunTarihKontrol = secilenTarih === yerelTarih(new Date())
+      const sonuc = []
+      for (const [anahtar, satirlar] of gruplar) {
+        let enYeni = null
+        let enYeniEsasTarih = null
+        for (const d of satirlar) {
+          const esasTarih = d.baslangic_tarihi || tarihStrYerel(d.created_at)
+          if (esasTarih && esasTarih > secilenTarih) continue
+          if (d.aktif === false) {
+            if (!d.pasif_tarihi || secilenTarih > d.pasif_tarihi) continue
+            if (secilenTarih === d.pasif_tarihi && bugunTarihKontrol) continue
+          }
+          const karsilastirma = `${esasTarih || ''}T${d.created_at || ''}`
+          const enYeniKarsilastirma = enYeniEsasTarih !== null ? `${enYeniEsasTarih || ''}T${enYeni.created_at || ''}` : null
+          if (!enYeni || karsilastirma > enYeniKarsilastirma) {
+            enYeni = d
+            enYeniEsasTarih = esasTarih
+          }
+        }
+        if (enYeni) sonuc.push({ ders: enYeni, anahtar })
+      }
+
+      const sirali = sonuc.sort((a, b) => {
+        const s = (a.ders.baslangic_saat || '').localeCompare(b.ders.baslangic_saat || '')
         if (s !== 0) return s
-        return (a.siniflar?.ad || '').localeCompare(b.siniflar?.ad || '', 'tr')
+        return (a.ders.siniflar?.ad || '').localeCompare(b.ders.siniflar?.ad || '', 'tr')
       })
       setDersSaatleri(sirali)
-      setYoklamalar(yoklamaVeri)
+      setYoklamalar({ alindiAnahtarlari, yoklamaBySlot })
       setLoading(false)
     })
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isYonetici, ogretmenProfileId, secilenTarih, secilenGunNo])
 
-  const ozet = dersSaatleri.map((ders) => {
-    const kayitlar = yoklamalar.filter((y) => y.ders_programi_id === ders.id)
-    const alindiMi = kayitlar.length > 0
+  const ozet = dersSaatleri.map(({ ders, anahtar }) => {
+    const alindiMi = yoklamalar.alindiAnahtarlari?.has(anahtar) || false
+    const kayitlar = yoklamalar.yoklamaBySlot?.get(anahtar) || []
     const gelmeyenler = kayitlar.filter((y) => !y.geldi).map((y) => y.ogrenciler?.ad_soyad).filter(Boolean)
     return { ders, alindiMi, gelmeyenler }
   })
