@@ -174,6 +174,45 @@ function cakismaBul({ sinifId, gun, baslangic, bitis, ogretmenId, hedefSinifId =
   return null
 }
 
+// GÜVENLİK AĞI: bir "Tümünü/Planı/Günü Yayınla" işlemi bittikten SONRA,
+// veritabanından TAZE veri çekip okul genelinde hâlâ aktif+çakışan ders kalıp
+// kalmadığını kontrol eder. "28 Eylül Yeni Program" vakasında yaşandığı gibi
+// (bazı eski dersler elle/uygulama-dışı yollarla eklenmiş "kaldırma"
+// taslaklarının yayın sırasında tam uygulanmaması yüzünden aktif kalmıştı),
+// yayın ekranda "başarılı" görünse bile arka planda bir kaldırma sessizce
+// tutmayabilir — bu artık günlerce fark edilmeden kalmasın diye, her toplu
+// yayından sonra otomatik çalışır. ders_programi ekrandaki `program` state'i
+// henüz yenilenmediği için değil, doğrudan veritabanından okunur.
+async function yayinSonrasiCakismaBul(siniflar, ogretmenler) {
+  const { data, error } = await tumSatirlariGetir(() =>
+    supabase
+      .from('ders_programi')
+      .select('id, ders_adi, gun, sinif_id, ogretmen_profile_id, baslangic_saat, bitis_saat')
+      .eq('aktif', true)
+  )
+  if (error || !data) return []
+
+  const sinifAdi = (id) => siniflar.find((s) => s.id === id)?.ad || 'Bilinmeyen sınıf'
+  const ogretmenAdi = (id) => ogretmenler.find((o) => o.id === id)?.ad_soyad || 'öğretmensiz'
+
+  const bulunanlar = []
+  for (let i = 0; i < data.length; i++) {
+    for (let j = i + 1; j < data.length; j++) {
+      const a = data[i]
+      const b = data[j]
+      if (a.gun !== b.gun) continue
+      const ayniSinif = a.sinif_id === b.sinif_id
+      const ayniOgretmen = !!a.ogretmen_profile_id && a.ogretmen_profile_id === b.ogretmen_profile_id
+      if (!ayniSinif && !ayniOgretmen) continue
+      if (!araliklarCakisiyorMu(a.baslangic_saat, a.bitis_saat, b.baslangic_saat, b.bitis_saat)) continue
+      bulunanlar.push(
+        `${GUNLER[a.gun]} ${saatGoster(a.baslangic_saat)}–${saatGoster(a.bitis_saat)} — ${sinifAdi(a.sinif_id)}: "${a.ders_adi || '?'}" (${ogretmenAdi(a.ogretmen_profile_id)}) ile "${b.ders_adi || '?'}" (${ogretmenAdi(b.ogretmen_profile_id)}, ${sinifAdi(b.sinif_id)}) çakışıyor`
+      )
+    }
+  }
+  return bulunanlar
+}
+
 // Bir sınıf dersi taslağını yayınlarken, aynı öğretmenin o gün/saatte zaten bir
 // BİRE BİR dersi (haftalık atama YA DA tek seferlik/tekil kayıt) olup olmadığını
 // kontrol eder. Eskiden cakismaBul() SADECE ders_programi'ni (diğer sınıf
@@ -1188,6 +1227,18 @@ function TaslaklarimDersProgrami({ taslaklar, siniflar, ogretmenler, program, at
     onDegisti()
     if (basarisiz > 0) {
       alert(`${basarili} taslak yayınlandı, ${basarisiz} tanesi çakışma/hata nedeniyle yayınlanamadı (listede kırmızı olarak görünüyor).`)
+    }
+    // Yayın "başarılı" görünse bile son bir kez güvenlik kontrolü: okul
+    // genelinde hâlâ aktif+çakışan ders var mı? (bkz. yukarıdaki fonksiyonun
+    // başındaki açıklama — 28 Eylül'deki sessiz kaldırma hatasının tekrarını
+    // yakalamak için eklendi.)
+    const cakismalar = await yayinSonrasiCakismaBul(siniflar, ogretmenler)
+    if (cakismalar.length > 0) {
+      alert(
+        `⚠️ UYARI: Yayın tamamlandı ama okul genelinde hâlâ ${cakismalar.length} çakışan aktif ders çifti bulundu! Bu, öğretmen programlarında birden fazla ders birden görünmesine yol açabilir.\n\nİlk birkaç örnek:\n${cakismalar
+          .slice(0, 5)
+          .join('\n')}\n\nLütfen bunu Claude'a (asistana) bildirip birlikte kontrol edin — hiçbir şeyi kendiniz silmeyin.`
+      )
     }
   }
 
