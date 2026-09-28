@@ -348,14 +348,31 @@ export default function GecmisYoklama() {
         .eq('sinif_id', seciliOge.ders.sinif_id)
         .or(`baslangic_tarihi.is.null,baslangic_tarihi.lte.${seciliOge.tarih}`)
         .or(`bitis_tarihi.is.null,bitis_tarihi.gte.${seciliOge.tarih}`),
+      // BAŞKA SINIFTAN ÖĞRENCİ (bkz. Yoklama.jsx'teki AYNI mantık — kullanıcı
+      // isteği: "Tural MF-2'de ama MF-3'teki Savaş Akça'nın AYT Matematik
+      // derslerini de görsün") — ders_ek_erisim'deki kural, bu dersin adı ve
+      // (varsa) öğretmeniyle eşleşiyorsa öğrenciyi de listeye ekler.
+      supabase
+        .from('ders_ek_erisim')
+        .select('ogrenciler(id, ad_soyad), ders_adi, ogretmen_profile_id')
+        .eq('sinif_id', seciliOge.ders.sinif_id),
       supabase.from('yoklama').select('*').eq('ders_programi_id', seciliOge.ders.id).eq('tarih', seciliOge.tarih),
-    ]).then(([so, y]) => {
+    ]).then(([so, ek, y]) => {
       // Aynı öğrenci için (nadiren) birden fazla geçmiş satırı eşleşirse
       // (ör. sınıftan çıkıp aynı gün tekrar eklenmişse) tekilleştir.
       const gorulen = new Set()
       const liste = (so.data || [])
         .map((r) => r.ogrenciler)
         .filter((o) => o && !gorulen.has(o.id) && gorulen.add(o.id))
+      for (const e of ek.data || []) {
+        const dersAdiEslesiyor =
+          (e.ders_adi || '').trim().toLowerCase() === (seciliOge.ders.ders_adi || '').trim().toLowerCase()
+        const ogretmenEslesiyor = !e.ogretmen_profile_id || e.ogretmen_profile_id === seciliOge.ders.ogretmen_profile_id
+        if (dersAdiEslesiyor && ogretmenEslesiyor && e.ogrenciler && !gorulen.has(e.ogrenciler.id)) {
+          gorulen.add(e.ogrenciler.id)
+          liste.push(e.ogrenciler)
+        }
+      }
       setOgrenciler(liste)
       const mevcut = {}
       ;(y.data || []).forEach((k) => {

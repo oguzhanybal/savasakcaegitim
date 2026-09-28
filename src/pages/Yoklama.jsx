@@ -191,16 +191,43 @@ export default function Yoklama() {
   useEffect(() => {
     if (!seciliSinif) return
     setLoading(true)
+    // Seçili ders saatinin ders adı/öğretmeni — "ders_ek_erisim" ile eşleşen
+    // (başka sınıftan ama bu belirli dersi de görmesi gereken) öğrencileri
+    // bulmak için (bkz. aşağıdaki BAŞKA SINIFTAN ÖĞRENCİ yorumu).
+    const seciliSaatBilgi = seciliSaat ? gununSaatleri.find((s) => s.id === seciliSaat) : null
     Promise.all([
       supabase
         .from('sinif_ogrenciler')
         .select('ogrenciler(id, ad_soyad)')
         .eq('sinif_id', seciliSinif),
+      // BAŞKA SINIFTAN ÖĞRENCİ (kullanıcı isteği: "Tural MF-2'de ama MF-3'teki
+      // Savaş Akça'nın AYT Matematik derslerini de görsün") — ders_ek_erisim
+      // tablosundaki kural, ders adı VE (varsa) öğretmeni eşleşiyorsa bu
+      // öğrenciyi de yoklama listesine ekler. Sadece belirli bir ders saati
+      // seçiliyken çalışır (genel/saatsiz yoklamada anlamı yok).
+      seciliSaatBilgi
+        ? supabase
+            .from('ders_ek_erisim')
+            .select('ogrenciler(id, ad_soyad), ders_adi, ogretmen_profile_id')
+            .eq('sinif_id', seciliSinif)
+        : Promise.resolve({ data: [] }),
       seciliSaat
         ? supabase.from('yoklama').select('*').eq('ders_programi_id', seciliSaat).eq('tarih', bugun)
         : supabase.from('yoklama').select('*').eq('sinif_id', seciliSinif).eq('tarih', bugun).is('ders_programi_id', null),
-    ]).then(([so, y]) => {
+    ]).then(([so, ek, y]) => {
       const liste = (so.data || []).map((r) => r.ogrenciler).filter(Boolean)
+      if (seciliSaatBilgi) {
+        const gorulenIdler = new Set(liste.map((o) => o.id))
+        for (const e of ek.data || []) {
+          const dersAdiEslesiyor =
+            (e.ders_adi || '').trim().toLowerCase() === (seciliSaatBilgi.ders_adi || '').trim().toLowerCase()
+          const ogretmenEslesiyor = !e.ogretmen_profile_id || e.ogretmen_profile_id === seciliSaatBilgi.ogretmen_profile_id
+          if (dersAdiEslesiyor && ogretmenEslesiyor && e.ogrenciler && !gorulenIdler.has(e.ogrenciler.id)) {
+            gorulenIdler.add(e.ogrenciler.id)
+            liste.push(e.ogrenciler)
+          }
+        }
+      }
       setOgrenciler(liste)
       const mevcut = {}
       ;(y.data || []).forEach((k) => {
@@ -209,7 +236,7 @@ export default function Yoklama() {
       setYoklamaBugun(mevcut)
       setLoading(false)
     })
-  }, [seciliSinif, seciliSaat])
+  }, [seciliSinif, seciliSaat, gununSaatleri])
 
   function isaretle(ogrenciId, geldi) {
     setYoklamaBugun((prev) => ({ ...prev, [ogrenciId]: geldi }))
