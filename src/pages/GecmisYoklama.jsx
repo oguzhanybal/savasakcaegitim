@@ -5,6 +5,13 @@ import { saatGoster } from '../lib/saatFormat'
 
 const GUNLER = ['', 'Pazartesi', 'Salı', 'Çarşamba', 'Perşembe', 'Cuma', 'Cumartesi', 'Pazar']
 
+// "ders_ek_erisim" karşılaştırması için — büyük/küçük harfe EK OLARAK
+// tire/boşluk farklarını da yok sayar (bkz. Yoklama.jsx'teki AYNI fonksiyon
+// ve 33_esnek_ders_adi_eslesme.sql'deki RLS policy — üçü de tutarlı kalsın diye).
+function dersAdiNormallestir(s) {
+  return (s || '').toLowerCase().replace(/[-\s]+/g, '')
+}
+
 // Geriye doğru kaç GÜN (takvim günü, ders günü değil) taranacağı.
 const GUN_PENCERESI = 21
 
@@ -365,8 +372,7 @@ export default function GecmisYoklama() {
         .map((r) => r.ogrenciler)
         .filter((o) => o && !gorulen.has(o.id) && gorulen.add(o.id))
       for (const e of ek.data || []) {
-        const dersAdiEslesiyor =
-          (e.ders_adi || '').trim().toLowerCase() === (seciliOge.ders.ders_adi || '').trim().toLowerCase()
+        const dersAdiEslesiyor = dersAdiNormallestir(e.ders_adi) === dersAdiNormallestir(seciliOge.ders.ders_adi)
         const ogretmenEslesiyor = !e.ogretmen_profile_id || e.ogretmen_profile_id === seciliOge.ders.ogretmen_profile_id
         if (dersAdiEslesiyor && ogretmenEslesiyor && e.ogrenciler && !gorulen.has(e.ogrenciler.id)) {
           gorulen.add(e.ogrenciler.id)

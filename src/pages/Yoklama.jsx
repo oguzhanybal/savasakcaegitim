@@ -5,6 +5,15 @@ import KonuTakipBolumu from '../components/KonuTakipBolumu'
 
 const GUNLER = ['', 'Pazartesi', 'Salı', 'Çarşamba', 'Perşembe', 'Cuma', 'Cumartesi', 'Pazar']
 
+// "ders_ek_erisim" karşılaştırması için — büyük/küçük harfe EK OLARAK
+// tire/boşluk farklarını da yok sayar ("AYT-Matematik" / "AYT Matematik" /
+// "AYT - Matematik" hepsi aynı sayılır). Supabase'deki RLS policy'siyle
+// (bkz. 33_esnek_ders_adi_eslesme.sql) AYNI mantık — ikisi de tutarlı
+// kalsın diye.
+function dersAdiNormallestir(s) {
+  return (s || '').toLowerCase().replace(/[-\s]+/g, '')
+}
+
 // Bir ders saati sonradan düzenlenip eski satırı pasife alınmış, yenisi
 // eklenmiş olabilir (ders_programi'nin "aktif=false + pasif_tarihi" soft-
 // delete deseni) — bu durumda AYNI başlangıç/bitiş saatine sahip birden
@@ -219,8 +228,7 @@ export default function Yoklama() {
       if (seciliSaatBilgi) {
         const gorulenIdler = new Set(liste.map((o) => o.id))
         for (const e of ek.data || []) {
-          const dersAdiEslesiyor =
-            (e.ders_adi || '').trim().toLowerCase() === (seciliSaatBilgi.ders_adi || '').trim().toLowerCase()
+          const dersAdiEslesiyor = dersAdiNormallestir(e.ders_adi) === dersAdiNormallestir(seciliSaatBilgi.ders_adi)
           const ogretmenEslesiyor = !e.ogretmen_profile_id || e.ogretmen_profile_id === seciliSaatBilgi.ogretmen_profile_id
           if (dersAdiEslesiyor && ogretmenEslesiyor && e.ogrenciler && !gorulenIdler.has(e.ogrenciler.id)) {
             gorulenIdler.add(e.ogrenciler.id)
