@@ -1070,6 +1070,12 @@ function TaslaklarimBireBir({ taslaklar, ogrenciler, ogretmenler, dersProgrami, 
   const [gonderiliyorId, setGonderiliyorId] = useState(null)
   const [tumuGonderiliyor, setTumuGonderiliyor] = useState(false)
   const [hataMap, setHataMap] = useState({})
+  // Taslak sayısı çok kabarabildiği için (yüzlerce satıra kadar çıkabiliyor)
+  // liste varsayılan olarak KAPALI başlar — sayfa açılır açılmaz sayfanın
+  // altına doğru uzayıp gitmesin diye. Kullanıcı "Taslakları Göster"e
+  // basınca açılır, tekrar "Gizle"ye basınca kapanır. Başlık/özet (sayı,
+  // açıklama, Tümünü Yayınla butonu) her zaman görünür kalır.
+  const [goster, setGoster] = useState(false)
 
   const ogrenciAd = (id) => ogrenciler.find((o) => o.id === id)?.ad_soyad || 'Bilinmeyen öğrenci'
   const ogretmenAd = (id) => ogretmenler.find((o) => o.id === id)?.ad_soyad || 'Bilinmeyen öğretmen'
@@ -1264,17 +1270,26 @@ function TaslaklarimBireBir({ taslaklar, ogrenciler, ogretmenler, dersProgrami, 
             Henüz gerçek programa eklenmemiş bire bir dersler — haftalık olanlar gün gün, tekil olanlar altta. Hazır olduğunda yayınlayın.
           </p>
         </div>
-        <button
-          type="button"
-          onClick={() => tumunuYayinla()}
-          disabled={tumuGonderiliyor}
-          className="bg-navy text-white text-sm font-semibold px-4 py-1.5 rounded-lg hover:opacity-90 transition-opacity disabled:opacity-50"
-        >
-          {tumuGonderiliyor ? 'Yayınlanıyor...' : 'Tümünü Yayınla'}
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => setGoster((g) => !g)}
+            className="bg-white border border-gray-200 text-navy text-sm font-semibold px-4 py-1.5 rounded-lg hover:bg-gray-50 transition-colors"
+          >
+            {goster ? 'Taslakları Gizle' : `Taslakları Göster (${taslaklar.length})`}
+          </button>
+          <button
+            type="button"
+            onClick={() => tumunuYayinla()}
+            disabled={tumuGonderiliyor}
+            className="bg-navy text-white text-sm font-semibold px-4 py-1.5 rounded-lg hover:opacity-90 transition-opacity disabled:opacity-50"
+          >
+            {tumuGonderiliyor ? 'Yayınlanıyor...' : 'Tümünü Yayınla'}
+          </button>
+        </div>
       </div>
 
-      {gruplar.map(({ ad, liste }) => {
+      {goster && gruplar.map(({ ad, liste }) => {
         const haftalikListe = liste.filter((t) => t.tur === 'bire_bir_haftalik')
         const tekilListe = liste.filter((t) => t.tur !== 'bire_bir_haftalik')
         return (
