@@ -2,6 +2,19 @@
 @tailwind components;
 @tailwind utilities;
 
+/* KULLANICI İSTEĞİ (Eylül 2026): mobilde sayfanın en üstündeyken parmakla
+   hafifçe aşağı kaydırınca telefon tarayıcısı bunu "sayfayı yenile" (pull-to-
+   refresh) hareketi sanıp sayfayı yeniden yüklüyordu — bu sitenin bir hatası
+   değil, tarayıcının varsayılan davranışı, ama "overscroll-behavior" ile
+   kapatılabiliyor. "contain" seçildi (tamamen "none" değil) — sayfa içindeki
+   normal kaydırma/geri-git hareketleri etkilenmiyor, sadece sayfanın en
+   üstünde/altındayken tarayıcıya "bu kaydırmayı SEN yorumlama" deniyor. Hem
+   html hem body'ye eklendi çünkü tarayıcıya göre hangisinin dinlendiği
+   değişebiliyor. */
+html, body {
+  overscroll-behavior-y: contain;
+}
+
 body {
   font-family: 'Inter', system-ui, sans-serif;
   background-color: #FAF8F5;
