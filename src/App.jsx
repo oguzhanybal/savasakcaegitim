@@ -1,6 +1,7 @@
 import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom'
 import { AuthProvider, useAuth } from './lib/AuthContext'
 import Layout from './components/Layout'
+import PullToRefresh from './components/PullToRefresh'
 import Login from './pages/Login'
 import Dashboard from './pages/Dashboard'
 import Ogrenciler from './pages/Ogrenciler'
@@ -504,7 +505,9 @@ function AnaUygulama() {
 export default function App() {
   return (
     <AuthProvider>
-      <AnaUygulama />
+      <PullToRefresh>
+        <AnaUygulama />
+      </PullToRefresh>
     </AuthProvider>
   )
 }
