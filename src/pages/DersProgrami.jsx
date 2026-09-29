@@ -60,9 +60,22 @@ function gunEkle(tarihStr, gunSayisi) {
 //
 // Kalıcı çözüm: kaç satır olursa olsun HEPSİNİ sayfalayarak (range ile döngü)
 // çekmek — artık 1000 sınırının altında kalmaya güvenmiyoruz, ne kadar satır
-// birikirse birikisin tam veri geliyor. 7 günlük filtre performans için hâlâ
-// duruyor (gereksiz eski geçmişi çekmemek için), ama artık DOĞRULUK için
-// gerekli değil — bir güvenlik ağı olarak sayfalama var.
+// birikirse birikisin tam veri geliyor.
+//
+// EK DÜZELTME (Eylül 2026): "7 gün içinde pasif olanlar" filtresi hâlâ
+// duruyordu — bu da Günlük Müsaitlik / Sınıf Bazlı Program gibi görünümlerde,
+// kullanıcı 7 günden DAHA ESKİ bir tarihe (ör. geçen ay) gidince, o tarihte
+// aslında var olan ama daha sonra (7 günden fazla önce) değiştirilmiş/
+// kaldırılmış sınıf derslerinin hiç görünmemesine sebep oluyordu — veri
+// silinmedi, sadece bu sorgu artık onu getirmiyordu. Kullanıcı isteğiyle bu
+// filtre tamamen kaldırıldı: artık aktif/pasif fark etmeksizin TÜM satırlar
+// çekiliyor, geçmiş tarihlerdeki program da (musaitlikIcinProgram/
+// SinifBazliProgramTablosu'nun zaten doğru şekilde yaptığı "o tarihte
+// gerçekten geçerli olan satırı seç" hesaplaması sayesinde) artık doğru
+// gösteriliyor. Satır sayısı hâlâ 1000'in üzerine çıkarsa yukarıdaki
+// sayfalama döngüsü sorunsuz devam eder; okulun ders_programi tablosu şu an
+// (~2-3 bin satır) bunun için hâlâ küçük, ileride çok büyürse (ör. on
+// binlerce satır) burada tekrar bir tarih penceresi eklemek gerekebilir.
 async function tumDersProgramiSatirlariniGetir() {
   const SAYFA_BOYU = 1000
   let hepsi = []
@@ -71,7 +84,6 @@ async function tumDersProgramiSatirlariniGetir() {
     const { data, error } = await supabase
       .from('ders_programi')
       .select('*, siniflar(ad), profiles:ogretmen_profile_id(ad_soyad, brans)')
-      .or(`aktif.eq.true,pasif_tarihi.gte.${gunEkle(yerelBugunTarihi(), -7)}`)
       .order('gun')
       .order('baslangic_saat')
       .order('id')
