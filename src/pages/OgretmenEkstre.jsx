@@ -106,11 +106,28 @@ export default function OgretmenEkstre() {
           .is('atama_id', null),
         // Bu öğretmenin verdiği (yoklaması alınmış) SINIF dersleri — sadece kayıt
         // için gösteriliyor, ücret hesabına dahil değil (tutar hep 0'dır).
+        //
+        // ÖNEMLİ PERFORMANS DÜZELTMESİ (Eylül 2026): bu sorgu eskiden
+        // "yoklama" tablosundan başlayıp ".eq('ders_programi.ogretmen_profile_id', ...)"
+        // ile GÖMÜLÜ (embedded) ders_programi'yi filtreliyordu. Supabase'in
+        // kendi kayıtlarını inceleyince (bkz. Postgres Logs) bunun GERÇEKTE
+        // ürettiği sorguda filtrenin yoklama'nın kendisine hiç uygulanmadığını,
+        // bunun yerine yoklama'nın HER SATIRI için ayrı ayrı (LATERAL) "bu satır
+        // Emin'e mi ait" diye kontrol ettiğini gördük — yani okulun TÜM
+        // öğrencilerinin TÜM zamanlardaki yoklama kayıtları (binlerce satır)
+        // tek tek taranıyordu, bu da zaman zaman zaman aşımına (500 hatası,
+        // "0 sınıf dersi" görünmesi) sebep oluyordu. Düzeltme: sorguyu TERSİNE
+        // çeviriyoruz — artık doğrudan "ders_programi" tablosundan, öğretmene
+        // göre FİLTRELENMİŞ olarak başlıyoruz (bu öğretmenin sadece birkaç
+        // düzine ders saati olur) ve HER BİRİNİN yoklama kayıtlarını embed
+        // ediyoruz. Aşağıda bu yeni şekli, sinifDersDetaylariOlustur'un
+        // beklediği eski şekle (yoklama satırı + içinde ders_programi) geri
+        // çeviriyoruz, böylece ekstreHesap.js hiç değişmedi.
         supabase
-          .from('yoklama')
-          .select('*, ders_programi!inner(ders_adi, baslangic_saat, bitis_saat, siniflar(ad))')
-          .eq('ders_programi.ogretmen_profile_id', ogretmenId),
-      ]).then(([ogr, bba, ekDersler, sinifYoklamalari]) => {
+          .from('ders_programi')
+          .select('id, ders_adi, baslangic_saat, bitis_saat, siniflar(ad), yoklama(*)')
+          .eq('ogretmen_profile_id', ogretmenId),
+      ]).then(([ogr, bba, ekDersler, sinifProgramlari]) => {
         const atamalar = bba.data || []
         const atamaIdleri = atamalar.map((x) => x.id)
         const yoklamaSorgusu =
@@ -120,7 +137,21 @@ export default function OgretmenEkstre() {
         yoklamaSorgusu.then((by) => {
           const tumYoklamalar = [...(by.data || []), ...(ekDersler.data || [])]
           const bireBirDersler = bireBirDersDetaylariOlustur(atamalar, tumYoklamalar)
-          const sinifDersler = sinifDersDetaylariOlustur(sinifYoklamalari.data || [])
+          // ders_programi → yoklama şeklinde gelen veriyi, sinifDersDetaylariOlustur'un
+          // beklediği "yoklama satırı + içinde ders_programi" şekline düzleştiriyoruz.
+          const sinifYoklamaSatirlari = (sinifProgramlari.data || []).flatMap((dp) =>
+            (dp.yoklama || []).map((y) => ({
+              ...y,
+              ders_programi_id: dp.id,
+              ders_programi: {
+                ders_adi: dp.ders_adi,
+                baslangic_saat: dp.baslangic_saat,
+                bitis_saat: dp.bitis_saat,
+                siniflar: dp.siniflar,
+              },
+            }))
+          )
+          const sinifDersler = sinifDersDetaylariOlustur(sinifYoklamaSatirlari)
           setOgretmen(ogr.data)
           setDersler(
             // ÖNEMLİ HATA DÜZELTMESİ: bu sıralama eskiden SADECE tarihe göre
