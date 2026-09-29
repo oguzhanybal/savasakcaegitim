@@ -1,4 +1,5 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../lib/AuthContext'
 import { saatGoster } from '../lib/saatFormat'
@@ -79,9 +80,20 @@ async function sayfalayarakGetir(queryOlustur, sayfaBoyutu = 1000) {
 export default function GecmisYoklama() {
   const { profile } = useAuth()
   const isYonetici = profile?.rol === 'yonetici'
+  // Yoklama Raporu sayfasındaki (geçmiş bir tarih seçiliyken) "Henüz
+  // Alınmadı" satırlarına eklenen "Yoklama Al" bağlantısından buraya
+  // ?sinif=<id>&tarih=<YYYY-MM-DD>&saat=<ders_programi id> ile gelinebiliyor
+  // — kullanıcı raporda gördüğü eksik geçmiş dersi, gün listesinde/ders
+  // listesinde elle gezmeden doğrudan yoklama alma ekranında açabilsin diye
+  // (kullanıcı isteği). Sadece İLK yüklemede bir kerelik "öncelikli" hedef
+  // olarak kullanılır (ref'lerde tutulur, uygulanınca temizlenir) — sonraki
+  // normal gün/gezinme değişikliklerini etkilemez.
+  const [searchParams] = useSearchParams()
+  const oncelikliTarihRef = useRef(searchParams.get('tarih') || null)
+  const oncelikliSaatRef = useRef(searchParams.get('saat') || null)
   const [siniflar, setSiniflar] = useState([])
   const [ogretmenler, setOgretmenler] = useState([])
-  const [seciliSinif, setSeciliSinif] = useState('') // '' = Tümü
+  const [seciliSinif, setSeciliSinif] = useState(() => searchParams.get('sinif') || '') // '' = Tümü
   const [gunListesi, setGunListesi] = useState([]) // [{tarih, gun, dersler: [...]}]
   const [yukleniyorListe, setYukleniyorListe] = useState(true)
   const [seciliGun, setSeciliGun] = useState(null) // tarih string, null ise gün listesi görünümü
@@ -326,6 +338,24 @@ export default function GecmisYoklama() {
 
       setGunListesi(gunler)
       setYukleniyorListe(false)
+
+      // Yukarıdaki "öncelikli hedef" varsa (Yoklama Raporu'ndan gelindiyse):
+      // o tarihi/dersi bulup doğrudan yoklama alma ekranını aç.
+      const oncelikliTarih = oncelikliTarihRef.current
+      if (oncelikliTarih) {
+        const gunVerisi = gunler.find((g) => g.tarih === oncelikliTarih)
+        if (gunVerisi) {
+          setSeciliGun(oncelikliTarih)
+          const oncelikliSaat = oncelikliSaatRef.current
+          const oge = gunVerisi.dersler.find((d) => d.ders.id === oncelikliSaat)
+          if (oge) setSeciliOge({ tarih: oncelikliTarih, ders: oge.ders })
+        }
+        // Sadece bir kez denenir — gün listesi sonradan (ör. sınıf filtresi
+        // değişince) yeniden oluşsa bile kullanıcının o andaki normal
+        // gezinmesini tekrar tekrar geçersiz kılmasın diye.
+        oncelikliTarihRef.current = null
+        oncelikliSaatRef.current = null
+      }
     })()
   }, [seciliSinif, profile?.id, profile?.rol])
 

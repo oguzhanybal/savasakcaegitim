@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../lib/AuthContext'
 import KonuTakipBolumu from '../components/KonuTakipBolumu'
@@ -56,6 +57,15 @@ function saatleriBirlestir(saatler, yoklamasiOlanIdler) {
 
 export default function Yoklama() {
   const { profile } = useAuth()
+  // Yoklama Raporu sayfasındaki "Henüz Alınmadı" satırlarına eklenen
+  // "Yoklama Al" bağlantısından buraya ?sinif=<id>&saat=<id> ile
+  // gelinebiliyor — kullanıcı raporda gördüğü eksik dersi elle sınıf/saat
+  // seçmeden doğrudan burada açabilsin diye. Sadece İLK yüklemede bir kerelik
+  // "öncelikli" seçim olarak kullanılır (ref'te tutulur, kullanılınca
+  // temizlenir) — sonraki normal sınıf/saat değişikliklerini etkilemez.
+  const [searchParams] = useSearchParams()
+  const oncelikliSinifRef = useRef(searchParams.get('sinif') || null)
+  const oncelikliSaatRef = useRef(searchParams.get('saat') || null)
   const [siniflar, setSiniflar] = useState([])
   const [ogretmenler, setOgretmenler] = useState([])
   const [seciliSinif, setSeciliSinif] = useState('')
@@ -80,8 +90,12 @@ export default function Yoklama() {
   useEffect(() => {
     supabase.from('siniflar').select('*').then(({ data }) => {
       setSiniflar(data || [])
-      if (data && data.length > 0) setSeciliSinif(data[0].id)
-      else setLoading(false)
+      if (data && data.length > 0) {
+        const oncelikliSinif = oncelikliSinifRef.current
+        const oncelikliGecerliMi = oncelikliSinif && data.some((s) => s.id === oncelikliSinif)
+        setSeciliSinif(oncelikliGecerliMi ? oncelikliSinif : data[0].id)
+        oncelikliSinifRef.current = null // sadece bir kez uygulanır
+      } else setLoading(false)
     })
     // Aynı sınıfın farklı ders saatleri farklı öğretmenlere ait olabiliyor
     // (ör. 09.00 Matematik başka hocada, 09.55 Fizik başka hocada) —
@@ -153,7 +167,12 @@ export default function Yoklama() {
         // silinmiş/taşınmışsa) ilk saate düşülür.
         const korunacakSaat =
           mevcutSeciliSaat && benzersizSaatler.some((s) => s.id === mevcutSeciliSaat) ? mevcutSeciliSaat : null
-        setSeciliSaat(korunacakSaat || (benzersizSaatler.length > 0 ? benzersizSaatler[0].id : ''))
+        const oncelikliSaat = oncelikliSaatRef.current
+        const oncelikliSaatGecerliMi = oncelikliSaat && benzersizSaatler.some((s) => s.id === oncelikliSaat)
+        if (oncelikliSaatGecerliMi) oncelikliSaatRef.current = null // sadece bir kez uygulanır
+        setSeciliSaat(
+          korunacakSaat || (oncelikliSaatGecerliMi ? oncelikliSaat : benzersizSaatler.length > 0 ? benzersizSaatler[0].id : '')
+        )
       })
   }
 

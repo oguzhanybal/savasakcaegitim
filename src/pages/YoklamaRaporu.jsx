@@ -1,4 +1,5 @@
 import { useEffect, useState, Fragment } from 'react'
+import { Link } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../lib/AuthContext'
 import { saatGoster } from '../lib/saatFormat'
@@ -296,9 +297,29 @@ function BugunkuYoklamaDurumu({ isYonetici, ogretmenProfileId }) {
                             Alındı
                           </span>
                         ) : (
-                          <span className="px-2 py-0.5 rounded-full text-xs font-semibold bg-orange-100 text-orange-700">
-                            Henüz Alınmadı
-                          </span>
+                          <div className="flex items-center justify-center gap-2">
+                            <span className="px-2 py-0.5 rounded-full text-xs font-semibold bg-orange-100 text-orange-700">
+                              Henüz Alınmadı
+                            </span>
+                            {/* Bugünün dersleri "Yoklama Al" sayfasına (her zaman
+                                bugünü gösterir), geçmiş tarihli dersler ise "Geçmiş
+                                Yoklama" sayfasına (o tarih+ders önceden seçili
+                                gelecek şekilde) yönlendirilir — kullanıcı raporda
+                                gördüğü eksik dersi tek tıkla, sınıf/gün/ders elle
+                                aramadan doğrudan yoklama alma ekranında açabilsin
+                                diye (kullanıcı isteği: geçmiş yoklamalar için de). */}
+                            <Link
+                              to={
+                                secilenBugunMu
+                                  ? `/yoklama?sinif=${o.ders.sinif_id}&saat=${o.ders.id}`
+                                  : `/gecmis-yoklama?sinif=${o.ders.sinif_id}&tarih=${secilenTarih}&saat=${o.ders.id}`
+                              }
+                              className="px-2 py-0.5 rounded-full text-xs font-semibold bg-navy text-white hover:opacity-90"
+                              title="Bu ders saati için yoklama al"
+                            >
+                              Yoklama Al
+                            </Link>
+                          </div>
                         )}
                       </td>
                       <td className="px-4 py-3 whitespace-nowrap">
