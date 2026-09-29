@@ -258,7 +258,7 @@ export function aylikKalemHesapla(kalemAdi, aylikBorclar, odemeler, seciliAy) {
 // Burada onun yerine, ödemelerin KÜMÜLATİF olarak en eski borçtan başlayarak
 // kapandığı varsayımıyla (tüm bu dosyadaki mantıkla aynı), "bu ayki tutarın"
 // ne kadarının fiilen kapandığı hesaplanıyor:
-//   - J = bu aya kadarki TÜM borç (bu ay dahil), odenen = bu aya kadarki TÜM ödeme
+//   - J = bu aya kadarki TÜM borç (bu ay dahil), odenen = BUGÜNE KADAR yapılmış TÜM ödeme
 //   - kalanToplam = bugüne kadarki kapanmamış TOPLAM bakiye
 //   - buAyTutar = SADECE bu ayın kendi borcu (Tutar sütunuyla birebir aynı)
 //   - Eğer kalanToplam < buAyTutar ise, bu ayın bir kısmı ödenmiş demektir
@@ -268,6 +268,22 @@ export function aylikKalemHesapla(kalemAdi, aylikBorclar, odemeler, seciliAy) {
 //     (üstüne geçmişten de borç var): ödenen kısım = 0, ödenmeyen kısım = buAyTutar.
 // Bu ikisinin TOPLAMI her zaman tam olarak buAyTutar'a (yani "Tutar" sütununa)
 // eşittir — böylece tabloda yan yana duran üç sütun birbiriyle çelişmez.
+//
+// BÜYÜK HATA DÜZELTMESİ (Eylül 2026): "odenen" burada eskiden SADECE seçili
+// aya kadar (seçili ayın kendisi dahil) yapılmış ödemeleri sayıyordu — bu da,
+// veli DAHA SONRAKİ bir ayda büyük bir ödeme yapıp geçmiş bir ayın borcunu
+// kapatsa bile, o geçmiş ayı Aylık Özet'te SONSUZA KADAR "ödenmedi" gösteriyordu
+// (örnek: Elif Lina Ercan Ağustos borcunu 19 Eylül'de yaptığı ödemeyle kapatmıştı
+// — Muhasebe sayfası "Ağustos: Ödendi" diyordu ama Aylık Özet "Ağustos: ₺24.000
+// Ödenmeyen" gösteriyordu). Muhasebe sayfasındaki aylikBorcDurumHesapla() zaten
+// DOĞRU yapıyor: ödemenin TARİHİNE bakmaksızın, öğrencinin BUGÜNE KADAR yaptığı
+// TÜM ödemeleri sayıp en eski borçtan başlayarak kapatıyor. Aşağıdaki satır artık
+// aynı mantığı kullanıyor — "odenen" seçili aya göre değil, TÜM ZAMANLARA göre
+// hesaplanıyor (bkz. aylikBorcDurumHesapla'daki { yil: 9999, ay: 12 } kullanımı).
+// NOT: bu düzeltme SADECE Aylık Özet sayfası içindir — veliye gönderilen resmi
+// aylık Ekstre/Toplu Ekstre sayfaları (aylikKalemHesapla fonksiyonu) BİLEREK o
+// ayın kapanışındaki hali göstermeye devam ediyor, kullanıcının isteğiyle
+// değiştirilmedi.
 // ============================================================================
 export function buAyTutarininOdemeDurumu(kalemAdi, ogrenciId, tumBorclar, tumOdemeler, seciliAy) {
   const simdi = ayEkle(seciliAy, 0)
@@ -289,7 +305,10 @@ export function buAyTutarininOdemeDurumu(kalemAdi, ogrenciId, tumBorclar, tumOde
     })
     .reduce((t, b) => t + (Number(b.tutar) || 0), 0)
 
-  const odenen = odemeToplamKalem(kendiOdemeler, kalemAdi, simdi)
+  // Muhasebe sayfasındaki aylikBorcDurumHesapla() ile AYNI mantık: ödeme
+  // tarihi seçili aydan sonra bile olsa sayılır (bkz. yukarıdaki BÜYÜK HATA
+  // DÜZELTMESİ yorumu) — bu yüzden hedef ay olarak uzak bir gelecek veriliyor.
+  const odenen = odemeToplamKalem(kendiOdemeler, kalemAdi, { yil: 9999, ay: 12 })
   const kalanToplam = Math.max(0, J - odenen)
 
   const buAyOdenen = Math.max(0, buAyTutar - kalanToplam)
