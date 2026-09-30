@@ -2128,16 +2128,37 @@ export default function DersProgrami() {
               .order('baslangic_saat'),
             // Bu haftaki sınıf derslerinden hangilerinin yoklaması ZATEN
             // alınmış olduğunu bulmak için — "Alındı" rozeti göstermede
-            // kullanılıyor. Join'e "!inner" ekleyip ders_programi üzerinden
-            // öğretmene göre filtreliyoruz (bkz. OgretmenEkstre.jsx'teki aynı
-            // desen) — böylece hangi ders_programi id'lerinin ait olduğunu
-            // önceden bilmemize gerek kalmıyor.
-            supabase
-              .from('yoklama')
-              .select('ders_programi_id, tarih, ders_programi!inner(ogretmen_profile_id)')
-              .eq('ders_programi.ogretmen_profile_id', profile.id)
-              .gte('tarih', pazartesi)
-              .lte('tarih', pazar),
+            // kullanılıyor.
+            //
+            // ÖNEMLİ PERFORMANS DÜZELTMESİ (30 Eylül 2026): burada önceden
+            // "yoklama" tablosundan başlayıp ".eq('ders_programi.ogretmen_
+            // profile_id', ...)" ile GÖMÜLÜ ders_programi'yi filtreliyorduk
+            // (yorum bile "bkz. OgretmenEkstre.jsx'teki aynı desen" diyordu).
+            // Az önce Öğretmen Ekstresi'nde bu DESENİN, filtreyi yoklama'nın
+            // kendisine değil her satır için ayrı ayrı (LATERAL) kontrol
+            // edilen gömülü tabloya uyguladığını, bunun da zaman zaman zaman
+            // aşımına yol açtığını kanıtladık (Supabase Postgres kayıtları).
+            // Bu sorgu bir HAFTAYLA sınırlı olduğu için daha küçük ölçekliydi
+            // ama AYNI riski taşıyordu — kullanıcı "başka böyle bir hata var
+            // mı" diye sorunca bulundu ve aynı kalıcı çözümle (önce KÜÇÜK,
+            // doğrudan filtrelenmiş tarafı — bu öğretmenin ders_programi id'
+            // lerini — çekip, yoklama'yı gömülü join yerine bu id listesiyle
+            // filtrelemek) düzeltildi.
+            (async () => {
+              const { data: kendiDersProgrami, error: dpHata } = await supabase
+                .from('ders_programi')
+                .select('id')
+                .eq('ogretmen_profile_id', profile.id)
+              if (dpHata) return { data: null, error: dpHata }
+              const idler = (kendiDersProgrami || []).map((d) => d.id)
+              if (idler.length === 0) return { data: [], error: null }
+              return supabase
+                .from('yoklama')
+                .select('ders_programi_id, tarih')
+                .in('ders_programi_id', idler)
+                .gte('tarih', pazartesi)
+                .lte('tarih', pazar)
+            })(),
           ])
         })().then(([soruRes, bbRes, yoklamaRes]) => {
           if (soruRes.error) console.error('Soru çözümü sorgusu hatası:', soruRes.error.message)
