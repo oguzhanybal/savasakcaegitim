@@ -62,20 +62,20 @@ function gunEkle(tarihStr, gunSayisi) {
 // çekmek — artık 1000 sınırının altında kalmaya güvenmiyoruz, ne kadar satır
 // birikirse birikisin tam veri geliyor.
 //
-// EK DÜZELTME (Eylül 2026): "7 gün içinde pasif olanlar" filtresi hâlâ
-// duruyordu — bu da Günlük Müsaitlik / Sınıf Bazlı Program gibi görünümlerde,
-// kullanıcı 7 günden DAHA ESKİ bir tarihe (ör. geçen ay) gidince, o tarihte
-// aslında var olan ama daha sonra (7 günden fazla önce) değiştirilmiş/
-// kaldırılmış sınıf derslerinin hiç görünmemesine sebep oluyordu — veri
-// silinmedi, sadece bu sorgu artık onu getirmiyordu. Kullanıcı isteğiyle bu
-// filtre tamamen kaldırıldı: artık aktif/pasif fark etmeksizin TÜM satırlar
-// çekiliyor, geçmiş tarihlerdeki program da (musaitlikIcinProgram/
-// SinifBazliProgramTablosu'nun zaten doğru şekilde yaptığı "o tarihte
-// gerçekten geçerli olan satırı seç" hesaplaması sayesinde) artık doğru
-// gösteriliyor. Satır sayısı hâlâ 1000'in üzerine çıkarsa yukarıdaki
-// sayfalama döngüsü sorunsuz devam eder; okulun ders_programi tablosu şu an
-// (~2-3 bin satır) bunun için hâlâ küçük, ileride çok büyürse (ör. on
-// binlerce satır) burada tekrar bir tarih penceresi eklemek gerekebilir.
+// ACİL GERİ ALMA (30 Eylül 2026): bir önceki değişiklikte "7 gün içinde
+// pasif olanlar" filtresini TAMAMEN kaldırmıştım (geçmiş tarihlerde sınıf
+// dersi görünmesin diye) — ama bu, bu sorguyu HER SAYFA AÇILIŞINDA (öğrenci/
+// veli DAHİL, çünkü bu satır isYonetici şartına bağlı değil) filtresiz,
+// TÜM ders_programi tablosunu (aktif+pasif, binlerce satır) çekmeye
+// zorladı. Supabase kayıtlarında bunun öğrenci/veli gibi rollerde zaman
+// aşımına (statement timeout) uğrayıp "Görüntülenecek ders programı
+// bulunamadı" hatasına yol açtığı doğrulandı — yani geçmiş-tarih düzeltmesi
+// YENİ, DAHA GENİŞ bir kesintiye sebep oldu. Bu yüzden filtre ACİL olarak
+// GERİ KONULDU (eski, sorunsuz çalışan haline). "Geçmiş tarihte sınıf dersi
+// görünmüyor" isteği hâlâ geçerli ama bunun için ayrı, daha dikkatli bir
+// çözüm gerekiyor (ör. sadece yönetici bu sorguyu tam/filtresiz çeksin,
+// öğrenci/veli/öğretmen için filtre kalsın) — o çözüm burada DEĞİL, ayrı bir
+// adımda yapılacak.
 async function tumDersProgramiSatirlariniGetir() {
   const SAYFA_BOYU = 1000
   let hepsi = []
@@ -84,6 +84,7 @@ async function tumDersProgramiSatirlariniGetir() {
     const { data, error } = await supabase
       .from('ders_programi')
       .select('*, siniflar(ad), profiles:ogretmen_profile_id(ad_soyad, brans)')
+      .or(`aktif.eq.true,pasif_tarihi.gte.${gunEkle(yerelBugunTarihi(), -7)}`)
       .order('gun')
       .order('baslangic_saat')
       .order('id')
