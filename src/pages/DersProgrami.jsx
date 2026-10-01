@@ -3405,7 +3405,24 @@ export default function DersProgrami() {
       )}
 
       {sinifProgramiGoster && !loading && kendiProgram.length > 0 && gorunum === 'liste' && (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+        // ÖNEMLİ (kullanıcı geri bildirimi — "tam ekran yapmazsam yazılar
+        // kayıyor"): Eskiden burada "grid-cols-1 md:grid-cols-2 lg:grid-cols-3"
+        // kullanılıyordu. Bu breakpoint'ler TARAYICI PENCERESİNİN genişliğine
+        // bakar, her kartın kendi genişliğine DEĞİL. Tarayıcı tam ekranken
+        // pencere çok geniş olduğu için 3 sütun olsa bile her kart yeterince
+        // genişti. Ama pencere küçültülüp (tam ekrandan çıkılıp) yine de
+        // "lg" eşiğinin (1024px) üzerinde kalındığında, tarayıcı yine de 3
+        // sütuna bölmeye devam ediyordu — ama bu sefer her kart çok
+        // daralıyor, içindeki "11-MF", "AYT - Matematik" gibi yazılar
+        // sığmayıp kelime kelime alt satıra kayıyordu.
+        // Çözüm: sabit breakpoint yerine CSS Grid'in "auto-fit" özelliğini
+        // kullanmak — her kart en az 320px (yazıların rahat sığacağı bir
+        // genişlik) alıyor, tarayıcı gerçekte ne kadar yer olduğuna bakıp
+        // kaç sütun sığacağına KENDİSİ karar veriyor. Pencere dar ise
+        // otomatik olarak 1-2 sütuna iniyor, geniş/tam ekranda 3 (veya daha
+        // fazla) sütun oluyor — pencere boyutu ne olursa olsun kartlar asla
+        // 320px'den dar olmuyor, yazılar artık kaymıyor.
+        <div className="grid gap-4 [grid-template-columns:repeat(auto-fit,minmax(320px,1fr))]">
           {gunlereGore.map((dersler, i) => {
             const gunNo = i + 1
             const buGunMu = gunNo === bugunGunNo
