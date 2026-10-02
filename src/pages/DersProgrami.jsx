@@ -413,6 +413,12 @@ function DersEkleForm({
   const [hata, setHata] = useState('')
   const [basari, setBasari] = useState('')
   const [gonderiliyor, setGonderiliyor] = useState(false)
+  // Taslağa kaydederken, canlı programda aynı sınıfın/öğretmenin o saatte
+  // zaten bir dersi varsa — bu artık SERT bir engel değil (bkz.
+  // taslagaKaydet()'teki ilgili not), "Evet, yine de taslağa ekle" ile
+  // geçilebilen bir uyarı. MusaitlikTablosu.jsx'teki hpSinifUyarisi ile
+  // aynı mantık, bu forma özel kopyası.
+  const [sinifTaslakUyarisi, setSinifTaslakUyarisi] = useState('')
   // "Birleşik Sınıf Dersi" — bu dersi seçilen sınıfla AYNI ANDA, aynı
   // öğretmenden alan başka sınıf(lar) da varsa buradan işaretlenir (ör. 9-A ve
   // 9-B'nin birleşip tek ders almasi). Sadece ekleme sırasında sunulur, mevcut
@@ -673,9 +679,14 @@ function DersEkleForm({
   // hem BEKLEYEN diğer taslaklarla çakışıp çakışmadığı burada da kontrol edilir,
   // "haftalık programı taslakta kurup sonunda topluca yayınlayacağım, arada
   // birbiriyle çakışan taslaklar oluşmasın" isteği için.
-  async function taslagaKaydet() {
+  // zorlaEkle=true: kullanıcı "Evet, yine de taslağa ekle" demiş — bu
+  // durumda canlı programla çakışma kontrolü (aşağıdaki canliCakisma) tekrar
+  // SORULMAZ, ama taslak-taslak çakışma kontrolü (aynı plan içindeki diğer
+  // bekleyen taslaklarla) yine de çalışır — bkz. aşağıdaki not.
+  async function taslagaKaydet(zorlaEkle = false) {
     setHata('')
     setBasari('')
+    if (!zorlaEkle) setSinifTaslakUyarisi('')
     if (!sinifId || seciliGunler.length === 0 || !baslangic || !bitis) {
       setHata('Lütfen sınıf, en az bir gün ve saat aralığını doldurun.')
       return
@@ -729,14 +740,26 @@ function DersEkleForm({
     )
     const programHaricKaldirilacaklar = program.filter((p) => !kaldirilacakDersIdleri.has(p.id))
     for (const g of seciliGunler) {
-      const canliCakisma = cakismaBul({ sinifId, gun: Number(g), baslangic, bitis, ogretmenId }, programHaricKaldirilacaklar)
-      if (canliCakisma) {
-        setHata(
-          canliCakisma.tur === 'ogretmen'
-            ? `Çakışma var: bu öğretmen ${canliCakisma.gun} günü ${canliCakisma.saat} arasında zaten "${canliCakisma.dersAdi || canliCakisma.sinifAdi}" dersinde.`
-            : `Çakışma var: bu sınıfın ${canliCakisma.gun} günü ${canliCakisma.saat} arasında zaten "${canliCakisma.dersAdi || 'başka bir'}" dersi var.`
-        )
-        return
+      // ÖNEMLİ DÜZELTME: canlı programla çakışma artık SERT bir engel değil,
+      // "Evet, yine de taslağa ekle" ile geçilebilen bir uyarı (bkz. yukarıdaki
+      // sinifTaslakUyarisi state'i — MusaitlikTablosu.jsx'teki hpSinifUyarisi
+      // ile aynı mantık). Kullanıcı isteğiyle: taslak kurmanın amacı zaten
+      // mevcut programı değiştirmek, bu yüzden "canlı programda şu an burada
+      // bir ders var" tek başına dead-end bir hata OLMAMALI. Gerçek güvenlik
+      // ağı burada değil — plan YAYINLANIRKEN (yayinla()) hem canlı programla
+      // hem bu planın "sinif_kaldir" taslaklarıyla tam kapsamlı bir çakışma
+      // kontrolü ayrıca yapılıyor, o yüzden burayı yumuşatmak yayınlanan
+      // veride çift rezervasyon riski yaratmıyor.
+      if (!zorlaEkle) {
+        const canliCakisma = cakismaBul({ sinifId, gun: Number(g), baslangic, bitis, ogretmenId }, programHaricKaldirilacaklar)
+        if (canliCakisma) {
+          setSinifTaslakUyarisi(
+            canliCakisma.tur === 'ogretmen'
+              ? `Bu öğretmen ${canliCakisma.gun} günü ${canliCakisma.saat} arasında canlı programda zaten "${canliCakisma.dersAdi || canliCakisma.sinifAdi}" dersinde`
+              : `Bu sınıfın ${canliCakisma.gun} günü ${canliCakisma.saat} arasında canlı programda zaten "${canliCakisma.dersAdi || 'başka bir'}" dersi var`
+          )
+          return
+        }
       }
       const taslakCakisma = cakismaBul({ sinifId, gun: Number(g), baslangic, bitis, ogretmenId }, taslakSatirlari)
       if (taslakCakisma) {
@@ -782,8 +805,18 @@ function DersEkleForm({
           ? `✓ ${kayitlar.length} gün için taslağa kaydedildi.${planNotu} Aşağıdaki "Taslaklarım" listesinden yayınlayabilirsiniz.`
           : `✓ Taslağa kaydedildi.${planNotu} Aşağıdaki "Taslaklarım" listesinden yayınlayabilirsiniz.`
       )
+      setSinifTaslakUyarisi('')
       onEklendi()
     }
+  }
+
+  // "Evet, yine de taslağa ekle" — sinifTaslakUyarisi gösterilirken tıklanır,
+  // taslagaKaydet(true) ile canlı-program kontrolü tekrar sorulmadan devam
+  // eder (taslak-taslak çakışma kontrolü hâlâ çalışır) — bkz.
+  // MusaitlikTablosu.jsx'teki hpSinifUyarisinaRagmenEkle ile aynı desen.
+  function sinifTaslakUyarisinaRagmenEkle() {
+    setSinifTaslakUyarisi('')
+    taslagaKaydet(true)
   }
 
   return (
@@ -955,7 +988,13 @@ function DersEkleForm({
           !(taslakModuAcik && aktifPlanAdi.trim()) && (
             <button
               type="button"
-              onClick={taslagaKaydet}
+              // DİKKAT: onClick={taslagaKaydet} YAZILMAMALI — taslagaKaydet artık
+              // bir zorlaEkle parametresi alıyor, onClick'e doğrudan referans
+              // verilirse React tıklama event objesini ilk argüman olarak geçer
+              // ve bu her zaman "truthy" olduğu için zorlaEkle=true sayılıp
+              // canlı-program çakışma kontrolü YANLIŞLIKLA her tıklamada
+              // atlanırdı. Bu yüzden argümansız çağıran bir ok fonksiyonu şart.
+              onClick={() => taslagaKaydet()}
               disabled={gonderiliyor}
               className="bg-white border border-gray-200 text-gray-600 font-semibold px-5 py-2 rounded-lg hover:bg-gray-50 transition-colors disabled:opacity-50"
             >
@@ -992,8 +1031,33 @@ function DersEkleForm({
           </div>
         </div>
       )}
-      {hata && <p className="text-red-600 text-sm mt-3">{hata}</p>}
-      {!hata && basari && <p className="text-green-600 text-sm mt-3">{basari}</p>}
+      {sinifTaslakUyarisi ? (
+        <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3 mt-3">
+          <p className="text-sm text-yellow-800 mb-2">⚠ {sinifTaslakUyarisi}. Yine de taslağa eklemek ister misiniz?</p>
+          <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={() => setSinifTaslakUyarisi('')}
+              className="flex-1 px-3 py-1.5 rounded-lg text-sm text-gray-600 bg-white border border-gray-200 hover:bg-gray-50"
+            >
+              Vazgeç
+            </button>
+            <button
+              type="button"
+              disabled={gonderiliyor}
+              onClick={sinifTaslakUyarisinaRagmenEkle}
+              className="flex-1 px-3 py-1.5 rounded-lg text-sm text-white bg-orange hover:opacity-90 disabled:opacity-50"
+            >
+              {gonderiliyor ? 'Ekleniyor...' : 'Evet, yine de taslağa ekle'}
+            </button>
+          </div>
+        </div>
+      ) : (
+        <>
+          {hata && <p className="text-red-600 text-sm mt-3">{hata}</p>}
+          {!hata && basari && <p className="text-green-600 text-sm mt-3">{basari}</p>}
+        </>
+      )}
     </form>
   )
 }
