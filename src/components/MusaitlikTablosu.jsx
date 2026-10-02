@@ -602,8 +602,7 @@ export default function MusaitlikTablosu({
       }
     } else if (secilen.tur === 'sinif') {
       // Bu sınıfın bu gün/saatte (farklı bir öğretmenle bile olsa) başka dersi
-      // var mı? Bu kontrol taslak modunda da anlamlı (canlı program hâlâ
-      // canlı program), o yüzden HER İKİ modda da çalışır.
+      // var mı?
       //
       // İSTİSNA: aktif planda bu ders için bekleyen bir "sinif_kaldir"
       // (kaldırma) taslağı varsa, artık bu dersi "hâlâ orada" sayıp çakışma
@@ -623,8 +622,31 @@ export default function MusaitlikTablosu({
           araliklarCakisiyorMu(hizliPopup.baslangic, hizliPopup.bitis, d.baslangic_saat, d.bitis_saat)
       )
       if (cakisan) {
-        setHpHata(`Bu sınıfın bu saatte zaten "${cakisan.ders_adi || cakisan.sinif_adi || 'bir'}" dersi var.`)
-        return
+        if (taslakModuEtkin) {
+          // ÖNEMLİ DÜZELTME: Taslak Modu'nda bu artık SERT bir engel değil,
+          // sadece "Evet, yine de ekle" ile geçilebilen bir uyarı (bkz.
+          // dosya başındaki hpSinifUyarisi/zorlaEkle mekanizması, aynısı
+          // bire-bir derslerde zaten kullanılıyordu). Kullanıcı isteğiyle:
+          // taslak kurmanın bütün amacı zaten mevcut programı değiştirmek —
+          // "canlı programda şu an burada bir ders var" bilgisi faydalı bir
+          // uyarı ama otomatik bir dead-end OLMAMALI, özellikle kullanıcı o
+          // dersi kaldırmayı henüz ayrı bir adımda (✕ ikonuyla) işaretlemek
+          // zorunda bırakılmadan devam edebilmeli. Gerçek güvenlik ağı zaten
+          // burada değil, PLAN YAYINLANIRKEN (yayinla()) — orada hem canlı
+          // programla hem de bu planın "sinif_kaldir" taslaklarıyla tam
+          // kapsamlı bir çakışma kontrolü ayrıca yapılıyor, o yüzden burayı
+          // yumuşatmak yayınlanan veride çift rezervasyon riski yaratmıyor.
+          if (!zorlaEkle) {
+            setHpSinifUyarisi(`Bu sınıfın bu saatte canlı programda zaten "${cakisan.ders_adi || cakisan.sinif_adi || 'bir'}" dersi var`)
+            return
+          }
+        } else {
+          // Taslak Modu kapalıyken (doğrudan canlı programa ekleniyor) bu
+          // kontrol hâlâ SERT — burada publish-time ayrı bir güvenlik ağı
+          // yok, direkt ders_programi'ye yazılıyor.
+          setHpHata(`Bu sınıfın bu saatte zaten "${cakisan.ders_adi || cakisan.sinif_adi || 'bir'}" dersi var.`)
+          return
+        }
       }
       if (taslakModuEtkin) {
         const taslakCakisma = taslakCakismasiAciklamasi(buPlanaAitTaslaklar, {
