@@ -783,22 +783,39 @@ export default function MusaitlikTablosu({
   // Taslak Modu'ndaki bir planın "hangi tarihten itibaren geçerli" olduğu —
   // hem ders_programi/kaldirilacak hesaplamasında hem de aşağıdaki "geçen
   // haftanın echo'sunu taslak ipucusu gibi göster" kuralında ortak kullanılıyor.
-  // 'sinif'/'sinif_kaldir' taslaklarının KENDİ tarihi yok — sadece haftanın
-  // günü var, o yüzden hiç kısıtlanmazsa BUGÜN dahil o güne denk gelen HER
-  // haftanın gerçek dersini gizleyip yerine taslağı gösterirdi (yaşanan
-  // gerçek vaka: "17-23 Ağustos Programı" adlı, gelecek haftaya ait bir plan,
-  // taslak modu açılır açılmaz BUGÜNÜN — aynı gün adını taşıdığı için —
-  // gerçek dersini "Kaldırılacak" gösterip yerine taslağı koydu). Planda hiç
-  // tarihli taslak yoksa (saf sınıf-dersi planı) bugünden itibaren göster
-  // (eski davranış), ama geçmişe asla sızdırma.
+  // 'bire_bir_tekil'/'soru_cozumu' taslakları v.tarih kullanır. 'sinif'
+  // taslakları da (DersEkleForm'daki opsiyonel "Başlangıç Tarihi" alanı
+  // dolduysa) v.baslangic_tarihi taşıyabilir — ÖNEMLİ DÜZELTME: bu alan
+  // önceden burada hiç dikkate alınmıyordu, bu yüzden sırf "sınıf dersi"
+  // taslaklarından oluşan (tarihli bire-bir'i olmayan) bir plan, kendi
+  // v.baslangic_tarihi'si gelecekte olsa bile HER ZAMAN "bugünden itibaren
+  // geçerli" sayılıyordu — yani 5 Ekim'den başlaması gereken bir plan, daha
+  // 1 Ekim'de bile bugünün gerçek derslerini soluk/"henüz kesin değil" ipucu
+  // gibi göstermeye başlıyordu (gerçek şikayet: "önceki günlerde de taslak
+  // görünüyor"). 'sinif_kaldir' taslaklarının kendi tarihi hiç yok — onların
+  // etkili olacağı tarih zaten eklenen 'sinif' taslağının baslangic_tarihi'nden
+  // anlaşılıyor, o yüzden hesaba katılmıyor (kısıtlayıcı değil).
+  // Plandaki (kaldırma hariç) taslakların HEPSİNİN kendi tarihi varsa, planın
+  // başlangıcı bunların EN ERKENİ sayılır. Taslaklardan biri bile tarihsizse
+  // ("eklendiği andan itibaren" demektir) plan zaten BUGÜNDEN itibaren geçerli
+  // sayılır (eski davranış, ör. bire_bir_haftalik taslaklarında hiç tarih
+  // alanı yok). Planda hiç taslak yoksa yine bugünden itibaren, ama geçmişe
+  // asla sızdırılmıyor.
   const planBuTarihteGecerli = useMemo(() => {
-    const planTarihliTaslaklar = (taslakModuAcik && aktifPlanAdi ? taslaklar || [] : []).filter(
-      (t) => t.plan_adi === aktifPlanAdi && t.veri?.tarih
-    )
-    const planBaslangicTarihi =
-      planTarihliTaslaklar.length > 0
-        ? planTarihliTaslaklar.reduce((min, t) => (t.veri.tarih < min ? t.veri.tarih : min), planTarihliTaslaklar[0].veri.tarih)
-        : bugununTarihi
+    if (!taslakModuAcik || !aktifPlanAdi) return tarih >= bugununTarihi
+    const planTaslaklari = (taslaklar || []).filter((t) => t.plan_adi === aktifPlanAdi)
+    let enErkenTarih = null
+    let hepsininTarihiVarMi = planTaslaklari.length > 0
+    for (const t of planTaslaklari) {
+      if (t.tur === 'sinif_kaldir') continue
+      const kendiTarihi = t.tur === 'sinif' ? t.veri?.baslangic_tarihi : t.veri?.tarih
+      if (!kendiTarihi) {
+        hepsininTarihiVarMi = false
+        break
+      }
+      if (enErkenTarih === null || kendiTarihi < enErkenTarih) enErkenTarih = kendiTarihi
+    }
+    const planBaslangicTarihi = hepsininTarihiVarMi && enErkenTarih ? enErkenTarih : bugununTarihi
     return tarih >= planBaslangicTarihi
   }, [taslakModuAcik, aktifPlanAdi, taslaklar, tarih, bugununTarihi])
 
