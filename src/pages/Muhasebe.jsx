@@ -892,6 +892,12 @@ export default function Muhasebe() {
   const [duzenleSinifMetni, setDuzenleSinifMetni] = useState('')
   const [duzenleSozlesmeTarihi, setDuzenleSozlesmeTarihi] = useState('')
   const [sozlesmeKaydediliyor, setSozlesmeKaydediliyor] = useState(false)
+  // "Dondur" — öğrenci kurumdan ayrıldığında, sözleşmenin dondurma
+  // tarihinden SONRAKİ taksitlerini kalıcı olarak kaldırmak için (bkz.
+  // sozlesmeDondurmayiKaydet). Geçmiş/ödenmemiş taksitler etkilenmez.
+  const [sozlesmeDondurulanId, setSozlesmeDondurulanId] = useState(null)
+  const [dondurmaTarihiGirisi, setDondurmaTarihiGirisi] = useState('')
+  const [sozlesmeDondurmaKaydediliyor, setSozlesmeDondurmaKaydediliyor] = useState(false)
 
   // Kullanıcı isteği: eskiden "en son alınan 15 ödeme" (sayı bazlı sabit
   // sınır) gösteriliyordu — artık bunun yerine "son 10 GÜNDE alınan tüm
@@ -1431,6 +1437,94 @@ export default function Muhasebe() {
     }
   }
 
+  function sozlesmeDondurmayaBasla(s) {
+    setSozlesmeDondurulanId(s.id)
+    setDondurmaTarihiGirisi(new Date().toISOString().slice(0, 10))
+  }
+
+  function sozlesmeDondurmayiVazgec() {
+    setSozlesmeDondurulanId(null)
+  }
+
+  // DONDURMA — seçilen tarihten SONRAKİ taksitleri sözleşmeden kalıcı olarak
+  // çıkarır (toplam_tutar/taksit_sayisi, özel planda ozel_taksitler
+  // küçültülür). Borç/bakiye hesabının TEK kaynağı zaten bu alanlar olduğu
+  // için (taksitPlaniOlustur, Muhasebe'deki toplam bakiye, sözleşme PDF'i,
+  // WhatsApp mesajı...) başka HİÇBİR yeri ayrıca değiştirmeye gerek kalmadan
+  // bu taksitler otomatik olarak artık borç sayılmaz. Dondurma tarihine kadar
+  // olan (geçmiş, ödenmemiş dahil) taksitler AYNEN kalır. Orijinal değerler
+  // orijinal_* alanlarında yedeklenir — "Dondurmayı Kaldır" ile aynen geri
+  // alınabilir (öğrenci kuruma dönerse).
+  async function sozlesmeDondurmayiKaydet(s) {
+    if (!dondurmaTarihiGirisi) {
+      alert('Dondurma tarihi seçmelisiniz.')
+      return
+    }
+    setSozlesmeDondurmaKaydediliyor(true)
+    const dondurmaTarihi = new Date(dondurmaTarihiGirisi)
+
+    let guncelleme
+    if (s.ozel_plan_mi) {
+      const kalanOzelTaksitler = (s.ozel_taksitler || []).filter((k) => {
+        const tarih = k.tarih || (k.ay ? `${k.ay}-01` : null)
+        return tarih && new Date(tarih) <= dondurmaTarihi
+      })
+      guncelleme = {
+        ozel_taksitler: kalanOzelTaksitler,
+        toplam_tutar: kalanOzelTaksitler.reduce((t, k) => t + (Number(k.tutar) || 0), 0),
+        taksit_sayisi: kalanOzelTaksitler.length,
+        orijinal_ozel_taksitler: s.ozel_taksitler,
+        orijinal_toplam_tutar: s.toplam_tutar,
+        orijinal_taksit_sayisi: s.taksit_sayisi,
+        dondu: true,
+        dondurma_tarihi: dondurmaTarihiGirisi,
+      }
+    } else {
+      const kalanTaksitler = taksitPlaniOlustur(s, []).filter((t) => t.vade <= dondurmaTarihi)
+      guncelleme = {
+        toplam_tutar: kalanTaksitler.reduce((t, k) => t + k.tutar, 0),
+        taksit_sayisi: kalanTaksitler.length,
+        orijinal_toplam_tutar: s.toplam_tutar,
+        orijinal_taksit_sayisi: s.taksit_sayisi,
+        dondu: true,
+        dondurma_tarihi: dondurmaTarihiGirisi,
+      }
+    }
+
+    const { error } = await supabase.from('sozlesmeler').update(guncelleme).eq('id', s.id)
+    setSozlesmeDondurmaKaydediliyor(false)
+    if (error) {
+      alert('Hata: ' + error.message)
+    } else {
+      setSozlesmeDondurulanId(null)
+      veriyiYenile()
+    }
+  }
+
+  async function sozlesmeDondurmayiKaldir(s) {
+    if (
+      !confirm(
+        `"${s.kalem}" sözleşmesindeki dondurmayı kaldırmak istediğinize emin misiniz?\n\nSözleşme, dondurulmadan önceki orijinal tutar/taksit sayısına geri döner.`
+      )
+    )
+      return
+    const { error } = await supabase
+      .from('sozlesmeler')
+      .update({
+        toplam_tutar: s.orijinal_toplam_tutar,
+        taksit_sayisi: s.orijinal_taksit_sayisi,
+        ozel_taksitler: s.ozel_plan_mi ? s.orijinal_ozel_taksitler : s.ozel_taksitler,
+        orijinal_toplam_tutar: null,
+        orijinal_taksit_sayisi: null,
+        orijinal_ozel_taksitler: null,
+        dondu: false,
+        dondurma_tarihi: null,
+      })
+      .eq('id', s.id)
+    if (error) alert('Hata: ' + error.message)
+    else veriyiYenile()
+  }
+
   // "Aylık Kalem Borçları" tablosu artık her dersi/alışı tek tek değil, aynı
   // kalem+ay için TEK bir toplam satır olarak gösteriyor (bkz. yorum, ekstreHesap.js).
   const aylikBorclarGruplu = aylikBorclariKalemAyaGoreGrupla(aylikBorclar)
@@ -1732,6 +1826,40 @@ export default function Muhasebe() {
                   <tr><td colSpan={faturaDigerleri.length > 0 ? 6 : 5} className="px-4 py-4 text-center text-gray-400">Sözleşme bulunamadı.</td></tr>
                 )}
                 {sozlesmeler.map((s) => {
+                  if (sozlesmeDondurulanId === s.id) {
+                    return (
+                      <tr key={s.id} className="bg-amber-50 border-t border-gray-50">
+                        <td colSpan={faturaDigerleri.length > 0 ? 6 : 5} className="px-4 py-3">
+                          <p className="text-sm text-gray-700 mb-2">
+                            <strong>"{s.kalem}"</strong> sözleşmesini dondur — seçtiğiniz tarihten SONRAKİ taksitler
+                            kalıcı olarak silinir, bir daha borç olarak görünmez. O tarihe kadar olan
+                            (ödenmiş/ödenmemiş) taksitler aynen kalır.
+                          </p>
+                          <div className="flex flex-wrap gap-3 items-end">
+                            <div className="min-w-[160px]">
+                              <label className="block text-xs font-medium text-gray-500 mb-1">Dondurma Tarihi</label>
+                              <input
+                                type="date"
+                                value={dondurmaTarihiGirisi}
+                                onChange={(e) => setDondurmaTarihiGirisi(e.target.value)}
+                                className="w-full px-2 py-1.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue"
+                              />
+                            </div>
+                            <button
+                              onClick={() => sozlesmeDondurmayiKaydet(s)}
+                              disabled={sozlesmeDondurmaKaydediliyor}
+                              className="text-orange text-sm font-semibold hover:underline disabled:opacity-50"
+                            >
+                              {sozlesmeDondurmaKaydediliyor ? 'Donduruluyor...' : 'Dondur'}
+                            </button>
+                            <button onClick={sozlesmeDondurmayiVazgec} className="text-gray-500 text-sm hover:underline">
+                              Vazgeç
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    )
+                  }
                   if (sozlesmeDuzenlenenId === s.id) {
                     return (
                       <tr key={s.id} className="bg-blue-50 border-t border-gray-50">
@@ -1835,6 +1963,14 @@ export default function Muhasebe() {
                             Özel Plan
                           </span>
                         )}
+                        {s.dondu && (
+                          <span
+                            className="ml-2 text-xs font-semibold px-2 py-0.5 rounded-full bg-gray-200 text-gray-600"
+                            title={`Dondurma tarihi: ${s.dondurma_tarihi ? new Date(s.dondurma_tarihi).toLocaleDateString('tr-TR') : '—'}`}
+                          >
+                            Donduruldu
+                          </span>
+                        )}
                       </td>
                       {faturaDigerleri.length > 0 && (
                         <td className="px-4 py-2 text-purple-700">{adSoyadBul(s.ogrenci_id)}</td>
@@ -1878,6 +2014,15 @@ export default function Muhasebe() {
                             <button onClick={() => sozlesmeDuzenlemeyeBasla(s)} className="text-navy text-sm hover:underline">
                               Düzenle
                             </button>
+                            {s.dondu ? (
+                              <button onClick={() => sozlesmeDondurmayiKaldir(s)} className="text-orange text-sm hover:underline">
+                                Dondurmayı Kaldır
+                              </button>
+                            ) : (
+                              <button onClick={() => sozlesmeDondurmayaBasla(s)} className="text-orange text-sm hover:underline">
+                                Dondur
+                              </button>
+                            )}
                             <button onClick={() => sozlesmeSil(s)} className="text-red-500 text-sm hover:underline">
                               Sil
                             </button>
