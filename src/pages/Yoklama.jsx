@@ -226,7 +226,15 @@ export default function Yoklama() {
     Promise.all([
       supabase
         .from('sinif_ogrenciler')
-        .select('ogrenciler(id, ad_soyad)')
+        // "sadece_gunler" (kullanıcı isteği: bir öğrenci bu sınıfta kayıtlı
+        // ama sadece BELİRLİ günlerde derse giriyor — ör. "Nil Şahin sadece
+        // Pazar günkü 11-MF dersine geliyor, diğer günlerde yoklama listesinde
+        // görünmesin") — NULL/boş ise eskisi gibi HER GÜN görünür (geriye
+        // dönük hiçbir öğrenciyi etkilemez), dolu ise SADECE o gün
+        // numaralarında (Pazartesi=1...Pazar=7) görünür. Bu sayfa zaten
+        // sadece BUGÜNÜN (bugunGunNo) dersini gösterdiği için, aşağıda tek
+        // bir karşılaştırma yeterli.
+        .select('ogrenciler(id, ad_soyad), sadece_gunler')
         .eq('sinif_id', seciliSinif),
       // BAŞKA SINIFTAN ÖĞRENCİ (kullanıcı isteği: "Tural MF-2'de ama MF-3'teki
       // Savaş Akça'nın AYT Matematik derslerini de görsün") — ders_ek_erisim
@@ -243,7 +251,10 @@ export default function Yoklama() {
         ? supabase.from('yoklama').select('*').eq('ders_programi_id', seciliSaat).eq('tarih', bugun)
         : supabase.from('yoklama').select('*').eq('sinif_id', seciliSinif).eq('tarih', bugun).is('ders_programi_id', null),
     ]).then(([so, ek, y]) => {
-      const liste = (so.data || []).map((r) => r.ogrenciler).filter(Boolean)
+      const liste = (so.data || [])
+        .filter((r) => !r.sadece_gunler || r.sadece_gunler.length === 0 || r.sadece_gunler.includes(bugunGunNo))
+        .map((r) => r.ogrenciler)
+        .filter(Boolean)
       if (seciliSaatBilgi) {
         const gorulenIdler = new Set(liste.map((o) => o.id))
         for (const e of ek.data || []) {
