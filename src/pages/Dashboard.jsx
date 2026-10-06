@@ -232,6 +232,25 @@ export default function Dashboard() {
   const [yaklasanVadeSayisi, setYaklasanVadeSayisi] = useState(null)
   const [sonOdemeler, setSonOdemeler] = useState([])
   const [buAyGider, setBuAyGider] = useState(null)
+  const [gecikmisOdevSayisi, setGecikmisOdevSayisi] = useState(null)
+
+  // Kullanıcı isteği: öğretmen Ana Sayfa'ya girdiğinde, verdiği ödevlerden
+  // SÜRESİ GEÇMİŞ ama hâlâ kontrol edilmemiş ("bekliyor" durumunda kalmış —
+  // yani ne "yaptı/eksik/yapmadı" ne de "gelmedi" diye işaretlenmiş) olanlar
+  // varsa bunu hatırlatan bir uyarı görsün. "Süresi geçti" tanımı Odev.jsx'teki
+  // sonTarihGectiMi ile AYNI (son_tarih bugünden önce VE durum='bekliyor').
+  useEffect(() => {
+    if (profile?.rol !== 'ogretmen') return
+    const bugun = new Date()
+    const bugunStr = `${bugun.getFullYear()}-${String(bugun.getMonth() + 1).padStart(2, '0')}-${String(bugun.getDate()).padStart(2, '0')}`
+    supabase
+      .from('odevler')
+      .select('id', { count: 'exact', head: true })
+      .eq('ogretmen_profile_id', profile.id)
+      .eq('durum', 'bekliyor')
+      .lt('son_tarih', bugunStr)
+      .then(({ count }) => setGecikmisOdevSayisi(count || 0))
+  }, [profile])
 
   useEffect(() => {
     if (profile?.rol !== 'yonetici') return
@@ -502,9 +521,27 @@ export default function Dashboard() {
       )}
 
       {profile?.rol === 'ogretmen' && (
-        <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6">
-          <p className="text-gray-600">Menüden "Ders Programım" ile haftalık programınızı görebilir, dersinize tıklayarak yoklama alabilirsiniz.</p>
-        </div>
+        <>
+          {gecikmisOdevSayisi > 0 && (
+            <Link
+              to="/odev"
+              className="flex items-start gap-3 bg-red-50 border border-red-100 rounded-2xl shadow-sm p-4 mb-4 hover:border-red-200 transition-colors"
+            >
+              <span className="text-xl leading-none">⚠️</span>
+              <div>
+                <p className="font-semibold text-red-700">
+                  Süresi geçmiş {gecikmisOdevSayisi} ödev kontrol edilmeyi bekliyor
+                </p>
+                <p className="text-sm text-red-600/80 mt-0.5">
+                  Son tarihi geçtiği hâlde hâlâ "Bekliyor" durumunda olan ödevleriniz var. Kontrol etmek için tıklayın.
+                </p>
+              </div>
+            </Link>
+          )}
+          <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6">
+            <p className="text-gray-600">Menüden "Ders Programım" ile haftalık programınızı görebilir, dersinize tıklayarak yoklama alabilirsiniz.</p>
+          </div>
+        </>
       )}
 
       {(profile?.rol === 'veli' || profile?.rol === 'ogrenci') && (
