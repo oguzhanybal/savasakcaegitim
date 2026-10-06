@@ -702,14 +702,24 @@ function OgrenciOdevSatiri({ o, isYonetici, durumDegistir, sil }) {
           {o.olusturma_tarihi ? new Date(o.olusturma_tarihi).toLocaleDateString('tr-TR') : '—'}
         </td>
       )}
-      <td className={`px-4 py-2 ${gecti ? 'text-red-600 font-semibold' : 'text-gray-500'}`}>
+      <td className={`px-4 py-2 whitespace-nowrap ${gecti ? 'text-red-600 font-semibold' : 'text-gray-500'}`}>
         {o.son_tarih ? new Date(o.son_tarih + 'T12:00:00').toLocaleDateString('tr-TR') : '—'}
         {gecti && ' (geçti)'}
       </td>
-      <td className="px-4 py-2">
+      {/* min-w-[190px] (kullanıcı mobilde bildirdi): bu satır, sütun sayısı
+          artınca (Öğretmen/Verildi eklenince) dar bir mobil ekranda "Durum"
+          sütunundaki 2x2 buton ızgarasının kendi hücresine sığacak kadar
+          yer bulamayıp yan hücreyle ("İşlemler"/Sil) görsel olarak iç içe
+          binmesine yol açıyordu — tabloda table-layout:auto olsa da, bu
+          hücredeki CSS Grid'in "doğal genişliği" bazı mobil tarayıcılarda
+          doğru hesaba katılmıyor. Sabit bir min-width vermek bu sütuna
+          HER ZAMAN yeterli yer ayrılmasını garanti ediyor — gerekirse
+          tablo yatay kayar (zaten touchAction ile açık), ama artık asla
+          üst üste binmiyor. */}
+      <td className="px-4 py-2 min-w-[190px]">
         <OdevDurumButonlari o={o} durumDegistir={durumDegistir} />
       </td>
-      <td className="px-4 py-2">
+      <td className="px-4 py-2 min-w-[60px] whitespace-nowrap">
         <button onClick={() => sil(o)} className="text-red-500 text-sm hover:underline">
           Sil
         </button>
@@ -897,16 +907,20 @@ function OgrenciOdevGrubu({ ogrenciAdi, items, isYonetici, durumDegistir, sil, a
       </button>
       {acik && (
         <div className="overflow-x-auto" style={{ touchAction: 'pan-x pan-y' }}>
-          <table className="w-full text-sm min-w-[520px]">
+          {/* min-w 520 -> 760/900: sütun sayısı arttıkça (Öğretmen/Verildi
+              yönetici için eklendi) eski 520px dar kalıyordu — bkz.
+              OgrenciOdevSatiri'teki Durum/İşlemler hücrelerindeki min-width
+              açıklaması, asıl üst üste binme sorunu buydu. */}
+          <table className={`w-full text-sm ${isYonetici ? 'min-w-[900px]' : 'min-w-[760px]'}`}>
             <thead>
               <tr className="text-left text-gray-500">
-                <th className="px-4 py-2 font-medium">Ders</th>
+                <th className="px-4 py-2 font-medium whitespace-nowrap">Ders</th>
                 <th className="px-4 py-2 font-medium">Başlık</th>
-                {isYonetici && <th className="px-4 py-2 font-medium">Öğretmen</th>}
-                {isYonetici && <th className="px-4 py-2 font-medium">Verildi</th>}
-                <th className="px-4 py-2 font-medium">Son Tarih</th>
-                <th className="px-4 py-2 font-medium">Durum</th>
-                <th className="px-4 py-2 font-medium">İşlemler</th>
+                {isYonetici && <th className="px-4 py-2 font-medium whitespace-nowrap">Öğretmen</th>}
+                {isYonetici && <th className="px-4 py-2 font-medium whitespace-nowrap">Verildi</th>}
+                <th className="px-4 py-2 font-medium whitespace-nowrap">Son Tarih</th>
+                <th className="px-4 py-2 font-medium min-w-[190px]">Durum</th>
+                <th className="px-4 py-2 font-medium min-w-[60px] whitespace-nowrap">İşlemler</th>
               </tr>
             </thead>
             <tbody>
