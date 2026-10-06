@@ -695,6 +695,13 @@ function OgrenciOdevSatiri({ o, isYonetici, durumDegistir, sil }) {
         {o.aciklama && <p className="text-xs text-gray-400 mt-0.5 whitespace-pre-line">{o.aciklama}</p>}
       </td>
       {isYonetici && <td className="px-4 py-2 text-gray-500">{o.ogretmen_adi || '—'}</td>}
+      {/* Kullanıcı isteği: ödevin VERİLDİĞİ tarihi (son tarihten ayrı) sadece
+          yönetici görsün yeter — öğretmen kendi verdiğini zaten biliyor. */}
+      {isYonetici && (
+        <td className="px-4 py-2 text-gray-500">
+          {o.olusturma_tarihi ? new Date(o.olusturma_tarihi).toLocaleDateString('tr-TR') : '—'}
+        </td>
+      )}
       <td className={`px-4 py-2 ${gecti ? 'text-red-600 font-semibold' : 'text-gray-500'}`}>
         {o.son_tarih ? new Date(o.son_tarih + 'T12:00:00').toLocaleDateString('tr-TR') : '—'}
         {gecti && ' (geçti)'}
@@ -776,6 +783,7 @@ function SinifOdevGrubu({ grubId, items, isYonetici, durumDegistir, sil, acik, o
             {sinifAdlari.length > 0 && <span className="font-medium text-gray-600">{sinifAdlari.join(', ')} · </span>}
             {ilk.ders || '—'} · {items.length} öğrenci
             {isYonetici && ilk.ogretmen_adi ? ` · ${ilk.ogretmen_adi}` : ''}
+            {isYonetici && ilk.olusturma_tarihi ? ` · Verildi: ${new Date(ilk.olusturma_tarihi).toLocaleDateString('tr-TR')}` : ''}
             {ilk.son_tarih ? ` · Son tarih: ${new Date(ilk.son_tarih + 'T12:00:00').toLocaleDateString('tr-TR')}` : ''}
           </p>
         </div>
@@ -895,6 +903,7 @@ function OgrenciOdevGrubu({ ogrenciAdi, items, isYonetici, durumDegistir, sil, a
                 <th className="px-4 py-2 font-medium">Ders</th>
                 <th className="px-4 py-2 font-medium">Başlık</th>
                 {isYonetici && <th className="px-4 py-2 font-medium">Öğretmen</th>}
+                {isYonetici && <th className="px-4 py-2 font-medium">Verildi</th>}
                 <th className="px-4 py-2 font-medium">Son Tarih</th>
                 <th className="px-4 py-2 font-medium">Durum</th>
                 <th className="px-4 py-2 font-medium">İşlemler</th>
@@ -984,6 +993,7 @@ function OdevDurumListesi({ odevler, ogrenciSinifAdMap, isYonetici }) {
             <th className="px-4 py-2 font-medium">Sınıf</th>
             <th className="px-4 py-2 font-medium">Ders / Ödev</th>
             {isYonetici && <th className="px-4 py-2 font-medium">Öğretmen</th>}
+            {isYonetici && <th className="px-4 py-2 font-medium">Verildi</th>}
             <th className="px-4 py-2 font-medium">Son Tarih</th>
             <th className="px-4 py-2 font-medium">Durum</th>
           </tr>
@@ -991,7 +1001,7 @@ function OdevDurumListesi({ odevler, ogrenciSinifAdMap, isYonetici }) {
         <tbody>
           {siraliOdevler.length === 0 && (
             <tr>
-              <td colSpan={isYonetici ? 6 : 5} className="px-4 py-4 text-center text-gray-400">
+              <td colSpan={isYonetici ? 7 : 5} className="px-4 py-4 text-center text-gray-400">
                 Bu filtreyle eşleşen ödev yok.
               </td>
             </tr>
@@ -1013,6 +1023,11 @@ function OdevDurumListesi({ odevler, ogrenciSinifAdMap, isYonetici }) {
                   {o.ders && <span className="text-gray-400"> — {o.ders}</span>}
                 </td>
                 {isYonetici && <td className="px-4 py-2 text-gray-500">{o.ogretmen_adi || '—'}</td>}
+                {isYonetici && (
+                  <td className="px-4 py-2 text-gray-500">
+                    {o.olusturma_tarihi ? new Date(o.olusturma_tarihi).toLocaleDateString('tr-TR') : '—'}
+                  </td>
+                )}
                 <td className={`px-4 py-2 ${gecti ? 'text-red-600 font-semibold' : 'text-gray-500'}`}>
                   {o.son_tarih ? new Date(o.son_tarih + 'T12:00:00').toLocaleDateString('tr-TR') : '—'}
                   {gecti && ' (geçti)'}
