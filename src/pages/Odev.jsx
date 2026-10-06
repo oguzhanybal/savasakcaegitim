@@ -617,13 +617,21 @@ function OdevVerForm({ ogrenciler, siniflarListesi, sinifOgrenciMap, ogretmenPro
 // Yanlışlıkla işaretlenmişse geri almak için altında küçük bir "Bekliyor'a
 // al" bağlantısı var (eski "Sıfırla" ile aynı işi görüyor).
 function OdevDurumButonlari({ o, durumDegistir }) {
+  // ÖNEMLİ (kullanıcı mobilde bildirdi): Tailwind'in "grid-cols-2"'si
+  // sütunlara grid-template-columns: repeat(2, minmax(0,1fr)) veriyor —
+  // yani sütunların 0'a kadar daralmasına izin veriyor. Butonlardaki
+  // "whitespace-nowrap" metni SARDIRMIYOR ama bu durumda sütun/buton kutusu
+  // metinden DAHA DAR kalabiliyor, en uzun metin olan "✗ Yapmadı" kendi
+  // renkli (pembe) arka planının dışına taşıyordu. "min-w-max" (CSS
+  // min-width: max-content) her butona kendi içeriği kadar minimum genişlik
+  // garanti ediyor — artık hiçbir buton kendi arka planından taşmıyor.
   return (
     <div className="inline-block">
       <div className="grid grid-cols-2 gap-1.5">
         <button
           type="button"
           onClick={() => durumDegistir(o, 'yapti')}
-          className={`px-3 py-2 rounded-lg text-sm font-semibold transition-colors whitespace-nowrap ${
+          className={`min-w-max px-3 py-2 rounded-lg text-sm font-semibold transition-colors whitespace-nowrap ${
             o.durum === 'yapti' ? 'bg-green-600 text-white' : 'bg-green-100 text-green-700 hover:bg-green-200'
           }`}
         >
@@ -632,7 +640,7 @@ function OdevDurumButonlari({ o, durumDegistir }) {
         <button
           type="button"
           onClick={() => durumDegistir(o, 'eksik')}
-          className={`px-3 py-2 rounded-lg text-sm font-semibold transition-colors whitespace-nowrap ${
+          className={`min-w-max px-3 py-2 rounded-lg text-sm font-semibold transition-colors whitespace-nowrap ${
             o.durum === 'eksik' ? 'bg-amber-500 text-white' : 'bg-amber-100 text-amber-700 hover:bg-amber-200'
           }`}
         >
@@ -641,7 +649,7 @@ function OdevDurumButonlari({ o, durumDegistir }) {
         <button
           type="button"
           onClick={() => durumDegistir(o, 'yapmadi')}
-          className={`px-3 py-2 rounded-lg text-sm font-semibold transition-colors whitespace-nowrap ${
+          className={`min-w-max px-3 py-2 rounded-lg text-sm font-semibold transition-colors whitespace-nowrap ${
             o.durum === 'yapmadi' ? 'bg-red-600 text-white' : 'bg-red-100 text-red-700 hover:bg-red-200'
           }`}
         >
@@ -651,7 +659,7 @@ function OdevDurumButonlari({ o, durumDegistir }) {
           type="button"
           onClick={() => durumDegistir(o, 'gelmedi')}
           title="Öğrenci o gün derste/okulda yoktu, ödev kontrol edilemedi"
-          className={`px-3 py-2 rounded-lg text-sm font-semibold transition-colors whitespace-nowrap ${
+          className={`min-w-max px-3 py-2 rounded-lg text-sm font-semibold transition-colors whitespace-nowrap ${
             o.durum === 'gelmedi' ? 'bg-purple-600 text-white' : 'bg-purple-100 text-purple-700 hover:bg-purple-200'
           }`}
         >
@@ -832,22 +840,22 @@ function SinifOdevGrubu({ grubId, items, isYonetici, durumDegistir, sil, acik, o
         // kaydırmayı garanti etmiyor, bu satır olmadan tablo sağa kayınca
         // "Yaptı/Yapmadı/Sil" sütunu ekranın dışında kesilip kalıyordu.
         <div className="overflow-x-auto" style={{ touchAction: 'pan-x pan-y' }}>
-          <table className="w-full text-sm min-w-[480px]">
+          <table className="w-full text-sm min-w-[650px]">
             <thead>
               <tr className="text-left text-gray-500">
-                <th className="px-4 py-2 font-medium">Öğrenci</th>
-                <th className="px-4 py-2 font-medium">Durum</th>
-                <th className="px-4 py-2 font-medium">İşlemler</th>
+                <th className="px-4 py-2 font-medium whitespace-nowrap">Öğrenci</th>
+                <th className="px-4 py-2 font-medium min-w-[190px]">Durum</th>
+                <th className="px-4 py-2 font-medium min-w-[60px] whitespace-nowrap">İşlemler</th>
               </tr>
             </thead>
             <tbody>
               {items.map((o, i) => (
                 <tr key={o.id} className={`border-t border-gray-50 ${i % 2 === 0 ? 'bg-blue/10' : 'bg-white'}`}>
-                  <td className="px-4 py-2 font-medium text-gray-800">{o.ogrenci_adi || '—'}</td>
-                  <td className="px-4 py-2">
+                  <td className="px-4 py-2 font-medium text-gray-800 whitespace-nowrap">{o.ogrenci_adi || '—'}</td>
+                  <td className="px-4 py-2 min-w-[190px]">
                     <OdevDurumButonlari o={o} durumDegistir={durumDegistir} />
                   </td>
-                  <td className="px-4 py-2">
+                  <td className="px-4 py-2 min-w-[60px] whitespace-nowrap">
                     <button onClick={() => sil(o)} className="text-red-500 text-sm hover:underline">
                       Sil
                     </button>
