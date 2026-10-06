@@ -233,6 +233,13 @@ export default function Dashboard() {
   const [sonOdemeler, setSonOdemeler] = useState([])
   const [buAyGider, setBuAyGider] = useState(null)
   const [gecikmisOdevSayisi, setGecikmisOdevSayisi] = useState(null)
+  // Kullanıcı isteği: bu bir banner olarak kalmasın, sayfaya girer girmez
+  // dikkat çeken küçük bir açılır pencere (modal) olarak da çıksın. Sayı
+  // gelip 0'dan büyük olduğu anda bir kere açılıyor; kapatınca (ya da
+  // "Ödevleri Gör"e basınca) kapanıyor — GizliBolum'daki aynı felsefe: her
+  // sayfa girişinde (F5 dahil) yeniden gösterilir, kalıcı bir "bir daha
+  // gösterme" tercihi YOK (bilinçli — öğretmen unutmasın diye).
+  const [odevModalAcik, setOdevModalAcik] = useState(false)
 
   // Kullanıcı isteği: öğretmen Ana Sayfa'ya girdiğinde, verdiği ödevlerden
   // SÜRESİ GEÇMİŞ ama hâlâ kontrol edilmemiş ("bekliyor" durumunda kalmış —
@@ -251,6 +258,10 @@ export default function Dashboard() {
       .lt('son_tarih', bugunStr)
       .then(({ count }) => setGecikmisOdevSayisi(count || 0))
   }, [profile])
+
+  useEffect(() => {
+    if (gecikmisOdevSayisi > 0) setOdevModalAcik(true)
+  }, [gecikmisOdevSayisi])
 
   useEffect(() => {
     if (profile?.rol !== 'yonetici') return
@@ -430,6 +441,42 @@ export default function Dashboard() {
 
   return (
     <div>
+      {odevModalAcik && (
+        <div
+          className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4"
+          onClick={() => setOdevModalAcik(false)}
+        >
+          <div className="bg-white rounded-2xl shadow-xl p-6 max-w-sm w-full" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-start gap-3 mb-5">
+              <span className="text-2xl leading-none">⚠️</span>
+              <div>
+                <h2 className="font-bold text-gray-800 text-lg leading-snug">Süresi Geçmiş Ödevleriniz Var</h2>
+                <p className="text-sm text-gray-500 mt-1">
+                  Son tarihi geçtiği hâlde hâlâ "Bekliyor" durumunda olan{' '}
+                  <strong className="text-red-600">{gecikmisOdevSayisi}</strong> ödeviniz var.
+                </p>
+              </div>
+            </div>
+            <div className="flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setOdevModalAcik(false)}
+                className="px-4 py-2 rounded-lg text-sm font-semibold text-gray-500 hover:bg-gray-100 transition-colors"
+              >
+                Kapat
+              </button>
+              <Link
+                to="/odev"
+                onClick={() => setOdevModalAcik(false)}
+                className="px-4 py-2 rounded-lg text-sm font-semibold bg-navy text-white hover:opacity-90 transition-opacity"
+              >
+                Ödevleri Gör
+              </Link>
+            </div>
+          </div>
+        </div>
+      )}
+
       <h1 className="text-2xl font-bold text-navy mb-1">Hoş geldiniz, {profile?.ad_soyad}</h1>
       <p className="text-gray-500 mb-6">Bugün {new Date().toLocaleDateString('tr-TR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}</p>
 
