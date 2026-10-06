@@ -1414,8 +1414,23 @@ function OdevDurumRozeti({ durum }) {
 // bileşenindeki veriyiYenile — profiles:ogretmen_profile_id join'i), o
 // yüzden burada ekstra bir sorguya gerek yok. Sadece 1 öğretmen varsa
 // filtre dropdown'ı gösterilmiyor (filtrelemenin bir anlamı olmaz).
+// Kullanıcı isteği: öğretmen filtresinin yanına, aynı admin tarafındaki
+// gibi "Yaptı / Eksik / Yapmadı / Gelmedi / Süresi Geçmiş" duruma göre de
+// filtrelenebilsin — bkz. VerilenOdevlerListesi'teki DURUM_SEKMELERI, aynı
+// mantık/etiketler burada da kullanılıyor.
+const OGRENCI_DURUM_SEKMELERI = [
+  { deger: 'hepsi', etiket: 'Hepsi' },
+  { deger: 'bekliyor', etiket: 'Bekliyor' },
+  { deger: 'yapti', etiket: 'Yaptı' },
+  { deger: 'eksik', etiket: 'Eksik' },
+  { deger: 'yapmadi', etiket: 'Yapmadı' },
+  { deger: 'gelmedi', etiket: 'Gelmedi' },
+  { deger: 'sure_gecti', etiket: 'Süresi Geçmiş' },
+]
+
 function OdevlerimListesi({ odevler, birdenFazlaCocukMu }) {
   const [seciliOgretmen, setSeciliOgretmen] = useState('')
+  const [durumFiltre, setDurumFiltre] = useState('hepsi')
 
   const ogretmenListesi = useMemo(() => {
     const set = new Set()
@@ -1425,7 +1440,20 @@ function OdevlerimListesi({ odevler, birdenFazlaCocukMu }) {
     return Array.from(set).sort((a, b) => a.localeCompare(b, 'tr'))
   }, [odevler])
 
-  const odevlerFiltreli = seciliOgretmen ? odevler.filter((o) => o.ogretmen_adi === seciliOgretmen) : odevler
+  const odevlerFiltreli = useMemo(() => {
+    return odevler.filter((o) => {
+      if (seciliOgretmen && o.ogretmen_adi !== seciliOgretmen) return false
+      if (durumFiltre === 'bekliyor' && o.durum !== 'bekliyor') return false
+      if (durumFiltre === 'yapti' && o.durum !== 'yapti') return false
+      if (durumFiltre === 'eksik' && o.durum !== 'eksik') return false
+      if (durumFiltre === 'yapmadi' && o.durum !== 'yapmadi') return false
+      if (durumFiltre === 'gelmedi' && o.durum !== 'gelmedi') return false
+      if (durumFiltre === 'sure_gecti' && !sonTarihGectiMi(o)) return false
+      return true
+    })
+  }, [odevler, seciliOgretmen, durumFiltre])
+
+  const filtreAktif = seciliOgretmen !== '' || durumFiltre !== 'hepsi'
 
   const bekleyenler = odevlerFiltreli.filter((o) => o.durum === 'bekliyor')
   const sonuclananlar = odevlerFiltreli.filter((o) => o.durum !== 'bekliyor')
@@ -1468,46 +1496,99 @@ function OdevlerimListesi({ odevler, birdenFazlaCocukMu }) {
 
   return (
     <>
-      {ogretmenListesi.length > 1 && (
-        <div className="mb-4 max-w-xs">
-          <label className="block text-sm font-medium text-gray-700 mb-1">Öğretmene Göre Filtrele</label>
-          <select
-            value={seciliOgretmen}
-            onChange={(e) => setSeciliOgretmen(e.target.value)}
-            className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue bg-white"
-          >
-            <option value="">Tüm Öğretmenler</option>
-            {ogretmenListesi.map((ad) => (
-              <option key={ad} value={ad}>
-                {ad}
-              </option>
+      <div className="flex flex-wrap items-end gap-4 mb-4">
+        {ogretmenListesi.length > 1 && (
+          <div className="max-w-xs">
+            <label className="block text-sm font-medium text-gray-700 mb-1">Öğretmene Göre Filtrele</label>
+            <select
+              value={seciliOgretmen}
+              onChange={(e) => setSeciliOgretmen(e.target.value)}
+              className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue bg-white"
+            >
+              <option value="">Tüm Öğretmenler</option>
+              {ogretmenListesi.map((ad) => (
+                <option key={ad} value={ad}>
+                  {ad}
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-1">Duruma Göre Filtrele</label>
+          <div className="inline-flex flex-wrap rounded-lg border border-gray-200 overflow-hidden">
+            {OGRENCI_DURUM_SEKMELERI.map((s) => (
+              <button
+                key={s.deger}
+                type="button"
+                onClick={() => setDurumFiltre(s.deger)}
+                className={`px-3 py-1.5 text-xs font-semibold transition-colors ${
+                  durumFiltre === s.deger ? 'bg-navy text-white' : 'bg-white text-gray-600 hover:bg-gray-50'
+                }`}
+              >
+                {s.etiket}
+              </button>
             ))}
-          </select>
+          </div>
         </div>
-      )}
-      <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden mb-6">
-      <div className="px-4 py-3 border-b border-gray-100 bg-gray-50">
-        <h2 className="font-semibold text-gray-700">Bekleyen Ödevler ({bekleyenler.length})</h2>
+        {filtreAktif && (
+          <button
+            type="button"
+            onClick={() => {
+              setSeciliOgretmen('')
+              setDurumFiltre('hepsi')
+            }}
+            className="text-xs text-gray-400 font-semibold hover:underline pb-1.5"
+          >
+            Filtreyi Temizle
+          </button>
+        )}
       </div>
-      <div className="divide-y divide-gray-50">
-        {bekleyenler.length === 0 && <p className="px-4 py-6 text-center text-gray-400 text-sm">Bekleyen ödev yok.</p>}
-        {bekleyenler.map((o) => (
-          <OdevKarti key={o.id} o={o} />
-        ))}
-      </div>
-      {sonuclananlar.length > 0 && (
-        <>
-          <div className="px-4 py-3 border-b border-t border-gray-100 bg-gray-50">
-            <h2 className="font-semibold text-gray-700">Sonuçlanan Ödevler ({sonuclananlar.length})</h2>
+
+      {durumFiltre === 'hepsi' ? (
+        <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden mb-6">
+          <div className="px-4 py-3 border-b border-gray-100 bg-gray-50">
+            <h2 className="font-semibold text-gray-700">Bekleyen Ödevler ({bekleyenler.length})</h2>
           </div>
           <div className="divide-y divide-gray-50">
-            {sonuclananlar.map((o) => (
+            {bekleyenler.length === 0 && <p className="px-4 py-6 text-center text-gray-400 text-sm">Bekleyen ödev yok.</p>}
+            {bekleyenler.map((o) => (
               <OdevKarti key={o.id} o={o} />
             ))}
           </div>
-        </>
+          {sonuclananlar.length > 0 && (
+            <>
+              <div className="px-4 py-3 border-b border-t border-gray-100 bg-gray-50">
+                <h2 className="font-semibold text-gray-700">Sonuçlanan Ödevler ({sonuclananlar.length})</h2>
+              </div>
+              <div className="divide-y divide-gray-50">
+                {sonuclananlar.map((o) => (
+                  <OdevKarti key={o.id} o={o} />
+                ))}
+              </div>
+            </>
+          )}
+        </div>
+      ) : (
+        // Belirli bir duruma filtrelendiğinde (ör. sadece "Yapmadı"), eski
+        // Bekleyen/Sonuçlanan ikili bölünmesi yerine TEK bir liste gösteriyoruz
+        // — zaten hepsi aynı durumda olduğu için ayırmanın bir anlamı yok.
+        <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden mb-6">
+          <div className="px-4 py-3 border-b border-gray-100 bg-gray-50">
+            <h2 className="font-semibold text-gray-700">
+              {OGRENCI_DURUM_SEKMELERI.find((s) => s.deger === durumFiltre)?.etiket} ({odevlerFiltreli.length})
+            </h2>
+          </div>
+          <div className="divide-y divide-gray-50">
+            {odevlerFiltreli.length === 0 && (
+              <p className="px-4 py-6 text-center text-gray-400 text-sm">Filtreye uyan ödev yok.</p>
+            )}
+            {odevlerFiltreli.map((o) => (
+              <OdevKarti key={o.id} o={o} />
+            ))}
+          </div>
+        </div>
       )}
-      </div>
     </>
   )
 }
