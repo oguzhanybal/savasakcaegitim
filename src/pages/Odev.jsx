@@ -1040,11 +1040,17 @@ function OdevDurumListesi({ odevler, ogrenciSinifAdMap, isYonetici }) {
 // isteği). En üstte AYRICA, hiç tıklama gerektirmeyen düz bir "Durum Listesi"
 // tablosu var (bkz. OdevDurumListesi) — kartlar detaya inmek için, bu tablo
 // tek bakışta genel durumu görmek için (kullanıcı isteği).
-function VerilenOdevlerListesi({ odevler, isYonetici, onDegisti, ogrenciSinifAdMap, ogrenciler = [] }) {
+function VerilenOdevlerListesi({ odevler, isYonetici, onDegisti, ogrenciSinifAdMap, ogrenciler = [], ogretmenler = [] }) {
   const [acikGruplar, setAcikGruplar] = useState({})
   const [acikOgrenciler, setAcikOgrenciler] = useState({})
   const [durumFiltre, setDurumFiltre] = useState('hepsi') // 'hepsi' | 'bekliyor' | 'yapti' | 'yapmadi' | 'sure_gecti'
   const [arama, setArama] = useState('')
+  // Kullanıcı isteği: yönetici burada da öğretmene göre filtreleyebilsin
+  // ("Verilen Tüm Ödevler" hem öğrenci hem de öğretmen tarafında karışık
+  // görünüyordu). Öğretmen rolündeki kullanıcı zaten sadece KENDİ verdiği
+  // ödevleri görüyor (bkz. Odev() bileşenindeki sorgu), bu yüzden bu filtre
+  // sadece yöneticide anlamlı — isYonetici değilse hiç gösterilmiyor.
+  const [seciliOgretmenId, setSeciliOgretmenId] = useState('')
   // Kullanıcı isteğiyle eklendi: "öğrenci öğrenci seçip kim hangi ödevi
   // yapmamış görebileyim" — yukarıdaki serbest metin aramanın (arama) yanına,
   // gerçek öğrenci listesinden TEK bir öğrenci seçilebilen bir dropdown
@@ -1102,12 +1108,13 @@ function VerilenOdevlerListesi({ odevler, isYonetici, onDegisti, ogrenciSinifAdM
       if (durumFiltre === 'gelmedi' && o.durum !== 'gelmedi') return false
       if (durumFiltre === 'sure_gecti' && !sonTarihGectiMi(o)) return false
       if (seciliOgrenciId && o.ogrenci_id !== seciliOgrenciId) return false
+      if (seciliOgretmenId && o.ogretmen_profile_id !== seciliOgretmenId) return false
       if (aramaKucuk && !(o.ogrenci_adi || '').toLowerCase().includes(aramaKucuk)) return false
       return true
     })
-  }, [odevler, durumFiltre, arama, seciliOgrenciId])
+  }, [odevler, durumFiltre, arama, seciliOgrenciId, seciliOgretmenId])
 
-  const filtreAktif = durumFiltre !== 'hepsi' || arama.trim() !== '' || seciliOgrenciId !== ''
+  const filtreAktif = durumFiltre !== 'hepsi' || arama.trim() !== '' || seciliOgrenciId !== '' || seciliOgretmenId !== ''
 
   // Seçili öğrenci için kısa özet — kullanıcı bir öğrenci seçip henüz bir
   // durum sekmesine basmadıysa bile, o öğrencinin kaç ödevinin "Yapmadı" ya
@@ -1193,6 +1200,20 @@ function VerilenOdevlerListesi({ odevler, isYonetici, onDegisti, ogrenciSinifAdM
             </option>
           ))}
         </select>
+        {isYonetici && ogretmenler.length > 0 && (
+          <select
+            value={seciliOgretmenId}
+            onChange={(e) => setSeciliOgretmenId(e.target.value)}
+            className="px-3 py-1.5 border border-gray-200 rounded-lg text-sm max-w-[220px] focus:outline-none focus:ring-2 focus:ring-blue"
+          >
+            <option value="">Tüm öğretmenler</option>
+            {ogretmenler.map((o) => (
+              <option key={o.id} value={o.id}>
+                {o.ad_soyad}
+              </option>
+            ))}
+          </select>
+        )}
         <input
           type="text"
           value={arama}
@@ -1207,6 +1228,7 @@ function VerilenOdevlerListesi({ odevler, isYonetici, onDegisti, ogrenciSinifAdM
               setDurumFiltre('hepsi')
               setArama('')
               setSeciliOgrenciId('')
+              setSeciliOgretmenId('')
             }}
             className="text-xs text-gray-400 font-semibold hover:underline"
           >
@@ -1357,9 +1379,27 @@ function OdevDurumRozeti({ durum }) {
   )
 }
 
+// Kullanıcı isteği: öğrenci/veli tarafında ödevler öğretmene göre
+// filtrelenebilsin (örn. "sadece Matematik hocasının verdiklerini görmek
+// istiyorum"). odevler zaten ogretmen_adi alanını taşıyor (bkz. Odev()
+// bileşenindeki veriyiYenile — profiles:ogretmen_profile_id join'i), o
+// yüzden burada ekstra bir sorguya gerek yok. Sadece 1 öğretmen varsa
+// filtre dropdown'ı gösterilmiyor (filtrelemenin bir anlamı olmaz).
 function OdevlerimListesi({ odevler, birdenFazlaCocukMu }) {
-  const bekleyenler = odevler.filter((o) => o.durum === 'bekliyor')
-  const sonuclananlar = odevler.filter((o) => o.durum !== 'bekliyor')
+  const [seciliOgretmen, setSeciliOgretmen] = useState('')
+
+  const ogretmenListesi = useMemo(() => {
+    const set = new Set()
+    odevler.forEach((o) => {
+      if (o.ogretmen_adi) set.add(o.ogretmen_adi)
+    })
+    return Array.from(set).sort((a, b) => a.localeCompare(b, 'tr'))
+  }, [odevler])
+
+  const odevlerFiltreli = seciliOgretmen ? odevler.filter((o) => o.ogretmen_adi === seciliOgretmen) : odevler
+
+  const bekleyenler = odevlerFiltreli.filter((o) => o.durum === 'bekliyor')
+  const sonuclananlar = odevlerFiltreli.filter((o) => o.durum !== 'bekliyor')
 
   function OdevKarti({ o }) {
     const linkBilgi = odevDosyaLinkBilgisi(o)
@@ -1398,7 +1438,25 @@ function OdevlerimListesi({ odevler, birdenFazlaCocukMu }) {
   }
 
   return (
-    <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden mb-6">
+    <>
+      {ogretmenListesi.length > 1 && (
+        <div className="mb-4 max-w-xs">
+          <label className="block text-sm font-medium text-gray-700 mb-1">Öğretmene Göre Filtrele</label>
+          <select
+            value={seciliOgretmen}
+            onChange={(e) => setSeciliOgretmen(e.target.value)}
+            className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue bg-white"
+          >
+            <option value="">Tüm Öğretmenler</option>
+            {ogretmenListesi.map((ad) => (
+              <option key={ad} value={ad}>
+                {ad}
+              </option>
+            ))}
+          </select>
+        </div>
+      )}
+      <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden mb-6">
       <div className="px-4 py-3 border-b border-gray-100 bg-gray-50">
         <h2 className="font-semibold text-gray-700">Bekleyen Ödevler ({bekleyenler.length})</h2>
       </div>
@@ -1420,7 +1478,8 @@ function OdevlerimListesi({ odevler, birdenFazlaCocukMu }) {
           </div>
         </>
       )}
-    </div>
+      </div>
+    </>
   )
 }
 
@@ -1811,6 +1870,7 @@ export default function Odev() {
             onDegisti={veriyiYenile}
             ogrenciSinifAdMap={ogrenciSinifAdMap}
             ogrenciler={ogrenciler}
+            ogretmenler={ogretmenler}
           />
         </>
       )}
