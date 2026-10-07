@@ -1077,7 +1077,16 @@ function OdevDurumListesi({ odevler, ogrenciSinifAdMap, isYonetici }) {
 // isteği). En üstte AYRICA, hiç tıklama gerektirmeyen düz bir "Durum Listesi"
 // tablosu var (bkz. OdevDurumListesi) — kartlar detaya inmek için, bu tablo
 // tek bakışta genel durumu görmek için (kullanıcı isteği).
-function VerilenOdevlerListesi({ odevler, isYonetici, onDegisti, ogrenciSinifAdMap, ogrenciler = [], ogretmenler = [] }) {
+function VerilenOdevlerListesi({
+  odevler,
+  isYonetici,
+  onDegisti,
+  ogrenciSinifAdMap,
+  ogrenciler = [],
+  ogretmenler = [],
+  siniflarListesi = [],
+  sinifOgrenciMap = {},
+}) {
   const [acikGruplar, setAcikGruplar] = useState({})
   const [acikOgrenciler, setAcikOgrenciler] = useState({})
   const [durumFiltre, setDurumFiltre] = useState('hepsi') // 'hepsi' | 'bekliyor' | 'yapti' | 'yapmadi' | 'sure_gecti'
@@ -1096,6 +1105,14 @@ function VerilenOdevlerListesi({ odevler, isYonetici, onDegisti, ogrenciSinifAdM
   // kullanılabilir (ör. önce öğrenciyi seçip sonra "Yapmadı" durum sekmesine
   // basarak sadece o öğrencinin yapmadığı ödevleri görmek için).
   const [seciliOgrenciId, setSeciliOgrenciId] = useState('')
+  // Kullanıcı isteği: "öğretmen filtresi uyguluyoruz ya yönetici hesabında
+  // sınıf sınıf da filtre uygulayabilelim" — öğretmen dropdown'ının yanına,
+  // aynı mantıkla bir SINIF dropdown'ı eklendi (sadece yöneticide görünür).
+  // "odevler" kaydında doğrudan sinif_id YOK (sadece ogrenci_id var), bu
+  // yüzden seçilen sınıfın öğrenci id'lerini sinifOgrenciMap'ten (sinif_id ->
+  // [ogrenci_id,...]) bulup ona göre filtreliyoruz — aşağıdaki
+  // seciliSinifOgrenciSeti.
+  const [seciliSinifId, setSeciliSinifId] = useState('')
 
   async function sil(o) {
     if (!confirm(`"${o.baslik}" ödevini silmek istediğinize emin misiniz?`)) return
@@ -1135,6 +1152,11 @@ function VerilenOdevlerListesi({ odevler, isYonetici, onDegisti, ogrenciSinifAdM
   // birlikte uygulanıyor — bir sınıf kartının içinde de artık sadece
   // aranan/filtrelenen öğrenciler görünür, geri kalanı kartın kendisinden
   // gizlenir (bir kartta hiç eşleşen kalmazsa kart hiç gösterilmez).
+  const seciliSinifOgrenciSeti = useMemo(() => {
+    if (!seciliSinifId) return null
+    return new Set(sinifOgrenciMap[seciliSinifId] || [])
+  }, [seciliSinifId, sinifOgrenciMap])
+
   const filtreliOdevler = useMemo(() => {
     const aramaKucuk = arama.trim().toLowerCase()
     return odevler.filter((o) => {
@@ -1146,12 +1168,18 @@ function VerilenOdevlerListesi({ odevler, isYonetici, onDegisti, ogrenciSinifAdM
       if (durumFiltre === 'sure_gecti' && !sonTarihGectiMi(o)) return false
       if (seciliOgrenciId && o.ogrenci_id !== seciliOgrenciId) return false
       if (seciliOgretmenId && o.ogretmen_profile_id !== seciliOgretmenId) return false
+      if (seciliSinifOgrenciSeti && !seciliSinifOgrenciSeti.has(o.ogrenci_id)) return false
       if (aramaKucuk && !(o.ogrenci_adi || '').toLowerCase().includes(aramaKucuk)) return false
       return true
     })
-  }, [odevler, durumFiltre, arama, seciliOgrenciId, seciliOgretmenId])
+  }, [odevler, durumFiltre, arama, seciliOgrenciId, seciliOgretmenId, seciliSinifOgrenciSeti])
 
-  const filtreAktif = durumFiltre !== 'hepsi' || arama.trim() !== '' || seciliOgrenciId !== '' || seciliOgretmenId !== ''
+  const filtreAktif =
+    durumFiltre !== 'hepsi' ||
+    arama.trim() !== '' ||
+    seciliOgrenciId !== '' ||
+    seciliOgretmenId !== '' ||
+    seciliSinifId !== ''
 
   // Seçili öğrenci için kısa özet — kullanıcı bir öğrenci seçip henüz bir
   // durum sekmesine basmadıysa bile, o öğrencinin kaç ödevinin "Yapmadı" ya
@@ -1251,6 +1279,20 @@ function VerilenOdevlerListesi({ odevler, isYonetici, onDegisti, ogrenciSinifAdM
             ))}
           </select>
         )}
+        {isYonetici && siniflarListesi.length > 0 && (
+          <select
+            value={seciliSinifId}
+            onChange={(e) => setSeciliSinifId(e.target.value)}
+            className="px-3 py-1.5 border border-gray-200 rounded-lg text-sm max-w-[220px] focus:outline-none focus:ring-2 focus:ring-blue"
+          >
+            <option value="">Tüm sınıflar</option>
+            {siniflarListesi.map((s) => (
+              <option key={s.id} value={s.id}>
+                {s.ad}
+              </option>
+            ))}
+          </select>
+        )}
         <input
           type="text"
           value={arama}
@@ -1266,6 +1308,7 @@ function VerilenOdevlerListesi({ odevler, isYonetici, onDegisti, ogrenciSinifAdM
               setArama('')
               setSeciliOgrenciId('')
               setSeciliOgretmenId('')
+              setSeciliSinifId('')
             }}
             className="text-xs text-gray-400 font-semibold hover:underline"
           >
@@ -1989,6 +2032,8 @@ export default function Odev() {
             ogrenciSinifAdMap={ogrenciSinifAdMap}
             ogrenciler={ogrenciler}
             ogretmenler={ogretmenler}
+            siniflarListesi={siniflarListesi}
+            sinifOgrenciMap={sinifOgrenciMap}
           />
         </>
       )}
