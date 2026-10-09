@@ -133,6 +133,29 @@ function saateDakikaEkle(saatStr, dakika) {
   return `${String(yeniH).padStart(2, '0')}:${String(yeniM).padStart(2, '0')}`
 }
 
+// Bir Promise'i azami bir süreyle sınırlar — süre dolunca reddeder (reject).
+// NEDEN GEREKLİ: "zil" hesabıyla açık olan bilgisayar günlerce hiç
+// kapatılmadan açık kalıyor. Kullanıcının bildirdiği "her gün sayfa
+// yükleniyorda takılı kalıyor, önbelleği/site verilerini elle temizlemek
+// zorunda kalıyorum" şikayetinin kök nedeni muhtemelen AuthContext.jsx'te
+// de belgelenen BİLİNEN supabase-js kilitlenme hatası (bkz. o dosyadaki not,
+// github.com/supabase/supabase-js issue #2013/#2111) — kütüphanenin iç
+// kilidi bir token yenilemesi sırasında takılırsa, O ANDAN SONRAKİ HER
+// supabase isteği (bu sayfadaki ders listesini/sunucu saatini/uzaktan
+// komutları çeken istekler dahil) sonsuza kadar ne başarıyla ne hatayla
+// SONUÇLANMADAN asılı kalabiliyor. Bu asılı kalma normal bir ağ hatası
+// DEĞİL — .catch() ile de yakalanamıyor, çünkü Promise hiç reddedilmiyor,
+// sadece hiç bitmiyor. Bu yüzden aşağıdaki fonksiyonla kritik istekleri
+// SARIP, kendi makul süremiz dolunca kendi reddimizi (reject) üretiyoruz ki
+// uygulamanın geri kalanı ("hata oldu, tekrar dene" gibi) normal şekilde
+// çalışabilsin, sonsuza dek beklemesin.
+function zamanAsimliCagir(promiseSozu, msSure) {
+  return Promise.race([
+    promiseSozu,
+    new Promise((_cozul, reddet) => setTimeout(() => reddet(new Error('zaman aşımı')), msSure)),
+  ])
+}
+
 const BOS_FORM = { devre: '', dersNo: '', ogrenci: '', ogretmen: '', cikis: '' }
 
 export default function ZilSistemi() {
@@ -213,6 +236,16 @@ export default function ZilSistemi() {
     return sunucuMs + (performance.now() - performansAnkoru)
   }
 
+  // "CANLILIK" ZAMAN DAMGASI — bu sayfadaki üç düzenli/tekrarlayan supabase
+  // isteğinden (ders listesi, sunucu saati senkronu, uzaktan komut kontrolü —
+  // bkz. aşağıdaki derslerYukle/senkronizeEt/kontrolEt) HERHANGİ biri başarıyla
+  // (ya da en azından normal bir hatayla, asılı kalmadan) SONUÇLANDIĞINDA
+  // güncellenir. Normalde uzaktan komut kontrolü 2 saniyede bir çalıştığı için
+  // bu neredeyse sürekli tazelenir. Aşağıdaki "takılma gözcüsü" efekti, bu
+  // zaman damgası uzun süre hiç güncellenmezse (= üçü de asılı kaldıysa, bkz.
+  // zamanAsimliCagir'in üstündeki not) sayfayı kendiliğinden tazeliyor.
+  const sonCanliIstekRef = useRef(Date.now())
+
   // ---- Ekran Uykusu Engelleme (Wake Lock) ----
   // "zil" hesabıyla açık olan bilgisayarın ekranı kararıp uykuya dalarsa,
   // tarayıcı sekmesi de arka plana düşmüş gibi davranıp zamanlayıcıları
@@ -270,6 +303,90 @@ export default function ZilSistemi() {
     return () => clearInterval(id)
   }, [isZil])
 
+  // ============================================================================
+  // SAYFA TAKILMASI / OTOMATİK İYİLEŞME — "zil" hesabıyla açık olan bilgisayar
+  // gün(ler)ce hiç kapatılmadan açık kalıyor. Kullanıcı isteği: "her gün
+  // yükleniyorda takılı kalıyor, site önbelleğini/verilerini elle temizlemek
+  // zorunda kalıyorum, bir türlü çözemedim" — yani sayfa bir şekilde takılıp
+  // kalıyor, elle "tarayıcı/site verilerini temizle" yapıp yeniden açılması
+  // gerekiyor. Bu bilgisayara uzaktan erişimimiz yok, ama AuthContext.jsx'te
+  // belgelenen BİLİNEN supabase-js kilitlenme hatası (bkz. o dosyadaki uzun
+  // not) en olası kök neden: kütüphanenin iç kilidi bir token yenilemesi
+  // sırasında (saatlerce açık kalan bu sekmede er ya da geç olur) takılırsa,
+  // O ANDAN SONRAKİ HER supabase isteği sessizce SONSUZA KADAR asılı kalır —
+  // normal bir ağ hatası gibi davranmaz, hiçbir .catch()/"tekrar dene"
+  // mantığı tetiklenmez, kullanıcı için sayfa "donmuş" gibi görünür.
+  // AuthContext.jsx bunu İLK AÇILIŞTA (12 saniyelik güvenlik ağıyla) zaten
+  // ele alıyor; burada da bu sayfanın KENDİ düzenli isteklerinin (ders
+  // listesi/sunucu saati/uzaktan komutlar — hepsi artık zamanAsimliCagir ile
+  // sarılı, bkz. dosya başı) GÜN İÇİNDE herhangi bir anda aynı şekilde takılı
+  // kalma ihtimaline karşı iki önlem var:
+  //
+  //   1) TAKILMA GÖZCÜSÜ: sonCanliIstekRef (üçü de en az birinin asılı
+  //      kalmadan sonuçlandığı her an güncellenir) 4 dakikadır hiç
+  //      güncellenmemişse — normalde uzaktan komut kontrolü TEK BAŞINA 2
+  //      saniyede bir bunu tazelediği için bu süre asla dolmaz — bir şeylerin
+  //      gerçekten takılı kaldığı anlamına gelir, sayfa kendini tazeler.
+  //   2) GÜNLÜK ÖNLEYİCİ TAZELEME: hiç sorun çıkmasa bile, her gece ders
+  //      saatleri dışında (03:10 civarı, Türkiye saatine göre) sayfa
+  //      KENDİLİĞİNDEN bir kere tazeden açılır — hem gün içinde birikmiş
+  //      olabilecek bellek/durum sorunlarını hem de yeni bir site güncellemesi
+  //      varsa onu bir sonraki sabaha kadar otomatik yakalar.
+  //
+  // Her iki durumda da "tazeleme" sadece sayfayı yenilemek değil — kullanıcının
+  // elle yaptığı "site verilerini temizle" adımıyla AYNI ŞEYİ yapıyor: kayıtlı
+  // Service Worker'ı kaldırıp tüm Cache Storage'ı siliyor, SONRA yeniden
+  // yüklüyor. Böylece olası bir eski/bozuk önbellek kalıntısı da otomatik
+  // temizlenmiş oluyor ve kimsenin elle müdahale etmesi gerekmiyor.
+  // ============================================================================
+  async function sayfayiSertTazele() {
+    try {
+      const kayitlar = await navigator.serviceWorker?.getRegistrations?.()
+      if (kayitlar) await Promise.all(kayitlar.map((k) => k.unregister()))
+    } catch {
+      // Service Worker API'si desteklenmiyor/erişilemiyor olabilir — sorun değil.
+    }
+    try {
+      const isimler = await caches?.keys?.()
+      if (isimler) await Promise.all(isimler.map((isim) => caches.delete(isim)))
+    } catch {
+      // Cache Storage API'si desteklenmiyor/erişilemiyor olabilir — sorun değil.
+    }
+    window.location.reload()
+  }
+
+  useEffect(() => {
+    if (!isZil) return
+    const GUNLUK_TAZELEME_ANAHTARI = 'zilSistemiSonTazeleme'
+    const id = setInterval(() => {
+      // --- 1) Takılma gözcüsü ---
+      if (Date.now() - sonCanliIstekRef.current > 4 * 60 * 1000) {
+        sayfayiSertTazele()
+        return
+      }
+      // --- 2) Günlük önleyici tazeleme (gece 03:10-03:14 Türkiye saati) ---
+      const suanki = new Date(suankiGercekZamanMs())
+      const b = turkiyeSaatBilesenleri(suanki)
+      if (b.saat !== '03' || Number(b.dakika) >= 5) return
+      const bugunAnahtari = `${b.yil}-${b.ay}-${b.gun}`
+      let sonTazeleme = ''
+      try {
+        sonTazeleme = localStorage.getItem(GUNLUK_TAZELEME_ANAHTARI) || ''
+      } catch {
+        return // localStorage'a erişilemiyorsa (ör. gizli sekme) günlük tazeleme atlanır
+      }
+      if (sonTazeleme === bugunAnahtari) return // bugün zaten tazelendi
+      try {
+        localStorage.setItem(GUNLUK_TAZELEME_ANAHTARI, bugunAnahtari)
+      } catch {
+        return
+      }
+      sayfayiSertTazele()
+    }, 30 * 1000)
+    return () => clearInterval(id)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isZil])
+
   // ---- Yeni ders ekleme formu — Öğrenci girilince Öğretmen (+1dk),
   // Öğretmen (elle ya da otomatik) belli olunca Çıkış (+45dk) öneriliyor.
   // Kullanıcı öneriyi elle değiştirirse, bir sonraki otomatik öneri onu ezmez.
@@ -279,13 +396,22 @@ export default function ZilSistemi() {
   const [ekleniyor, setEkleniyor] = useState(false)
 
   async function derslerYukle() {
-    const { data, error } = await supabase
-      .from('zil_dersleri')
-      .select('*')
-      .order('sira', { ascending: true })
-    if (error) setHata(error.message)
-    else setDersler(data || [])
-    setLoading(false)
+    try {
+      // 15 saniyede sonuçlanmazsa zamanAsimliCagir reddeder (bkz. dosya başındaki
+      // not) — asılı bir supabase isteği yüzünden "Yükleniyor..." ekranında
+      // sonsuza dek kalınmasın diye.
+      const { data, error } = await zamanAsimliCagir(
+        supabase.from('zil_dersleri').select('*').order('sira', { ascending: true }),
+        15000
+      )
+      if (error) setHata(error.message)
+      else setDersler(data || [])
+      sonCanliIstekRef.current = Date.now()
+    } catch {
+      setHata('Bağlantı zaman aşımına uğradı, tekrar deneniyor...')
+    } finally {
+      setLoading(false)
+    }
   }
 
   async function senkronizeEt() {
@@ -293,7 +419,17 @@ export default function ZilSistemi() {
     // duvar saatinden bağımsız, gerçek geçen süreyi ölçmek için Date.now()'dan
     // daha güvenilir.
     const oncekiPerf = performance.now()
-    const { data, error } = await supabase.rpc('simdiki_zaman')
+    let data, error
+    try {
+      ;({ data, error } = await zamanAsimliCagir(supabase.rpc('simdiki_zaman'), 15000))
+      // İstek (başarılı ya da başarısız) GERÇEKTEN sonuçlandı — asılı kalmadı,
+      // yani supabase'in iç kilidi takılı değil. "hata" olsa bile bu bir
+      // canlılık kanıtıdır (bkz. sonCanliIstekRef'in üstündeki not).
+      sonCanliIstekRef.current = Date.now()
+    } catch {
+      setSenkronDurumu('hata')
+      return
+    }
     const sonrakiPerf = performance.now()
     if (error || !data) {
       setSenkronDurumu('hata')
@@ -488,11 +624,19 @@ export default function ZilSistemi() {
     }
 
     async function kontrolEt() {
-      const { data, error } = await supabase
-        .from('zil_uzaktan_komutlar')
-        .select('*')
-        .order('created_at', { ascending: false })
-        .limit(10)
+      let data, error
+      try {
+        ;({ data, error } = await zamanAsimliCagir(
+          supabase.from('zil_uzaktan_komutlar').select('*').order('created_at', { ascending: false }).limit(10),
+          15000
+        ))
+        // 2 saniyede bir çalışan bu kontrol en sık tekrarlanan istek olduğu
+        // için "canlılık" damgasını en güncel tutan budur (bkz. yukarıdaki
+        // sonCanliIstekRef notu) — asılı kalmadan sonuçlandığını kanıtlar.
+        if (!iptalEdildi) sonCanliIstekRef.current = Date.now()
+      } catch {
+        return // zaman aşımı — bir sonraki 2sn'lik denemeye bırak, hata göstermeye gerek yok
+      }
       if (iptalEdildi || error || !data) return
       const suankiSunucuMs = suankiGercekZamanMs()
       // En eskiden en yeniye doğru işlensin diye ters çevir.
