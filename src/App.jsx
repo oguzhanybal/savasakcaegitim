@@ -1,3 +1,4 @@
+import { useEffect, useRef } from 'react'
 import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom'
 import { AuthProvider, useAuth } from './lib/AuthContext'
 import Layout from './components/Layout'
@@ -53,12 +54,50 @@ import UygulamaYuklemeleri from './pages/UygulamaYuklemeleri'
 // zamanAsimiOldu true ise (AuthContext.jsx: 12 saniyede bir türlü yüklenmediyse)
 // sonsuza kadar dönen "Yükleniyor..." yerine kullanıcının en azından tekrar
 // deneyebileceği bir buton gösteriyoruz — önceden bu durumda çıkışsız kalınıyordu.
+//
+// OTOMATİK YENİLEME — kullanıcı isteği: "zil çalan bilgisayar"da (kimsenin
+// başında oturmadığı, günlerce açık kalan bir cihazda) bu ekran çıktığında
+// "Sayfayı Yenile" butonuna basacak kimse yok — sayfa orada takılı kalıyor,
+// ta ki biri fark edip bilgisayarın başına geçene (ya da elle tarayıcı
+// verilerini temizleyene) kadar. Aşağıdaki efekt, butona basılmasını
+// BEKLEMEDEN birkaç saniye sonra kendiliğinden bir kez yeniler. Art arda
+// (ör. Supabase projesinin kendisi o an gerçekten çökmüşse) sonsuz bir
+// yenileme döngüsüne girmeyelim diye, son otomatik denemenin zamanı
+// sessionStorage'a yazılıyor — aradan 2 dakikadan AZ geçtiyse bir daha
+// otomatik denemiyor, sadece butonu gösteriyor (bir insan varsa yine de
+// elle deneyebilsin diye).
+const OTOMATIK_YENILEME_ANAHTARI = 'sa_son_oto_yenileme_denemesi'
+
 function Yukleniyor({ zamanAsimiOldu }) {
+  const denendiRef = useRef(false)
+
+  useEffect(() => {
+    if (!zamanAsimiOldu || denendiRef.current) return
+    denendiRef.current = true
+    let sonDeneme = 0
+    try {
+      sonDeneme = Number(sessionStorage.getItem(OTOMATIK_YENILEME_ANAHTARI)) || 0
+    } catch {
+      return // sessionStorage'a erişilemiyorsa (ör. gizli sekme) otomatik yenileme atlanır
+    }
+    if (Date.now() - sonDeneme < 2 * 60 * 1000) return // yakın zamanda zaten denendi, döngüye girme
+    const id = setTimeout(() => {
+      try {
+        sessionStorage.setItem(OTOMATIK_YENILEME_ANAHTARI, String(Date.now()))
+      } catch {
+        return
+      }
+      window.location.reload()
+    }, 4000)
+    return () => clearTimeout(id)
+  }, [zamanAsimiOldu])
+
   if (zamanAsimiOldu) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-cream px-4">
         <div className="text-center">
           <p className="text-gray-500 mb-3">Bağlantı sorunu oluştu, sayfa yüklenemedi.</p>
+          <p className="text-gray-400 text-sm mb-3">Sayfa birazdan kendiliğinden yeniden denenecek...</p>
           <button
             type="button"
             onClick={() => window.location.reload()}
