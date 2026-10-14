@@ -184,7 +184,7 @@ function GoogleDriveBaglanti() {
 // sonra, ilgili öğrencilerin/velilerin telefonu varsa WhatsApp bildirim
 // linkleri gösterilir (mevcut Bire Bir hatırlatma panelindeki mantığın aynısı).
 // ============================================================================
-function OdevVerForm({ ogrenciler, siniflarListesi, sinifOgrenciMap, ogretmenProfileId, varsayilanDers, onEklendi }) {
+function OdevVerForm({ ogrenciler, siniflarListesi, sinifOgrenciMap, ekErisimMap, ogretmenProfileId, varsayilanDers, onEklendi }) {
   const [hedefTuru, setHedefTuru] = useState('tek') // 'tek' | 'toplu'
   const [seciliOgrenci, setSeciliOgrenci] = useState('')
   const [seciliOgrenciler, setSeciliOgrenciler] = useState([])
@@ -262,7 +262,17 @@ function OdevVerForm({ ogrenciler, siniflarListesi, sinifOgrenciMap, ogretmenPro
   // eşleştirme tablosundan gelir).
   function sinifSec(sinifId) {
     if (!sinifId) return
-    const idler = (sinifOgrenciMap && sinifOgrenciMap[sinifId]) || []
+    // Resmen o sınıfa kayıtlı öğrenciler (sinif_ogrenciler) + bu sınıfa, BİZZAT
+    // ödevi veren bu öğretmenden ek erişimi olan öğrenciler (ders_ek_erisim) —
+    // ör. Tural Hamid resmen MF-2'de ama Savaş Akça MF-3'e toplu ödev verirken
+    // Tural'ın ek erişim kaydı Savaş Akça'ya ait OLDUĞU İÇİN o da dahil olur;
+    // başka bir öğretmen aynı MF-3'e ödev verirse (Tural'ın ek erişimi o
+    // öğretmene ait değilse) Tural dahil OLMAZ.
+    const resmiIdler = (sinifOgrenciMap && sinifOgrenciMap[sinifId]) || []
+    const ekIdler = ((ekErisimMap && ekErisimMap[sinifId]) || [])
+      .filter((k) => k.ogretmen_profile_id === ogretmenProfileId)
+      .map((k) => k.ogrenci_id)
+    const idler = Array.from(new Set([...resmiIdler, ...ekIdler]))
     setSeciliSiniflar((s) => {
       if (s.includes(sinifId)) {
         setSeciliOgrenciler((mevcut) => mevcut.filter((id) => !idler.includes(id)))
@@ -1877,6 +1887,17 @@ export default function Odev() {
   const [ogrenciler, setOgrenciler] = useState([])
   const [siniflarListesi, setSiniflarListesi] = useState([])
   const [sinifOgrenciMap, setSinifOgrenciMap] = useState({})
+  // "Ek erişim" — bir öğrenci resmen o sınıfa kayıtlı OLMADIĞI halde (ör. Tural
+  // Hamid resmen MF-2'de ama SADECE Savaş Akça'nın MF-3 dersini takip ediyor),
+  // ders_ek_erisim tablosundaki özel izinle o dersi görebiliyor. "Sınıfa göre
+  // ekle" ile TOPLU ödev verilirken bu öğrenciler sinif_ogrenciler'de olmadığı
+  // için otomatik dahil olmuyordu — bu harita, hangi öğretmenin hangi sınıfa
+  // ek erişimle kimi dahil etmesi gerektiğini tutuyor: sinif_id -> [{ogrenci_id,
+  // ogretmen_profile_id}, ...]. SADECE OdevVerForm'a (ödev veren öğretmenin
+  // kendi formu) aktarılıyor, VerilenOdevlerListesi'teki yönetici filtresine
+  // KASITLI OLARAK karıştırılmıyor (o liste gerçek sinif_ogrenciler kaydına göre
+  // çalışmaya devam etsin diye).
+  const [ekErisimMap, setEkErisimMap] = useState({})
   const [ogretmenler, setOgretmenler] = useState([])
   const [odevler, setOdevler] = useState([])
   const [birdenFazlaCocukMu, setBirdenFazlaCocukMu] = useState(false)
@@ -1977,8 +1998,21 @@ export default function Odev() {
           harita[k.sinif_id].push(k.ogrenci_id)
         })
         setSinifOgrenciMap(harita)
+
+        // Ek erişim (ders_ek_erisim) — bkz. ekErisimMap state tanımındaki not.
+        const { data: ekErisimKayitlari } = await supabase
+          .from('ders_ek_erisim')
+          .select('ogrenci_id, sinif_id, ogretmen_profile_id')
+          .in('sinif_id', sinifIdleri)
+        const ekHarita = {}
+        ;(ekErisimKayitlari || []).forEach((k) => {
+          if (!ekHarita[k.sinif_id]) ekHarita[k.sinif_id] = []
+          ekHarita[k.sinif_id].push({ ogrenci_id: k.ogrenci_id, ogretmen_profile_id: k.ogretmen_profile_id })
+        })
+        setEkErisimMap(ekHarita)
       } else {
         setSinifOgrenciMap({})
+        setEkErisimMap({})
       }
 
       ilkYuklemeTamamRef.current = true
@@ -2020,6 +2054,7 @@ export default function Odev() {
             ogrenciler={ogrenciler}
             siniflarListesi={siniflarListesi}
             sinifOgrenciMap={sinifOgrenciMap}
+            ekErisimMap={ekErisimMap}
             ogretmenProfileId={profile.id}
             varsayilanDers={isOgretmen ? profile?.brans || '' : ''}
             onEklendi={veriyiYenile}
