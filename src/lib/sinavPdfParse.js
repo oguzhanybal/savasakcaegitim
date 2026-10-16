@@ -252,6 +252,18 @@ function sayfa1Ayikla(satirlar) {
   const dersSonuclari = []
   let ustDuzeyX = null
   let oncekiGirintiliMi = false
+  // "Matematik Konu Analiz Sınavı" gibi bazı şablonlarda DERS ANALİZİ tablosu
+  // DÜZ (girintisiz) — Matematik ve Geometri gibi gerçek dersler ile bunların
+  // "TYT-Matematik" adlı SAYISAL TOPLAMI (gerçek bir ders değil) aynı x
+  // konumunda, üst üste yazılıyor. Böyle durumda yukarıdaki girinti kontrolü
+  // bu alt toplamı YAKALAYAMIYOR (gerçek bir örnekte yaşandı: "TYT-Matematik"
+  // satırı Matematik+Geometri'nin toplamı olduğu halde 3. bağımsız ders gibi
+  // kaydedilip hem toplam soru sayısını hem de "Sınav Sonuçları" ekranındaki
+  // ders listesini bozdu). grupBaslangicIndeksi, dersSonuclari dizisinde
+  // MEVCUT (henüz bir alt toplamla kapanmamış) grubun başladığı indeksi
+  // tutar — her alt toplam atlandığında (etiket, girinti YA DA aşağıdaki
+  // sayısal eşleşme ile) bir sonraki grup oradan başlar.
+  let grupBaslangicIndeksi = 0
   for (let i = tabloHeaderIdx + 1; i <= toplamIdx; i++) {
     const satir = satirlar[i]
     const siraliOgeler = satir.items.slice().sort((a, b) => a.x - b.x)
@@ -259,27 +271,49 @@ function sayfa1Ayikla(satirlar) {
     const dersAdiHam = dersOgeleri.map((i) => i.str).join(' ').trim()
     if (!dersAdiHam) continue
 
-    const buSatirinX = dersOgeleri[0]?.x ?? 0
-    if (ustDuzeyX === null) ustDuzeyX = buSatirinX
-    const buSatirGirintiliMi = buSatirinX > ustDuzeyX + 5
-    // Üst düzey (girintisiz) bir satır — BİLİNEN bir alt toplam etiketiyse
-    // YA DA hemen önce çocuk (girintili) satır(lar) geldiyse — bu bir ALT
-    // TOPLAM'dır, gerçek bir ders değil (yoksa altındaki çocukların soru/net
-    // değerleri bir de bu satırda TEKRAR sayılır). ÖNEMLİ: her iki durumda da
-    // oncekiGirintiliMi'yi false'a sıfırlamamız lazım — yoksa (ör. bilinen
-    // etiket listesinden atlanan bir satırdan sonra gelen bir sonraki üst
-    // düzey satır) yanlışlıkla ESKİ (bayat) "önceki çocuktu" bilgisiyle
-    // gereksiz yere atlanabilir.
-    if (ATLANACAK_ETIKETLER.includes(dersAdiHam) || (!buSatirGirintiliMi && oncekiGirintiliMi)) {
-      oncekiGirintiliMi = false
-      continue
-    }
-    oncekiGirintiliMi = buSatirGirintiliMi
-
     const degerler = {}
     for (const it of siraliOgeler.filter((it) => it.x >= ankraj.SORU - 30)) {
       degerler[enYakinKolon(it.x)] = it.str
     }
+    const buSoruSayisi = parseInt(degerler.SORU || '0', 10)
+    const buDogru = parseInt(degerler.DOĞRU || '0', 10)
+    const buYanlis = parseInt(degerler.YANLIŞ || '0', 10)
+    const buBos = parseInt(degerler.BOŞ || '0', 10)
+
+    const buSatirinX = dersOgeleri[0]?.x ?? 0
+    if (ustDuzeyX === null) ustDuzeyX = buSatirinX
+    const buSatirGirintiliMi = buSatirinX > ustDuzeyX + 5
+
+    // SAYISAL ALT TOPLAM KONTROLÜ: bu satırın SORU/DOĞRU/YANLIŞ/BOŞ değerleri
+    // (dördü de BİREBİR), mevcut grupta şimdiye kadar toplanan gerçek
+    // derslerin TOPLAMINA eşitse, bu satır (etiketi ne olursa olsun, girintili
+    // olsun ya da olmasın) GERÇEK bir ders değil SAYISAL bir alt toplamdır.
+    // En az 2 gerçek ders toplanmış olmasını şart koşuyoruz — yoksa tek bir
+    // dersin kendi toplamıyla "eşleşmesi" yanlış pozitif üretir.
+    const grupDersleri = dersSonuclari.slice(grupBaslangicIndeksi)
+    const sayisalAltToplamMi =
+      grupDersleri.length >= 2 &&
+      grupDersleri.reduce((t, d) => t + d.soru_sayisi, 0) === buSoruSayisi &&
+      grupDersleri.reduce((t, d) => t + d.dogru, 0) === buDogru &&
+      grupDersleri.reduce((t, d) => t + d.yanlis, 0) === buYanlis &&
+      grupDersleri.reduce((t, d) => t + d.bos, 0) === buBos
+
+    // Üst düzey (girintisiz) bir satır — BİLİNEN bir alt toplam etiketiyse
+    // YA DA hemen önce çocuk (girintili) satır(lar) geldiyse YA DA sayıca
+    // mevcut grubun toplamına eşitse — bu bir ALT TOPLAM'dır, gerçek bir ders
+    // değil (yoksa altındaki çocukların soru/net değerleri bir de bu satırda
+    // TEKRAR sayılır). ÖNEMLİ: her durumda da oncekiGirintiliMi'yi false'a
+    // sıfırlamamız ve bir sonraki grubun buradan başladığını işaretlememiz
+    // lazım — yoksa (ör. bilinen etiket listesinden atlanan bir satırdan
+    // sonra gelen bir sonraki üst düzey satır) yanlışlıkla ESKİ (bayat)
+    // "önceki çocuktu" bilgisiyle gereksiz yere atlanabilir.
+    if (ATLANACAK_ETIKETLER.includes(dersAdiHam) || (!buSatirGirintiliMi && oncekiGirintiliMi) || sayisalAltToplamMi) {
+      oncekiGirintiliMi = false
+      grupBaslangicIndeksi = dersSonuclari.length
+      continue
+    }
+    oncekiGirintiliMi = buSatirGirintiliMi
+
     const onekEslesme = dersAdiHam.match(/^(TYT|AYT)-(.+)$/)
     let dersAdiTemiz = adSoyadDuzelt(onekEslesme ? onekEslesme[2] : dersAdiHam)
     // Karma (TYT+AYT birlikte) sınavlarda aynı ders hem TYT hem AYT bölümünde
@@ -291,10 +325,10 @@ function sayfa1Ayikla(satirlar) {
     }
     dersSonuclari.push({
       ders_adi: dersAdiTemiz,
-      soru_sayisi: parseInt(degerler.SORU || '0', 10),
-      dogru: parseInt(degerler.DOĞRU || '0', 10),
-      yanlis: parseInt(degerler.YANLIŞ || '0', 10),
-      bos: parseInt(degerler.BOŞ || '0', 10),
+      soru_sayisi: buSoruSayisi,
+      dogru: buDogru,
+      yanlis: buYanlis,
+      bos: buBos,
       net: parseFloat((degerler.NET || '0').replace(',', '.')) || 0,
     })
   }
