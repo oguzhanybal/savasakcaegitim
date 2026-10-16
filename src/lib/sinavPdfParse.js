@@ -284,14 +284,19 @@ function sayfa1Ayikla(satirlar) {
     if (ustDuzeyX === null) ustDuzeyX = buSatirinX
     const buSatirGirintiliMi = buSatirinX > ustDuzeyX + 5
 
-    // SAYISAL ALT TOPLAM KONTROLÜ: bu satırın SORU/DOĞRU/YANLIŞ/BOŞ değerleri
-    // (dördü de BİREBİR), mevcut grupta şimdiye kadar toplanan gerçek
-    // derslerin TOPLAMINA eşitse, bu satır (etiketi ne olursa olsun, girintili
-    // olsun ya da olmasın) GERÇEK bir ders değil SAYISAL bir alt toplamdır.
-    // En az 2 gerçek ders toplanmış olmasını şart koşuyoruz — yoksa tek bir
+    // SAYISAL ALT TOPLAM KONTROLÜ: SADECE "TYT-X" / "AYT-X" önekli satırlar
+    // için (tam olarak yukarıdaki yorumda açıklanan belirsiz durum — bu önek
+    // bazen gerçek bir ders, bazen bir alt toplam oluyor) — satırın SORU/
+    // DOĞRU/YANLIŞ/BOŞ değerleri (dördü de BİREBİR) mevcut grupta şimdiye
+    // kadar toplanan gerçek derslerin TOPLAMINA eşitse, bu satır GERÇEK bir
+    // ders değil SAYISAL bir alt toplamdır. Kontrolü kasıtlı olarak SADECE bu
+    // önekli satırlarla sınırlıyoruz — başka hiçbir ders adını (ör. gerçekten
+    // iki farklı dersin TOPLAMINA denk gelen bir TESADÜF) etkilemesin diye. En
+    // az 2 gerçek ders toplanmış olmasını da şart koşuyoruz — yoksa tek bir
     // dersin kendi toplamıyla "eşleşmesi" yanlış pozitif üretir.
     const grupDersleri = dersSonuclari.slice(grupBaslangicIndeksi)
     const sayisalAltToplamMi =
+      /^(TYT|AYT)-/.test(dersAdiHam) &&
       grupDersleri.length >= 2 &&
       grupDersleri.reduce((t, d) => t + d.soru_sayisi, 0) === buSoruSayisi &&
       grupDersleri.reduce((t, d) => t + d.dogru, 0) === buDogru &&
@@ -378,21 +383,30 @@ function sayfa2Ayikla(satirlar, sayfa1DersSonuclari) {
   // çıkabiliyor — karma (TYT+AYT) sınavlarda "Matematik" hem TYT hem AYT
   // bölümünde ayrı bir blok olarak geçebiliyor, ama bu sayfadaki ham metin
   // ikisinde de BİREBİR AYNI (font kodlama sorunu yüzünden TYT/AYT öneki bu
-  // sayfada hiç yok). Ayırt etmek için SAYFA 1'in (DERS ANALİZİ) zaten
-  // çözdüğü isimleri (ör. "Matematik" ve "AYT Matematik") kullanıyoruz:
-  // KAÇINCI kez aynı temel isimle karşılaşıyorsak, sayfa 1'deki O KADARINCI
-  // eşleşen girişin adını alıyoruz (ikisi de aynı sırada/yukarıdan aşağı
-  // aynı sıra ile geliyor).
+  // sayfada hiç yok).
+  //
+  // Hangi blok TYT, hangisi AYT: sayfadaki bloklarin GORSEL SIRASI (yukaridan
+  // asagi hangisi once geliyor) bunu GUVENILIR sekilde belirlemiyor — iki
+  // gercek sinavda bu sirayi TERS bulduk (bir sinavda ilk blok AYT, digerinde
+  // ilk blok TYT cikti). Bu yuzden ONCE her bloga GECICI bir kimlik verip tum
+  // sayfayi oyle isliyoruz (asagidaki blokKimligiVer), SONRA (asagida, pass
+  // 2'de) her blogun kendi dogru/yanlis/bos TOPLAMINI hesaplayip SAYFA 1'in
+  // (DERS ANALİZİ) guvenilir isimli girisleriyle (ör. "Matematik" ve "AYT
+  // Matematik") ICERIK bazli (aggregate) eslestiriyoruz — tipki bir onceki
+  // elle duzelttigim TYT/AYT ters etiketleme hatasini tespit etmek icin
+  // kullandigim yontem gibi. Icerik eslesmesi KESIN sonuc vermezse (ör. iki
+  // blogun sayilari rastlantiyla ayniysa) ESKI sira-bazli davranisa geri
+  // donuyoruz (regresyon riski olmasin diye).
   const dersGorulmeSayaci = new Map()
-  function dersAdiCoz(hamMetin) {
+  const blokKimligiHaritasi = new Map() // temelAd -> [blokKimligi, ...] (gorulme sirasiyla)
+  function blokKimligiVer(hamMetin) {
     const temelAd = enYakinBilinenDers(hamMetin)
     const sayac = (dersGorulmeSayaci.get(temelAd) || 0) + 1
     dersGorulmeSayaci.set(temelAd, sayac)
-    if (sayac === 1) return temelAd
-    const eslesenler = (sayfa1DersSonuclari || []).filter(
-      (d) => d.ders_adi === temelAd || d.ders_adi.endsWith(' ' + temelAd)
-    )
-    return eslesenler[sayac - 1]?.ders_adi || temelAd
+    const blokKimligi = sayac === 1 ? temelAd : `__BLOK__${temelAd}__${sayac}__`
+    if (!blokKimligiHaritasi.has(temelAd)) blokKimligiHaritasi.set(temelAd, [])
+    blokKimligiHaritasi.get(temelAd).push(blokKimligi)
+    return blokKimligi
   }
 
   for (const satir of veriSatirlari) {
@@ -406,7 +420,7 @@ function sayfa2Ayikla(satirlar, sayfa1DersSonuclari) {
         // Sayı ile başlamıyorsa bu bir DERS BAŞLIĞI satırıdır (ör. "Türkçe",
         // "Matematik", "Tarih"...), soru satırı değil.
         const etiket = ogeler.map((i) => i.str).join('')
-        mevcutDers[c] = dersAdiCoz(etiket)
+        mevcutDers[c] = blokKimligiVer(etiket)
         continue
       }
       const soru_no = parseInt(ilk.str, 10)
@@ -431,6 +445,87 @@ function sayfa2Ayikla(satirlar, sayfa1DersSonuclari) {
       soruSonuclari.push({ ders_adi: mevcutDers[c], soru_no, konu, dogru_cevap: dc, ogrenci_cevap: oc, sonuc })
     }
   }
+
+  // PASS 2: gecici blok kimliklerini gercek ders_adi'na coz.
+  for (const [temelAd, blokKimlikleri] of blokKimligiHaritasi) {
+    if (blokKimlikleri.length <= 1) continue // tek blok var, belirsizlik yok, zaten temelAd
+
+    const eslesenler = (sayfa1DersSonuclari || []).filter(
+      (d) => d.ders_adi === temelAd || d.ders_adi.endsWith(' ' + temelAd)
+    )
+
+    let atama = null // Map<blokKimligi, gercek ders_adi>
+    if (eslesenler.length === blokKimlikleri.length) {
+      const blokToplamlari = blokKimlikleri.map((bk) => {
+        const sorular = soruSonuclari.filter((s) => s.ders_adi === bk)
+        return {
+          blokKimligi: bk,
+          dogru: sorular.filter((s) => s.sonuc === 'dogru').length,
+          yanlis: sorular.filter((s) => s.sonuc === 'yanlis').length,
+          bos: sorular.filter((s) => s.sonuc === 'bos').length,
+        }
+      })
+      const kullanilanlar = new Set()
+      const denemeAtama = new Map()
+      let hepsiTamEslesti = true
+      for (const bt of blokToplamlari) {
+        const adaylar = []
+        eslesenler.forEach((e, i) => {
+          if (!kullanilanlar.has(i) && e.dogru === bt.dogru && e.yanlis === bt.yanlis && e.bos === bt.bos) {
+            adaylar.push(i)
+          }
+        })
+        if (adaylar.length === 1) {
+          kullanilanlar.add(adaylar[0])
+          denemeAtama.set(bt.blokKimligi, eslesenler[adaylar[0]].ders_adi)
+        } else {
+          hepsiTamEslesti = false
+          break
+        }
+      }
+      if (hepsiTamEslesti) atama = denemeAtama
+    }
+
+    if (!atama) {
+      // İçerik eşleştirmesi kesin sonuç vermedi — eski (sıra bazlı) davranışa
+      // geri dönülüyor: ilk görülen blok çıplak/temel adı alır, sonrakiler
+      // sayfa 1'deki sırayla eşleşen ismi alır.
+      atama = new Map()
+      blokKimlikleri.forEach((bk, idx) => {
+        atama.set(bk, idx === 0 ? temelAd : (eslesenler[idx]?.ders_adi || temelAd))
+      })
+    }
+
+    for (const s of soruSonuclari) {
+      if (atama.has(s.ders_adi)) s.ders_adi = atama.get(s.ders_adi)
+    }
+  }
+
+  // "MATEMATİK KONU ANALİZİ" ŞABLONU (10 TYT-Matematik + 10 AYT-Matematik +
+  // 10 Geometri = 30 soru): bu sınavın RESMİ kitapçığı (sinav_kitapcik_sorulari),
+  // DB'deki TÜM sınavları tek tek kontrol ederek doğruladığım gibi, SADECE bu
+  // şablonda, diğer hiçbir sınav türünde OLMAYAN iki özel kural kullanıyor:
+  // (1) ders adları TİRELİ ("TYT-Matematik"/"AYT-Matematik", "Matematik"/
+  // "AYT Matematik" değil), (2) soru numaraları KÜMÜLATİF (1-10/11-20/21-30,
+  // her ders kendi içinde 1'den başlamıyor). Yukarıdaki PASS 2 bir sayfanın
+  // "Matematik" ve "AYT Matematik" olarak İÇERİK eşleştirmesiyle doğru
+  // çözdüğü blokları burada kitapçıkla eşleşecek hale çeviriyoruz. Bu blok
+  // SADECE sayfada GERÇEKTEN "AYT Matematik" bulunduğunda çalışır -- yani
+  // bu şablona uymayan hiçbir başka sınavı etkilemez.
+  const aytMatematikVarMi = soruSonuclari.some((s) => s.ders_adi === 'AYT Matematik')
+  if (aytMatematikVarMi) {
+    for (const s of soruSonuclari) {
+      if (s.ders_adi === 'Matematik') {
+        s.ders_adi = 'TYT-Matematik' // soru_no zaten 1-10, kayma yok
+      } else if (s.ders_adi === 'AYT Matematik') {
+        s.ders_adi = 'AYT-Matematik'
+        s.soru_no += 10 // kitapçıkta 11-20
+      } else if (s.ders_adi === 'Geometri') {
+        s.soru_no += 20 // kitapçıkta 21-30
+      }
+    }
+  }
+
   return soruSonuclari
 }
 
