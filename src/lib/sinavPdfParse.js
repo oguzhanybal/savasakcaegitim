@@ -58,6 +58,7 @@ async function kaynakBelgedenSayfalariAyir(PDFLib, kaynakPdf, sayfa1No, sayfa2No
 const BILINEN_DERSLER = [
   'Türkçe', 'Matematik', 'Tarih', 'Coğrafya', 'Felsefe', 'Din Kültürü',
   'Fizik', 'Kimya', 'Biyoloji', 'Geometri', 'Sosyal Bilimler', 'Fen Bilimleri',
+  'Edebiyat',
 ]
 
 function levenshteinMesafesi(a, b) {
