@@ -13,6 +13,7 @@ import {
   ardisikDiziyeGoreFiltrele,
   baslangicKutulariUret,
 } from '../lib/kitapcikOcr'
+import { cevapAnahtariXlsxOku, digerKitapcigiSorulariniTuret } from '../lib/cevapAnahtariXlsx'
 
 const DERS_ONERILERI = [
   'Türkçe', 'Matematik', 'Tarih', 'Coğrafya', 'Felsefe', 'Din Kültürü',
@@ -492,6 +493,14 @@ export default function SinavKitapciklari() {
   const [hata, setHata] = useState('')
   const [basari, setBasari] = useState('')
 
+  // CEVAP ANAHTARI (.xlsx) ile A/B kitapçık türetme — kullanıcı isteğiyle
+  // eklendi: "B kitapçığını taradım, cevap anahtarındaki eşleştirmeyle A'yı
+  // da otomatik çözsün, ikisini de taramak zorunda kalmayayım". Bkz.
+  // cevapAnahtariXlsx.js'teki açıklama ve aşağıdaki digerKitapcigiVarsaUret.
+  const [cevapAnahtariDosyasi, setCevapAnahtariDosyasi] = useState(null)
+  const [cevapAnahtariYukleniyor, setCevapAnahtariYukleniyor] = useState(false)
+  const [cevapAnahtariMesaji, setCevapAnahtariMesaji] = useState('')
+
   function veriyiYenile() {
     supabase.from('sinavlar').select('*').order('sinav_tarihi', { ascending: false }).then(({ data }) => {
       setSinavlar(data || [])
@@ -501,6 +510,112 @@ export default function SinavKitapciklari() {
       .select('*, sinavlar(sinav_adi)')
       .order('created_at', { ascending: false })
       .then(({ data }) => setKitapciklar(data || []))
+  }
+
+  // Bir kitapçık kaydedildikten SONRA (ya da bir cevap anahtarı yüklendikten
+  // sonra) çağrılır: bu sınav için şu an TEK bir (gerçek, türetilmemiş)
+  // kitapçık varsa VE bir cevap anahtarı yüklenmişse, EKSİK olan diğer
+  // kitapçığı OCR'sız, cevap anahtarındaki eşleştirmeden türetir — aynı
+  // taranmış PDF'i paylaşır, sadece soru haritası (ders_adi + soru_no + x/y
+  // koordinatları) kopyalanır. İkisi de zaten varsa (ikisi de gerçek ya da
+  // biri zaten türetilmiş) ya da cevap anahtarı yoksa hiçbir şey yapmaz —
+  // yani var olan gerçek bir taramanın ÜZERİNE asla yazmaz.
+  async function digerKitapcigiVarsaUret(sinavId) {
+    const { data: mevcutKitapciklar } = await supabase.from('sinav_kitapciklari').select('*').eq('sinav_id', sinavId)
+    const harfler = new Set((mevcutKitapciklar || []).map((k) => k.kitapcik))
+    if (harfler.size !== 1) return // ikisi de var ya da ikisi de yok -- yapacak bir şey yok
+    const kaynakKitapcik = mevcutKitapciklar.find((k) => !k.turetilmis)
+    if (!kaynakKitapcik) return // tek kitapçık var ama o da türetilmiş -- kaynaksız türetme yapılamaz
+    const digerHarf = kaynakKitapcik.kitapcik === 'A' ? 'B' : 'A'
+
+    const { data: cevapAnahtariSatirlari } = await supabase
+      .from('sinav_cevap_anahtari')
+      .select('soru_no, ders_adi, karsilik_soru_no')
+      .eq('sinav_id', sinavId)
+      .eq('kitapcik', digerHarf)
+    if (!cevapAnahtariSatirlari || cevapAnahtariSatirlari.length === 0) return // cevap anahtarı yüklenmemiş
+
+    const { data: kaynakSorular } = await supabase
+      .from('sinav_kitapcik_sorulari')
+      .select('*')
+      .eq('kitapcik_id', kaynakKitapcik.id)
+    const { turetilenler, eslesmeyenler } = digerKitapcigiSorulariniTuret(kaynakSorular || [], cevapAnahtariSatirlari)
+    if (turetilenler.length === 0) return
+
+    const { data: yeniKitapcik, error: yeniKitapcikHatasi } = await supabase
+      .from('sinav_kitapciklari')
+      .upsert(
+        {
+          sinav_id: sinavId,
+          kitapcik: digerHarf,
+          pdf_yolu: kaynakKitapcik.pdf_yolu, // GERÇEK dosya PAYLAŞILIYOR -- bkz. kitapcikSil'deki güvenlik notu
+          sayfa_sayisi: kaynakKitapcik.sayfa_sayisi,
+          onaylandi: true,
+          olcek: kaynakKitapcik.olcek,
+          turetilmis: true,
+          kaynak_kitapcik: kaynakKitapcik.kitapcik,
+        },
+        { onConflict: 'sinav_id,kitapcik' }
+      )
+      .select()
+      .single()
+    if (yeniKitapcikHatasi) {
+      console.error('Diğer kitapçık türetilemedi:', yeniKitapcikHatasi.message)
+      return
+    }
+    await supabase.from('sinav_kitapcik_sorulari').delete().eq('kitapcik_id', yeniKitapcik.id)
+    const satirlar = turetilenler.map((s) => ({ ...s, kitapcik_id: yeniKitapcik.id }))
+    const { error: soruHatasi } = await supabase.from('sinav_kitapcik_sorulari').insert(satirlar)
+    if (soruHatasi) {
+      console.error('Türetilen sorular kaydedilemedi:', soruHatasi.message)
+      return
+    }
+    setBasari(
+      (onceki) =>
+        `${onceki ? onceki + ' ' : ''}Ayrıca "${digerHarf}" kitapçığı, cevap anahtarındaki eşleştirmeden otomatik ` +
+        `türetildi (${turetilenler.length} soru${eslesmeyenler.length > 0 ? `, ${eslesmeyenler.length} soru eşleştirilemedi` : ''}).`
+    )
+    veriyiYenile()
+  }
+
+  async function cevapAnahtariniYukle() {
+    if (!seciliSinavId || seciliSinavId === '__yeni__') {
+      setCevapAnahtariMesaji('Önce yukarıdan (kayıtlı) bir sınav seçin -- cevap anahtarı, bir kitapçık kaydedip sınav oluşturulmadan yüklenemez.')
+      return
+    }
+    if (!cevapAnahtariDosyasi) {
+      setCevapAnahtariMesaji('Lütfen bir Excel (.xlsx) dosyası seçin.')
+      return
+    }
+    setCevapAnahtariYukleniyor(true)
+    setCevapAnahtariMesaji('')
+    try {
+      const { A, B } = await cevapAnahtariXlsxOku(cevapAnahtariDosyasi)
+      await supabase.from('sinav_cevap_anahtari').delete().eq('sinav_id', seciliSinavId)
+      const satirlar = [
+        ...A.map((s) => ({ ...s, kitapcik: 'A' })),
+        ...B.map((s) => ({ ...s, kitapcik: 'B' })),
+      ].map((s) => ({
+        sinav_id: seciliSinavId,
+        kitapcik: s.kitapcik,
+        soru_no: s.soru_no,
+        ders_adi: s.ders_adi,
+        ders_soru_no: s.ders_soru_no,
+        karsilik_soru_no: s.karsilik_soru_no,
+        cevap: s.cevap,
+      }))
+      if (satirlar.length > 0) {
+        const { error } = await supabase.from('sinav_cevap_anahtari').insert(satirlar)
+        if (error) throw error
+      }
+      setCevapAnahtariMesaji(`✓ Cevap anahtarı kaydedildi (A: ${A.length}, B: ${B.length} soru).`)
+      setCevapAnahtariDosyasi(null)
+      await digerKitapcigiVarsaUret(seciliSinavId)
+    } catch (e) {
+      setCevapAnahtariMesaji('Hata: ' + e.message)
+    } finally {
+      setCevapAnahtariYukleniyor(false)
+    }
   }
 
   // Bir kitapçığı (ör. deneme amaçlı yüklenmiş, yanlış yüklenmiş vb.) kalıcı
@@ -518,9 +633,26 @@ export default function SinavKitapciklari() {
       return
     setSilinenKitapcikId(k.id)
     try {
+      // Bu kitapçık GERÇEK (türetilmemiş) bir kaynaksa VE aynı sınavda ondan
+      // TÜRETİLMİŞ bir kitapçık varsa (digerKitapcigiVarsaUret ile
+      // oluşturulmuş, bu kitapçığın PDF dosyasını PAYLAŞIYOR) -- önce o
+      // türetilmiş kitapçığı da birlikte siliyoruz, yoksa aşağıda Storage'dan
+      // silinecek PDF'e işaret eden "yetim" bir kayıt kalırdı.
+      const turetilenBagimli = !k.turetilmis
+        ? kitapciklar.find((d) => d.sinav_id === k.sinav_id && d.turetilmis && d.kaynak_kitapcik === k.kitapcik)
+        : null
+      if (turetilenBagimli) {
+        await supabase.from('sinav_kitapcik_sorulari').delete().eq('kitapcik_id', turetilenBagimli.id)
+        await supabase.from('sinav_kitapciklari').delete().eq('id', turetilenBagimli.id)
+      }
+
       const { error: soruHatasi } = await supabase.from('sinav_kitapcik_sorulari').delete().eq('kitapcik_id', k.id)
       if (soruHatasi) throw soruHatasi
-      if (k.pdf_yolu) {
+      // TÜRETİLMİŞ bir kitapçığın pdf_yolu'su, kaynak (gerçek) kitapçıkla
+      // PAYLAŞILIYOR -- Storage'dan silersek kaynak kitapçığın da dosyasını
+      // kaybederiz. Bu yüzden Storage'dan SADECE gerçek (türetilmemiş)
+      // kitapçıklarda siliyoruz.
+      if (k.pdf_yolu && !k.turetilmis) {
         // Depolamadaki dosya silinemese bile (ör. zaten yoksa) kitapçık
         // kaydının silinmesini engellemesin diye hatasını sadece konsola yazıyoruz.
         const { error: dosyaHatasi } = await supabase.storage.from('sinav-kitapciklari').remove([k.pdf_yolu])
@@ -1344,6 +1476,13 @@ export default function SinavKitapciklari() {
             sayfa_sayisi: sayfaGoruntuleri.length,
             onaylandi: true,
             olcek: kullanilanOlcek || 3,
+            // Burası HER ZAMAN gerçek bir tarama/işaretleme kaydı -- admin az
+            // önce bu kitapçığı bizzat taratıp/işaretleyip kaydetti. Daha
+            // önce (cevap anahtarından) türetilmiş bir kayıt bu harf için
+            // varsa bile, upsert onun yerine GEÇER (onConflict sinav_id,
+            // kitapcik) ve artık türetilmiş değil, gerçek sayılır.
+            turetilmis: false,
+            kaynak_kitapcik: null,
           },
           { onConflict: 'sinav_id,kitapcik' }
         )
@@ -1383,6 +1522,10 @@ export default function SinavKitapciklari() {
       setSorular([])
       setKullanilanOlcek(null)
       setDuzenlenenKitapcik(null)
+      // Bu sınav için daha önce bir cevap anahtarı yüklenmişse ve diğer
+      // kitapçık (A/B) hâlâ eksikse, az önce kaydedilen bu kitapçıktan
+      // otomatik türetmeyi dener (bkz. yukarıdaki fonksiyon tanımı).
+      await digerKitapcigiVarsaUret(sinavId)
       veriyiYenile()
     } catch (e) {
       setHata('Hata: ' + e.message)
@@ -1643,6 +1786,14 @@ export default function SinavKitapciklari() {
                     ) : (
                       <span className="text-xs font-semibold bg-yellow-100 text-yellow-700 px-2 py-1 rounded-full">Onay bekliyor</span>
                     )}
+                    {k.turetilmis && (
+                      <span
+                        className="ml-1 text-xs font-semibold bg-blue/10 text-blue px-2 py-1 rounded-full"
+                        title={`Bu kitapçık hiç taranmadı -- görselleri "${k.kaynak_kitapcik}" kitapçığının PDF'inden, cevap anahtarındaki eşleştirmeyle türetildi.`}
+                      >
+                        Türetilmiş ({k.kaynak_kitapcik}'den)
+                      </span>
+                    )}
                   </td>
                   <td className="px-4 py-2 text-right whitespace-nowrap">
                     <button
@@ -1780,6 +1931,40 @@ export default function SinavKitapciklari() {
                 <option value="Diğer">Diğer</option>
               </select>
             </div>
+          </div>
+        )}
+
+        {/* CEVAP ANAHTARI (.xlsx) ile A/B türetme — kullanıcı isteğiyle
+            eklendi: sadece BİR kitapçığı (A ya da B) tarayıp kaydetmeniz
+            yeterli olsun diye. Bkz. cevapAnahtariXlsx.js ve
+            digerKitapcigiVarsaUret'teki açıklama. Sadece kayıtlı (daha önce
+            en az bir kitapçığı kaydedilmiş) bir sınav seçiliyken anlamlı
+            olduğu için "+ Yeni sınav ekle" seçiliyken gösterilmiyor. */}
+        {seciliSinavId && seciliSinavId !== '__yeni__' && (
+          <div className="flex flex-wrap gap-3 items-end mb-3 bg-blue/5 border border-blue/10 rounded-lg p-3">
+            <div className="flex-1 min-w-[220px]">
+              <label className="block text-sm font-medium text-gray-700 mb-1">Cevap Anahtarı (.xlsx) — opsiyonel</label>
+              <input
+                type="file"
+                accept=".xlsx"
+                onChange={(e) => setCevapAnahtariDosyasi(e.target.files?.[0] || null)}
+                className="w-full text-sm"
+              />
+            </div>
+            <button
+              type="button"
+              onClick={cevapAnahtariniYukle}
+              disabled={cevapAnahtariYukleniyor}
+              className="bg-blue text-white font-semibold px-4 py-2 rounded-lg text-sm hover:opacity-90 disabled:opacity-50"
+            >
+              {cevapAnahtariYukleniyor ? 'Yükleniyor...' : 'Cevap Anahtarını Yükle'}
+            </button>
+            <p className="text-xs text-gray-500 basis-full">
+              A ve B kitapçıklarının soru numarası eşleştirmesini ("B karşılığı" sütunu) içeren Excel dosyası.
+              Yüklerseniz SADECE bir kitapçığı (A ya da B) taratıp kaydetmeniz yeterli olur — diğeri bu
+              eşleştirmeden, aynı taranmış PDF'den otomatik türetilir.
+            </p>
+            {cevapAnahtariMesaji && <p className="text-xs text-blue-700 basis-full">{cevapAnahtariMesaji}</p>}
           </div>
         )}
 
