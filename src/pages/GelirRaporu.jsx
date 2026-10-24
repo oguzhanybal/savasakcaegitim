@@ -1,10 +1,21 @@
 import { useEffect, useMemo, useState } from 'react'
 import { supabase, tumSatirlariGetir } from '../lib/supabase'
-import { paraFormat, taksitPlaniOlustur, bireBirBorclariOlustur, kantinBorclariOlustur } from '../lib/ekstreHesap'
+import {
+  paraFormat,
+  taksitPlaniOlustur,
+  bireBirBorclariOlustur,
+  kantinBorclariOlustur,
+  odemeToplamKalem,
+} from '../lib/ekstreHesap'
 
 // Bilinen kalemler bu sırayla gösterilir; veride bunların dışında bir kalem
 // çıkarsa (ör. eski/elle girilmiş farklı bir isim) sona, alfabetik sırayla eklenir.
 const BILINEN_KALEM_SIRASI = ['Okul', 'Kurs', 'Kitap', 'Deneme Kulübü', 'Bire Bir', 'Yemek', 'Kantin']
+
+// Taksitsiz, "kümülatif bakiye" mantığıyla işleyen kalemler — Muhasebe/Ekstre
+// tarafında aylikKalemHesapla'nın kapsadığı kalemlerle BİREBİR aynı liste
+// (ekstreHesap.js'teki ['Bire Bir','Yemek','Kantin'] kullanımına bkz.).
+const AYLIK_KALEM_FIFO_KAPSAMI = new Set(['Bire Bir', 'Yemek', 'Kantin'])
 
 function ayAnahtari(tarihStr) {
   const d = new Date(tarihStr)
@@ -18,9 +29,8 @@ function ayEtiketi(ay) {
 export default function GelirRaporu() {
   const [odemeler, setOdemeler] = useState([])
   const [giderler, setGiderler] = useState([])
-  // Aşağıdaki dördü SADECE "Beklenen" (normalde o ay tahsil edilmesi gereken
-  // tutar) hesabı için gerekiyor — "Alınan" taraf zaten tek başına odemeler'den
-  // çıkıyor. Bkz. aşağıdaki useMemo içindeki "BEKLENEN" bölümü.
+  // Aşağıdaki beşi "Beklenen" VE kümülatif/FIFO "Alınan" hesabı için gerekiyor
+  // — bkz. aşağıdaki useMemo içindeki ayrıntılı yorum.
   const [sozlesmeler, setSozlesmeler] = useState([])
   const [aylikBorclarHam, setAylikBorclarHam] = useState([])
   const [bireBirAtamalari, setBireBirAtamalari] = useState([])
@@ -67,36 +77,10 @@ export default function GelirRaporu() {
     genelToplamBeklenen,
   } = useMemo(() => {
     const kalemSet = new Set()
-    const ayMap = new Map() // "YYYY-MM" -> { [kalem]: tutar, __toplam }  (ALINAN — fiilen tahsil edilmiş)
 
-    for (const o of odemeler) {
-      if (!o.tarih) continue
-      const ay = ayAnahtari(o.tarih)
-      const kalem = o.kalem || 'Belirtilmemiş'
-      kalemSet.add(kalem)
-      if (!ayMap.has(ay)) ayMap.set(ay, { __toplam: 0 })
-      const satir = ayMap.get(ay)
-      satir[kalem] = (satir[kalem] || 0) + Number(o.tutar)
-      satir.__toplam += Number(o.tutar)
-    }
-
-    // ========================================================================
-    // BEKLENEN — "normalde o ay ne kadar almamız gerekiyordu" (fiilen alınan
-    // değil, o ay vadesi/dönemi gelen borç). İki ayrı kaynaktan geliyor:
-    //   1) Okul/Kurs/Kitap/Deneme Kulübü gibi TAKSİTLİ kalemler: her
-    //      sözleşmenin taksit planı (taksitPlaniOlustur) çıkarılıp her
-    //      taksitin VADE AYINA göre toplanıyor. odemeler parametresi boş
-    //      geçiliyor çünkü sadece taksitin kendi tutarı/vadesi lazım (durum/
-    //      ödenen alanlarıyla ilgilenmiyoruz, onu zaten "Alınan" tarafı
-    //      odemeler'den ayrıca hesaplıyor).
-    //   2) Bire Bir/Yemek/Kantin gibi taksitsiz, AYLIK KALEM borçları: elle
-    //      girilmiş aylik_borclar satırları + yoklamadan otomatik türeyen
-    //      Bire Bir borçları + kantin alışlarından türeyen Kantin borçları,
-    //      hepsi kendi "donem" alanına göre toplanıyor — Muhasebe.jsx'teki
-    //      per-öğrenci borç hesabıyla AYNI motor (bireBirBorclariOlustur /
-    //      kantinBorclariOlustur), burada sadece TÜM öğrenciler için.
-    // ========================================================================
-    const beklenenAyMap = new Map() // "YYYY-MM" -> { [kalem]: tutar, __toplam }
+    // "YYYY-MM" -> { [kalem]: tutar, __toplam }
+    const beklenenAyMap = new Map()
+    const alinanAyMap = new Map()
 
     function beklenenEkle(ay, kalem, tutar) {
       if (!ay || !tutar) return
@@ -107,18 +91,131 @@ export default function GelirRaporu() {
       satir.__toplam += tutar
     }
 
+    function alinanEkle(ay, kalem, tutar) {
+      if (!ay || !tutar) return
+      kalemSet.add(kalem)
+      if (!alinanAyMap.has(ay)) alinanAyMap.set(ay, { __toplam: 0 })
+      const satir = alinanAyMap.get(ay)
+      satir[kalem] = (satir[kalem] || 0) + tutar
+      satir.__toplam += tutar
+    }
+
+    // ========================================================================
+    // BEKLENEN — "normalde o ay ne kadar almamız gerekiyordu" (o ay
+    // vadesi/dönemi gelen borç, fiilen alınan değil).
+    //
+    // ALINAN — BÜYÜK HATA DÜZELTMESİ (kullanıcının fark ettiği hata): eskiden
+    // burada "Alınan" tutarı, ödemenin YATTIĞI takvim ayına göre sayılıyordu.
+    // Ama bir veli bu ay içinde GEÇMİŞ ayların birikmiş borcunu (ör. 3 aylık
+    // kantin borcunu) tek seferde kapatırsa, o TEK ödemenin TAMAMI "bu ayın
+    // tahsilatı" gibi görünüyor, bu da bu ayın gerçek tahsilat oranını
+    // OLDUĞUNDAN YÜKSEK gösteriyordu ("kantinde bu ayı tam almış gibi
+    // görünüyoruz ama daha eksik aldık"). Artık Muhasebe/Ekstre/Toplu
+    // Ekstre'deki ile AYNI kümülatif (FIFO: ödemeler en eski borçtan
+    // başlayarak kapatılır) mantık kullanılıyor — "Alınan", ödemenin
+    // TARİHİNE değil, o ödemenin HANGİ AYIN BORCUNU KAPATTIĞINA göre
+    // dağıtılıyor. İki ayrı kaynaktan geliyor:
+    //   1) Okul/Kurs/Kitap/Deneme Kulübü gibi TAKSİTLİ kalemler:
+    //      taksitPlaniOlustur zaten her taksit için kümülatif/FIFO
+    //      "odenenTutar" hesaplıyor (bkz. ekstreHesap.js) — burada sadece
+    //      öğrencinin bu kaleme ait TÜM ödemeleri (odemeler, kalem
+    //      başlangıcı eşleşen — "Okul - Devreden Ödeme" gibi devreden
+    //      kayıtlar dahil) gerçek parametre olarak veriliyor.
+    //   2) Bire Bir/Yemek/Kantin gibi taksitsiz, AYLIK KALEM borçları: aynı
+    //      FIFO mantığı burada öğrenci+kalem bazında elle uygulanıyor (en
+    //      eski "donem"den başlayarak, öğrencinin bu kalemdeki TÜM zamanlı
+    //      toplam ödemesi sırayla borçlara dağıtılıyor).
+    // Her iki durumda da, öğrencinin o kalemdeki TOPLAM borcunu AŞAN kısım
+    // (fazla ödeme/alacaklı bakiye) kaybolmasın diye, kalan fazlalık en son
+    // borç ayına ekleniyor — böylece "Alınan Tüm Zamanlar" toplamı HER ZAMAN
+    // gerçek odemeler toplamıyla birebir eşit kalıyor, sadece AYLARA dağılımı
+    // değişiyor.
+    // ========================================================================
+
+    // Hangi (öğrenci, kalem) çiftlerinin yukarıdaki kümülatif mantıkla zaten
+    // işlendiğini işaretliyoruz — aşağıdaki "borç kaynağı olmayan ödemeler"
+    // döngüsü bunları tekrar (naif tarihe göre) saymasın diye.
+    const kapsananCiftler = new Set()
+    const borcluKalemler = new Set(sozlesmeler.map((s) => s.kalem).filter(Boolean))
+    for (const k of AYLIK_KALEM_FIFO_KAPSAMI) borcluKalemler.add(k)
+
+    // ---- 1) Taksitli kalemler (sözleşmeler) ----
     for (const s of sozlesmeler) {
-      const taksitler = taksitPlaniOlustur(s, [])
+      if (!s.kalem) continue
+      const kendiOdemeleri = odemeler.filter((o) => o.ogrenci_id === s.ogrenci_id && o.kalem && o.kalem.startsWith(s.kalem))
+      const taksitler = taksitPlaniOlustur(s, kendiOdemeleri)
+      if (taksitler.length === 0) continue
+      kapsananCiftler.add(`${s.ogrenci_id}||${s.kalem}`)
+
       for (const t of taksitler) {
-        beklenenEkle(ayAnahtari(t.vade), s.kalem || 'Belirtilmemiş', t.tutar)
+        const ay = ayAnahtari(t.vade)
+        beklenenEkle(ay, s.kalem, t.tutar)
+        alinanEkle(ay, s.kalem, t.odenenTutar)
+      }
+
+      // Toplam sözleşme tutarını aşan fazla ödeme (alacaklı bakiye) varsa,
+      // taksitler arasında hiçbir yere dağıtılmamış kalır — kaybolmasın diye
+      // son taksitin ayına ekleniyor (bkz. yukarıdaki genel açıklama).
+      const toplamTaksitTutari = taksitler.reduce((t, k) => t + k.tutar, 0)
+      const odenenToplam = odemeToplamKalem(kendiOdemeleri, s.kalem, { yil: 9999, ay: 12 })
+      const fazla = odenenToplam - toplamTaksitTutari
+      if (fazla > 0.01) {
+        alinanEkle(ayAnahtari(taksitler[taksitler.length - 1].vade), s.kalem, fazla)
       }
     }
 
+    // ---- 2) Taksitsiz, kümülatif bakiye kalemleri (Bire Bir / Yemek / Kantin) ----
     const bireBirBorclar = bireBirBorclariOlustur(bireBirAtamalari, bireBirYoklama)
     const kantinBorclar = kantinBorclariOlustur(kantinAlislari)
-    for (const b of [...aylikBorclarHam, ...bireBirBorclar, ...kantinBorclar]) {
-      if (!b.donem) continue
-      beklenenEkle(ayAnahtari(b.donem), b.kalem || 'Belirtilmemiş', Number(b.tutar) || 0)
+    const aylikKalemBorclari = [...aylikBorclarHam, ...bireBirBorclar, ...kantinBorclar].filter(
+      (b) => b.donem && b.ogrenci_id && AYLIK_KALEM_FIFO_KAPSAMI.has(b.kalem)
+    )
+
+    const gruplar = new Map() // "ogrenciId||kalem" -> [borç satırları]
+    for (const b of aylikKalemBorclari) {
+      const anahtar = `${b.ogrenci_id}||${b.kalem}`
+      if (!gruplar.has(anahtar)) gruplar.set(anahtar, [])
+      gruplar.get(anahtar).push(b)
+    }
+
+    for (const [anahtar, borclar] of gruplar) {
+      const [ogrenciId, kalem] = anahtar.split('||')
+      kapsananCiftler.add(anahtar)
+
+      const kendiOdemeleri = odemeler.filter((o) => o.ogrenci_id === ogrenciId && o.kalem && o.kalem.startsWith(kalem))
+      const odenenToplam = odemeToplamKalem(kendiOdemeleri, kalem, { yil: 9999, ay: 12 })
+
+      const siraliBorclar = [...borclar].sort((a, b) => (a.donem < b.donem ? -1 : a.donem > b.donem ? 1 : 0))
+      let kalanButce = odenenToplam
+      let toplamBorc = 0
+      for (const b of siraliBorclar) {
+        const tutar = Number(b.tutar) || 0
+        toplamBorc += tutar
+        const odenen = Math.min(Math.max(kalanButce, 0), tutar)
+        kalanButce -= odenen
+        const ay = ayAnahtari(b.donem)
+        beklenenEkle(ay, kalem, tutar)
+        alinanEkle(ay, kalem, odenen)
+      }
+
+      // Aynı "fazla ödeme kaybolmasın" mantığı burada da geçerli.
+      const fazla = odenenToplam - toplamBorc
+      if (fazla > 0.01 && siraliBorclar.length > 0) {
+        alinanEkle(ayAnahtari(siraliBorclar[siraliBorclar.length - 1].donem), kalem, fazla)
+      }
+    }
+
+    // ---- 3) Hiçbir borç kaynağına (sözleşme/aylık kalem) bağlanamayan
+    //      ödemeler — ör. "Dağıtılmamış" genel ödemeler ya da eski/elle tek
+    //      seferlik girilmiş kalemler. Bunlar için dağıtılacak bir borç
+    //      planı yok, o yüzden eskisi gibi ÖDEMENİN YATTIĞI aya göre sayılır
+    //      (elimizdeki tek bilgi bu).
+    for (const o of odemeler) {
+      if (!o.tarih) continue
+      const kalem = o.kalem || 'Belirtilmemiş'
+      const eslesenBorcluKalem = [...borcluKalemler].find((k) => kalem.startsWith(k))
+      if (eslesenBorcluKalem && kapsananCiftler.has(`${o.ogrenci_id}||${eslesenBorcluKalem}`)) continue
+      alinanEkle(ayAnahtari(o.tarih), kalem, Number(o.tutar) || 0)
     }
 
     // Gider toplamları ay bazında ayrı bir haritada tutuluyor — giderlerin
@@ -140,7 +237,7 @@ export default function GelirRaporu() {
     // Sadece gelir kaydı olan değil, sadece gider ya da sadece beklenen
     // (ör. henüz vadesi gelmemiş/ödenmemiş gelecek bir ay taksiti) kaydı olan
     // aylar da listeye girsin diye üç tarafın ay anahtarlarının birleşimi alınıyor.
-    const tumAylar = new Set([...ayMap.keys(), ...giderAylik.keys(), ...beklenenAyMap.keys()])
+    const tumAylar = new Set([...alinanAyMap.keys(), ...giderAylik.keys(), ...beklenenAyMap.keys()])
     const aylar = [...tumAylar].sort((a, b) => (a < b ? 1 : -1))
 
     const kalemToplamlari = {}
@@ -149,7 +246,7 @@ export default function GelirRaporu() {
     let genelToplamGider = 0
     let genelToplamBeklenen = 0
     for (const ay of aylar) {
-      const satir = ayMap.get(ay) || { __toplam: 0 }
+      const satir = alinanAyMap.get(ay) || { __toplam: 0 }
       const beklenenSatir = beklenenAyMap.get(ay) || { __toplam: 0 }
       for (const k of kalemler) {
         kalemToplamlari[k] = (kalemToplamlari[k] || 0) + (satir[k] || 0)
@@ -163,7 +260,7 @@ export default function GelirRaporu() {
     return {
       aylar,
       kalemler,
-      satirlar: ayMap,
+      satirlar: alinanAyMap,
       beklenenSatirlar: beklenenAyMap,
       giderAylik,
       kalemToplamlari,
@@ -184,8 +281,8 @@ export default function GelirRaporu() {
       <h1 className="text-2xl font-bold text-navy mb-2">Gelir-Gider Raporu</h1>
       <p className="text-sm text-gray-500 mb-6">
         Her ay kalem bazında "Beklenen" (o ay vadesi/dönemi gelen taksit ve aylık borçların toplamı — normalde
-        almamız gereken) ile "Alınan" (fiilen tahsil edilmiş) tutarların karşılaştırması, o ayın toplam gideri
-        ve aradaki net kâr/zarar farkı.
+        almamız gereken) ile "Alınan" (o ayın borcundan fiilen kapanmış kısım — ödemeler en eski borçtan başlayarak
+        kümülatif olarak kapatılır) tutarların karşılaştırması, o ayın toplam gideri ve aradaki net kâr/zarar farkı.
       </p>
 
       <div className="flex flex-wrap gap-4 mb-6">
@@ -216,18 +313,23 @@ export default function GelirRaporu() {
       <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-x-auto" style={{ touchAction: 'pan-x pan-y' }}>
         <table className="w-full text-sm min-w-[1100px]">
           <thead>
+            {/* Sayfa aşağı kaydırıldığında başlık satırı kaybolup "hangi sütuna
+                bakıyorum" belirsizleşiyordu (kullanıcı şikayeti) — her th
+                kendi başına sticky (thead'in kendisi değil, çünkü bazı
+                tarayıcılarda thead üzerinde position:sticky güvenilir
+                çalışmıyor; th bazında çok daha tutarlı destekleniyor). */}
             <tr className="bg-navy text-white text-left">
-              <th className="px-4 py-3 font-semibold whitespace-nowrap">Ay</th>
+              <th className="sticky top-0 z-10 bg-navy px-4 py-3 font-semibold whitespace-nowrap">Ay</th>
               {kalemler.map((k) => (
-                <th key={k} className="px-4 py-3 font-semibold text-right whitespace-nowrap">
+                <th key={k} className="sticky top-0 z-10 bg-navy px-4 py-3 font-semibold text-right whitespace-nowrap">
                   {k}
                   <span className="block text-[10px] font-normal text-white/60">Beklenen / Alınan</span>
                 </th>
               ))}
-              <th className="px-4 py-3 font-semibold text-right whitespace-nowrap">Beklenen Toplam</th>
-              <th className="px-4 py-3 font-semibold text-right whitespace-nowrap">Alınan Toplam</th>
-              <th className="px-4 py-3 font-semibold text-right whitespace-nowrap">Gider</th>
-              <th className="px-4 py-3 font-semibold text-right whitespace-nowrap">Net Kâr/Zarar</th>
+              <th className="sticky top-0 z-10 bg-navy px-4 py-3 font-semibold text-right whitespace-nowrap">Beklenen Toplam</th>
+              <th className="sticky top-0 z-10 bg-navy px-4 py-3 font-semibold text-right whitespace-nowrap">Alınan Toplam</th>
+              <th className="sticky top-0 z-10 bg-navy px-4 py-3 font-semibold text-right whitespace-nowrap">Gider</th>
+              <th className="sticky top-0 z-10 bg-navy px-4 py-3 font-semibold text-right whitespace-nowrap">Net Kâr/Zarar</th>
             </tr>
           </thead>
           <tbody>
@@ -285,11 +387,13 @@ export default function GelirRaporu() {
       </div>
       <p className="text-xs text-gray-400 mt-3">
         Her kalem hücresinde üstteki küçük gri rakam o ay normalde tahsil edilmesi gereken ("Beklenen" — taksit
-        vadesi ya da Bire Bir/Yemek/Kantin borcunun ait olduğu dönem), alttaki koyu rakam ise fiilen o ay
-        tahsil edilmiş ("Alınan") tutardır. "Dağıtılmamış" kalemi, veli henüz hangi kaleme gideceği
-        belirlenmemiş genel bir ödeme bıraktığında oluşur — Muhasebe sayfasından kalemlere dağıtıldığında
-        buradaki ilgili kaleme geçer. Gider detaylarını (kategori, açıklama) görmek ve yeni gider eklemek için
-        Giderler sayfasını kullanabilirsiniz.
+        vadesi ya da Bire Bir/Yemek/Kantin borcunun ait olduğu dönem), alttaki koyu rakam ise o ayın borcundan
+        fiilen kapanmış kısımdır ("Alınan" — Muhasebe/Ekstre'deki ile aynı kümülatif mantıkla, ödemeler en eski
+        borçtan başlayarak kapatılır; bir ödeme geçmiş ayların birikmiş borcunu kapatıyorsa o ay için değil,
+        borcun ait olduğu eski aylar için "Alınan" sayılır). "Dağıtılmamış" kalemi, veli henüz hangi kaleme
+        gideceği belirlenmemiş genel bir ödeme bıraktığında oluşur — Muhasebe sayfasından kalemlere
+        dağıtıldığında buradaki ilgili kaleme geçer. Gider detaylarını (kategori, açıklama) görmek ve yeni gider
+        eklemek için Giderler sayfasını kullanabilirsiniz.
       </p>
     </div>
   )
