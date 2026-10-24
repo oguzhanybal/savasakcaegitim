@@ -36,7 +36,16 @@ export default function GelirRaporu() {
   const [bireBirAtamalari, setBireBirAtamalari] = useState([])
   const [bireBirYoklama, setBireBirYoklama] = useState([])
   const [kantinAlislari, setKantinAlislari] = useState([])
+  // Sadece öğrenci isimlerini göstermek için — kullanıcı isteğiyle eklenen
+  // "hücreye tıklayınca öğrenci bazında dökümü gör" özelliği (aşağıdaki
+  // detayAcik/DetayModal) için gerekiyor.
+  const [ogrenciler, setOgrenciler] = useState([])
   const [loading, setLoading] = useState(true)
+  // Bir (ay, kalem) hücresine tıklanınca o hücrenin öğrenci bazında dökümünü
+  // gösteren popup'ın hangi hücre için açık olduğu — null ise kapalı.
+  // ay === null ise "Genel Toplam" satırındaki (tüm zamanlar) hücreye
+  // tıklanmış demektir.
+  const [detayAcik, setDetayAcik] = useState(null) // { ay: string|null, kalem: string } | null
 
   useEffect(() => {
     // ÖNEMLİ (bkz. supabase.js → tumSatirlariGetir yorumu): bu rapor TÜM
@@ -52,7 +61,8 @@ export default function GelirRaporu() {
       tumSatirlariGetir(() => supabase.from('bire_bir_atamalari').select('*')),
       tumSatirlariGetir(() => supabase.from('bire_bir_yoklama').select('*')),
       tumSatirlariGetir(() => supabase.from('kantin_alislar').select('*')),
-    ]).then(([o, g, s, ab, bba, bby, ka]) => {
+      tumSatirlariGetir(() => supabase.from('ogrenciler').select('id, ad_soyad')),
+    ]).then(([o, g, s, ab, bba, bby, ka, og]) => {
       setOdemeler(o.data || [])
       setGiderler(g.data || [])
       setSozlesmeler(s.data || [])
@@ -60,9 +70,12 @@ export default function GelirRaporu() {
       setBireBirAtamalari(bba.data || [])
       setBireBirYoklama(bby.data || [])
       setKantinAlislari(ka.data || [])
+      setOgrenciler(og.data || [])
       setLoading(false)
     })
   }, [])
+
+  const ogrenciAdMap = useMemo(() => new Map(ogrenciler.map((o) => [o.id, o.ad_soyad])), [ogrenciler])
 
   const {
     aylar,
@@ -75,12 +88,30 @@ export default function GelirRaporu() {
     genelToplamGelir,
     genelToplamGider,
     genelToplamBeklenen,
+    detaylar,
   } = useMemo(() => {
     const kalemSet = new Set()
 
     // "YYYY-MM" -> { [kalem]: tutar, __toplam }
     const beklenenAyMap = new Map()
     const alinanAyMap = new Map()
+    // Hücreye tıklayınca "kim ne kadar borçlu, ne kadar ödemiş" dökümünü
+    // gösterebilmek için — "ay||kalem" -> Map(ogrenciId -> {beklenen, alinan}).
+    // Aşağıdaki beklenenEkle/alinanEkle'nin öğrenci bazlı hali: TAM OLARAK
+    // AYNI anda, aynı FIFO hesaplarından besleniyor, böylece hücredeki toplam
+    // ile popup'taki öğrenci dökümünün toplamı HER ZAMAN birebir tutuyor.
+    const detayMap = new Map()
+
+    function detayEkle(ay, kalem, ogrenciId, beklenen, alinan) {
+      if (!ay || !ogrenciId) return
+      const anahtar = `${ay}||${kalem}`
+      if (!detayMap.has(anahtar)) detayMap.set(anahtar, new Map())
+      const ogrMap = detayMap.get(anahtar)
+      if (!ogrMap.has(ogrenciId)) ogrMap.set(ogrenciId, { beklenen: 0, alinan: 0 })
+      const kayit = ogrMap.get(ogrenciId)
+      kayit.beklenen += beklenen || 0
+      kayit.alinan += alinan || 0
+    }
 
     function beklenenEkle(ay, kalem, tutar) {
       if (!ay || !tutar) return
@@ -151,6 +182,7 @@ export default function GelirRaporu() {
         const ay = ayAnahtari(t.vade)
         beklenenEkle(ay, s.kalem, t.tutar)
         alinanEkle(ay, s.kalem, t.odenenTutar)
+        detayEkle(ay, s.kalem, s.ogrenci_id, t.tutar, t.odenenTutar)
       }
 
       // Toplam sözleşme tutarını aşan fazla ödeme (alacaklı bakiye) varsa,
@@ -160,7 +192,9 @@ export default function GelirRaporu() {
       const odenenToplam = odemeToplamKalem(kendiOdemeleri, s.kalem, { yil: 9999, ay: 12 })
       const fazla = odenenToplam - toplamTaksitTutari
       if (fazla > 0.01) {
-        alinanEkle(ayAnahtari(taksitler[taksitler.length - 1].vade), s.kalem, fazla)
+        const sonAy = ayAnahtari(taksitler[taksitler.length - 1].vade)
+        alinanEkle(sonAy, s.kalem, fazla)
+        detayEkle(sonAy, s.kalem, s.ogrenci_id, 0, fazla)
       }
     }
 
@@ -196,12 +230,15 @@ export default function GelirRaporu() {
         const ay = ayAnahtari(b.donem)
         beklenenEkle(ay, kalem, tutar)
         alinanEkle(ay, kalem, odenen)
+        detayEkle(ay, kalem, ogrenciId, tutar, odenen)
       }
 
       // Aynı "fazla ödeme kaybolmasın" mantığı burada da geçerli.
       const fazla = odenenToplam - toplamBorc
       if (fazla > 0.01 && siraliBorclar.length > 0) {
-        alinanEkle(ayAnahtari(siraliBorclar[siraliBorclar.length - 1].donem), kalem, fazla)
+        const sonAy = ayAnahtari(siraliBorclar[siraliBorclar.length - 1].donem)
+        alinanEkle(sonAy, kalem, fazla)
+        detayEkle(sonAy, kalem, ogrenciId, 0, fazla)
       }
     }
 
@@ -215,7 +252,10 @@ export default function GelirRaporu() {
       const kalem = o.kalem || 'Belirtilmemiş'
       const eslesenBorcluKalem = [...borcluKalemler].find((k) => kalem.startsWith(k))
       if (eslesenBorcluKalem && kapsananCiftler.has(`${o.ogrenci_id}||${eslesenBorcluKalem}`)) continue
-      alinanEkle(ayAnahtari(o.tarih), kalem, Number(o.tutar) || 0)
+      const ay = ayAnahtari(o.tarih)
+      const tutar = Number(o.tutar) || 0
+      alinanEkle(ay, kalem, tutar)
+      detayEkle(ay, kalem, o.ogrenci_id, 0, tutar)
     }
 
     // Gider toplamları ay bazında ayrı bir haritada tutuluyor — giderlerin
@@ -268,8 +308,44 @@ export default function GelirRaporu() {
       genelToplamGelir,
       genelToplamGider,
       genelToplamBeklenen,
+      detaylar: detayMap,
     }
   }, [odemeler, giderler, sozlesmeler, aylikBorclarHam, bireBirAtamalari, bireBirYoklama, kantinAlislari])
+
+  // Tıklanan hücrenin ("ay||kalem", ay===null ise tüm ayların toplamı)
+  // öğrenci bazlı dökümü — popup açıldığında hesaplanır. Alfabetik (ad_soyad)
+  // sıralanır, borcu/ödemesi olmayan (0/0) satırlar hiç gösterilmez.
+  const detaySatirlari = useMemo(() => {
+    if (!detayAcik) return []
+    const { ay, kalem } = detayAcik
+    const birlesik = new Map() // ogrenciId -> {beklenen, alinan}
+    function ekle(ogrMap) {
+      for (const [ogrenciId, kayit] of ogrMap) {
+        if (!birlesik.has(ogrenciId)) birlesik.set(ogrenciId, { beklenen: 0, alinan: 0 })
+        const h = birlesik.get(ogrenciId)
+        h.beklenen += kayit.beklenen
+        h.alinan += kayit.alinan
+      }
+    }
+    if (ay == null) {
+      // "Genel Toplam" satırı — bu kalem için TÜM ayların dökümü birleştiriliyor.
+      for (const [anahtar, ogrMap] of detaylar) {
+        if (anahtar.endsWith(`||${kalem}`)) ekle(ogrMap)
+      }
+    } else {
+      const ogrMap = detaylar.get(`${ay}||${kalem}`)
+      if (ogrMap) ekle(ogrMap)
+    }
+    return [...birlesik.entries()]
+      .map(([ogrenciId, kayit]) => ({
+        ogrenciId,
+        ad: ogrenciAdMap.get(ogrenciId) || 'Bilinmeyen öğrenci',
+        beklenen: kayit.beklenen,
+        alinan: kayit.alinan,
+      }))
+      .filter((s) => Math.abs(s.beklenen) > 0.01 || Math.abs(s.alinan) > 0.01)
+      .sort((a, b) => a.ad.localeCompare(b.ad, 'tr'))
+  }, [detayAcik, detaylar, ogrenciAdMap])
 
   const netKarZarar = genelToplamGelir - genelToplamGider
   const tahsilatOrani = genelToplamBeklenen > 0 ? (genelToplamGelir / genelToplamBeklenen) * 100 : null
@@ -378,7 +454,12 @@ export default function GelirRaporu() {
                     {ayEtiketi(ay)}
                   </td>
                   {kalemler.map((k) => (
-                    <td key={k} className="px-4 py-2 text-right whitespace-nowrap">
+                    <td
+                      key={k}
+                      onClick={() => setDetayAcik({ ay, kalem: k })}
+                      title="Öğrenci bazlı dökümü görmek için tıklayın"
+                      className="px-4 py-2 text-right whitespace-nowrap cursor-pointer hover:bg-navy/5"
+                    >
                       <div className="text-gray-400 text-xs">{beklenenSatir[k] ? paraFormat(beklenenSatir[k]) : '—'}</div>
                       <div className="text-gray-700 font-medium">{satir[k] ? paraFormat(satir[k]) : '—'}</div>
                     </td>
@@ -398,7 +479,12 @@ export default function GelirRaporu() {
               <tr className="border-t-2 border-gray-200 bg-gray-50 font-semibold">
                 <td className="sticky left-0 z-10 bg-gray-50 px-4 py-3 text-gray-800 whitespace-nowrap">Genel Toplam</td>
                 {kalemler.map((k) => (
-                  <td key={k} className="px-4 py-3 text-right whitespace-nowrap">
+                  <td
+                    key={k}
+                    onClick={() => setDetayAcik({ ay: null, kalem: k })}
+                    title="Öğrenci bazlı dökümü görmek için tıklayın"
+                    className="px-4 py-3 text-right whitespace-nowrap cursor-pointer hover:bg-navy/5"
+                  >
                     <div className="text-gray-400 text-xs font-normal">{paraFormat(beklenenKalemToplamlari[k] || 0)}</div>
                     <div className="text-gray-800">{paraFormat(kalemToplamlari[k] || 0)}</div>
                   </td>
@@ -424,6 +510,64 @@ export default function GelirRaporu() {
         dağıtıldığında buradaki ilgili kaleme geçer. Gider detaylarını (kategori, açıklama) görmek ve yeni gider
         eklemek için Giderler sayfasını kullanabilirsiniz.
       </p>
+
+      {detayAcik && (
+        <div
+          className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4"
+          onClick={() => setDetayAcik(null)}
+        >
+          <div
+            className="bg-gray-50 rounded-2xl shadow-xl w-full max-w-lg max-h-[90vh] overflow-y-auto"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="sticky top-0 bg-navy text-white px-5 py-4 rounded-t-2xl flex items-center justify-between">
+              <div>
+                <p className="font-semibold">{detayAcik.kalem}</p>
+                <p className="text-xs text-white/70">
+                  {detayAcik.ay == null ? 'Tüm zamanlar — öğrenci bazlı döküm' : `${ayEtiketi(detayAcik.ay)} — öğrenci bazlı döküm`}
+                </p>
+              </div>
+              <button
+                onClick={() => setDetayAcik(null)}
+                className="text-white/80 hover:text-white text-2xl leading-none"
+              >
+                ×
+              </button>
+            </div>
+            <div className="p-5">
+              {detaySatirlari.length === 0 ? (
+                <p className="text-gray-400 text-sm text-center py-4">Bu kalem için borç/ödeme kaydı yok.</p>
+              ) : (
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="text-left text-gray-500 border-b border-gray-200">
+                      <th className="py-2 font-medium">Öğrenci</th>
+                      <th className="py-2 font-medium text-right">Beklenen</th>
+                      <th className="py-2 font-medium text-right">Alınan</th>
+                      <th className="py-2 font-medium text-right">Kalan</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {detaySatirlari.map((s) => {
+                      const kalan = s.beklenen - s.alinan
+                      return (
+                        <tr key={s.ogrenciId} className="border-b border-gray-100 last:border-0">
+                          <td className="py-2 text-gray-800">{s.ad}</td>
+                          <td className="py-2 text-right text-gray-500">{paraFormat(s.beklenen)}</td>
+                          <td className="py-2 text-right text-green-700 font-medium">{paraFormat(s.alinan)}</td>
+                          <td className={`py-2 text-right font-medium ${kalan > 0.01 ? 'text-red-600' : 'text-gray-400'}`}>
+                            {kalan > 0.01 ? paraFormat(kalan) : '—'}
+                          </td>
+                        </tr>
+                      )
+                    })}
+                  </tbody>
+                </table>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
