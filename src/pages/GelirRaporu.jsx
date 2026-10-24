@@ -310,26 +310,44 @@ export default function GelirRaporu() {
         </div>
       </div>
 
-      <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-x-auto" style={{ touchAction: 'pan-x pan-y' }}>
+      {/*
+        ÖNEMLİ (sticky başlık/kaydırma düzeltmesi — kullanıcının "yapmamışsın"
+        dediği gerçek hata): önceki sürümde bu kapsayıcı div'de sadece
+        "overflow-x-auto" vardı (overflow-y belirtilmemiş, varsayılan
+        "visible"). CSS kuralı gereği, bir eksende "auto" + diğer eksende
+        "visible" birlikte DURAMAZ — tarayıcı overflow-y'yi de otomatik
+        olarak "auto"ya yükseltir. Bu da bu div'i, th'lerdeki
+        "position:sticky"in GERÇEKTE göre konumlandığı "en yakın kaydırma
+        kapsayıcısı" yapıyordu — ama div'in kendi yüksekliği sınırsız
+        (içeriğe göre büyüyor) olduğu için div'in KENDİSİ hiç kaydırılmıyordu
+        (sayfanın/pencerenin kendisi kaydırılıyordu) — sonuç: sticky th,
+        pencereye göre değil, bu div'in İÇİNDE sabit bir noktaya yapışıyordu
+        ve sayfa kaydırıldıkça o nokta ekrandan kayıp gidiyordu (tam
+        kullanıcının gördüğü hata). Çözüm: div'e GERÇEK bir sınırlı yükseklik
+        ("max-h-[70vh]") ve "overflow-auto" (hem x hem y) vererek, kart
+        kendi içinde GERÇEKTEN kaydırılan bir panel haline getirildi — artık
+        sticky th'ler bu panelin kendi kaydırmasına göre doğru çalışıyor.
+        Aynı panel içinde "Ay" sütunu da "sticky left-0" ile sağa/sola
+        kaydırınca sabit kalıyor (kullanıcının istediği ikinci şey).
+      */}
+      <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-auto max-h-[70vh]" style={{ touchAction: 'pan-x pan-y' }}>
         <table className="w-full text-sm min-w-[1100px]">
           <thead>
-            {/* Sayfa aşağı kaydırıldığında başlık satırı kaybolup "hangi sütuna
-                bakıyorum" belirsizleşiyordu (kullanıcı şikayeti) — her th
-                kendi başına sticky (thead'in kendisi değil, çünkü bazı
-                tarayıcılarda thead üzerinde position:sticky güvenilir
-                çalışmıyor; th bazında çok daha tutarlı destekleniyor). */}
             <tr className="bg-navy text-white text-left">
-              <th className="sticky top-0 z-10 bg-navy px-4 py-3 font-semibold whitespace-nowrap">Ay</th>
+              {/* Sol üst köşe — hem yukarı/aşağı (top-0) hem sağa/sola
+                  (left-0) kaydırmada sabit kalması gereken TEK hücre, o
+                  yüzden z-index'i diğer sticky hücrelerden daha yüksek. */}
+              <th className="sticky top-0 left-0 z-30 bg-navy px-4 py-3 font-semibold whitespace-nowrap">Ay</th>
               {kalemler.map((k) => (
-                <th key={k} className="sticky top-0 z-10 bg-navy px-4 py-3 font-semibold text-right whitespace-nowrap">
+                <th key={k} className="sticky top-0 z-20 bg-navy px-4 py-3 font-semibold text-right whitespace-nowrap">
                   {k}
                   <span className="block text-[10px] font-normal text-white/60">Beklenen / Alınan</span>
                 </th>
               ))}
-              <th className="sticky top-0 z-10 bg-navy px-4 py-3 font-semibold text-right whitespace-nowrap">Beklenen Toplam</th>
-              <th className="sticky top-0 z-10 bg-navy px-4 py-3 font-semibold text-right whitespace-nowrap">Alınan Toplam</th>
-              <th className="sticky top-0 z-10 bg-navy px-4 py-3 font-semibold text-right whitespace-nowrap">Gider</th>
-              <th className="sticky top-0 z-10 bg-navy px-4 py-3 font-semibold text-right whitespace-nowrap">Net Kâr/Zarar</th>
+              <th className="sticky top-0 z-20 bg-navy px-4 py-3 font-semibold text-right whitespace-nowrap">Beklenen Toplam</th>
+              <th className="sticky top-0 z-20 bg-navy px-4 py-3 font-semibold text-right whitespace-nowrap">Alınan Toplam</th>
+              <th className="sticky top-0 z-20 bg-navy px-4 py-3 font-semibold text-right whitespace-nowrap">Gider</th>
+              <th className="sticky top-0 z-20 bg-navy px-4 py-3 font-semibold text-right whitespace-nowrap">Net Kâr/Zarar</th>
             </tr>
           </thead>
           <tbody>
@@ -347,7 +365,18 @@ export default function GelirRaporu() {
               const net = satir.__toplam - gider
               return (
                 <tr key={ay} className={i % 2 ? 'bg-gray-50' : ''}>
-                  <td className="px-4 py-2 font-medium text-gray-800 capitalize whitespace-nowrap">{ayEtiketi(ay)}</td>
+                  {/* Sağa/sola kaydırınca "hangi ayın satırına bakıyorum"
+                      kaybolmasın diye bu hücre de sticky — kendi satırının
+                      zebra rengini (beyaz/gri) burada ayrıca belirtmek
+                      gerekiyor, yoksa sticky hücre altından kayan diğer
+                      hücreleri şeffaf gösterirdi. */}
+                  <td
+                    className={`sticky left-0 z-10 px-4 py-2 font-medium text-gray-800 capitalize whitespace-nowrap ${
+                      i % 2 ? 'bg-gray-50' : 'bg-white'
+                    }`}
+                  >
+                    {ayEtiketi(ay)}
+                  </td>
                   {kalemler.map((k) => (
                     <td key={k} className="px-4 py-2 text-right whitespace-nowrap">
                       <div className="text-gray-400 text-xs">{beklenenSatir[k] ? paraFormat(beklenenSatir[k]) : '—'}</div>
@@ -367,7 +396,7 @@ export default function GelirRaporu() {
           {aylar.length > 0 && (
             <tfoot>
               <tr className="border-t-2 border-gray-200 bg-gray-50 font-semibold">
-                <td className="px-4 py-3 text-gray-800 whitespace-nowrap">Genel Toplam</td>
+                <td className="sticky left-0 z-10 bg-gray-50 px-4 py-3 text-gray-800 whitespace-nowrap">Genel Toplam</td>
                 {kalemler.map((k) => (
                   <td key={k} className="px-4 py-3 text-right whitespace-nowrap">
                     <div className="text-gray-400 text-xs font-normal">{paraFormat(beklenenKalemToplamlari[k] || 0)}</div>
