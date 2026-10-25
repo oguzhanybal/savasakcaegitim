@@ -1105,12 +1105,20 @@ export default function MusaitlikTablosu({
       <div className="overflow-x-auto" style={{ touchAction: 'pan-x pan-y' }}>
         <table className="border-collapse text-xs w-full">
           <thead>
+            {/* Kullanıcı isteğiyle: sayfa aşağı kaydırılınca (çok sayıda öğretmen
+                satırı varsa) saat başlıkları görünmez oluyordu — hangi sütunun
+                hangi saat olduğu anlaşılmaz hâle geliyordu. Bu satır artık DÜŞEY
+                olarak da sabit (sticky top-0) — yatay kaydırmada zaten sabit olan
+                sol "Öğretmen" sütunuyla aynı mantık, sadece eksen farklı. Köşe
+                hücresi (Öğretmen) her iki eksende de sabit olduğu için z-index'i
+                diğerlerinden yüksek (z-20) — hem bu satırın hem sol sütunun
+                ÜZERİNDE kalıp köşede kaybolmasın diye.*/}
             <tr>
-              <th className="sticky left-0 z-10 bg-navy text-white px-3 py-2 text-left font-semibold min-w-[150px]">
+              <th className="sticky top-0 left-0 z-20 bg-navy text-white px-3 py-2 text-left font-semibold min-w-[150px]">
                 Öğretmen
               </th>
               {SAAT_DILIMLERI.map((d) => (
-                <th key={d.baslangic} className="bg-navy text-white px-1 py-2 font-medium border-l border-white/10 min-w-[46px]">
+                <th key={d.baslangic} className="sticky top-0 z-10 bg-navy text-white px-1 py-2 font-medium border-l border-white/10 min-w-[46px]">
                   <span className="block">{saatGoster(d.baslangic)}</span>
                   <span className="block text-[9px] font-normal opacity-70">{saatGoster(d.bitis)}</span>
                 </th>
