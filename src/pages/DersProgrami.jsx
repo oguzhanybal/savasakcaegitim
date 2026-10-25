@@ -1078,20 +1078,44 @@ function TaslaklarimDersProgrami({ taslaklar, siniflar, ogretmenler, program, at
   const ogretmenAdi = (id) => ogretmenler.find((o) => o.id === id)?.ad_soyad || null
   const ogrenciAdi = (id) => ogrenciAdMap.get(id) || 'Bilinmeyen öğrenci'
 
-  async function yayinla(t) {
+  async function yayinla(t, opts = {}) {
     const v = t.veri
+    // 28 Eylül'deki "sessiz kaldırma hatası"nın tekrarını BURADA, kaynağında
+    // engellemek için eklendi: aşağıdaki basarisizKaldirmaIdleri, aynı toplu
+    // yayın (tumunuYayinla) içinde az önce kaldırılamamış (0 satır eşleşmiş)
+    // "sinif_kaldir" hedeflerinin id'lerini tutar — bu sayede eşleşen bir
+    // "sinif" taslağı, artık hâlâ canlıda duran eski dersi "zaten kalkacaktı"
+    // diye sessizce görmezden gelip üstüne eklenmez, gerçek bir çakışma
+    // olarak işaretlenir (bkz. tumunuYayinla()'daki iki aşamalı yayın sırası).
+    const basarisizKaldirmaIdleri = opts.basarisizKaldirmaIdleri || new Set()
     // "sinif_kaldir" türü: bu bir EKLEME değil, KALDIRMA taslağı — sil()
     // fonksiyonunda (Taslak Modu açıkken ✕ ikonuna basılınca) oluşturulur.
     // Yayınlamak burada "ders_programi"ye yeni satır eklemek değil, işaretli
     // dersi GERÇEKTEN soft-delete etmek (aktif=false) anlamına gelir — yani
     // silme işlemi ancak bu noktada, plan yayınlanınca gerçekleşir.
     if (t.tur === 'sinif_kaldir') {
-      const { error } = await supabase
+      // ÖNEMLİ (28 Eylül vakasının kök nedeni): .update().eq('id', ...) hedef
+      // satır artık yoksa (örn. elle/SQL ile silinmiş ya da id bir şekilde
+      // bayatlamış) HATA FIRLATMAZ, sessizce 0 satırı günceller — önceden bu
+      // durumda "başarılı" sayılıp taslak siliniyor, eski ders canlıda aktif
+      // kalmaya devam ediyor, sonra eşleşen "sinif" taslağı da yayınlanınca
+      // AYNI DERS İKİ KERE görünüyordu. Şimdi .select() ile kaç satırın
+      // gerçekten değiştiğini kontrol ediyoruz — 0 ise bunu artık görünür bir
+      // hata sayıyoruz, taslağı silmiyoruz.
+      const { data, error } = await supabase
         .from('ders_programi')
         .update({ aktif: false, pasif_tarihi: yerelBugunTarihi() })
         .eq('id', v.ders_programi_id)
+        .select('id')
       if (error) {
         setHataMap((h) => ({ ...h, [t.id]: 'Hata: ' + error.message }))
+        return false
+      }
+      if (!data || data.length === 0) {
+        setHataMap((h) => ({
+          ...h,
+          [t.id]: 'Hata: kaldırılacak ders artık veritabanında bulunamadı (muhtemelen başka bir yolla zaten değişmiş/silinmiş). Taslak silinmedi — lütfen Claude ile birlikte kontrol edin.',
+        }))
         return false
       }
       await supabase.from('taslaklar').delete().eq('id', t.id)
@@ -1212,6 +1236,11 @@ function TaslaklarimDersProgrami({ taslaklar, siniflar, ogretmenler, program, at
         .filter((tk) => tk.tur === 'sinif_kaldir' && (tk.plan_adi || null) === (t.plan_adi || null))
         .map((tk) => tk.veri?.ders_programi_id)
         .filter(Boolean)
+        // az önce aynı toplu yayın içinde kaldırılamadığı (0 satır eşleştiği)
+        // doğrulanmış id'leri artık "kalkacak" sayıp hariç tutmuyoruz — eski
+        // ders hâlâ canlıda duruyor demektir, gerçek bir çakışma olarak
+        // değerlendirilmeli (bkz. yukarıdaki sinif_kaldir dalındaki not).
+        .filter((id) => !basarisizKaldirmaIdleri.has(id))
     )
     const programHaricKaldirilacaklar = program.filter((p) => !ayniPlanKaldirilacakIdleri.has(p.id))
     const cakisma = cakismaBul(
@@ -1295,8 +1324,29 @@ function TaslaklarimDersProgrami({ taslaklar, siniflar, ogretmenler, program, at
     setTumuGonderiliyor(true)
     let basarili = 0
     let basarisiz = 0
-    for (const t of liste) {
+    // ÖNEMLİ (28 Eylül'deki "sessiz kaldırma" vakasının tekrarını engellemek
+    // için): "sinif_kaldir" taslaklarını HER ZAMAN önce yayınlıyoruz, ondan
+    // sonra geri kalanları (özellikle eşleşen "sinif" taslaklarını). Bir
+    // kaldırma gerçekten başarısız olursa (yayinla() artık bunu 0-satır
+    // kontrolüyle tespit ediyor), hedef id'sini basarisizKaldirmaIdleri'ne
+    // ekliyoruz — bu sayede aynı planda o satırı "değiştirecek" eşleşen
+    // "sinif" taslağı, eski dersin hâlâ canlıda durduğunu bilip onu
+    // ÇAKIŞMA olarak işaretler, sessizce üstüne eklemez (eskiden bu kontrol
+    // yoktu, eski ders aktif kalırken yenisi de eklenip aynı ders aynı
+    // saatte iki kere görünebiliyordu).
+    const kaldirListesi = liste.filter((t) => t.tur === 'sinif_kaldir')
+    const digerListe = liste.filter((t) => t.tur !== 'sinif_kaldir')
+    const basarisizKaldirmaIdleri = new Set()
+    for (const t of kaldirListesi) {
       const sonuc = await yayinla(t)
+      if (sonuc) basarili++
+      else {
+        basarisiz++
+        if (t.veri?.ders_programi_id) basarisizKaldirmaIdleri.add(t.veri.ders_programi_id)
+      }
+    }
+    for (const t of digerListe) {
+      const sonuc = await yayinla(t, { basarisizKaldirmaIdleri })
       if (sonuc) basarili++
       else basarisiz++
     }
