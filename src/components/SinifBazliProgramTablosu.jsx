@@ -55,6 +55,26 @@ const GUNLER = ['', 'Pazartesi', 'Salı', 'Çarşamba', 'Perşembe', 'Cuma', 'Cu
 // uzun açıklama — dosyalar birbirinden bağımsız tutuluyor): seçilen TARİHTE,
 // her slot (sınıf+gün+saat) için GERÇEKTEN geçerli olan ders_programi
 // satırını (eski/yeni öğretmen devri gözetilerek en yenisini) seçer.
+// ÖNEMLİ DÜZELTME (11-TM / Edebiyat-Türkçe vakası — kullanıcı bildirimi:
+// "geçmiş bütün haftalarda 7 Edebiyat 1 Türkçe görünüyor ama ben 4-4
+// yapmıştım"): "baslangic_tarihi" alanı serbest/elle girilebilen bir alan —
+// bazen bir satır, kendi OLUŞTURULMA tarihinden (created_at) GÜNLER/HAFTALAR
+// ÖNCESİNE ait bir "başlangıç tarihi" ile kaydedilmiş oluyor (muhtemelen
+// formda bir önceki düzenlemeden kalan değer temizlenmeden kaydedilmiş, ya da
+// elle yanlış girilmiş). "baslangic_tarihi" SADECE kendi created_at'inden
+// SONRAKİ (gerçekten ileri tarihli/planlı) bir değişiklik için güvenilir;
+// created_at'ten önceki/eşit bir tarih içeriyorsa bunun yerine created_at'in
+// tarihini kullanıyoruz (normal/varsayılan davranışla aynı: "eklendiği andan
+// itibaren geçerli") — aksi halde bugün yapılan bir düzenleme, geçmişteki
+// tarihleri de sessizce değiştirmiş gibi görünebiliyordu.
+function esasTarihHesapla(d) {
+  const olusturmaTarihi = tarihStrYerel(d.created_at)
+  if (d.baslangic_tarihi && olusturmaTarihi && d.baslangic_tarihi > olusturmaTarihi) {
+    return d.baslangic_tarihi
+  }
+  return d.baslangic_tarihi && !olusturmaTarihi ? d.baslangic_tarihi : olusturmaTarihi
+}
+
 function tarihIcinAktifProgram(programTum, tarih) {
   const bugun = yerelBugunTarihi()
   const gruplar = new Map()
@@ -68,7 +88,7 @@ function tarihIcinAktifProgram(programTum, tarih) {
     let enYeni = null
     let enYeniEsasTarih = null
     for (const d of satirlar) {
-      const esasTarih = d.baslangic_tarihi || tarihStrYerel(d.created_at)
+      const esasTarih = esasTarihHesapla(d)
       if (esasTarih && esasTarih > tarih) continue
       if (d.aktif === false) {
         if (!d.pasif_tarihi || tarih > d.pasif_tarihi) continue

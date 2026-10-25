@@ -63,6 +63,29 @@ function yerelBugunTarihi() {
 // GERÇEKTEN geçerli olan ders_programi satırını (eski/yeni öğretmen devri
 // gözetilerek en yenisini) seçer — sadece "aktif=true" satırlara değil,
 // pasif (devredilmiş/silinmiş) satırlara da bakarak.
+// ÖNEMLİ DÜZELTME (11-TM / Edebiyat-Türkçe vakası — kullanıcı bildirimi:
+// "geçmiş bütün haftalarda 7 Edebiyat 1 Türkçe görünüyor ama ben 4-4
+// yapmıştım"): "baslangic_tarihi" alanı serbest/elle girilebilen bir alan —
+// bazen bir satır, kendi OLUŞTURULMA tarihinden (created_at) GÜNLER/HAFTALAR
+// ÖNCESİNE ait bir "başlangıç tarihi" ile kaydedilmiş oluyor (muhtemelen
+// formda bir önceki düzenlemeden kalan değer temizlenmeden kaydedilmiş, ya da
+// elle yanlış girilmiş). Böyle bir satırı "esas tarih" olarak olduğu gibi
+// kabul edersek, BUGÜN yapılan bir düzenleme (ör. dersi Türkçe'den
+// Edebiyat'a çevirme), "baslangic_tarihi" geçmişte bir tarihi gösteriyorsa,
+// GEÇMİŞTEKİ bütün haftaları da sessizce değiştirmiş gibi görünüyor — oysa o
+// satır o GEÇMİŞ tarihlerde VERİTABANINDA HENÜZ YOKTU. "baslangic_tarihi"
+// SADECE kendi created_at'inden SONRAKİ (gerçekten ileri tarihli/planlı) bir
+// değişiklik için güvenilir; created_at'ten önceki/eşit bir tarih içeriyorsa
+// bunun yerine created_at'in tarihini kullanıyoruz (normal/varsayılan
+// davranışla aynı: "eklendiği andan itibaren geçerli").
+function esasTarihHesapla(d) {
+  const olusturmaTarihi = tarihStrYerel(d.created_at)
+  if (d.baslangic_tarihi && olusturmaTarihi && d.baslangic_tarihi > olusturmaTarihi) {
+    return d.baslangic_tarihi
+  }
+  return d.baslangic_tarihi && !olusturmaTarihi ? d.baslangic_tarihi : olusturmaTarihi
+}
+
 function tarihIcinAktifProgram(programTum, tarih) {
   const bugun = yerelBugunTarihi()
   const gruplar = new Map() // sınıf+gün+saat -> satır dizisi
@@ -76,7 +99,7 @@ function tarihIcinAktifProgram(programTum, tarih) {
     let enYeni = null
     let enYeniEsasTarih = null
     for (const d of satirlar) {
-      const esasTarih = d.baslangic_tarihi || tarihStrYerel(d.created_at)
+      const esasTarih = esasTarihHesapla(d)
       if (esasTarih && esasTarih > tarih) continue
       if (d.aktif === false) {
         if (!d.pasif_tarihi || tarih > d.pasif_tarihi) continue
@@ -135,7 +158,7 @@ function haftaIcinSinifDersleri(programTum, haftaGunTarihleri) {
     const gecmisteVarOlanSiniflar = new Set(
       (programTum || [])
         .filter((d) => {
-          const esasTarih = d.baslangic_tarihi || tarihStrYerel(d.created_at)
+          const esasTarih = esasTarihHesapla(d)
           return !esasTarih || esasTarih <= tarih
         })
         .map((d) => d.sinif_id)
