@@ -107,6 +107,16 @@ function tarihIcinAktifProgram(programTum, tarih) {
 // program başladıysa) Pazartesi/Salı eski, Çarşamba-Cumartesi yeni öğretmeni
 // doğru gösterir. GunlukProgramListesi'nin gün gün yaptığının haftalık toplu
 // hali.
+//
+// SINIF GÖRÜNÜMÜNE DE HAFTA SEÇİCİ — kullanıcı isteğiyle: "geçen haftanın
+// dersleri neler, kim kaç derse girmiş, bu hafta ne olmuş" diye SINIF
+// bazında da geçmiş/gelecek haftalara bakabilmek istendi (taslak falan
+// değil, GERÇEKTEN o haftaki programın ne olduğu). Önceden hafta seçici
+// sadece öğretmen görünümünde vardı, sınıf görünümü her zaman sadece
+// "program" (güncel/canlı aktif satırlar) kullanıyordu. Artık sınıf
+// görünümü de AYNI tarihsel yeniden kurma fonksiyonunu (haftaIcinSinifDersleri)
+// kullanıyor — bir öğretmen hafta içinde değişmiş olsa bile o haftanın her
+// günü kendi gerçek tarihine göre doğru öğretmeni/dersi gösteriyor.
 function haftaIcinSinifDersleri(programTum, haftaGunTarihleri) {
   const sonuc = []
   for (let gun = 1; gun <= 7; gun++) {
@@ -170,13 +180,13 @@ export default function HaftalikProgramGoruntule({ program, programTum, siniflar
   // HAFTAYA ait bire bir derslerini de ekliyoruz (bkz. yukarıdaki not).
   const filtreliDersler = useMemo(() => {
     if (!seciliId) return []
-    // Sınıf görünümünde hafta seçici zaten yok (her zaman güncel/canlı
-    // programı gösterir, önceki davranış aynen korunuyor) — sadece öğretmen
-    // görünümünde, seçilen HAFTAYA göre tarihsel olarak yeniden kuruluyor
-    // (bkz. haftaIcinSinifDersleri üstündeki not).
+    // Hem sınıf hem öğretmen görünümü artık seçilen HAFTAYA göre tarihsel
+    // olarak yeniden kuruluyor (bkz. haftaIcinSinifDersleri üstündeki not) —
+    // sınıf görünümünde haftaOfset 0 iken bu zaten canlı/güncel programla
+    // birebir aynı sonucu verir, bu yüzden "bu hafta" davranışı değişmedi.
     const sinifDersleri =
       tip === 'sinif'
-        ? (program || []).filter((d) => d.sinif_id === seciliId)
+        ? haftaIcinSinifDersleri(programTum || program, haftaGunTarihleri).filter((d) => d.sinif_id === seciliId)
         : haftaIcinSinifDersleri(programTum || program, haftaGunTarihleri).filter(
             (d) => d.ogretmen_profile_id === seciliId
           )
@@ -277,7 +287,7 @@ export default function HaftalikProgramGoruntule({ program, programTum, siniflar
     <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-4 mb-6">
       <p className="font-semibold text-gray-700 mb-1">Haftalık Program Görüntüle</p>
       <p className="text-xs text-gray-500 mb-3">
-        Bir sınıf ya da öğretmen seçin, o sınıfın/öğretmenin bütün haftalık ders programını tek tabloda görün.
+        Bir sınıf ya da öğretmen seçin, o sınıfın/öğretmenin bütün haftalık ders programını tek tabloda görün — ◀ ▶ ile geçmiş/gelecek haftalara da bakabilirsiniz.
       </p>
       <div className="flex flex-wrap gap-3 items-end mb-4">
         <div className="flex bg-gray-50 border border-gray-200 rounded-lg overflow-hidden text-sm">
@@ -311,7 +321,10 @@ export default function HaftalikProgramGoruntule({ program, programTum, siniflar
         <div className="min-w-[220px]">
           <select
             value={seciliId}
-            onChange={(e) => setSeciliId(e.target.value)}
+            onChange={(e) => {
+              setSeciliId(e.target.value)
+              setHaftaOfset(0)
+            }}
             className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue bg-white"
           >
             <option value="">{tip === 'sinif' ? 'Sınıf seçiniz...' : 'Öğretmen seçiniz...'}</option>
@@ -329,7 +342,7 @@ export default function HaftalikProgramGoruntule({ program, programTum, siniflar
           </select>
         </div>
 
-        {tip === 'ogretmen' && seciliId && (
+        {seciliId && (
           <div className="flex items-center gap-1.5">
             <button
               type="button"
@@ -371,9 +384,7 @@ export default function HaftalikProgramGoruntule({ program, programTum, siniflar
       {!seciliId && <p className="text-gray-400 text-sm">Yukarıdan bir {tip === 'sinif' ? 'sınıf' : 'öğretmen'} seçin.</p>}
 
       {seciliId && filtreliDersler.length === 0 && (
-        <p className="text-gray-400 text-sm">
-          {secilenAd || 'Seçilen'} için {tip === 'ogretmen' ? 'bu haftaya ait' : 'programlanmış'} ders bulunamadı.
-        </p>
+        <p className="text-gray-400 text-sm">{secilenAd || 'Seçilen'} için bu haftaya ait ders bulunamadı.</p>
       )}
 
       {seciliId && filtreliDersler.length > 0 && (
