@@ -48,6 +48,27 @@ function gunNumarasi(tarihStr) {
   return ((new Date(tarihStr + 'T12:00:00').getDay() + 6) % 7) + 1
 }
 
+// ÖNEMLİ DÜZELTME (11-TM / Edebiyat-Türkçe vakası — kullanıcı bildirimi:
+// "geçmiş bütün haftalarda 7 Edebiyat 1 Türkçe görünüyor ama ben 4-4
+// yapmıştım"): "baslangic_tarihi" alanı serbest/elle girilebilen bir alan —
+// bazen bir satır, kendi OLUŞTURULMA tarihinden (created_at) GÜNLER/HAFTALAR
+// ÖNCESİNE ait bir "başlangıç tarihi" ile kaydedilmiş oluyor (muhtemelen
+// formda bir önceki düzenlemeden kalan değer temizlenmeden kaydedilmiş, ya da
+// elle yanlış girilmiş). Böyle bir satırı olduğu gibi kabul edersek, bugün
+// yapılan bir düzenleme, bu sayfada GEÇMİŞ günlerin "bu slot kimindi/alındı
+// mı" sonucunu da sessizce değiştirebilirdi — oysa o satır o geçmiş tarihte
+// veritabanında henüz yoktu. "baslangic_tarihi" SADECE kendi created_at'inden
+// SONRAKİ (gerçekten ileri tarihli/planlı) bir değişiklik için güvenilir;
+// created_at'ten önceki/eşit bir tarih içeriyorsa bunun yerine created_at'in
+// tarihi kullanılır.
+function gecerliBaslangicHesapla(s) {
+  const olusturmaTarihi = s.created_at ? s.created_at.slice(0, 10) : null
+  if (s.baslangic_tarihi && olusturmaTarihi && s.baslangic_tarihi > olusturmaTarihi) {
+    return s.baslangic_tarihi
+  }
+  return s.baslangic_tarihi && !olusturmaTarihi ? s.baslangic_tarihi : olusturmaTarihi
+}
+
 function tarihUzunFormat(tarihStr) {
   return new Date(tarihStr + 'T12:00:00').toLocaleDateString('tr-TR', {
     day: '2-digit',
@@ -298,7 +319,7 @@ export default function GecmisYoklama() {
           let enYeni = null
           let enYeniBaslangic = null
           for (const s of satirGrubu) {
-            const gecerliBaslangic = s.baslangic_tarihi || (s.created_at ? s.created_at.slice(0, 10) : null)
+            const gecerliBaslangic = gecerliBaslangicHesapla(s)
             if (!gecerliBaslangic || gecerliBaslangic > tarih) continue
             const karsilastirmaAnahtari = `${gecerliBaslangic}T${s.created_at || ''}`
             const enYeniKarsilastirma = enYeniBaslangic ? `${enYeniBaslangic}T${enYeni.created_at || ''}` : null

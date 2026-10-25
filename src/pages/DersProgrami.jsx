@@ -107,6 +107,28 @@ function tarihStrYerel(isoStr) {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
 }
 
+// ÖNEMLİ DÜZELTME (11-TM / Edebiyat-Türkçe vakası — kullanıcı bildirimi:
+// "geçmiş bütün haftalarda 7 Edebiyat 1 Türkçe görünüyor ama ben 4-4
+// yapmıştım"): "baslangic_tarihi" alanı serbest/elle girilebilen bir alan —
+// bazen bir satır, kendi OLUŞTURULMA tarihinden (created_at) GÜNLER/HAFTALAR
+// ÖNCESİNE ait bir "başlangıç tarihi" ile kaydedilmiş oluyor (muhtemelen
+// formda bir önceki düzenlemeden kalan değer temizlenmeden kaydedilmiş, ya da
+// elle yanlış girilmiş). Böyle bir satırı "esas tarih" olarak olduğu gibi
+// kabul edersek, BUGÜN yapılan bir düzenleme, "baslangic_tarihi" geçmişte bir
+// tarihi gösteriyorsa, GEÇMİŞTEKİ her şeyi de sessizce değiştirmiş gibi
+// görünüyor — oysa o satır o GEÇMİŞ tarihlerde VERİTABANINDA HENÜZ YOKTU.
+// "baslangic_tarihi" SADECE kendi created_at'inden SONRAKİ (gerçekten ileri
+// tarihli/planlı) bir değişiklik için güvenilir; created_at'ten önceki/eşit
+// bir tarih içeriyorsa bunun yerine created_at'in tarihini kullanıyoruz
+// (normal/varsayılan davranışla aynı: "eklendiği andan itibaren geçerli").
+function esasTarihHesapla(d) {
+  const olusturmaTarihi = tarihStrYerel(d.created_at)
+  if (d.baslangic_tarihi && olusturmaTarihi && d.baslangic_tarihi > olusturmaTarihi) {
+    return d.baslangic_tarihi
+  }
+  return d.baslangic_tarihi && !olusturmaTarihi ? d.baslangic_tarihi : olusturmaTarihi
+}
+
 // Haftalık ders programı belirli bir TARİHE değil, haftanın GÜNÜNE (1-7) bağlı
 // bir şablon — bir derse tıklanınca yoklama/konu popup'ının hangi TARİH için
 // açılacağını bilmemiz gerekiyor. En doğal varsayım: o gün BUGÜNSE bugün,
@@ -2448,8 +2470,11 @@ export default function DersProgrami() {
         // alan), o tarih created_at'in YERİNE esas alınır — kullanıcı bugün
         // bir ders eklerken "aslında bu 9 Ağustos'tan itibaren geçerli olsun"
         // diye işaretlediyse, bugüne (ve arasındaki günlere) sızmaması için.
-        // Boşsa eskisi gibi created_at (eklendiği tarih) kullanılır.
-        const esasTarih = d.baslangic_tarihi || tarihStrYerel(d.created_at)
+        // Boşsa eskisi gibi created_at (eklendiği tarih) kullanılır. Ama SADECE
+        // created_at'inden SONRAKİ bir baslangic_tarihi güvenilir (bkz.
+        // esasTarihHesapla üstündeki not) — geçmişe dönük/yanlış girilmiş bir
+        // tarih, henüz var olmayan bir satırı geçmişe "sızdırmasın" diye.
+        const esasTarih = esasTarihHesapla(d)
         if (esasTarih && esasTarih > musaitlikTarihi) continue
         if (d.aktif === false) {
           if (!d.pasif_tarihi || musaitlikTarihi > d.pasif_tarihi) continue

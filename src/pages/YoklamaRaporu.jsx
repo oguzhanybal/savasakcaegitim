@@ -65,6 +65,27 @@ function tarihStrYerel(ts) {
   return yerelTarih(new Date(ts))
 }
 
+// ÖNEMLİ DÜZELTME (11-TM / Edebiyat-Türkçe vakası — kullanıcı bildirimi:
+// "geçmiş bütün haftalarda 7 Edebiyat 1 Türkçe görünüyor ama ben 4-4
+// yapmıştım"): "baslangic_tarihi" alanı serbest/elle girilebilen bir alan —
+// bazen bir satır, kendi OLUŞTURULMA tarihinden (created_at) GÜNLER/HAFTALAR
+// ÖNCESİNE ait bir "başlangıç tarihi" ile kaydedilmiş oluyor (muhtemelen
+// formda bir önceki düzenlemeden kalan değer temizlenmeden kaydedilmiş, ya da
+// elle yanlış girilmiş). Böyle bir satırı olduğu gibi kabul edersek, bugün
+// yapılan bir düzenleme geçmiş günlerin yoklama raporunu da (dolayısıyla
+// öğretmen ekstresi hesaplarını da) sessizce değiştirebilirdi — oysa o satır
+// o geçmiş tarihte veritabanında henüz yoktu. "baslangic_tarihi" SADECE kendi
+// created_at'inden SONRAKİ (gerçekten ileri tarihli/planlı) bir değişiklik
+// için güvenilir; created_at'ten önceki/eşit bir tarih içeriyorsa bunun
+// yerine created_at'in tarihi kullanılır.
+function esasTarihHesapla(d) {
+  const olusturmaTarihi = tarihStrYerel(d.created_at)
+  if (d.baslangic_tarihi && olusturmaTarihi && d.baslangic_tarihi > olusturmaTarihi) {
+    return d.baslangic_tarihi
+  }
+  return d.baslangic_tarihi && !olusturmaTarihi ? d.baslangic_tarihi : olusturmaTarihi
+}
+
 // Belirli bir GÜN için (varsayılan bugün, ama artık ◀/▶ ile başka güne de
 // bakılabiliyor): her sınıfın programlı ders saatini, o saat için öğretmenin
 // yoklama alıp almadığını (Yoklama Al sayfasından "Yoklamayı Kaydet"e
@@ -161,7 +182,7 @@ function BugunkuYoklamaDurumu({ isYonetici, ogretmenProfileId }) {
         let enYeni = null
         let enYeniEsasTarih = null
         for (const d of satirlar) {
-          const esasTarih = d.baslangic_tarihi || tarihStrYerel(d.created_at)
+          const esasTarih = esasTarihHesapla(d)
           if (esasTarih && esasTarih > secilenTarih) continue
           if (d.aktif === false) {
             if (!d.pasif_tarihi || secilenTarih > d.pasif_tarihi) continue
