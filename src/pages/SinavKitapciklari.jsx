@@ -530,7 +530,12 @@ export default function SinavKitapciklari() {
 
     const { data: cevapAnahtariSatirlari } = await supabase
       .from('sinav_cevap_anahtari')
-      .select('soru_no, ders_adi, karsilik_soru_no')
+      // ders_soru_no da lazım -- digerKitapcigiSorulariniTuret türetilen
+      // satırın soru_no'sunu BUNDAN alıyor (kümülatif "soru_no" DEĞİL, bkz.
+      // cevapAnahtariXlsx.js'teki "bug düzeltmesi #2" notu); eksik seçilirse
+      // o alan hep undefined gelir ve fonksiyon sessizce eski (yanlış)
+      // kümülatif numaraya düşer.
+      .select('soru_no, ders_adi, ders_soru_no, karsilik_soru_no')
       .eq('sinav_id', sinavId)
       .eq('kitapcik', digerHarf)
     if (!cevapAnahtariSatirlari || cevapAnahtariSatirlari.length === 0) return // cevap anahtarı yüklenmemiş
