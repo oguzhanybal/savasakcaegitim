@@ -119,9 +119,11 @@ export async function cevapAnahtariXlsxOku(dosya) {
 //     soru_no diğer kitapçığın KENDİ numarasına ayarlanıyor.
 //   eslesmeyenler: cevap anahtarında karşılığı bulunamayan (ör. kaynak
 //     kitapçıkta iptal edilmiş/taranmamış) sorular.
-// NOT (bug düzeltmesi): soru_no TEK BAŞINA kitapçık genelinde BENZERSİZ
-// DEĞİL -- her ders kendi içinde ayrı numaralanıyor (ör. Türkçe 1-40 VE
-// Matematik 1-30 VE Fizik 1-7 aynı anda var, hepsi "1"den başlıyor). Eşleşme
+// NOT (bug düzeltmesi #1 -- eşleştirme anahtarı): soru_no TEK BAŞINA
+// kitapçık genelinde BENZERSİZ DEĞİL -- her ders kendi içinde ayrı
+// numaralanıyor (ör. Türkçe 1-40 VE Matematik 1-30 VE Fizik 1-7 aynı anda
+// var, hepsi "1"den başlıyor -- bkz. sinav_kitapcik_sorulari'nin kendisi,
+// SinavKitapciklari.jsx'teki TYT_STANDART_BLOKLAR/topluAta). Eşleşme
 // anahtarı SADECE soru_no olursa, aynı numaraya sahip farklı derslerin
 // kutuları `taranmisMap`'te birbirinin ÜZERİNE yazılır (son eklenen kazanır)
 // -- böylece bazı ders+no kombinasyonları için YANLIŞ dersin kutusu
@@ -129,6 +131,21 @@ export async function cevapAnahtariXlsxOku(dosya) {
 // Hata Kitapçığı sayfasında o öğrencinin o sorusu "kitapçıkta bulunamadı"
 // hatası verir). Bunu önlemek için anahtar, ders adı + soru_no BİRLİKTE
 // (normalize edilmiş) olmalı.
+//
+// NOT (bug düzeltmesi #2 -- türetilen satırın KENDİ soru_no'su): yukarıdaki
+// format açıklamasında da yazdığı gibi, cevap anahtarındaki "Soru no" sütunu
+// kitapçığın KÜMÜLATİF (baştan sona, dersler arası sıfırlanmayan) numarası,
+// "Ders soru numarası" ise dersin KENDİ İÇİNDEKİ (sinav_kitapcik_sorulari
+// ile AYNI kuralda) numarası. sinav_kitapcik_sorulari HER ZAMAN ders-içi
+// numara kullandığından, türetilen satırın soru_no'su da ders_soru_no'dan
+// alınmalı -- kümülatif "soru_no" kullanılırsa (eski hata), türetilen kutu
+// yanlış bir numarayla kaydedilir ve o dersin neredeyse HİÇBİR sorusu
+// öğrencinin gerçek sonucuyla (sinav_soru_sonuclari, ders-içi numarayla
+// doluyor) eşleşmez -- sadece kitapçığın İLK dersi (numarası tesadüfen
+// kümülatifle aynı olduğundan) doğru görünür, gerisi sessizce yanlış kutu
+// ya da "bulunamadı" verir. ders_soru_numarasi boşsa (eski/eksik bir cevap
+// anahtarı dosyasında opsiyonel olduğundan) kümülatif soru_no'ya düşülür --
+// bu durumda eşleşme yine de hatalı olabilir ama en azından veri kaybolmaz.
 function normalizeDers(s) {
   return String(s ?? '')
     .toLocaleLowerCase('tr-TR')
@@ -152,7 +169,10 @@ export function digerKitapcigiSorulariniTuret(taranmisSorular, digerKitapcikSati
     }
     turetilenler.push({
       ders_adi: kaynak.ders_adi, // taranan/onaylı kitapçıktaki GEÇERLİ ders adı kullanılıyor
-      soru_no: satir.soru_no, // diğer kitapçığın KENDİ soru numarası
+      // diğer kitapçığın KENDİ (ders-içi) soru numarası -- sinav_kitapcik_sorulari
+      // hep ders-içi numara kullanıyor, cevap anahtarındaki kümülatif "soru_no" DEĞİL
+      // (bkz. yukarıdaki "bug düzeltmesi #2" notu)
+      soru_no: satir.ders_soru_no ?? satir.soru_no,
       sayfa_no: kaynak.sayfa_no,
       x: kaynak.x,
       y: kaynak.y,
