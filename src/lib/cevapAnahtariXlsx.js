@@ -119,13 +119,33 @@ export async function cevapAnahtariXlsxOku(dosya) {
 //     soru_no diğer kitapçığın KENDİ numarasına ayarlanıyor.
 //   eslesmeyenler: cevap anahtarında karşılığı bulunamayan (ör. kaynak
 //     kitapçıkta iptal edilmiş/taranmamış) sorular.
+// NOT (bug düzeltmesi): soru_no TEK BAŞINA kitapçık genelinde BENZERSİZ
+// DEĞİL -- her ders kendi içinde ayrı numaralanıyor (ör. Türkçe 1-40 VE
+// Matematik 1-30 VE Fizik 1-7 aynı anda var, hepsi "1"den başlıyor). Eşleşme
+// anahtarı SADECE soru_no olursa, aynı numaraya sahip farklı derslerin
+// kutuları `taranmisMap`'te birbirinin ÜZERİNE yazılır (son eklenen kazanır)
+// -- böylece bazı ders+no kombinasyonları için YANLIŞ dersin kutusu
+// türetilir, DOĞRU ders+no kombinasyonu için ise hiç satır oluşmaz (sonradan
+// Hata Kitapçığı sayfasında o öğrencinin o sorusu "kitapçıkta bulunamadı"
+// hatası verir). Bunu önlemek için anahtar, ders adı + soru_no BİRLİKTE
+// (normalize edilmiş) olmalı.
+function normalizeDers(s) {
+  return String(s ?? '')
+    .toLocaleLowerCase('tr-TR')
+    .trim()
+}
+
 export function digerKitapcigiSorulariniTuret(taranmisSorular, digerKitapcikSatirlari) {
-  const taranmisMap = new Map((taranmisSorular || []).map((s) => [Number(s.soru_no), s]))
+  const taranmisMap = new Map(
+    (taranmisSorular || []).map((s) => [`${normalizeDers(s.ders_adi)}|${Number(s.soru_no)}`, s])
+  )
 
   const turetilenler = []
   const eslesmeyenler = []
   for (const satir of digerKitapcikSatirlari || []) {
-    const kaynak = satir.karsilik_soru_no != null ? taranmisMap.get(Number(satir.karsilik_soru_no)) : null
+    const anahtar =
+      satir.karsilik_soru_no != null ? `${normalizeDers(satir.ders_adi)}|${Number(satir.karsilik_soru_no)}` : null
+    const kaynak = anahtar != null ? taranmisMap.get(anahtar) : null
     if (!kaynak) {
       eslesmeyenler.push(satir)
       continue
