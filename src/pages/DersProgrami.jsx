@@ -892,6 +892,14 @@ function DersEkleForm({
             className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue bg-white"
           >
             <option value="">Seçiniz...</option>
+            {/* Düzenlenen ders, pasif yapılmış bir öğretmene aitse (ogretmenler
+                listesi sadece aktif öğretmenleri içeriyor) o öğretmen seçeneklerde
+                hiç görünmez ve value hiçbir <option>'a karşılık gelmeyip boş
+                kalır -- bunu önlemek için mevcut atamayı "(pasif)" etiketiyle
+                ayrıca ekliyoruz. */}
+            {duzenleModu && duzenlenenDers?.ogretmen_profile_id && !ogretmenler.some((o) => o.id === duzenlenenDers.ogretmen_profile_id) && (
+              <option value={duzenlenenDers.ogretmen_profile_id}>{(duzenlenenDers.ogretmen_adi || 'Bilinmeyen öğretmen') + ' (pasif)'}</option>
+            )}
             {ogretmenler.map((o) => (
               <option key={o.id} value={o.id}>{o.brans ? `${o.ad_soyad} — ${o.brans}` : o.ad_soyad}</option>
             ))}
@@ -1908,6 +1916,13 @@ export default function DersProgrami() {
   const [programTum, setProgramTum] = useState([])
   const [siniflar, setSiniflar] = useState([])
   const [ogretmenler, setOgretmenler] = useState([])
+  // "ogretmenler" (TÜM öğretmenler, pasif dahil) burada BİLEREK olduğu gibi
+  // bırakıldı -- çakışma mesajları, Taslaklarım/Günlük/Haftalık görünümlerindeki
+  // isim gösterimi gibi birçok yer hâlâ pasif öğretmenlerin adını doğru
+  // çözebilmeli. Sadece YENİ atama yapılan yerler (Müsaitlik Tablosu'ndaki
+  // hızlı ekle ızgarası ve Ders Ekleme Formu'nun öğretmen seçimi) için ayrı,
+  // filtrelenmiş bir liste kullanılıyor.
+  const aktifOgretmenler = useMemo(() => ogretmenler.filter((o) => o.aktif !== false), [ogretmenler])
   const [bireBirAtamalar, setBireBirAtamalar] = useState([])
   const [bireBirYoklamalar, setBireBirYoklamalar] = useState([])
   const [ogrenciler, setOgrenciler] = useState([])
@@ -3165,7 +3180,7 @@ export default function DersProgrami() {
                 )}
               </div>
               <MusaitlikTablosu
-                ogretmenler={ogretmenler}
+                ogretmenler={aktifOgretmenler}
                 dersProgrami={musaitlikIcinProgram}
                 atamalar={bireBirAtamalar}
                 yoklamalar={bireBirYoklamalar}
@@ -3186,7 +3201,7 @@ export default function DersProgrami() {
               />
               <DersEkleForm
                 siniflar={siniflar}
-                ogretmenler={ogretmenler}
+                ogretmenler={aktifOgretmenler}
                 program={program}
                 taslaklar={taslaklar}
                 onEklendi={dersEklendiVeyaTaslaklandi}
