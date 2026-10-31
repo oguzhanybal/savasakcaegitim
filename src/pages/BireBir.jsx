@@ -1549,6 +1549,14 @@ function AtamaDuzenleSatiri({ a, ogretmenler, atamalar, dersProgrami, onKaydedil
             onChange={(e) => setOgretmenId(e.target.value)}
             className="px-2 py-1.5 border border-gray-300 rounded-lg text-sm bg-white"
           >
+            {/* Bu atamanın öğretmeni sonradan pasif yapılmışsa (ogretmenler listesi
+                sadece aktif öğretmenleri içeriyor) seçeneklerde hiç görünmez --
+                dropdown boş kalmasın diye mevcut atamayı "(pasif)" etiketiyle
+                ayrıca ekliyoruz; yönetici isterse buradan aktif bir öğretmene
+                değiştirebilir. */}
+            {!ogretmenler.some((o) => o.id === a.ogretmen_profile_id) && (
+              <option value={a.ogretmen_profile_id}>{(a.ogretmen_adi || 'Bilinmeyen öğretmen') + ' (pasif)'}</option>
+            )}
             {ogretmenler.map((o) => (
               <option key={o.id} value={o.id}>{o.brans ? `${o.ad_soyad} — ${o.brans}` : o.ad_soyad}</option>
             ))}
@@ -2569,6 +2577,12 @@ export default function BireBir() {
 
   const [ogrenciler, setOgrenciler] = useState([])
   const [ogretmenler, setOgretmenler] = useState([])
+  // "ogretmenler" (TÜM öğretmenler, pasif dahil) olduğu gibi bırakıldı --
+  // çakışma mesajları ve Taslaklarım/liste görünümlerindeki isim gösterimi
+  // hâlâ pasif öğretmenlerin adını doğru çözebilmeli. Sadece YENİ atama
+  // yapılan yerler (Müsaitlik Tablosu, Bire Bir Ders Ekleme Formu) için
+  // filtrelenmiş liste kullanılıyor -- bkz. DersProgrami.jsx'teki aynı desen.
+  const aktifOgretmenler = useMemo(() => ogretmenler.filter((o) => o.aktif !== false), [ogretmenler])
   const [dersProgrami, setDersProgrami] = useState([])
   const [atamalar, setAtamalar] = useState([])
   const [yoklamalar, setYoklamalar] = useState([])
@@ -2909,7 +2923,7 @@ export default function BireBir() {
             )}
           </div>
           <MusaitlikTablosu
-            ogretmenler={ogretmenler}
+            ogretmenler={aktifOgretmenler}
             dersProgrami={dersProgrami}
             atamalar={atamalar}
             yoklamalar={yoklamalar}
@@ -2928,7 +2942,7 @@ export default function BireBir() {
           />
           <BireBirDersEkleForm
             ogrenciler={ogrenciler}
-            ogretmenler={ogretmenler}
+            ogretmenler={aktifOgretmenler}
             atamalar={atamalar}
             dersProgrami={dersProgrami}
             yoklamalar={yoklamalar}
@@ -2958,7 +2972,7 @@ export default function BireBir() {
           />
           <AtamaListesi
             atamalar={atamalar}
-            ogretmenler={ogretmenler}
+            ogretmenler={aktifOgretmenler}
             dersProgrami={dersProgrami}
             onDegisti={veriyiYenile}
           />
