@@ -132,7 +132,11 @@ export default function SinifDetay() {
     setTumOgrenciler(o.data || [])
     setProgram(p.data || [])
     setTumProgram(tp.data || [])
-    setOgretmenler(og.data || [])
+    // Pasif (aktif=false) öğretmenler yeni ders saati atarken seçilebilir
+    // listede görünmesin — ama mevcut program satırları yukarıdaki
+    // profiles:ogretmen_profile_id JOIN'i sayesinde isimlerini göstermeye
+    // devam eder, buradan etkilenmez.
+    setOgretmenler((og.data || []).filter((o) => o.aktif !== false))
     setBireBirAtamalari(
       (bb.data || []).map((a) => ({ ...a, ogrenci_adi: a.ogrenciler?.ad_soyad }))
     )
