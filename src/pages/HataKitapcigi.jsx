@@ -144,6 +144,29 @@ export default function HataKitapcigi() {
         const normalize = (s) => (s || '').toLocaleLowerCase('tr-TR').trim()
         const kutuMap = new Map((kutular || []).map((k) => [`${normalize(k.ders_adi)}|${k.soru_no}`, k]))
 
+        // AYT/TYT Matematik testi resmi yapıda hep 30 Matematik + 10 Geometri
+        // sorusundan oluşur, ama KARNEDE (sinavPdfParse.js'in sayfa2Ayikla'sı)
+        // bu ikisi ÇOĞU zaman ayrı bir "Geometri" başlığı hiç basılmadığı için
+        // TEK bir "Matematik" bloğu (1-40) olarak kaydediliyor. "Sınav
+        // Kitapçıkları" sayfasında admin bazı kitapçıklarda 31-40'ı AYRICA
+        // "Geometri" diye etiketlemiş, bazılarında etiketlememiş (DB'de
+        // doğrulandı: ör. "1. TYT (Aktif Geri Sayım TYT-0)" kitapçığında
+        // Matematik 1-40 hiç bölünmemiş, ama "1. AYT DENEME SINAVI" ve birçok
+        // ÇAP/ENDEMİK TYT kitapçığında Matematik 1-30 + Geometri 31-40 diye
+        // AYRI etiketlenmiş) — hangisi olduğu karne metninden ÖNCEDEN
+        // bilinemediği için bunu parser'da (sinavPdfParse.js) DEĞİL, burada
+        // bir EŞLEŞME kuralı olarak çözüyoruz: tam eşleşme yoksa aynı soru_no
+        // ile Matematik<->Geometri takma adını da deniyoruz (numaralandırma
+        // iki tarafta da AYNI, 1-10 diye yeniden başlamıyor).
+        function kutuBul(dersAdi, soruNo) {
+          const normDers = normalize(dersAdi)
+          const dogrudan = kutuMap.get(`${normDers}|${soruNo}`)
+          if (dogrudan) return dogrudan
+          const takmaAd = normDers === 'matematik' ? 'geometri' : normDers === 'geometri' ? 'matematik' : null
+          if (!takmaAd) return undefined
+          return kutuMap.get(`${takmaAd}|${soruNo}`)
+        }
+
         setIlerlemeMetni('Kitapçık PDF\'i indiriliyor...')
         const { data: pdfBlobu, error: indirmeHatasi } = await supabase.storage
           .from('sinav-kitapciklari')
@@ -180,6 +203,18 @@ export default function HataKitapcigi() {
             })
             .forEach((k, i) => siraMap.set(`${normalize(k.ders_adi)}|${k.soru_no}`, i))
         }
+        // Matematik<->Geometri takma adı burada da geçerli (bkz. yukarıdaki
+        // kutuBul'daki açıklama) — aksi halde kitapçıkta "Geometri" diye
+        // etiketlenmiş ama karnede "Matematik" olarak gelen sorular gerçek
+        // sırayı bulamayıp listenin sonuna düşerdi.
+        function siraBul(dersAdi, soruNo) {
+          const normDers = normalize(dersAdi)
+          const dogrudan = siraMap.get(`${normDers}|${soruNo}`)
+          if (dogrudan !== undefined) return dogrudan
+          const takmaAd = normDers === 'matematik' ? 'geometri' : normDers === 'geometri' ? 'matematik' : null
+          if (!takmaAd) return undefined
+          return siraMap.get(`${takmaAd}|${soruNo}`)
+        }
 
         // BELLEK: her sayfanın canvas'ını (scale=3'te tam bir A4 canvas'ı
         // onlarca MB tutabiliyor) aynı anda bellekte tutmak, iPhone/iPad
@@ -206,8 +241,8 @@ export default function HataKitapcigi() {
         }
 
         const soruSonuclariSirali = soruSonuclari.slice().sort((a, b) => {
-          const ka = kutuMap.get(`${normalize(a.ders_adi)}|${a.soru_no}`)
-          const kb = kutuMap.get(`${normalize(b.ders_adi)}|${b.soru_no}`)
+          const ka = kutuBul(a.ders_adi, a.soru_no)
+          const kb = kutuBul(b.ders_adi, b.soru_no)
           const sa = ka ? ka.sayfa_no : Infinity
           const sb = kb ? kb.sayfa_no : Infinity
           return sa - sb
@@ -218,8 +253,7 @@ export default function HataKitapcigi() {
         for (let i = 0; i < soruSonuclariSirali.length; i++) {
           const s = soruSonuclariSirali[i]
           setIlerlemeMetni(`Sorular kesiliyor (${i + 1}/${soruSonuclari.length})...`)
-          const anahtar = `${normalize(s.ders_adi)}|${s.soru_no}`
-          const kutu = kutuMap.get(anahtar)
+          const kutu = kutuBul(s.ders_adi, s.soru_no)
           if (!kutu) {
             bulunamayanlar.push(s)
             continue
@@ -296,8 +330,8 @@ export default function HataKitapcigi() {
         // eşleşmesi bulunamayan (dolayısıyla siraMap'te yeri olmayan)
         // sorular listenin sonuna düşer.
         hazirSorular.sort((a, b) => {
-          const ia = siraMap.get(`${normalize(a.ders_adi)}|${a.soru_no}`)
-          const ib = siraMap.get(`${normalize(b.ders_adi)}|${b.soru_no}`)
+          const ia = siraBul(a.ders_adi, a.soru_no)
+          const ib = siraBul(b.ders_adi, b.soru_no)
           if (ia === undefined && ib === undefined) return 0
           if (ia === undefined) return 1
           if (ib === undefined) return -1
