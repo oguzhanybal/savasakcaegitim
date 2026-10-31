@@ -29,7 +29,10 @@ export default function Siniflar() {
     ])
     const sinifListesi = s.data || []
     setSiniflar(sinifListesi)
-    setOgretmenler(o.data || [])
+    // Pasif öğretmenler yeni sınıf ataması listesinde görünmesin -- mevcut
+    // atamalar yukarıdaki profiles:ogretmen_profile_id JOIN'i sayesinde
+    // etkilenmeden ismiyle görünmeye devam eder.
+    setOgretmenler((o.data || []).filter((x) => x.aktif !== false))
 
     // Her sınıfın yanında kaç öğrencisi olduğunu göstermek için — sinif_ogrenciler
     // eşleştirme tablosundan, bu eğitim yılındaki tüm sınıfların id'lerine ait
@@ -172,6 +175,15 @@ export default function Siniflar() {
               const duzenleniyor = duzenlenenId === s.id
 
               if (duzenleniyor) {
+                // Bu sınıf şu an pasif yapılmış bir öğretmene atanmışsa, o öğretmen
+                // artık `ogretmenler` listesinde yok (yukarıda filtrelendi) --
+                // dropdown'ın value'su hiçbir <option>'a karşılık gelmeyip boş
+                // görünmesin ve "Kaydet" yanlışlıkla atamayı temizlemesin diye,
+                // mevcut atamayı (pasif de olsa) "(pasif)" etiketiyle seçeneklere ekliyoruz.
+                const mevcutPasifOgretmen =
+                  s.ogretmen_profile_id && s.profiles && !ogretmenler.some((o) => o.id === s.ogretmen_profile_id)
+                    ? { id: s.ogretmen_profile_id, ad_soyad: s.profiles.ad_soyad, brans: s.profiles.brans }
+                    : null
                 return (
                   <tr key={s.id} className="bg-blue-50">
                     <td className="px-4 py-2">
@@ -188,6 +200,9 @@ export default function Siniflar() {
                         className="w-full px-2 py-1.5 border border-gray-300 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue"
                       >
                         <option value="">Yok</option>
+                        {mevcutPasifOgretmen && (
+                          <option value={mevcutPasifOgretmen.id}>{ogretmenEtiket(mevcutPasifOgretmen)} (pasif)</option>
+                        )}
                         {ogretmenler.map((o) => (
                           <option key={o.id} value={o.id}>{ogretmenEtiket(o)}</option>
                         ))}
