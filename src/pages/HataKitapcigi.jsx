@@ -84,6 +84,27 @@ export default function HataKitapcigi() {
           .in('sonuc', ['yanlis', 'bos'])
         if (soruHatasi) throw soruHatasi
 
+        // "Gerçekten tüm sorular doğru" ile "bu sonucun soru bazlı (Konu
+        // Analizi) verisi hiç kaydedilmemiş" birbirine KARIŞMASIN: ders
+        // filtresinden ÖNCE, sonuc_id için TEK BİR satır bile yoksa ve
+        // sonucun kendi toplam yanlış/boş sayısı sıfırdan büyükse, bu veri
+        // eksikliğidir (ör. SinavYukle.jsx'in o anki bir ayrıştırma hatası
+        // yüzünden "sinav_soru_sonuclari" ekleme adımı o zaman başarısız
+        // olmuş, sadece özet kaydedilebilmiş) — "tebrikler, hata yok" ile
+        // ASLA gösterilmemeli, aksi halde öğrencinin gerçek yanlışları
+        // "mükemmel sonuç" gibi görünür. (Bunun gerçek bir örneği: sütuna
+        // taşan ders başlığı null hatası yüzünden bir sınavın TÜM
+        // öğrencilerinin soru bazlı verisi hiç kaydedilmemişti.)
+        if (!soruSonuclariHam || soruSonuclariHam.length === 0) {
+          const toplamYanlisBos = (sonuc.toplam_yanlis || 0) + (sonuc.toplam_bos || 0)
+          if (toplamYanlisBos > 0) {
+            setDurum('veriEksik')
+            return
+          }
+          setDurum('bos')
+          return
+        }
+
         // Ders adları farklı yazım/boşluk içerebildiği için (bkz. dosya
         // başındaki not) .eq() ile veritabanında değil, burada normalize
         // edilmiş karşılaştırmayla filtreliyoruz.
@@ -93,6 +114,9 @@ export default function HataKitapcigi() {
           : soruSonuclariHam
 
         if (!soruSonuclari || soruSonuclari.length === 0) {
+          // Burada soruSonuclariHam BOŞ DEĞİLDİ (üstteki kontrolden geçti) —
+          // yani veri var, sadece SEÇİLEN ders için yanlış/boş yok. Bu
+          // gerçekten "bu derste hepsi doğru" demektir.
           setDurum('bos')
           return
         }
@@ -388,6 +412,22 @@ export default function HataKitapcigi() {
               {dersFiltresi
                 ? `${ogrenciAdi} bu sınavda "${dersFiltresi}" dersindeki tüm soruları doğru cevaplamış — kesilecek bir soru yok.`
                 : `${ogrenciAdi} bu sınavdaki tüm soruları doğru cevaplamış — kesilecek bir soru yok.`}
+            </p>
+          </div>
+        )}
+
+        {durum === 'veriEksik' && (
+          <div className="bg-white rounded-2xl border border-orange/30 shadow-sm p-8 text-center">
+            <p className="font-semibold text-orange mb-1">Soru bazlı veri eksik</p>
+            <p className="text-sm text-gray-600 max-w-md mx-auto">
+              {ogrenciAdi} için özet sonuç kayıtlı{ozet ? ` (${ozet.yanlis} yanlış, ${ozet.bos} boş)` : ''}, ama
+              bu sınavın hangi soruların yanlış/boş olduğunu gösteren ayrıntılı veri kaydedilmemiş — hata
+              kitapçığı bu yüzden kesilemiyor. "Tüm sorular doğru" demek DEĞİL. Muhtemel neden: bu sonuç ilk
+              yüklendiğinde ayrıntılı veri kaydı bir hata yüzünden tamamlanamamış.
+            </p>
+            <p className="text-sm text-gray-600 mt-3">
+              Çözüm: <Link to="/sinav-yukle" className="text-blue hover:underline">Sınav Sonucu Yükle</Link>{' '}
+              sayfasından bu öğrencinin karne PDF'ini tekrar yükleyip kaydedin — üzerine temiz şekilde yazılır.
             </p>
           </div>
         )}
