@@ -410,12 +410,32 @@ function sayfa2Ayikla(satirlar, sayfa1DersSonuclari) {
     return blokKimligi
   }
 
+  // Sütunları satır-satır EŞZAMANLI değil, her birini kendi başına yukarıdan
+  // aşağı işliyoruz. Neden: bir ders bloğu bir sütunun altında bitmeyip
+  // başlık tekrar BASILMADAN bir SONRAKİ sütunun en üstünden devam edebiliyor
+  // (gerçek bir AYT karnesinde görüldü: 40 soruluk "Matematik" bloğunun
+  // başlığı 1. sütunun altlarında basılı, soru 1-24 o sütunda, soru 25-40 ise
+  // 2. sütunun EN ÜSTÜNDE, hiçbir başlık olmadan devam ediyordu). Satır-satır
+  // eşzamanlı eski yöntemde, sayfa yukarıdan aşağı taranırken 2. sütunun ilk
+  // satırına gelindiğinde 1. sütundaki başlık henüz "görülmemiş" oluyordu
+  // (o başlık sayfada çok daha aşağıda), bu da ders_adi'nin null kalıp
+  // "sinav_soru_sonuclari" tablosuna NOT NULL ihlali olarak düşmesine neden
+  // oluyordu. Her sütunu kendi sırasıyla BAĞIMSIZ işleyip bir sütunun bitişte
+  // kaldığı dersi bir sonraki sütuna devam ettirerek bunu çözüyoruz.
+  const sutunSatirlari = Array.from({ length: sutunSayisi }, () => [])
   for (const satir of veriSatirlari) {
     const sutunlar = Array.from({ length: sutunSayisi }, () => [])
     for (const it of satir.items) sutunlar[sutunBul(it.x)].push(it)
     for (let c = 0; c < sutunSayisi; c++) {
-      const ogeler = sutunlar[c].sort((a, b) => a.x - b.x)
-      if (ogeler.length === 0) continue
+      if (sutunlar[c].length > 0) sutunSatirlari[c].push(sutunlar[c].sort((a, b) => a.x - b.x))
+    }
+  }
+
+  for (let c = 0; c < sutunSayisi; c++) {
+    // Bu sütun doğrudan bir soru satırıyla başlıyorsa (başlık satırı yoksa),
+    // önceki sütunun bitirdiği dersin devamı demektir.
+    if (c > 0) mevcutDers[c] = mevcutDers[c - 1]
+    for (const ogeler of sutunSatirlari[c]) {
       const ilk = ogeler[0]
       if (!/^\d+$/.test(ilk.str)) {
         // Sayı ile başlamıyorsa bu bir DERS BAŞLIĞI satırıdır (ör. "Türkçe",
