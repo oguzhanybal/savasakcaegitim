@@ -310,6 +310,20 @@ export default function DersBazliHataKitapcigi() {
         const kutular = kutularByKitapcik.get(kv.id) || []
         const normalizeYerel = (s) => (s || '').toLocaleLowerCase('tr-TR').trim()
         const kutuMap = new Map(kutular.map((k) => [`${normalizeYerel(k.ders_adi)}|${k.soru_no}`, k]))
+        // Matematik<->Geometri takma adı — bkz. HataKitapcigi.jsx'teki aynı
+        // açıklama: AYT/TYT Matematik testi resmi yapıda 30 Matematik + 10
+        // Geometri sorusundan oluşur, karnede çoğu zaman TEK "Matematik"
+        // bloğu olarak gelir, ama bazı kitapçıklarda admin 31-40'ı AYRICA
+        // "Geometri" diye etiketlemiş olabilir. Tam eşleşme yoksa aynı
+        // soru_no ile diğer adı da deniyoruz.
+        function kutuBulYerel(dersAdi, soruNo) {
+          const normDers = normalizeYerel(dersAdi)
+          const dogrudan = kutuMap.get(`${normDers}|${soruNo}`)
+          if (dogrudan) return dogrudan
+          const takmaAd = normDers === 'matematik' ? 'geometri' : normDers === 'geometri' ? 'matematik' : null
+          if (!takmaAd) return undefined
+          return kutuMap.get(`${takmaAd}|${soruNo}`)
+        }
 
         // Bu kitapçığın KENDİ gerçek okuma sırası (sayfa → sütun → yukarıdan
         // aşağı) — HataKitapcigi.jsx'teki aynı hesap, sadece bu kitapçığa özel.
@@ -334,14 +348,22 @@ export default function DersBazliHataKitapcigi() {
             })
             .forEach((k, i) => siraMap.set(`${normalizeYerel(k.ders_adi)}|${k.soru_no}`, i))
         }
+        function siraBulYerel(dersAdi, soruNo) {
+          const normDers = normalizeYerel(dersAdi)
+          const dogrudan = siraMap.get(`${normDers}|${soruNo}`)
+          if (dogrudan !== undefined) return dogrudan
+          const takmaAd = normDers === 'matematik' ? 'geometri' : normDers === 'geometri' ? 'matematik' : null
+          if (!takmaAd) return undefined
+          return siraMap.get(`${takmaAd}|${soruNo}`)
+        }
 
         // LRU-1 sayfa önbelleğinin işe yaraması için sorular rastgele
         // değil, KENDİ sayfa numarasına göre gruplu işleniyor — nihai
         // gösterim sırası zaten aşağıda siraMap'e göre yeniden diziliyor,
         // bu sadece işleme sırası (bkz. sayfaCanvasGetir'deki not).
         const soruSonuclariSirali = g.soruSonuclari.slice().sort((a, b) => {
-          const ka = kutuMap.get(`${normalizeYerel(a.ders_adi)}|${a.soru_no}`)
-          const kb = kutuMap.get(`${normalizeYerel(b.ders_adi)}|${b.soru_no}`)
+          const ka = kutuBulYerel(a.ders_adi, a.soru_no)
+          const kb = kutuBulYerel(b.ders_adi, b.soru_no)
           const sa = ka ? ka.sayfa_no : Infinity
           const sb = kb ? kb.sayfa_no : Infinity
           return sa - sb
@@ -351,8 +373,7 @@ export default function DersBazliHataKitapcigi() {
         for (const s of soruSonuclariSirali) {
           islenenSoru++
           setIlerlemeMetni(`Sorular kesiliyor (${islenenSoru}/${toplamSoruBeklenen})...`)
-          const anahtar = `${normalizeYerel(s.ders_adi)}|${s.soru_no}`
-          const kutu = kutuMap.get(anahtar)
+          const kutu = kutuBulYerel(s.ders_adi, s.soru_no)
           if (!kutu) {
             setBulunamayanlar((onceki) => [...onceki, { sinavAdi: g.sinavAdi, soru_no: s.soru_no, ders_adi: s.ders_adi }])
             continue
@@ -416,7 +437,7 @@ export default function DersBazliHataKitapcigi() {
             dataUrl: nihaiCanvas.toDataURL('image/png'),
             genislikPt: nihaiGenislikPt,
             yukseklikPt: nihaiYukseklikPt,
-            siraNo: siraMap.get(anahtar),
+            siraNo: siraBulYerel(s.ders_adi, s.soru_no),
           })
         }
         hazirSorular.sort((a, b) => {
