@@ -185,7 +185,7 @@ export default function Duyurular() {
       tumSatirlariGetir(() => supabase.from('duyurular').select('*').order('created_at', { ascending: false })),
       supabase.from('siniflar').select('id, ad').order('ad'),
       supabase.from('ogrenciler').select('id, ad_soyad').or('durum.eq.aktif,durum.is.null').order('ad_soyad'),
-      supabase.from('profiles').select('id, ad_soyad').eq('rol', 'ogretmen').order('ad_soyad'),
+      supabase.from('profiles').select('id, ad_soyad, aktif').eq('rol', 'ogretmen').order('ad_soyad'),
       supabase.from('sinif_ogrenciler').select('ogrenci_id, sinif_id'),
       supabase.from('duyuru_hedef_siniflar').select('duyuru_id, sinif_id'),
       supabase.from('duyuru_hedef_ogrenciler').select('duyuru_id, ogrenci_id, tur'),
@@ -194,7 +194,11 @@ export default function Duyurular() {
       setDuyurular(d.data || [])
       setSiniflar(s.data || [])
       setOgrenciler(o.data || [])
-      setOgretmenler(og.data || [])
+      // Pasif öğretmenler "Öğretmenlere Gönder" seçim listesinde (yeni duyuru
+      // için) görünmesin -- daha önce o öğretmene gönderilmiş bir duyuru
+      // düzenlenirken dogrudanOgretmenler state'i zaten ayrı tutuluyor, bu
+      // filtre o kaydı silmez (bkz. duzenlemeyeBasla/kaydet).
+      setOgretmenler((og.data || []).filter((x) => x.aktif !== false))
       setSinifOgrenciler(so.data || [])
       setHedefSiniflarTum(hs.data || [])
       setHedefOgrencilerTum(ho.data || [])
