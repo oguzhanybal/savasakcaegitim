@@ -289,33 +289,56 @@ export async function ekstrePdfOlustur(veri) {
   })
   y = doc.lastAutoTable.finalY + 14
 
+  // Öğrencinin (varsa) manuel bakiyesi — bu borçtan otomatik düşülen kısmı
+  // ve kalan kullanılmamış bakiyesini ayrıca gösteriyoruz (kullanıcı
+  // isteği: "bu kadar bakiyeden düşüldü, bu kadar kaldı"). Bakiye yoksa
+  // (hiç girilmemişse) bu satırlar hiç görünmüyor, eski davranış aynen
+  // devam ediyor.
+  const bakiyeVarMi = veri.bakiye && veri.bakiye.girilenBakiye > 0.01
+
   // Özet kutuları (site: gri/turuncu/lacivert vurgulu satırlar)
+  const ozetSatirlari = [
+    { etiket: 'BU AYKİ TAKSİT VE HARCAMALAR TOPLAMI', deger: veri.buAyToplam, stil: 'gri' },
+    { etiket: 'GEÇMİŞTEN KALAN BORÇ TOPLAMI', deger: veri.gecmisBorcToplam, stil: 'gri', kirmiziEsik: true },
+    { etiket: 'BU AY ÖDENMESİ GEREKEN MİKTAR', deger: veri.buAyOdenmesiGereken, stil: 'orange' },
+    {
+      etiket: bakiyeVarMi ? 'TOPLAM BORÇ (BAKİYE UYGULANMADAN)' : 'GENEL KALAN BAKİYE (TÜM ZAMANLAR)',
+      deger: veri.genelKalanBakiye,
+      stil: 'navy',
+    },
+    ...(bakiyeVarMi
+      ? [
+          { etiket: 'BAKİYENİZDEN DÜŞÜLEN', deger: veri.bakiye.kullanilan, stil: 'yesil' },
+          { etiket: 'KALAN BAKİYENİZ (KULLANILMAMIŞ)', deger: veri.bakiye.kalanBakiye, stil: 'yesil' },
+          { etiket: 'NET KALAN BORÇ (BAKİYE UYGULANMIŞ)', deger: veri.bakiye.netKalanBorc, stil: 'navy' },
+        ]
+      : []),
+  ]
+
   doc.autoTable({
     startY: y,
     margin: { left: kenar, right: kenar },
-    body: [
-      ['BU AYKİ TAKSİT VE HARCAMALAR TOPLAMI', paraStr(veri.buAyToplam)],
-      ['GEÇMİŞTEN KALAN BORÇ TOPLAMI', paraStr(veri.gecmisBorcToplam)],
-      ['BU AY ÖDENMESİ GEREKEN MİKTAR', paraStr(veri.buAyOdenmesiGereken)],
-      ['GENEL KALAN BAKİYE (TÜM ZAMANLAR)', paraStr(veri.genelKalanBakiye)],
-    ],
+    body: ozetSatirlari.map((s) => [s.etiket, paraStr(s.deger)]),
     theme: 'plain',
     styles: { fontSize: 10, fontStyle: 'bold', font, cellPadding: { top: 7, bottom: 7, left: 10, right: 10 } },
     columnStyles: { 1: { halign: 'right' } },
     didParseCell: (data) => {
-      if (data.row.index === 0) {
+      const s = ozetSatirlari[data.row.index]
+      if (!s) return
+      if (s.stil === 'gri') {
         data.cell.styles.fillColor = GRI_ACIK
-      } else if (data.row.index === 1) {
-        data.cell.styles.fillColor = GRI_ACIK
-        if (veri.gecmisBorcToplam > 0) data.cell.styles.textColor = KIRMIZI
-      } else if (data.row.index === 2) {
+        if (s.kirmiziEsik && s.deger > 0) data.cell.styles.textColor = KIRMIZI
+      } else if (s.stil === 'orange') {
         data.cell.styles.fillColor = ORANGE_ACIK
         data.cell.styles.textColor = ORANGE
         data.cell.styles.fontSize = 11.5
-      } else if (data.row.index === 3) {
+      } else if (s.stil === 'navy') {
         data.cell.styles.fillColor = NAVY_ACIK
         data.cell.styles.textColor = NAVY
         data.cell.styles.fontSize = 11.5
+      } else if (s.stil === 'yesil') {
+        data.cell.styles.fillColor = YESIL_ACIK
+        data.cell.styles.textColor = YESIL
       }
     },
   })

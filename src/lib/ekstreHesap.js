@@ -353,6 +353,47 @@ export function fazlaOdemeleriHesapla(sozlesmeler, aylikBorclar, odemeler) {
     .map((s) => ({ label: s.label, fazlaOdeme: s.fazlaOdeme }))
 }
 
+// ============================================================================
+// ÖĞRENCİ BAKİYESİ (KREDİ) — öğrenci kurumdan erken ayrıldığında (ödediği
+// taksitlerin karşılığı eğitim tam verilemediğinde) ya da benzer bir
+// durumda, admin'in elle girdiği ve ÖĞRENCİNİN TÜM KALEMLERİNDE (Okul/
+// Kurs/Bire Bir/Yemek/Kantin vb. ayrımı olmadan) geçerli GENEL bir
+// bakiye/kredi. "ogrenci_bakiye_hareketleri" tablosunda odemeler ile AYNI
+// desende (EKLEME-SADECE) tutulur — güncel toplam bakiye, bu satırların
+// tutar toplamıdır.
+//
+// Kullanıcı isteği: bu bakiye, yeni bir taksit/borç doğdukça OTOMATİK
+// olarak borçtan düşmeli (elle "ne kadarı kullanıldı" güncellemesi
+// GEREKMEMELİ) ve ekstreye/mesaja "X TL bakiyeden düşüldü, Y TL bakiye
+// kaldı" şeklinde yansımalı. Bunu, dosyadaki "fazlaOdeme" ile AYNI
+// felsefeyle (tek kaynaktan otomatik, kümülatif karşılaştırma) çözüyoruz:
+// girilen bakiye toplamı HİÇ değişmeden sabit kalır, verilen bir ANDAKİ
+// kalan borç tutarına göre "ne kadarı o an için kullanılmış sayılır" HER
+// SEFERİNDE yeniden hesaplanır (bakiyeUygula). Borç büyüdükçe (yeni taksit/
+// borç) "kullanılan" payı otomatik büyür, "kalan bakiye" payı otomatik
+// küçülür — ayrıca bir "bakiye tüketildi" kaydı tutmaya gerek yoktur.
+// ============================================================================
+export function bakiyeToplamiHesapla(bakiyeHareketleri) {
+  return (bakiyeHareketleri || []).reduce((t, b) => t + Number(b.tutar), 0)
+}
+
+// girilenBakiye: öğrencinin ogrenci_bakiye_hareketleri toplamı (bakiyeToplamiHesapla).
+// kalanBorc: bakiyenin düşüleceği GÜNCEL borç tutarı (ör. genelKalanBakiye,
+// ya da "bu ay ödenmesi gereken" gibi daha dar bir borç tutarı — fonksiyon
+// hangi borç tutarı verilirse ona göre hesaplar, birden fazla farklı "borç
+// mercek"i için ayrı ayrı çağrılabilir).
+export function bakiyeUygula(girilenBakiye, kalanBorc) {
+  const g = Math.max(0, Number(girilenBakiye) || 0)
+  const b = Math.max(0, Number(kalanBorc) || 0)
+  const kullanilan = Math.min(g, b)
+  return {
+    girilenBakiye: g,
+    kullanilan,
+    kalanBakiye: Math.max(0, g - kullanilan),
+    netKalanBorc: Math.max(0, b - kullanilan),
+  }
+}
+
 // Türkçe telefon numarasını wa.me linkinin istediği "90XXXXXXXXXX" formatına çevirir.
 export function telefonNormallestir(telefon) {
   if (!telefon) return null
@@ -364,12 +405,22 @@ export function telefonNormallestir(telefon) {
   return t
 }
 
-// Excel'deki WHATSAPP MESAJ ŞABLONU'nun aynısı.
-export function whatsappMesajiOlustur({ ogrenciAdi, ayYil, buAyTutar, kalanTutar, pdfLink }) {
+// Excel'deki WHATSAPP MESAJ ŞABLONU'nun aynısı. "kalanTutar" artık (varsa)
+// öğrencinin manuel bakiyesi düşüldükten SONRAKİ net tutar olarak
+// gönderiliyor (bkz. çağıran taraflardaki bakiyeUygula kullanımı) — veli bu
+// mesajda zaten net borcunu görsün diye. bakiyeKullanilan/bakiyeKalan
+// (opsiyonel) doluysa, kullanıcı isteğiyle ("bu kadar bakiyeden düşüldü, bu
+// kadar kaldı") altına ayrıca bir açıklama satırı ekleniyor.
+export function whatsappMesajiOlustur({ ogrenciAdi, ayYil, buAyTutar, kalanTutar, pdfLink, bakiyeKullanilan, bakiyeKalan }) {
+  const bakiyeSatiri =
+    bakiyeKullanilan > 0.01 || bakiyeKalan > 0.01
+      ? `(Bakiyenizden ₺${Number(bakiyeKullanilan || 0).toLocaleString('tr-TR', { minimumFractionDigits: 2 })} düşülmüştür, ₺${Number(bakiyeKalan || 0).toLocaleString('tr-TR', { minimumFractionDigits: 2 })} bakiyeniz kalmıştır.)\n`
+      : ''
   return (
     `Değerli Velimiz, \n${ogrenciAdi} için ${ayYil} ekstresi hazırdır.\n` +
     `Bu ayki taksit ve harcamalarınız: *₺${buAyTutar.toLocaleString('tr-TR', { minimumFractionDigits: 2 })}*\n` +
     `Toplam ödenmesi gereken bakiye: *₺${kalanTutar.toLocaleString('tr-TR', { minimumFractionDigits: 2 })}*\n` +
+    bakiyeSatiri +
     `Ekstre: ${pdfLink}\n` +
     `Bilgi için bizimle iletişime geçebilirsiniz. Teşekkür ederiz.`
   )
@@ -1085,7 +1136,7 @@ export async function ekstreVerisiGetir(supabase, ogrenciId, seciliAy) {
   const grupOgrencileri = grupOgrencileriVeri || []
   const grup = grupOgrencileri.map((g) => g.id)
 
-  const [s, a, od, bba, ekDersler, kantin] = await Promise.all([
+  const [s, a, od, bba, ekDersler, kantin, bk] = await Promise.all([
     supabase.from('sozlesmeler').select('*').in('ogrenci_id', grup),
     supabase.from('aylik_borclar').select('*').in('ogrenci_id', grup),
     supabase.from('odemeler').select('*, ogrenciler(ad_soyad)').in('ogrenci_id', grup).order('tarih', { ascending: false }),
@@ -1099,6 +1150,7 @@ export async function ekstreVerisiGetir(supabase, ogrenciId, seciliAy) {
       .in('ogrenci_id', grup)
       .is('atama_id', null),
     supabase.from('kantin_alislar').select('*').in('ogrenci_id', grup),
+    supabase.from('ogrenci_bakiye_hareketleri').select('*').in('ogrenci_id', grup),
   ])
 
   const atamalar = bba.data || []
@@ -1131,6 +1183,13 @@ export async function ekstreVerisiGetir(supabase, ogrenciId, seciliAy) {
   const toplamOdenen = odemelerHesapIcin.reduce((t, x) => t + Number(x.tutar), 0)
   const genelKalanBakiye = Math.max(0, toplamSozlesme + toplamAylikBorc - toplamOdenen)
 
+  // Öğrencinin manuel olarak girilmiş GENEL bakiyesi (kredi) — varsa, genel
+  // kalan bakiyeden otomatik düşülür (bkz. ekstreHesap.js'teki bakiyeUygula
+  // yorumu). "bakiye" objesi hem PDF'te hem Ekstre.jsx'te "X TL bakiyenizden
+  // düşüldü, Y TL bakiyeniz kaldı" satırını üretmek için kullanılıyor.
+  const bakiyeToplami = bakiyeToplamiHesapla(bk.data || [])
+  const bakiye = bakiyeUygula(bakiyeToplami, genelKalanBakiye)
+
   const faturaDigerleri = grupOgrencileri.filter((o) => o.id !== kendisi.id)
   const bireBirDersleri = bireBirDersDetaylariOlustur(atamalar, tumYoklamalar)
   const kantinAlislari = (kantin.data || [])
@@ -1153,6 +1212,8 @@ export async function ekstreVerisiGetir(supabase, ogrenciId, seciliAy) {
     gecmisBorcToplam,
     buAyOdenmesiGereken,
     genelKalanBakiye,
+    bakiyeToplami,
+    bakiye,
     bireBirDersleri,
     kantinAlislari,
     faturaDigerleri,
