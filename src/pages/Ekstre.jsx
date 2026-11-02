@@ -10,6 +10,8 @@ import {
   bireBirBorclariOlustur,
   kantinBorclariOlustur,
   bireBirDersDetaylariOlustur,
+  bakiyeToplamiHesapla,
+  bakiyeUygula,
 } from '../lib/ekstreHesap'
 
 // Bir velinin BİRDEN FAZLA öğrencisi (çocuğu) varsa, "tek sayfada önce
@@ -145,6 +147,7 @@ function OgrenciEkstreBolumu({ ogrenciId, seciliAy, baslikPaylasili }) {
   const [odemeler, setOdemeler] = useState([])
   const [bireBirDersleri, setBireBirDersleri] = useState([])
   const [kantinAlislari, setKantinAlislari] = useState([])
+  const [bakiyeHareketleri, setBakiyeHareketleri] = useState([])
   const [loading, setLoading] = useState(true)
   // Fatura Ortağı (ör. ikiz kardeşler): bu öğrenci başka birine bağlıysa
   // (ya da başka biri buna bağlıysa) hepsinin borç/ödemesi burada BİRLEŞİK
@@ -190,7 +193,8 @@ function OgrenciEkstreBolumu({ ogrenciId, seciliAy, baslikPaylasili }) {
                 .in('ogrenci_id', grup)
                 .is('atama_id', null),
               supabase.from('kantin_alislar').select('*').in('ogrenci_id', grup),
-            ]).then(([s, a, od, bba, ekDersler, kantin]) => {
+              supabase.from('ogrenci_bakiye_hareketleri').select('*').in('ogrenci_id', grup),
+            ]).then(([s, a, od, bba, ekDersler, kantin, bk]) => {
               const atamalar = bba.data || []
               const atamaIdleri = atamalar.map((x) => x.id)
               const yoklamaSorgusu =
@@ -206,6 +210,7 @@ function OgrenciEkstreBolumu({ ogrenciId, seciliAy, baslikPaylasili }) {
                 setSozlesmeler(s.data || [])
                 setAylikBorclar([...(a.data || []), ...bireBirBorclar, ...kantinBorclar])
                 setOdemeler(od.data || [])
+                setBakiyeHareketleri(bk.data || [])
                 setBireBirDersleri(bireBirDersDetaylariOlustur(atamalar, tumYoklamalar))
                 // kantin_alislar satırları zaten ürün adı/adet/birim fiyatını
                 // kendi üzerinde tutuyor (alış anında damgalanmış) — ayrıca
@@ -263,6 +268,12 @@ function OgrenciEkstreBolumu({ ogrenciId, seciliAy, baslikPaylasili }) {
   const toplamAylikBorc = aylikBorclar.reduce((t, a) => t + Number(a.tutar), 0)
   const toplamOdenen = odemeler.reduce((t, o) => t + Number(o.tutar), 0)
   const genelKalanBakiye = Math.max(0, toplamSozlesme + toplamAylikBorc - toplamOdenen)
+
+  // Öğrencinin (varsa) manuel olarak girilmiş GENEL bakiyesi (kredi) — kalan
+  // bakiyeden otomatik düşülür (bkz. Muhasebe.jsx'teki BakiyeEkleForm yorumu).
+  const bakiyeToplami = bakiyeToplamiHesapla(bakiyeHareketleri)
+  const bakiye = bakiyeUygula(bakiyeToplami, genelKalanBakiye)
+  const bakiyeVarMi = bakiye.girilenBakiye > 0.01
 
   // Veli, "Devreden Ödeme" (sisteme geçmeden önceki eski ödeme) kayıtlarını görmesin —
   // kafası karışabilir, o ödemeyi kendisi yapmış gibi görünmesin diye. Yönetici hepsini görür.
@@ -364,9 +375,25 @@ function OgrenciEkstreBolumu({ ogrenciId, seciliAy, baslikPaylasili }) {
                 <span className="font-bold text-orange text-lg">{paraFormat(buAyOdenmesiGereken)}</span>
               </div>
               <div className="flex justify-between px-4 py-3 bg-navy/5 border-t border-gray-200">
-                <span className="font-bold text-navy">GENEL KALAN BAKİYE (TÜM ZAMANLAR)</span>
+                <span className="font-bold text-navy">{bakiyeVarMi ? 'TOPLAM BORÇ (BAKİYE UYGULANMADAN)' : 'GENEL KALAN BAKİYE (TÜM ZAMANLAR)'}</span>
                 <span className="font-bold text-navy text-lg">{paraFormat(genelKalanBakiye)}</span>
               </div>
+              {bakiyeVarMi && (
+                <>
+                  <div className="flex justify-between px-4 py-2 bg-green-50 border-t border-gray-200">
+                    <span className="font-semibold text-green-700">BAKİYENİZDEN DÜŞÜLEN</span>
+                    <span className="font-semibold text-green-700">{paraFormat(bakiye.kullanilan)}</span>
+                  </div>
+                  <div className="flex justify-between px-4 py-2 bg-green-50 border-t border-gray-200">
+                    <span className="font-semibold text-green-700">KALAN BAKİYENİZ (KULLANILMAMIŞ)</span>
+                    <span className="font-semibold text-green-700">{paraFormat(bakiye.kalanBakiye)}</span>
+                  </div>
+                  <div className="flex justify-between px-4 py-3 bg-navy/5 border-t border-gray-200">
+                    <span className="font-bold text-navy">NET KALAN BORÇ (BAKİYE UYGULANMIŞ)</span>
+                    <span className="font-bold text-navy text-lg">{paraFormat(bakiye.netKalanBorc)}</span>
+                  </div>
+                </>
+              )}
             </div>
 
             <p className="text-xs text-gray-400 mt-3">

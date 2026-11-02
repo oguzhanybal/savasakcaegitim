@@ -24,6 +24,8 @@ import {
   makbuzWhatsappMesajiOlustur,
   makbuzTaksitBilgisiBul,
   sozlesmeWhatsappMesajiOlustur,
+  bakiyeToplamiHesapla,
+  bakiyeUygula,
 } from '../lib/ekstreHesap'
 import { makbuzPdfOlustur, odemePlaniPdfOlustur, sozlesmePdfOlustur } from '../lib/pdfOlustur'
 
@@ -796,6 +798,161 @@ function GecmisOdemeEkleForm({ ogrenciId, onEklendi }) {
   )
 }
 
+// ============================================================================
+// ÖĞRENCİ BAKİYESİ (KREDİ) EKLE — kullanıcı isteği: öğrenci kurumdan erken
+// ayrıldığında (ödediği taksitlerin karşılığı eğitim tam verilemediğinde)
+// admin'in ELLE girebileceği, öğrencinin TÜM kalemlerinde geçerli GENEL bir
+// bakiye/kredi. GecmisBorcEkleForm/GecmisOdemeEkleForm ile AYNI açılır-
+// kapanır desen, ama kaleme bağlı DEĞİL — "ogrenci_bakiye_hareketleri"
+// tablosuna (odemeler ile aynı EKLEME-SADECE mantıkla) bir satır ekler.
+// Girilen tutar GÜNCEL borçtan otomatik düşülür (bkz. bakiyeUygula) — yeni
+// bir taksit/borç doğdukça ayrıca bir şey yapmaya gerek kalmaz.
+// ============================================================================
+function BakiyeEkleForm({ ogrenciId, onEklendi }) {
+  const [tutar, setTutar] = useState('')
+  const [aciklama, setAciklama] = useState('')
+  const [tarih, setTarih] = useState(() => new Date().toISOString().slice(0, 10))
+  const [gonderiliyor, setGonderiliyor] = useState(false)
+  const [acik, setAcik] = useState(false)
+
+  async function ekle(e) {
+    e.preventDefault()
+    if (!tutar || Number(tutar) <= 0 || !tarih) return
+    setGonderiliyor(true)
+    const { error } = await supabase.from('ogrenci_bakiye_hareketleri').insert({
+      ogrenci_id: ogrenciId,
+      tutar: Number(tutar),
+      aciklama: aciklama || null,
+      tarih,
+    })
+    setGonderiliyor(false)
+    if (!error) {
+      setTutar('')
+      setAciklama('')
+      setAcik(false)
+      onEklendi()
+    } else {
+      alert('Hata: ' + error.message)
+    }
+  }
+
+  if (!acik) {
+    return (
+      <button
+        onClick={() => setAcik(true)}
+        className="text-navy font-semibold text-sm underline hover:no-underline"
+      >
+        + Öğrenci Bakiyesi (Alacak) Ekle
+      </button>
+    )
+  }
+
+  return (
+    <form onSubmit={ekle} className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5 mb-6">
+      <p className="text-sm text-gray-500 mb-3">
+        Öğrencinin (ör. kurumdan erken ayrılması nedeniyle) TÜM kalemlerinde geçerli, kaleme bağlı olmayan
+        genel bir bakiye/alacak girin. Bu tutar, yeni bir taksit/borç doğdukça borçtan OTOMATİK olarak
+        düşer ve veliye gönderilen ekstrede "bakiyeden düşülen / kalan bakiye" olarak gösterilir.
+      </p>
+      <div className="flex flex-wrap gap-3 items-end">
+        <div className="flex-1 min-w-[140px]">
+          <label className="block text-sm font-medium text-gray-700 mb-1">Tutar (₺)</label>
+          <input
+            type="number"
+            min="0"
+            step="0.01"
+            value={tutar}
+            onChange={(e) => setTutar(e.target.value)}
+            className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue"
+          />
+        </div>
+        <div className="flex-1 min-w-[140px]">
+          <label className="block text-sm font-medium text-gray-700 mb-1">Tarih</label>
+          <input
+            type="date"
+            value={tarih}
+            onChange={(e) => setTarih(e.target.value)}
+            className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue"
+          />
+        </div>
+        <div className="flex-[2] min-w-[200px]">
+          <label className="block text-sm font-medium text-gray-700 mb-1">Açıklama (opsiyonel)</label>
+          <input
+            type="text"
+            value={aciklama}
+            onChange={(e) => setAciklama(e.target.value)}
+            placeholder="ör. Erken ayrılma - verilemeyen eğitim bedeli"
+            className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue"
+          />
+        </div>
+      </div>
+      <div className="flex gap-2 mt-3">
+        <button
+          type="submit"
+          disabled={gonderiliyor}
+          className="bg-navy text-white font-semibold px-5 py-2 rounded-lg hover:bg-blue transition-colors disabled:opacity-50"
+        >
+          {gonderiliyor ? 'Ekleniyor...' : 'Bakiye Ekle'}
+        </button>
+        <button
+          type="button"
+          onClick={() => setAcik(false)}
+          className="text-gray-500 font-medium px-4 py-2 hover:text-gray-700"
+        >
+          Vazgeç
+        </button>
+      </div>
+    </form>
+  )
+}
+
+// Yukarıdaki BakiyeEkleForm ile girilen bakiye hareketlerini (ve güncel
+// durumu: girilen toplam / şu ana kadar borçtan düşülen / kalan kullanılmamış
+// bakiye) gösterir. Yönetici tek tek satırları silebilir (yanlış girilmişse) —
+// odemeSil/aylikBorcSil ile AYNI desen.
+function BakiyePaneli({ bakiyeHareketleri, bakiye, isYonetici, onSil }) {
+  if (!bakiyeHareketleri || bakiyeHareketleri.length === 0) return null
+  return (
+    <div className="bg-white rounded-2xl border border-blue/30 shadow-sm overflow-hidden mb-6">
+      <div className="px-4 py-3 bg-blue/5 border-b border-blue/20 flex items-center justify-between flex-wrap gap-2">
+        <h2 className="font-semibold text-navy">Öğrenci Bakiyesi (Alacak)</h2>
+        <div className="flex gap-4 text-sm">
+          <span className="text-gray-600">
+            Girilen: <strong className="text-navy">{paraFormat(bakiye.girilenBakiye)}</strong>
+          </span>
+          <span className="text-gray-600">
+            Borçtan Düşülen: <strong className="text-green-700">{paraFormat(bakiye.kullanilan)}</strong>
+          </span>
+          <span className="text-gray-600">
+            Kalan Bakiye: <strong className="text-blue">{paraFormat(bakiye.kalanBakiye)}</strong>
+          </span>
+          <span className="text-gray-600">
+            Net Kalan Borç: <strong className="text-orange">{paraFormat(bakiye.netKalanBorc)}</strong>
+          </span>
+        </div>
+      </div>
+      <table className="w-full text-sm">
+        <tbody>
+          {bakiyeHareketleri.map((b) => (
+            <tr key={b.id} className="border-b border-gray-50 last:border-0">
+              <td className="px-4 py-2 text-gray-500">{tarihFormat(b.tarih)}</td>
+              <td className="px-4 py-2 text-gray-700">{b.aciklama || '—'}</td>
+              <td className="px-4 py-2 text-right font-semibold text-navy">{paraFormat(b.tutar)}</td>
+              {isYonetici && (
+                <td className="px-4 py-2 text-right">
+                  <button onClick={() => onSil(b)} className="text-red-500 hover:text-red-700 text-xs font-semibold">
+                    Sil
+                  </button>
+                </td>
+              )}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  )
+}
+
 // Bir kalemde borçtan FAZLA ödeme yapılmışsa (veli taksitini/borcunu önden ya
 // da fazladan ödediyse), bu paneli göster — tutar otomatik olarak o kalemde
 // bir sonraki borç doğduğunda (sonraki ay taksiti / yeni ders ya da alış)
@@ -858,6 +1015,7 @@ export default function Muhasebe() {
   const [sozlesmeler, setSozlesmeler] = useState([])
   const [aylikBorclar, setAylikBorclar] = useState([])
   const [odemeler, setOdemeler] = useState([])
+  const [bakiyeHareketleri, setBakiyeHareketleri] = useState([])
   const [bireBirDersleri, setBireBirDersleri] = useState([])
   // Kullanıcı isteği: "Bu Ay Ödenecek — Kalem Kalem Döküm" panelindeki Kantin
   // satırının da kendi "Detayı Gör"ü olsun, tıklanınca hangi ürünlerin
@@ -987,7 +1145,8 @@ export default function Muhasebe() {
         .in('ogrenci_id', grup)
         .is('atama_id', null),
       supabase.from('kantin_alislar').select('*').in('ogrenci_id', grup),
-    ]).then(([s, a, o, bba, ekDersler, kantin]) => {
+      supabase.from('ogrenci_bakiye_hareketleri').select('*').in('ogrenci_id', grup).order('tarih', { ascending: false }),
+    ]).then(([s, a, o, bba, ekDersler, kantin, bk]) => {
       const atamalar = bba.data || []
       const atamaIdleri = atamalar.map((x) => x.id)
       const yoklamaSorgusu =
@@ -1001,6 +1160,7 @@ export default function Muhasebe() {
         setSozlesmeler(s.data || [])
         setAylikBorclar([...(a.data || []), ...bireBirBorclar, ...kantinBorclar])
         setOdemeler(o.data || [])
+        setBakiyeHareketleri(bk.data || [])
         setBireBirDersleri(bireBirDersDetaylariOlustur(atamalar, tumYoklamalar))
         // kantin_alislar satırları (ürün adı/adet/birim fiyat ile) — "Kalem
         // Kalem Döküm"deki Kantin satırının "Detayı Gör"ü bunu gösterecek.
@@ -1070,6 +1230,18 @@ export default function Muhasebe() {
   async function odemeSil(o) {
     if (!confirm(`${new Date(o.tarih).toLocaleDateString('tr-TR')} tarihli "${o.kalem || 'ödeme'}" (${paraFormat(o.tutar)}) kaydını silmek istediğinize emin misiniz? Bu işlem geri alınamaz, öğrencinin bakiyesi otomatik olarak yeniden hesaplanır.`)) return
     const { error } = await supabase.from('odemeler').delete().eq('id', o.id)
+    if (error) alert('Hata: ' + error.message)
+    else veriyiYenile()
+  }
+
+  async function bakiyeSil(b) {
+    if (
+      !confirm(
+        `${tarihFormat(b.tarih)} tarihli (${paraFormat(b.tutar)}) bakiye kaydını silmek istediğinize emin misiniz? Bu işlem geri alınamaz.`
+      )
+    )
+      return
+    const { error } = await supabase.from('ogrenci_bakiye_hareketleri').delete().eq('id', b.id)
     if (error) alert('Hata: ' + error.message)
     else veriyiYenile()
   }
@@ -1553,6 +1725,10 @@ export default function Muhasebe() {
   // Hangi kalemlerde (varsa) borçtan fazla ödeme yapılmış — "Fazla Ödeme
   // (Alacaklı)" paneli için.
   const fazlaOdemeler = fazlaOdemeleriHesapla(sozlesmeler, aylikBorclar, odemeler)
+  // Öğrencinin (varsa) manuel olarak girilmiş GENEL bakiyesi (kredi) — kalan
+  // borçtan otomatik düşülür (bkz. BakiyeEkleForm/BakiyePaneli yorumu).
+  const bakiyeToplami = bakiyeToplamiHesapla(bakiyeHareketleri)
+  const bakiye = bakiyeUygula(bakiyeToplami, kalanBakiye)
   // "Toplam Aylık Borç" kartı ÖNCEDEN şimdiye kadar birikmiş TÜM zamanların
   // brüt Bire Bir/Kantin borcunu gösteriyordu — veli bunu "bu ay ödeyeceğim
   // miktar" sanıp kafası karışıyordu. Onun yerine, Ekstre'deki "BU AY
@@ -1721,6 +1897,7 @@ export default function Muhasebe() {
                 <SozlesmeEkleForm ogrenciId={seciliId} onEklendi={veriyiYenile} />
                 <GecmisBorcEkleForm ogrenciId={seciliId} onEklendi={veriyiYenile} />
                 <GecmisOdemeEkleForm ogrenciId={seciliId} onEklendi={veriyiYenile} />
+                <BakiyeEkleForm ogrenciId={seciliId} onEklendi={veriyiYenile} />
               </div>
               <DagitilmamisOdemelerPaneli odemeler={odemeler} onDegisti={veriyiYenile} digerOgrenciAdlari={faturaDigerleri.length > 0} />
             </>
@@ -1749,6 +1926,11 @@ export default function Muhasebe() {
             <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
               <p className="text-sm text-gray-500 font-medium">Kalan Bakiye</p>
               <p className="text-2xl font-bold text-orange mt-1">{paraFormat(kalanBakiye)}</p>
+              {bakiye.girilenBakiye > 0.01 && (
+                <p className="text-xs text-blue font-medium mt-1">
+                  Öğrenci bakiyesi uygulanınca: {paraFormat(bakiye.netKalanBorc)}
+                </p>
+              )}
             </div>
           </div>
 
@@ -1803,6 +1985,13 @@ export default function Muhasebe() {
               )}
             </div>
           )}
+
+          <BakiyePaneli
+            bakiyeHareketleri={bakiyeHareketleri}
+            bakiye={bakiye}
+            isYonetici={isYonetici}
+            onSil={bakiyeSil}
+          />
 
           <FazlaOdemePaneli fazlaOdemeler={fazlaOdemeler} />
 

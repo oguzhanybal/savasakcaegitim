@@ -9,6 +9,7 @@ import {
   ekstreVerisiGetir,
   bireBirBorclariOlustur,
   kantinBorclariOlustur,
+  bakiyeUygula,
 } from '../lib/ekstreHesap'
 import { ekstrePdfOlustur } from '../lib/pdfOlustur'
 
@@ -133,13 +134,19 @@ export default function TopluEkstre() {
         .insert({ kod, bucket: 'ekstre-pdf', dosya_yolu: dosyaYolu, baslik: `${ogrenci.ad_soyad} — ${ayYil} Ekstresi` })
       if (kisaLinkHatasi) throw kisaLinkHatasi
       const kisaLink = `https://savasakcaportal.com/api/e?k=${kod}`
-      const kalanToplamBuOgrenci = veri.satirlar.reduce((t2, x) => t2 + x.toplamOdenecek, 0)
+      const kalanToplamBuOgrenciBrut = veri.satirlar.reduce((t2, x) => t2 + x.toplamOdenecek, 0)
+      // Öğrencinin (varsa) manuel bakiyesi, WhatsApp mesajındaki "ödenmesi
+      // gereken bakiye" tutarından da otomatik düşülür — veli mesajda
+      // doğrudan NET tutarı görsün diye (kullanıcı isteği).
+      const buOgrenciBakiyesi = bakiyeUygula(veri.bakiyeToplami, kalanToplamBuOgrenciBrut)
       const mesaj = whatsappMesajiOlustur({
         ogrenciAdi: ogrenci.ad_soyad,
         ayYil,
         buAyTutar: veri.buAyToplam,
-        kalanTutar: kalanToplamBuOgrenci,
+        kalanTutar: buOgrenciBakiyesi.netKalanBorc,
         pdfLink: kisaLink,
+        bakiyeKullanilan: buOgrenciBakiyesi.kullanilan,
+        bakiyeKalan: buOgrenciBakiyesi.kalanBakiye,
       })
       window.open(`https://wa.me/${t}?text=${encodeURIComponent(mesaj)}`, '_blank')
     } catch (err) {
