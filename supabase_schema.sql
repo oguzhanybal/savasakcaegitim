@@ -48,6 +48,21 @@ create table aylik_borclar (
   created_at timestamptz default now()
 );
 
+-- ---------- ÖĞRENCİ BAKİYESİ (KREDİ) HAREKETLERİ ----------
+-- Admin'in elle girdiği, öğrencinin (erken ayrılma / fazla ödenmiş eğitim
+-- bedeli gibi durumlarda) genel bakiyesini (kalemden bağımsız alacağını)
+-- tutan, odemeler ile AYNI desende EKLEME-SADECE (append-only) bir kayıt
+-- tablosu. Güncel bakiye = bu tablodaki tutar toplamı. "İptal" için satır
+-- silinir ya da ters işaretli (negatif tutarlı) yeni bir satır eklenir.
+create table ogrenci_bakiye_hareketleri (
+  id uuid primary key default gen_random_uuid(),
+  ogrenci_id uuid references ogrenciler(id) on delete cascade,
+  tutar numeric not null,
+  aciklama text,
+  tarih date not null default current_date,
+  created_at timestamptz default now()
+);
+
 -- ---------- ÖDEMELER (Kayıtlar) ----------
 create table odemeler (
   id uuid primary key default gen_random_uuid(),
@@ -106,6 +121,7 @@ alter table ogrenciler enable row level security;
 alter table sozlesmeler enable row level security;
 alter table aylik_borclar enable row level security;
 alter table odemeler enable row level security;
+alter table ogrenci_bakiye_hareketleri enable row level security;
 alter table siniflar enable row level security;
 alter table sinif_ogrenciler enable row level security;
 alter table ders_programi enable row level security;
@@ -152,6 +168,13 @@ create policy "odeme gorme" on odemeler for select
     or exists (select 1 from ogrenciler o where o.id = ogrenci_id and o.veli_profile_id = auth.uid())
   );
 create policy "odeme yazma" on odemeler for all using (auth_rol() = 'yonetici');
+
+create policy "bakiye gorme" on ogrenci_bakiye_hareketleri for select
+  using (
+    auth_rol() = 'yonetici'
+    or exists (select 1 from ogrenciler o where o.id = ogrenci_id and o.veli_profile_id = auth.uid())
+  );
+create policy "bakiye yazma" on ogrenci_bakiye_hareketleri for all using (auth_rol() = 'yonetici');
 
 -- Sınıflar: yönetici hepsini, öğretmen sadece kendi sınıfını, veli/öğrenci kendi çocuğunun sınıfını
 create policy "sinif gorme" on siniflar for select
