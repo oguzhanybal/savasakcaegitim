@@ -500,6 +500,17 @@ export default function SinavKitapciklari() {
   const [cevapAnahtariDosyasi, setCevapAnahtariDosyasi] = useState(null)
   const [cevapAnahtariYukleniyor, setCevapAnahtariYukleniyor] = useState(false)
   const [cevapAnahtariMesaji, setCevapAnahtariMesaji] = useState('')
+  // digerKitapcigiVarsaUret bazı soruları eşleştiremezse (ör. cevap anahtarı
+  // Excel'inde bir dersin adı kutu haritasındakinden farklı/birleşik
+  // yazılmışsa -- "Matematik+Geometri" tek başlık altında gibi) bunu burada
+  // tutuyoruz ve AŞAĞIDA (cevapAnahtariMesaji'nin altında) ayrı, göze çarpan
+  // kırmızı bir uyarı olarak gösteriyoruz. Önceden bu bilgi setBasari'nin
+  // (yeşil, "başarılı" metin) içine gömülüydü ve kolayca gözden kaçıyordu --
+  // sonucunda eksik kutular haftalarca fark edilmeden kalıp Hata Kitapçığı
+  // sayfasında "N soru kitapçıkta bulunamadı" hatası olarak öğrenci/veli
+  // tarafında ortaya çıkıyordu. Bkz. 2026-11 tarihli "Geometri 31-40
+  // bulunamadı" vakası.
+  const [turetmeUyarisi, setTuretmeUyarisi] = useState(null)
 
   function veriyiYenile() {
     supabase.from('sinavlar').select('*').order('sinav_tarihi', { ascending: false }).then(({ data }) => {
@@ -545,7 +556,33 @@ export default function SinavKitapciklari() {
       .select('*')
       .eq('kitapcik_id', kaynakKitapcik.id)
     const { turetilenler, eslesmeyenler } = digerKitapcigiSorulariniTuret(kaynakSorular || [], cevapAnahtariSatirlari)
-    if (turetilenler.length === 0) return
+    if (turetilenler.length === 0) {
+      setTuretmeUyarisi(null)
+      return
+    }
+
+    // Eşleşmeyen soruları ders adına göre grupla -- admin'e "hangi ders(ler)
+    // eksik kaldı" diye TEK TEK soru değil, ders bazında kısa bir özet
+    // gösterebilmek için (bkz. yukarıdaki turetmeUyarisi state notu).
+    if (eslesmeyenler.length > 0) {
+      const dersBazinda = new Map()
+      for (const s of eslesmeyenler) {
+        const ad = s.ders_adi || '(ders adı boş)'
+        dersBazinda.set(ad, (dersBazinda.get(ad) || 0) + 1)
+      }
+      const ozet = [...dersBazinda.entries()].map(([ad, adet]) => `${ad} (${adet})`).join(', ')
+      setTuretmeUyarisi(
+        `"${digerHarf}" kitapçığı türetilirken ${eslesmeyenler.length} soru eşleştirilemedi: ${ozet}. ` +
+          `Muhtemel sebep: cevap anahtarı Excel dosyasında bu ders(ler)in adı, kutu işaretlemesindeki ` +
+          `dersin adından farklı yazılmış ya da başka bir dersle birleştirilmiş (ör. "Matematik" ve ` +
+          `"Geometri" aynı başlık altında girilmiş olabilir). Excel dosyasındaki "Ders" sütununu kutu ` +
+          `işaretlemesiyle (${kaynakKitapcik.kitapcik} kitapçığındaki ders adlarıyla) birebir aynı olacak ` +
+          `şekilde düzeltip tekrar yükleyin, ya da eksik kalan soruları "${digerHarf}" kitapçığında Düzenle ` +
+          `> Hızlı Elle İşaretle ile elle ekleyin.`
+      )
+    } else {
+      setTuretmeUyarisi(null)
+    }
 
     const { data: yeniKitapcik, error: yeniKitapcikHatasi } = await supabase
       .from('sinav_kitapciklari')
@@ -578,7 +615,7 @@ export default function SinavKitapciklari() {
     setBasari(
       (onceki) =>
         `${onceki ? onceki + ' ' : ''}Ayrıca "${digerHarf}" kitapçığı, cevap anahtarındaki eşleştirmeden otomatik ` +
-        `türetildi (${turetilenler.length} soru${eslesmeyenler.length > 0 ? `, ${eslesmeyenler.length} soru eşleştirilemedi` : ''}).`
+        `türetildi (${turetilenler.length} soru${eslesmeyenler.length > 0 ? `, ${eslesmeyenler.length} soru eşleştirilemedi -- aşağıdaki kırmızı uyarıya bakın` : ', hepsi eşleşti'}).`
     )
     veriyiYenile()
   }
@@ -1970,6 +2007,11 @@ export default function SinavKitapciklari() {
               eşleştirmeden, aynı taranmış PDF'den otomatik türetilir.
             </p>
             {cevapAnahtariMesaji && <p className="text-xs text-blue-700 basis-full">{cevapAnahtariMesaji}</p>}
+            {turetmeUyarisi && (
+              <p className="text-xs text-red-800 bg-red-50 border border-red-300 rounded-md px-3 py-2 basis-full font-medium">
+                ⚠️ {turetmeUyarisi}
+              </p>
+            )}
           </div>
         )}
 
