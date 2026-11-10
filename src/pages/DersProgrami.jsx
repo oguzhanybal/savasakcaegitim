@@ -71,20 +71,35 @@ function gunEkle(tarihStr, gunSayisi) {
 // aşımına (statement timeout) uğrayıp "Görüntülenecek ders programı
 // bulunamadı" hatasına yol açtığı doğrulandı — yani geçmiş-tarih düzeltmesi
 // YENİ, DAHA GENİŞ bir kesintiye sebep oldu. Bu yüzden filtre ACİL olarak
-// GERİ KONULDU (eski, sorunsuz çalışan haline). "Geçmiş tarihte sınıf dersi
-// görünmüyor" isteği hâlâ geçerli ama bunun için ayrı, daha dikkatli bir
-// çözüm gerekiyor (ör. sadece yönetici bu sorguyu tam/filtresiz çeksin,
-// öğrenci/veli/öğretmen için filtre kalsın) — o çözüm burada DEĞİL, ayrı bir
-// adımda yapılacak.
-async function tumDersProgramiSatirlariniGetir() {
+// GERİ KONULDU (eski, sorunsuz çalışan haline).
+//
+// ASIL ÇÖZÜM (2026-11, nihayet yapıldı — kullanıcı: "ders programında
+// geçmişe gittikçe sınıf derslerinin bazıları kayboluyor, bunu düzelttik en
+// az altı yedi defa yine aynı sıkıntı var"): yukarıdaki acil geri almanın
+// kendi yorumu zaten doğru çözümü tarif ediyordu ("sadece yönetici bu
+// sorguyu tam/filtresiz çeksin, öğrenci/veli/öğretmen için filtre kalsın")
+// ama bu hiç uygulanmamıştı — filtre YA tamamen vardı (geçmiş kayboluyor)
+// YA tamamen yoktu (zaman aşımı riski), ikisi arasında gidip gelinmiş,
+// gerçek rol-bazlı çözüm hep "ayrı bir adıma" ertelenmiş. Şimdi tam olarak
+// o çözüm: `tamGecmis` true'yken (sadece yönetici, bkz. çağıran
+// veriyiYenile) 7-gün kesme filtresi HİÇ uygulanmıyor — Günlük Müsaitlik
+// tablosunun ihtiyacı olan "ne kadar geçmişe gidilirse gidilsin o tarihte
+// gerçekten var olan ders" bilgisi için TÜM aktif+pasif satırlar geliyor.
+// Diğer roller (öğretmen/veli/öğrenci) zaten bu kadar geriye gitme ihtiyacı
+// olmayan, zaman aşımına karşı daha hassas sorgularda olduğu için onlarda
+// eski (güvenli) 7-günlük filtre AYNEN kalıyor.
+async function tumDersProgramiSatirlariniGetir(tamGecmis) {
   const SAYFA_BOYU = 1000
   let hepsi = []
   let bas = 0
   while (true) {
-    const { data, error } = await supabase
+    let sorgu = supabase
       .from('ders_programi')
       .select('*, siniflar(ad), profiles:ogretmen_profile_id(ad_soyad, brans)')
-      .or(`aktif.eq.true,pasif_tarihi.gte.${gunEkle(yerelBugunTarihi(), -7)}`)
+    if (!tamGecmis) {
+      sorgu = sorgu.or(`aktif.eq.true,pasif_tarihi.gte.${gunEkle(yerelBugunTarihi(), -7)}`)
+    }
+    const { data, error } = await sorgu
       .order('gun')
       .order('baslangic_saat')
       .order('id')
@@ -2073,7 +2088,13 @@ export default function DersProgrami() {
       // sorgu hepsini getirmiyordu). Artık tumDersProgramiSatirlariniGetir()
       // ile SAYFALAYARAK (1000'er 1000'er, hepsi bitene kadar) çekiliyor —
       // kaç satır birikirse birikisin artık hiçbiri sessizce atlanmıyor.
-      tumDersProgramiSatirlariniGetir(),
+      // NOT (2026-11): isYonetici true iken `tamGecmis` parametresi ile
+      // 7-günlük pasif_tarihi kesme filtresi de kaldırılıyor — bkz.
+      // tumDersProgramiSatirlariniGetir'in başındaki "ASIL ÇÖZÜM" notu.
+      // Sadece yönetici (Günlük Müsaitlik'i kullanan tek rol) bu tam/
+      // filtresiz geçmişi çekiyor, öğretmen/veli/öğrenci eski güvenli
+      // (zaman aşımına karşı korumalı) filtreyle devam ediyor.
+      tumDersProgramiSatirlariniGetir(isYonetici),
       isYonetici ? supabase.from('siniflar').select('*').order('ad') : Promise.resolve({ data: [] }),
       isYonetici ? supabase.from('profiles').select('*').eq('rol', 'ogretmen').order('ad_soyad') : Promise.resolve({ data: [] }),
       // Günlük Müsaitlik tablosunda sınıf derslerinin yanında bire bir dersleri de
