@@ -152,17 +152,48 @@ function normalizeDers(s) {
     .trim()
 }
 
+// NOT (bug düzeltmesi #3 -- Matematik/Geometri takma adı): TYT Temel
+// Matematik testi resmi yapıda hep 30 Matematik + 10 Geometri sorusundan
+// oluşur, ama bu ikisi bazı kaynaklarda (cevap anahtarı Excel'i, karne PDF'i,
+// kutu işaretlemesi...) TEK bir "Matematik" bloğu (1-40) olarak, bazılarında
+// AYRI "Matematik"(1-30)+"Geometri"(31-40) olarak etiketleniyor -- hangisinin
+// kullanıldığı kaynaktan kaynağa (hatta aynı sınavın A ve B kitapçığı
+// arasında bile) DEĞİŞEBİLİYOR, bu bir veri giriş HATASI değil, iki ayrı elle
+// yapılan işlemin (kutu işaretleme ile cevap anahtarı Excel'i) birbirinden
+// bağımsız olarak hangi adlandırmayı seçtiğine bağlı. HataKitapcigi.jsx'teki
+// kutuBul/siraBul bu yüzden tam eşleşme bulamayınca aynı soru_no ile
+// Matematik<->Geometri takma adını da deniyor -- burada da (kitapçık türetme
+// eşleştirmesinde) AYNI toleransı uygulamazsak, cevap anahtarı "Matematik"
+// derken kaynak kitapçığın kutusu "Geometri" diye kayıtlıysa (ya da tersi)
+// eşleşme sessizce başarısız olur ve o sorular hiç türetilmez (bkz. 2026-11
+// "19. TYT ORBİTAL KRALLAR" vakası -- kullanıcı cevap anahtarını doğru
+// yazmıştı, sorun kutu işaretlemesiyle farklı adlandırma kullanılmasıydı).
+function dersTakmaAdi(normDers) {
+  if (normDers === 'matematik') return 'geometri'
+  if (normDers === 'geometri') return 'matematik'
+  return null
+}
+
 export function digerKitapcigiSorulariniTuret(taranmisSorular, digerKitapcikSatirlari) {
   const taranmisMap = new Map(
     (taranmisSorular || []).map((s) => [`${normalizeDers(s.ders_adi)}|${Number(s.soru_no)}`, s])
   )
 
+  function kaynakBul(normDers, soruNo) {
+    const dogrudan = taranmisMap.get(`${normDers}|${soruNo}`)
+    if (dogrudan) return dogrudan
+    const takmaAd = dersTakmaAdi(normDers)
+    if (!takmaAd) return undefined
+    return taranmisMap.get(`${takmaAd}|${soruNo}`)
+  }
+
   const turetilenler = []
   const eslesmeyenler = []
   for (const satir of digerKitapcikSatirlari || []) {
-    const anahtar =
-      satir.karsilik_soru_no != null ? `${normalizeDers(satir.ders_adi)}|${Number(satir.karsilik_soru_no)}` : null
-    const kaynak = anahtar != null ? taranmisMap.get(anahtar) : null
+    const kaynak =
+      satir.karsilik_soru_no != null
+        ? kaynakBul(normalizeDers(satir.ders_adi), Number(satir.karsilik_soru_no))
+        : null
     if (!kaynak) {
       eslesmeyenler.push(satir)
       continue
